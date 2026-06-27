@@ -1947,6 +1947,16 @@ export async function setContextCustomer(customerId: number): Promise<{
   });
 }
 
+export async function clearContextCustomer(): Promise<{
+  context: {
+    customer: null;
+  };
+}> {
+  return apiFetch("/api/context/customer", {
+    method: "DELETE",
+  });
+}
+
 export async function listCustomers(params: {
   q?: string;
   has_cart?: boolean;

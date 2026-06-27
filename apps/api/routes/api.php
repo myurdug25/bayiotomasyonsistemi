@@ -172,6 +172,7 @@ Route::middleware('auth:sanctum')->group(function () {
             ->middleware(['throttle:reports', 'menu:reports,dashboard']);
         Route::get('/context', [UserContextController::class, 'show'])->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard');
         Route::post('/context/customer', [UserContextController::class, 'setCustomer'])->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard');
+        Route::delete('/context/customer', [UserContextController::class, 'clearCustomer'])->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard');
         Route::get('/customers/{customer}/ledger', [CustomerLedgerController::class, 'index'])->middleware('menu:ledger');
         Route::apiResource('dealers', DealerController::class)->only(['index', 'show', 'update'])->middleware('menu:customers,search,cart,orders,reports,ledger,collections,dashboard,extra');
         Route::apiResource('customers', CustomerController::class)->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard,new-customer-card');

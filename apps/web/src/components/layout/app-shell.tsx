@@ -1680,7 +1680,7 @@ function ProfileEditDialog({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { status, user, selectedCustomer, logout, refresh } = useSession();
+  const { status, user, selectedCustomer, logout, refresh, clearCustomer } = useSession();
   const { cartData } = useCart();
   const [uiTheme, setUiTheme] = useState<UiTheme>("dark");
   const [uiAccent, setUiAccent] = useState<string>(DEFAULT_UI_ACCENT);
@@ -2338,11 +2338,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         style={shellStyle}
       >
-      <div className={cn("app-layout-frame flex min-h-screen w-full overflow-hidden", isDashboardRoute ? "bg-transparent" : "bg-[var(--background)]")}>
+      <div className={cn("app-layout-frame flex min-h-screen w-full overflow-x-clip", isDashboardRoute ? "bg-transparent" : "bg-[var(--background)]")}>
         <aside
           data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
           className={cn(
-            "app-sidebar-aside relative z-20 hidden shrink-0 overflow-hidden transition-[width] duration-200 lg:block",
+            "app-sidebar-aside sticky top-0 h-screen z-20 hidden shrink-0 overflow-hidden transition-[width] duration-200 lg:block",
             sidebarCollapsed ? "w-[60px]" : "w-[220px] 2xl:w-[256px]"
           )}
         >
@@ -2471,7 +2471,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </>
                 ) : null}
                 {showCustomerContext && !isDashboardRoute ? (
-                  <div className={cn("header-selected-customer", selectedCustomer && "header-selected-customer-active")}>
+                  <div className={cn("header-selected-customer flex items-center gap-3", selectedCustomer && "header-selected-customer-active")}>
                     <UserRound className="h-5 w-5 shrink-0 text-emerald-100/90" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/75">
@@ -2482,6 +2482,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </p>
                       {selectedCustomer ? <span className="header-selected-customer-code">{dashboardCustomerCode}</span> : null}
                     </span>
+                    {selectedCustomer && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          void clearCustomer();
+                        }}
+                        className="ml-2 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-red-500/20 px-2.5 text-xs font-bold text-red-200 transition-colors hover:bg-red-500/40"
+                        title="Müşteriden Çık"
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                        <span>Çıkış</span>
+                      </button>
+                    )}
                   </div>
                 ) : null}
               </div>

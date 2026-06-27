@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: powersa
       POSTGRES_PASSWORD: powersa
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - powersa_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
     image: redis:7
     container_name: powersa_redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - powersa_redisdata:/data

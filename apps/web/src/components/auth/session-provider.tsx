@@ -18,6 +18,7 @@ import {
   login as loginRequest,
   logout as logoutRequest,
   setContextCustomer,
+  clearContextCustomer,
 } from "@/lib/api";
 
 type SessionStatus = "loading" | "authenticated" | "guest";
@@ -136,6 +137,7 @@ type SessionContextType = {
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   selectCustomer: (customerId: number) => Promise<void>;
+  clearCustomer: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextType | null>(null);
@@ -250,6 +252,30 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [setSelectedCustomerPersisted]);
 
+  const clearCustomer = useCallback(async () => {
+    setError(null);
+
+    try {
+      await clearContextCustomer();
+      setSelectedCustomerPersisted(null);
+      setUser((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          selected_customer_id: null,
+          selectedCustomer: null,
+        };
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Müşteri seçimi temizlenemedi";
+      setError(message);
+      throw err;
+    }
+  }, [setSelectedCustomerPersisted]);
+
   const value = useMemo<SessionContextType>(
     () => ({
       status,
@@ -260,8 +286,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       logout,
       refresh,
       selectCustomer,
+      clearCustomer,
     }),
-    [status, user, selectedCustomer, error, login, logout, refresh, selectCustomer]
+    [status, user, selectedCustomer, error, login, logout, refresh, selectCustomer, clearCustomer]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

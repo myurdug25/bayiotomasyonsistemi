@@ -82,6 +82,22 @@ class UserContextController extends Controller
         ]);
     }
 
+    public function clearCustomer(): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $user->forceFill([
+            'selected_customer_id' => null,
+        ])->save();
+
+        return response()->json([
+            'context' => [
+                'customer' => null,
+            ],
+        ]);
+    }
+
     private function formatCustomer(?Customer $customer): ?array
     {
         if (! $customer) {

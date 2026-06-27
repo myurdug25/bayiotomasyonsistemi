@@ -337,14 +337,32 @@ class CustomerAccessScopeService
     private function whereLogoSpecode4In(Builder $query, string $table, array $queryValues): Builder
     {
         if (DB::connection($query->getModel()->getConnectionName())->getDriverName() === 'mysql') {
-            return $query
-                ->whereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode4'))"), $queryValues)
-                ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE4'))"), $queryValues);
+            return $query->where(function ($q) use ($table, $queryValues) {
+                $q->whereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode2'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE2'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode3'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE3'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode4'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE4'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode5'))"), $queryValues)
+                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE5'))"), $queryValues);
+            });
         }
 
-        return $query
-            ->whereIn("{$table}.meta->integrations->logo->payload->specode4", $queryValues)
-            ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE4", $queryValues);
+        return $query->where(function ($q) use ($table, $queryValues) {
+            $q->whereIn("{$table}.meta->integrations->logo->payload->specode", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->specode2", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE2", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->specode3", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE3", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->specode4", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE4", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->specode5", $queryValues)
+              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE5", $queryValues);
+        });
     }
 
     private function matchesLogoCustomerFilters(User $user, Customer $customer): bool
@@ -356,12 +374,15 @@ class CustomerAccessScopeService
         }
 
         $meta = is_array($customer->meta) ? $customer->meta : [];
-        $customerSpecode4 = $this->normalizeCode(
-            Arr::get($meta, 'integrations.logo.payload.specode4')
-            ?? Arr::get($meta, 'integrations.logo.payload.raw.SPECODE4')
-        );
+        $customerSpecodes = array_filter([
+            $this->normalizeCode(Arr::get($meta, 'integrations.logo.payload.specode') ?? Arr::get($meta, 'integrations.logo.payload.raw.SPECODE')),
+            $this->normalizeCode(Arr::get($meta, 'integrations.logo.payload.specode2') ?? Arr::get($meta, 'integrations.logo.payload.raw.SPECODE2')),
+            $this->normalizeCode(Arr::get($meta, 'integrations.logo.payload.specode3') ?? Arr::get($meta, 'integrations.logo.payload.raw.SPECODE3')),
+            $this->normalizeCode(Arr::get($meta, 'integrations.logo.payload.specode4') ?? Arr::get($meta, 'integrations.logo.payload.raw.SPECODE4')),
+            $this->normalizeCode(Arr::get($meta, 'integrations.logo.payload.specode5') ?? Arr::get($meta, 'integrations.logo.payload.raw.SPECODE5')),
+        ]);
 
-        return $customerSpecode4 !== null && in_array($customerSpecode4, $logoSpecode4Values, true);
+        return !empty(array_intersect($customerSpecodes, $logoSpecode4Values));
     }
 
     private function hasLogoCustomerFilter(User $user): bool

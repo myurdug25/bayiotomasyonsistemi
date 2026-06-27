@@ -290,12 +290,15 @@ class LogoCustomerSyncService
         array $record,
         ?int $fallbackUserId,
     ): ?int {
-        $logoSpecode4 = $this->normalizeCode(
-            Arr::get($record, 'meta.specode4')
-            ?? Arr::get($record, 'meta.raw.SPECODE4')
-        );
+        $customerSpecodes = array_filter([
+            $this->normalizeCode(Arr::get($record, 'meta.specode') ?? Arr::get($record, 'meta.raw.SPECODE')),
+            $this->normalizeCode(Arr::get($record, 'meta.specode2') ?? Arr::get($record, 'meta.raw.SPECODE2')),
+            $this->normalizeCode(Arr::get($record, 'meta.specode3') ?? Arr::get($record, 'meta.raw.SPECODE3')),
+            $this->normalizeCode(Arr::get($record, 'meta.specode4') ?? Arr::get($record, 'meta.raw.SPECODE4')),
+            $this->normalizeCode(Arr::get($record, 'meta.specode5') ?? Arr::get($record, 'meta.raw.SPECODE5')),
+        ]);
 
-        if ($logoSpecode4 === null) {
+        if (empty($customerSpecodes)) {
             return $fallbackUserId;
         }
 
@@ -303,13 +306,11 @@ class LogoCustomerSyncService
             ->where('dealer_id', $dealer->id)
             ->where('is_active', true)
             ->whereNotNull('logo_customer_specode4')
-            ->whereHas('roles', fn ($query) => $query->where('slug', 'salesperson'))
             ->get(['id', 'logo_customer_specode4'])
-            ->filter(fn (User $user): bool => in_array(
-                $logoSpecode4,
-                $this->normalizeCodeList($user->logo_customer_specode4),
-                true
-            ))
+            ->filter(fn (User $user): bool => count(array_intersect(
+                $customerSpecodes,
+                $this->normalizeCodeList($user->logo_customer_specode4)
+            )) > 0)
             ->pluck('id')
             ->values();
 
