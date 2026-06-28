@@ -829,10 +829,10 @@ class ProductSearchController extends Controller
 
         $builder->where(function (Builder $searchQuery) use ($search, $contains): void {
             $searchQuery
-                ->where('products.name', 'like', $contains)
-                ->orWhere('products.oem_code', 'like', $contains)
-                ->orWhere('products.sku', 'like', $contains)
-                ->orWhere('brands.name', 'like', $contains);
+                ->where('products.name', 'ilike', $contains)
+                ->orWhere('products.oem_code', 'ilike', $contains)
+                ->orWhere('products.sku', 'ilike', $contains)
+                ->orWhere('brands.name', 'ilike', $contains);
 
             $this->applyKeywordProductTextSearchOr($searchQuery, $search);
         });
@@ -852,10 +852,10 @@ class ProductSearchController extends Controller
                     $compactContains = '%'.$this->escapeLike($token['compact']).'%';
 
                     $tokenQuery
-                        ->where('products.name', 'like', $rawContains)
-                        ->orWhere('products.oem_code', 'like', $rawContains)
-                        ->orWhere('products.sku', 'like', $rawContains)
-                        ->orWhere('brands.name', 'like', $rawContains);
+                        ->where('products.name', 'ilike', $rawContains)
+                        ->orWhere('products.oem_code', 'ilike', $rawContains)
+                        ->orWhere('products.sku', 'ilike', $rawContains)
+                        ->orWhere('brands.name', 'ilike', $rawContains);
 
                     if (mb_strlen($token['compact'], 'UTF-8') >= 2) {
                         $tokenQuery
@@ -935,7 +935,7 @@ class ProductSearchController extends Controller
                     ->where(function (Builder $builder) use ($booleanSearch, $contains): void {
                         $builder
                             ->whereRaw('MATCH(products.sku, products.oem_code, products.name) AGAINST (? IN BOOLEAN MODE)', [$booleanSearch])
-                            ->orWhere('brands.name', 'like', $contains);
+                            ->orWhere('brands.name', 'ilike', $contains);
                     })
                     ->orderByDesc('search_score')
                     ->orderByDesc('products.id')
@@ -2228,10 +2228,17 @@ class ProductSearchController extends Controller
 
     private function normalizedJsonValueSql(string $column, string $path): string
     {
-        $expression = sprintf('JSON_EXTRACT(%s, %s)', $column, $this->quoteJsonPath($path));
+        $driver = DB::connection()->getDriverName();
 
-        if (DB::connection()->getDriverName() !== 'sqlite') {
-            $expression = sprintf('JSON_UNQUOTE(%s)', $expression);
+        if ($driver === 'pgsql') {
+            $pgPath = str_replace('.', ',', $path);
+            $expression = sprintf("%s#>>'{%s}'", $column, $pgPath);
+        } else {
+            $expression = sprintf('JSON_EXTRACT(%s, %s)', $column, $this->quoteJsonPath($path));
+
+            if ($driver !== 'sqlite') {
+                $expression = sprintf('JSON_UNQUOTE(%s)', $expression);
+            }
         }
 
         return sprintf('UPPER(TRIM(%s))', $expression);
@@ -2819,8 +2826,8 @@ class ProductSearchController extends Controller
                     $query->where(function (Builder $codeQuery) use ($prefixValues): void {
                         foreach ($prefixValues as $index => $prefix) {
                             $method = $index === 0 ? 'where' : 'orWhere';
-                            $codeQuery->{$method}('products.sku', 'like', $prefix)
-                                ->orWhere('products.oem_code', 'like', $prefix);
+                            $codeQuery->{$method}('products.sku', 'ilike', $prefix)
+                                ->orWhere('products.oem_code', 'ilike', $prefix);
                         }
                     });
                 });
@@ -2904,7 +2911,7 @@ class ProductSearchController extends Controller
                 ->where(function (Builder $query) use ($normalizedSearch): void {
                     $query
                         ->where('normalized_code', $normalizedSearch)
-                        ->orWhere('normalized_code', 'like', $normalizedSearch.'%');
+                        ->orWhere('normalized_code', 'ilike', $normalizedSearch.'%');
                 })
                 ->orderByRaw('normalized_code = ? DESC', [$normalizedSearch])
                 ->orderBy('normalized_code')
@@ -2995,8 +3002,8 @@ class ProductSearchController extends Controller
                 ->where(function ($aliasQuery) use ($normalizedSearch): void {
                     $aliasQuery
                         ->where('pca.normalized_code', $normalizedSearch)
-                        ->orWhere('pca.normalized_code', 'like', $normalizedSearch.'%')
-                        ->orWhere('pca.normalized_code', 'like', '%'.$normalizedSearch.'%');
+                        ->orWhere('pca.normalized_code', 'ilike', $normalizedSearch.'%')
+                        ->orWhere('pca.normalized_code', 'ilike', '%'.$normalizedSearch.'%');
                 });
         });
     }

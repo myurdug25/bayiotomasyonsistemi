@@ -33,14 +33,15 @@ class CustomerCollectionController extends Controller
         $dateFrom = $validated['date_from'] ?? null;
         $dateTo = $validated['date_to'] ?? null;
         $method = $validated['method'] ?? null;
-        $dateColumn = 'COALESCE(`date`, collection_date)';
+        $dateCol = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $dateColumn = "COALESCE({$dateCol}, collection_date)";
         $user = $request->user();
         $displayUser = $user instanceof User ? $user : null;
         $collectionSummary = $this->collectionSummaryPayload($customer, $dateFrom, $dateTo, $displayUser);
 
         if ($method === 'invoice') {
             $invoiceQuery = $this->invoiceQuery($customer, $dateFrom, $dateTo)
-                ->orderByRaw('COALESCE(`date`, entry_date) DESC')
+                ->orderByRaw("COALESCE({$dateCol}, entry_date) DESC")
                 ->orderByDesc('id');
 
             $paginator = $invoiceQuery->paginate($perPage)->withQueryString();
@@ -129,7 +130,8 @@ class CustomerCollectionController extends Controller
      */
     private function collectionTabSummaries(Customer $customer, ?string $dateFrom, ?string $dateTo, ?User $user): array
     {
-        $dateColumn = 'COALESCE(`date`, collection_date)';
+        $dateCol = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $dateColumn = "COALESCE({$dateCol}, collection_date)";
         $channelExpression = $this->collectionChannelExpression();
         $rows = CollectionModel::query()
             ->where('customer_id', $customer->id)
@@ -257,11 +259,13 @@ class CustomerCollectionController extends Controller
 
     private function invoiceQuery(Customer $customer, ?string $dateFrom, ?string $dateTo)
     {
+        $dateCol = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+
         return $customer->ledgerEntries()
             ->effectiveForCustomerBalance()
             ->where('type', 'invoice')
-            ->when(! empty($dateFrom), fn ($q) => $q->whereRaw('DATE(COALESCE(`date`, entry_date)) >= ?', [$dateFrom]))
-            ->when(! empty($dateTo), fn ($q) => $q->whereRaw('DATE(COALESCE(`date`, entry_date)) <= ?', [$dateTo]));
+            ->when(! empty($dateFrom), fn ($q) => $q->whereRaw("DATE(COALESCE({$dateCol}, entry_date)) >= ?", [$dateFrom]))
+            ->when(! empty($dateTo), fn ($q) => $q->whereRaw("DATE(COALESCE({$dateCol}, entry_date)) <= ?", [$dateTo]));
     }
 
     private function collectionChannelExpression(): string

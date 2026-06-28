@@ -60,8 +60,8 @@ class CustomerController extends Controller
 
         if ($search !== '') {
             $baseQuery->where(function ($builder) use ($search) {
-                $builder->where('customers.code', 'like', "{$search}%")
-                    ->orWhere('customers.name', 'like', "%{$search}%");
+                $builder->where('customers.code', 'ilike', "{$search}%")
+                    ->orWhere('customers.name', 'ilike', "%{$search}%");
             });
         }
 

@@ -181,11 +181,11 @@ class PosQuickProductSearchController extends Controller
 
         $query->where(function (Builder $builder) use ($prefix, $contains, $normalizedSearch) {
             $builder
-                ->where('products.sku', 'like', $prefix)
-                ->orWhere('products.oem_code', 'like', $prefix)
-                ->orWhere('products.sku', 'like', $contains)
-                ->orWhere('products.oem_code', 'like', $contains)
-                ->orWhere('products.name', 'like', $contains);
+                ->where('products.sku', 'ilike', $prefix)
+                ->orWhere('products.oem_code', 'ilike', $prefix)
+                ->orWhere('products.sku', 'ilike', $contains)
+                ->orWhere('products.oem_code', 'ilike', $contains)
+                ->orWhere('products.name', 'ilike', $contains);
 
             $this->applyNormalizedProductCodeSearchConstraint($builder, $normalizedSearch);
             $this->applyCodeAliasSearchConstraint($builder, $normalizedSearch);
@@ -1131,8 +1131,8 @@ class PosQuickProductSearchController extends Controller
                 ->where(function ($aliasQuery) use ($normalizedSearch): void {
                     $aliasQuery
                         ->where('pca.normalized_code', $normalizedSearch)
-                        ->orWhere('pca.normalized_code', 'like', $normalizedSearch.'%')
-                        ->orWhere('pca.normalized_code', 'like', '%'.$normalizedSearch.'%');
+                        ->orWhere('pca.normalized_code', 'ilike', $normalizedSearch.'%')
+                        ->orWhere('pca.normalized_code', 'ilike', '%'.$normalizedSearch.'%');
                 });
         });
     }
@@ -1147,8 +1147,8 @@ class PosQuickProductSearchController extends Controller
             $codeQuery
                 ->where('products.sku', $search)
                 ->orWhere('products.oem_code', $search)
-                ->orWhere('products.sku', 'like', $prefix)
-                ->orWhere('products.oem_code', 'like', $prefix);
+                ->orWhere('products.sku', 'ilike', $prefix)
+                ->orWhere('products.oem_code', 'ilike', $prefix);
 
             if ($normalizedSearch !== null) {
                 $normalizedPrefix = $normalizedSearch.'%';
@@ -1156,8 +1156,8 @@ class PosQuickProductSearchController extends Controller
                 $codeQuery
                     ->orWhere('products.sku', $normalizedSearch)
                     ->orWhere('products.oem_code', $normalizedSearch)
-                    ->orWhere('products.sku', 'like', $normalizedPrefix)
-                    ->orWhere('products.oem_code', 'like', $normalizedPrefix)
+                    ->orWhere('products.sku', 'ilike', $normalizedPrefix)
+                    ->orWhere('products.oem_code', 'ilike', $normalizedPrefix)
                     ->orWhereExists(function ($query) use ($normalizedSearch): void {
                         $query->selectRaw('1')
                             ->from('product_code_aliases as pca')
@@ -1165,7 +1165,7 @@ class PosQuickProductSearchController extends Controller
                             ->where(function ($aliasQuery) use ($normalizedSearch): void {
                                 $aliasQuery
                                     ->where('pca.normalized_code', $normalizedSearch)
-                                    ->orWhere('pca.normalized_code', 'like', $normalizedSearch.'%');
+                                    ->orWhere('pca.normalized_code', 'ilike', $normalizedSearch.'%');
                             });
                     });
             }
@@ -1240,7 +1240,7 @@ class PosQuickProductSearchController extends Controller
     private function applyLogoPayloadCodeSearchConstraint(Builder $builder, string $contains): void
     {
         foreach (self::LOGO_CODE_SEARCH_PATHS as $path) {
-            $builder->orWhere($path, 'like', $contains);
+            $builder->orWhere($path, 'ilike', $contains);
         }
     }
 
@@ -1249,7 +1249,7 @@ class PosQuickProductSearchController extends Controller
         foreach (self::LOGO_CODE_SEARCH_PATHS as $path) {
             $builder
                 ->orWhere($path, $search)
-                ->orWhere($path, 'like', $prefix);
+                ->orWhere($path, 'ilike', $prefix);
         }
     }
 

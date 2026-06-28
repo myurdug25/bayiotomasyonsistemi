@@ -192,11 +192,11 @@ class CustomerCardRequestController extends Controller
 
         if ($q !== '') {
             $query->where(function (Builder $builder) use ($q): void {
-                $builder->where('request_no', 'like', "%{$q}%")
-                    ->orWhere('company_name', 'like', "%{$q}%")
-                    ->orWhere('contact_name', 'like', "%{$q}%")
-                    ->orWhere('phone', 'like', "%{$q}%")
-                    ->orWhere('tax_number', 'like', "%{$q}%");
+                $builder->where('request_no', 'ilike', "%{$q}%")
+                    ->orWhere('company_name', 'ilike', "%{$q}%")
+                    ->orWhere('contact_name', 'ilike', "%{$q}%")
+                    ->orWhere('phone', 'ilike', "%{$q}%")
+                    ->orWhere('tax_number', 'ilike', "%{$q}%");
             });
         }
 
@@ -697,7 +697,7 @@ class CustomerCardRequestController extends Controller
     private function nextCustomerCodeCounter(string $prefix): int
     {
         $highest = Customer::query()
-            ->where('code', 'like', $prefix.'-%')
+            ->where('code', 'ilike', $prefix.'-%')
             ->pluck('code')
             ->map(function (string $code) use ($prefix): int {
                 $suffix = Str::after($code, $prefix.'-');

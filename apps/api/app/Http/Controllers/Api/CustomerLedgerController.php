@@ -170,7 +170,8 @@ class CustomerLedgerController extends Controller
      */
     private function effectiveBalanceAfter(int $customerId, string $entryDate, int $entryId, array $excludedTypes = []): float
     {
-        $entryDateExpression = 'DATE(COALESCE(`date`, entry_date))';
+        $dateCol = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $entryDateExpression = "DATE(COALESCE({$dateCol}, entry_date))";
 
         return (float) (LedgerEntry::query()
             ->effectiveForCustomerBalance()
