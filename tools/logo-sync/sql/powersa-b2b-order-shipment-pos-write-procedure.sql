@@ -744,6 +744,56 @@ BEGIN
         );
 
         SET @ClflineRef = SCOPE_IDENTITY();
+        
+        IF NULLIF(@CashboxCode, N'') IS NOT NULL
+        BEGIN
+            DECLARE @CashboxRef INT;
+            SELECT TOP 1 @CashboxRef = LOGICALREF
+            FROM dbo.LG_003_KSCARD WITH (NOLOCK)
+            WHERE CODE = CONVERT(VARCHAR(25), @CashboxCode)
+              AND ISNULL(ACTIVE, 0) = 0;
+
+            IF @CashboxRef IS NOT NULL
+            BEGIN
+                DECLARE @KslinesRef INT;
+                DECLARE @PaymentClflineRef INT;
+
+                INSERT INTO dbo.LG_003_01_KSLINES (
+                    CARDREF, DATE_, HOUR_, MINUTE_, TRCODE, SPECODE, CYPHCODE, FICHENO,
+                    LINEEXP, AMOUNT, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+                    CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC,
+                    DOCODE
+                )
+                VALUES (
+                    @CashboxRef, @SaleDate, @Hour, @Minute, 11, @Specode, @CyphCode, @FicheNo,
+                    @LineExp, CONVERT(FLOAT, @GrandTotal), 0, 1, @Now,
+                    @Hour, @Minute, @Second,
+                    @Docode
+                );
+
+                SET @KslinesRef = SCOPE_IDENTITY();
+
+                INSERT INTO dbo.LG_003_01_CLFLINE (
+                    CLIENTREF, SOURCEFREF, DATE_, MODULENR, TRCODE, SPECODE, CYPHCODE,
+                    TRANNO, DOCODE, LINEEXP, SIGN, AMOUNT, TRCURR, TRRATE, TRNET,
+                    REPORTRATE, REPORTNET, CANCELLED, CAPIBLOCK_CREATEDBY,
+                    CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN,
+                    CAPIBLOCK_CREATEDSEC
+                )
+                VALUES (
+                    @CustomerRef, @KslinesRef, @SaleDate, 10, 14, @Specode, @CyphCode,
+                    @FicheNo, @Docode, @LineExp, 1, CONVERT(FLOAT, @GrandTotal), 0, 1, CONVERT(FLOAT, @GrandTotal),
+                    1, CONVERT(FLOAT, @GrandTotal), 0, 1,
+                    @Now, @Hour, @Minute, @Second
+                );
+
+                SET @PaymentClflineRef = SCOPE_IDENTITY();
+
+                UPDATE dbo.LG_003_01_KSLINES
+                   SET TRANSREF = @PaymentClflineRef
+                 WHERE LOGICALREF = @KslinesRef;
+            END
+        END
     END;
 
     DECLARE @NormalizeSql NVARCHAR(MAX) = N'';
