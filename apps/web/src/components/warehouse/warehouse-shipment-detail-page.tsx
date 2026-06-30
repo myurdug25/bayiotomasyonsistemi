@@ -674,7 +674,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
   };
 
   const deleteShipmentItem = (item: WarehouseShipmentItemDto) => {
-    if (isReadOnly || deleteItemMutation.isPending || shipmentItemCount <= 1) {
+    if (isReadOnly || deleteItemMutation.isPending) {
       return;
     }
 
@@ -1029,7 +1029,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                           event.stopPropagation();
                           deleteShipmentItem(item);
                         }}
-                        disabled={isReadOnly || deleteItemMutation.isPending || shipmentItemCount <= 1}
+                        disabled={isReadOnly || deleteItemMutation.isPending}
                       >
                         {deleteItemMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         Sil
@@ -1110,7 +1110,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                           event.stopPropagation();
                           deleteShipmentItem(item);
                         }}
-                        disabled={isReadOnly || deleteItemMutation.isPending || shipmentItemCount <= 1}
+                        disabled={isReadOnly || deleteItemMutation.isPending}
                       >
                         {deleteItemMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         Sil

@@ -131,12 +131,22 @@ export default function WarehousePackingSlipPrintPage() {
           margin: 10mm;
         }
 
+        @media screen {
+          .packing-print-section {
+            display: none !important;
+          }
+
+          .print-waiting {
+            display: flex !important;
+          }
+        }
+
         @media print {
           body {
             background: #fff !important;
           }
 
-          .no-print {
+          .print-waiting {
             display: none !important;
           }
 
@@ -146,7 +156,14 @@ export default function WarehousePackingSlipPrintPage() {
         }
       `}</style>
 
-      <section className="mx-auto w-full max-w-4xl border border-neutral-300 bg-white p-4">
+      <div
+        className="print-waiting"
+        style={{ display: "none", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: "12px", color: "#555", fontSize: "14px" }}
+      >
+        <span>Yazdırma ekranı açılıyor...</span>
+      </div>
+
+      <section className="packing-print-section mx-auto w-full max-w-4xl border border-neutral-300 bg-white p-4">
         <header className="flex items-start justify-between gap-3 border-b border-neutral-300 pb-3">
           <div>
             <h1 className="text-lg font-bold">Powersa B2B - Packing Slip</h1>

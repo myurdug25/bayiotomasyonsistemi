@@ -917,14 +917,13 @@ class WarehouseShipmentService
                     ]);
                 }
 
-                if ((int) $stock->available_total < $qty) {
-                    throw ValidationException::withMessages([
-                        'stock' => ["Yetersiz available stok (product_id={$item->product_id})."],
-                    ]);
-                }
+                $totalPhysical = (int) $stock->available_total + (int) $stock->reserved_total;
+                // Siparişin sevk edilen miktarını rezerve stoktan düş, yetmezse available'dan düş.
+                $reserveToConsume = min((int) $stock->reserved_total, $qty);
+                $availableToConsume = max(0, $qty - $reserveToConsume);
 
-                $stock->available_total = (int) $stock->available_total - $qty;
-                $stock->reserved_total = max(0, (int) $stock->reserved_total - $qty);
+                $stock->reserved_total = (int) $stock->reserved_total - $reserveToConsume;
+                $stock->available_total = (int) $stock->available_total - $availableToConsume;
                 $stock->updated_at = now();
                 $stock->save();
 
@@ -1086,7 +1085,6 @@ class WarehouseShipmentService
                         ]);
                     }
 
-                    $stock->available_total = (int) $stock->available_total + $qty;
                     $stock->reserved_total = (int) $stock->reserved_total + $qty;
                     $stock->updated_at = now();
                     $stock->save();

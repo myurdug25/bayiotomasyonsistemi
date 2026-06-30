@@ -377,6 +377,22 @@ export default function WarehouseOrderPrintPage() {
           background: #ffffff;
         }
 
+        @media screen {
+          .order-form-sheet {
+            display: none !important;
+          }
+
+          .print-waiting {
+            display: flex !important;
+          }
+        }
+
+        @media print {
+          .print-waiting {
+            display: none !important;
+          }
+        }
+
         .order-form-sheet {
           width: 210mm;
           min-height: 297mm;
@@ -461,6 +477,17 @@ export default function WarehouseOrderPrintPage() {
           }
         }
       `}</style>
+
+      <div
+        className="print-waiting"
+        style={{ display: "none", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: "12px", color: "#555", fontSize: "14px" }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin 1s linear infinite" }}>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <span>Yazdırma ekranı açılıyor...</span>
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </div>
 
       <section className="order-form-sheet mx-auto bg-white px-[6mm] py-[6mm]">
         <HeaderInfo

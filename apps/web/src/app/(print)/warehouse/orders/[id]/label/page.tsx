@@ -95,12 +95,22 @@ export default function WarehouseOrderLabelPage() {
           margin: 3mm;
         }
 
+        @media screen {
+          .cargo-label {
+            display: none !important;
+          }
+
+          .print-waiting {
+            display: flex !important;
+          }
+        }
+
         @media print {
           body {
             background: #fff !important;
           }
 
-          .no-print {
+          .print-waiting {
             display: none !important;
           }
 
@@ -116,10 +126,12 @@ export default function WarehouseOrderLabelPage() {
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-3 flex w-full max-w-[100mm] justify-end">
-        <Button size="sm" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Yazdır
-        </Button>
+
+      <div
+        className="print-waiting"
+        style={{ display: "none", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: "12px", color: "#555", fontSize: "14px" }}
+      >
+        <span>Yazdırma ekranı açılıyor...</span>
       </div>
 
       <section className="cargo-label mx-auto h-[75mm] w-[100mm] border border-neutral-400 bg-white p-[3mm] shadow-xl">

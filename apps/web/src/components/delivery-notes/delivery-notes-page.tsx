@@ -127,6 +127,7 @@ export function DeliveryNotesPage() {
         limit: 30,
       }),
     staleTime: 20_000,
+    refetchInterval: 15_000,
   });
 
   const rows = deliveryNotesQuery.data?.data ?? EMPTY_DELIVERY_NOTES;

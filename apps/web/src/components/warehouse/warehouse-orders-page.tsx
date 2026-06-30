@@ -271,6 +271,7 @@ export function WarehouseOrdersPage() {
         cursor: currentPagination.cursor ?? null,
       },
     ],
+    refetchInterval: 15_000,
     queryFn: () =>
       listWarehouseReadyOrders({
         q: debouncedQuery || undefined,

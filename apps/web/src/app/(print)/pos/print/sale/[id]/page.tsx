@@ -109,6 +109,22 @@ export default function PosSalePrintPage() {
           user-select: none;
         }
 
+        @media screen {
+          .receipt-paper {
+            display: none !important;
+          }
+
+          .print-waiting {
+            display: flex !important;
+          }
+        }
+
+        @media print {
+          .print-waiting {
+            display: none !important;
+          }
+        }
+
         .receipt-paper {
           width: 90mm;
           height: 110mm;
@@ -304,11 +320,12 @@ export default function PosSalePrintPage() {
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-3 flex max-w-[80mm] items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-[11px] text-neutral-700 shadow">
-        <span>Yazıcı bağlantısı: tarayıcı varsayılan 80mm yazıcıyı kullanır.</span>
-        <Button size="sm" onClick={() => window.print()} className="shrink-0">
-          <Printer className="h-4 w-4" /> Yazdır
-        </Button>
+
+      <div
+        className="print-waiting"
+        style={{ display: "none", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: "12px", color: "#555", fontSize: "14px" }}
+      >
+        <span>Yazdırma ekranı açılıyor...</span>
       </div>
 
       <section className="receipt-paper mx-auto bg-white shadow-[0_0_0_1px_#c9ccd2,0_18px_42px_rgba(15,23,42,0.18)]">

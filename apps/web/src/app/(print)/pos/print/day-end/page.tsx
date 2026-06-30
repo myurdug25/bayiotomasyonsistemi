@@ -123,12 +123,22 @@ export default function PosDayEndPrintPage() {
           margin: 10mm;
         }
 
+        @media screen {
+          .day-end-section {
+            display: none !important;
+          }
+
+          .print-waiting {
+            display: flex !important;
+          }
+        }
+
         @media print {
           body {
             background: #fff !important;
           }
 
-          .no-print {
+          .print-waiting {
             display: none !important;
           }
 
@@ -138,13 +148,15 @@ export default function PosDayEndPrintPage() {
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-4 flex w-full max-w-3xl justify-end">
-        <Button size="sm" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Yazdır
-        </Button>
+
+      <div
+        className="print-waiting"
+        style={{ display: "none", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: "12px", color: "#555", fontSize: "14px" }}
+      >
+        <span>Yazdırma ekranı açılıyor...</span>
       </div>
 
-      <section className="mx-auto w-full max-w-3xl border border-neutral-300 p-4">
+      <section className="day-end-section mx-auto w-full max-w-3xl border border-neutral-300 p-4">
         <header className="border-b border-neutral-300 pb-3">
           <h1 className="text-lg font-bold">Powersa POS - Gun Sonu Ozeti</h1>
           <p className="mt-1 text-xs text-neutral-700">Uretilme: {new Date(report.generated_at).toLocaleString("tr-TR")}</p>

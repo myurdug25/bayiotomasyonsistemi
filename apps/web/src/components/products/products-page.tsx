@@ -1274,7 +1274,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
   const handleOpenCartModal = useCallback((product: ProductSearchItem, currentQty: number) => {
     setCartModalProduct(product);
-    setCartModalQuantity(Math.max(1, currentQty || 1));
+    setCartModalQuantity(currentQty || "");
     setCartCalculatorOpen(false);
     setCartPricesIncludeVat(false);
     resetCalculator();
@@ -1301,7 +1301,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
-    handleSetQuantity(cartModalProduct.id, Math.max(1, Number(cartModalQuantity) || 1));
+    handleSetQuantity(cartModalProduct.id, Math.max(0, Number(cartModalQuantity) || 0));
     setCartModalProduct(null);
     setCartCalculatorOpen(false);
   }, [cartModalHasPrice, cartModalProduct, cartModalQuantity, handleSetQuantity, selectedCustomer]);
@@ -1906,9 +1906,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                   </Button>
 	                  <Input
                     ref={cartQuantityInputRef}
-                    type="number"
+                    type="text"
                     inputMode="numeric"
-                    min={1}
                     value={cartModalQuantity}
                     onChange={(event) => handleCartModalQuantityChange(event.target.value)}
                     onKeyDown={(event) => {

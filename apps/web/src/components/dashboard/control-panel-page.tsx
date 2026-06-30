@@ -1063,6 +1063,7 @@ export function ControlPanelPage() {
     gcTime: 1_800_000,
     refetchOnWindowFocus: false,
     placeholderData: (previous) => previous,
+    refetchInterval: 15_000,
   });
 
   const metrics = useMemo(() => {

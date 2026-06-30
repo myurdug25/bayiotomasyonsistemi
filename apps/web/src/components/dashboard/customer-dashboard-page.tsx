@@ -96,7 +96,8 @@ export function CustomerDashboardPage() {
       };
     },
     enabled: Boolean(selectedCustomer),
-    staleTime: 300_000,
+    staleTime: 30_000,
+    refetchInterval: 15_000,
     gcTime: 1_800_000,
     refetchOnWindowFocus: false,
   });

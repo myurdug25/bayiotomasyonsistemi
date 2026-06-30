@@ -132,6 +132,7 @@ export function PlasiyerHomePage() {
 
   const customerOverviewQuery = useQuery({
     queryKey: ["plasiyer-home", "customer-overview", selectedCustomer?.id ?? null],
+    refetchInterval: 15_000,
     queryFn: async () => {
       if (!selectedCustomer) {
         throw new Error("Müşteri seçimi gerekli.");
