@@ -337,4 +337,65 @@ class LogoCollectionExportApiTest extends TestCase
             'status' => 'synced',
         ]);
     }
+
+    public function test_failed_collection_uses_backoff_before_it_is_returned_again(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOGO-RETRY',
+            'name' => 'Logo Retry Dealer',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1002',
+            'code' => 'CR-RETRY',
+            'name' => 'Logo Retry Cari',
+            'is_active' => true,
+        ]);
+        $collection = Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'date' => '2026-07-01',
+            'collection_date' => '2026-07-01',
+            'method' => 'cash',
+            'amount' => 100,
+            'currency' => 'TRY',
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/collections/ack', [
+                'records' => [[
+                    'collection_id' => $collection->id,
+                    'status' => 'failed',
+                    'error' => 'temporary Logo lock',
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('summary.failed', 1);
+
+        $collection->refresh();
+        $this->assertSame(1, $collection->meta['integrations']['logo']['retry']['attempt_count']);
+        $this->assertNotNull($collection->meta['integrations']['logo']['retry']['next_retry_at']);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('received', 0);
+
+        $meta = $collection->meta;
+        $meta['integrations']['logo']['retry']['next_retry_at'] = now()->subSecond()->toIso8601String();
+        $collection->forceFill(['meta' => $meta])->save();
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('received', 1)
+            ->assertJsonPath('records.0.collection_id', $collection->id);
+    }
 }

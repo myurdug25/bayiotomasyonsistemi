@@ -10,6 +10,11 @@ return [
         'pos_expense_sync_key' => env('LOGO_POS_EXPENSE_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', ''))),
         'order_sync_key' => env('LOGO_ORDER_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', ''))),
         'shipment_sync_key' => env('LOGO_SHIPMENT_SYNC_KEY', env('LOGO_ORDER_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', '')))),
+        'retry' => [
+            'max_attempts' => (int) env('LOGO_EXPORT_RETRY_MAX_ATTEMPTS', 8),
+            'base_delay_seconds' => (int) env('LOGO_EXPORT_RETRY_BASE_DELAY_SECONDS', 30),
+            'max_delay_seconds' => (int) env('LOGO_EXPORT_RETRY_MAX_DELAY_SECONDS', 3600),
+        ],
         'shipments' => [
             'immediate_export' => [
                 'enabled' => env('LOGO_SHIPMENT_IMMEDIATE_EXPORT_ENABLED', false),

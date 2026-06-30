@@ -11,6 +11,7 @@ import dotenv from "dotenv";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
 const statusPath = path.join(scriptDir, "sync-daemon-status.json");
+const lockPath = path.join(scriptDir, "sync-daemon.lock");
 const defaultCustomerExportProcedure = "dbo.PowersaB2B_ExportCustomer";
 const defaultFastSteps = [
   "customers",
@@ -22,6 +23,7 @@ const defaultFastSteps = [
   "documents-export",
 ];
 const defaultSlowSteps = ["product-stocks"];
+const defaultMaintenanceSteps = ["product-catalog", "pos-expenses-import"];
 
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
@@ -29,21 +31,26 @@ if (fs.existsSync(envPath)) {
 
 const config = buildConfig();
 let stopping = false;
+let lockAcquired = false;
 
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
 
-main().catch((error) => {
-  log(`fatal ${formatError(error)}`);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    log(`fatal ${formatError(error)}`);
+    process.exitCode = 1;
+  })
+  .finally(releaseLock);
 
 async function main() {
+  acquireLock();
   log(
-    `daemon started fastIntervalMs=${config.fastIntervalMs} slowIntervalMs=${config.slowIntervalMs} fastSteps=${config.fastSteps.join(",")} slowSteps=${config.slowSteps.join(",") || "none"}`
+    `daemon started fastIntervalMs=${config.fastIntervalMs} slowIntervalMs=${config.slowIntervalMs} maintenanceIntervalMs=${config.maintenanceIntervalMs} fastSteps=${config.fastSteps.join(",")} slowSteps=${config.slowSteps.join(",") || "none"} maintenanceSteps=${config.maintenanceSteps.join(",") || "none"}`
   );
 
   let nextSlowRunAt = 0;
+  let nextMaintenanceRunAt = 0;
   while (!stopping) {
     const loopStartedAt = Date.now();
     const dueSteps = [...config.fastSteps];
@@ -52,8 +59,12 @@ async function main() {
       dueSteps.push(...config.slowSteps);
       nextSlowRunAt = loopStartedAt + config.slowIntervalMs;
     }
+    if (config.maintenanceSteps.length > 0 && loopStartedAt >= nextMaintenanceRunAt) {
+      dueSteps.push(...config.maintenanceSteps);
+      nextMaintenanceRunAt = loopStartedAt + config.maintenanceIntervalMs;
+    }
 
-    const summary = await runLoop(dueSteps);
+    const summary = await runLoop([...new Set(dueSteps)]);
     writeStatus(summary);
 
     const delayMs = summary.failed > 0 ? config.errorBackoffMs : config.fastIntervalMs;
@@ -123,7 +134,21 @@ function resolveStep(name) {
     },
     "product-stocks": {
       script: "logo-products-sync.mjs",
-      env: { SYNC_PRODUCTS_STOCK_ONLY: "true" },
+      env: {
+        SYNC_PRODUCTS_STOCK_ONLY: "true",
+        SYNC_PRODUCTS_STOCK_FAST: "true",
+        SYNC_PRODUCTS_STOCK_INCREMENTAL: "true",
+      },
+      when: () => hasAny("POWERSA_PRODUCTS_SYNC_URL"),
+    },
+    "product-catalog": {
+      script: "logo-products-sync.mjs",
+      env: {
+        SYNC_PRODUCTS_CATALOG_INCREMENTAL: "true",
+        SYNC_PRODUCTS_STOCK_ONLY: "false",
+        SYNC_PRODUCTS_STOCK_FAST: "false",
+        SYNC_PRODUCTS_STOCK_INCREMENTAL: "false",
+      },
       when: () => hasAny("POWERSA_PRODUCTS_SYNC_URL"),
     },
     ledger: {
@@ -146,6 +171,12 @@ function resolveStep(name) {
     "pos-expenses": {
       script: "logo-pos-expenses-export.mjs",
       when: () => hasAny("LOGO_POS_EXPENSE_EXPORT_PROCEDURE") && hasAny("POWERSA_POS_EXPENSES_PENDING_URL", "POWERSA_SYNC_URL"),
+    },
+    "pos-expenses-import": {
+      script: "logo-pos-expenses-sync.mjs",
+      when: () =>
+        parseBoolean(process.env.LOGO_POS_EXPENSES_IMPORT_ENABLED, false) &&
+        hasAny("POWERSA_POS_EXPENSES_SYNC_URL", "POWERSA_SYNC_URL"),
     },
     "documents-export": {
       script: "logo-documents-export.mjs",
@@ -191,11 +222,53 @@ function runNodeScript(scriptName, extraEnv = {}) {
 function buildConfig() {
   return {
     fastIntervalMs: parseIntEnv("SYNC_DAEMON_FAST_INTERVAL_MS", 3_000, 1_000, 300_000),
-    slowIntervalMs: parseIntEnv("SYNC_DAEMON_SLOW_INTERVAL_MS", 300_000, 10_000, 3_600_000),
+    slowIntervalMs: parseIntEnv("SYNC_DAEMON_SLOW_INTERVAL_MS", 60_000, 10_000, 3_600_000),
+    maintenanceIntervalMs: parseIntEnv("SYNC_DAEMON_MAINTENANCE_INTERVAL_MS", 300_000, 60_000, 86_400_000),
     errorBackoffMs: parseIntEnv("SYNC_DAEMON_ERROR_BACKOFF_MS", 30_000, 5_000, 600_000),
     fastSteps: parseStepList(process.env.SYNC_DAEMON_FAST_STEPS, defaultFastSteps),
     slowSteps: parseStepList(process.env.SYNC_DAEMON_SLOW_STEPS, defaultSlowSteps),
+    maintenanceSteps: parseStepList(process.env.SYNC_DAEMON_MAINTENANCE_STEPS, defaultMaintenanceSteps),
   };
+}
+
+function acquireLock() {
+  if (fs.existsSync(lockPath)) {
+    const existingPid = Number.parseInt(fs.readFileSync(lockPath, "utf8").trim(), 10);
+    if (Number.isFinite(existingPid) && isProcessAlive(existingPid)) {
+      throw new Error(`another logo sync daemon is already running pid=${existingPid}`);
+    }
+
+    fs.unlinkSync(lockPath);
+  }
+
+  const descriptor = fs.openSync(lockPath, "wx");
+  fs.writeFileSync(descriptor, `${process.pid}\n`, "utf8");
+  fs.closeSync(descriptor);
+  lockAcquired = true;
+}
+
+function releaseLock() {
+  if (!lockAcquired) {
+    return;
+  }
+
+  try {
+    const ownerPid = Number.parseInt(fs.readFileSync(lockPath, "utf8").trim(), 10);
+    if (ownerPid === process.pid) {
+      fs.unlinkSync(lockPath);
+    }
+  } catch {
+    // The lock may already have been removed during process shutdown.
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseStepList(value, fallback) {

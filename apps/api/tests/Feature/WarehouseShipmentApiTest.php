@@ -1282,6 +1282,78 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonCount(0, 'data');
     }
 
+    public function test_salesperson_order_seven_with_stock_five_lists_only_two_as_balance(): void
+    {
+        $dealer = $this->createDealer('DLR-FIN-BALANCE-TWO');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $salesperson, [
+            'order_no' => 'ORD-FIN-BALANCE-TWO',
+            'quantity' => 7,
+            'stock_available' => 5,
+            'stock_reserved' => 0,
+        ]);
+        $ctx['customer']->forceFill([
+            'salesperson_user_id' => $salesperson->id,
+            'source_system' => 'logo',
+        ])->save();
+
+        LedgerEntry::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $ctx['customer']->id,
+            'order_id' => $ctx['order']->id,
+            'date' => now()->toDateString(),
+            'type' => 'invoice',
+            'debit' => 840,
+            'credit' => 0,
+            'balance_after' => 840,
+            'entry_date' => now()->toDateString(),
+            'entry_type' => 'debit',
+            'amount' => 840,
+            'currency' => 'TRY',
+            'reference_no' => 'ORD-FIN-BALANCE-TWO',
+        ]);
+
+        $this->actingAs($warehouseUser);
+
+        $shipmentId = (int) $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+        ])->json('data.shipment.id');
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/scan", [
+            'barcode' => $ctx['product']->sku,
+            'qty' => 7,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.shipped_items.0.shipped_qty', 5)
+            ->assertJsonPath('data.remaining_items.0.remaining_qty', 2);
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/finalize")
+            ->assertOk()
+            ->assertJsonPath('data.shipment.order.status', 'balance')
+            ->assertJsonPath('data.totals.shipped_qty_total', 5)
+            ->assertJsonPath('data.totals.remaining_qty_total', 2);
+
+        $this->assertDatabaseHas('ledger_entries', [
+            'order_id' => $ctx['order']->id,
+            'type' => 'invoice',
+            'debit' => '840.00',
+            'amount' => '840.00',
+        ]);
+
+        $this->actingAs($salesperson);
+
+        $this->getJson('/api/reports/order-balances?customer_id='.$ctx['customer']->id.'&statuses=balance')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.order_no', 'ORD-FIN-BALANCE-TWO')
+            ->assertJsonPath('data.0.order_quantity', 7)
+            ->assertJsonPath('data.0.shipped_quantity', 5)
+            ->assertJsonPath('data.0.remaining_quantity', 2);
+    }
+
     public function test_finalize_rechecks_and_decrements_selected_warehouse_stock(): void
     {
         $dealer = $this->createDealer('DLR-FIN-WAREHOUSE-STOCK');

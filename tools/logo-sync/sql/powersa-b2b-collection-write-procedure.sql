@@ -123,7 +123,7 @@ BEGIN
     END;
 
     DECLARE @CustomerRef INT = TRY_CONVERT(INT, NULLIF(LTRIM(RTRIM(@CustomerExternalRef)), N''));
-    DECLARE @CashboxRef INT = @CashboxId;
+    DECLARE @CashboxRef INT;
     DECLARE @Specode VARCHAR(11) = CONVERT(VARCHAR(11), LEFT(@ExportKey, 11));
     DECLARE @FicheNo VARCHAR(17) = CONVERT(VARCHAR(17), RIGHT(REPLICATE('0', 17) + @ExportKey, 17));
     DECLARE @Docode VARCHAR(33) = CONVERT(VARCHAR(33), LEFT(COALESCE(NULLIF(@ReferenceNo, N''), @ExportKey), 33));
@@ -156,49 +156,123 @@ BEGIN
           AND ISNULL(ACTIVE, 0) = 0;
     END;
 
-    IF @CashboxRef IS NULL
+    IF @CashboxRef IS NULL AND @CashboxName IS NOT NULL
     BEGIN
         SELECT TOP 1 @CashboxRef = LOGICALREF
         FROM dbo.LG_003_KSCARD WITH (NOLOCK)
-        WHERE ISNULL(ACTIVE, 0) = 0
+        WHERE NAME = CONVERT(VARCHAR(51), @CashboxName)
+          AND ISNULL(ACTIVE, 0) = 0
         ORDER BY LOGICALREF;
     END;
 
     IF @CashboxRef IS NULL
-        THROW 51011, 'Logo cashbox could not be resolved for collection export.', 1;
+        THROW 51011, 'Logo cashbox could not be resolved by exact code or name for collection export.', 1;
+
+    SELECT TOP 1 @KslinesRef = LOGICALREF
+    FROM dbo.LG_003_01_KSLINES WITH (NOLOCK)
+    WHERE CARDREF = @CashboxRef
+      AND FICHENO = @FicheNo
+      AND ISNULL(CANCELLED, 0) = 0
+    ORDER BY LOGICALREF DESC;
+
+    IF @KslinesRef IS NOT NULL
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM dbo.LG_003_01_KSLINES WITH (NOLOCK)
+            WHERE LOGICALREF = @KslinesRef
+              AND DATE_ = @CollectionDate
+              AND ABS(CONVERT(DECIMAL(15, 2), AMOUNT) - @Amount) < 0.01
+        )
+            THROW 51012, 'Existing Logo cash line does not match collection date or amount.', 1;
+
+        SELECT TOP 1 @ClflineRef = LOGICALREF
+        FROM dbo.LG_003_01_CLFLINE WITH (NOLOCK)
+        WHERE SOURCEFREF = @KslinesRef
+          AND CLIENTREF = @CustomerRef
+          AND MODULENR = 10
+          AND SIGN = 1
+          AND ABS(CONVERT(DECIMAL(15, 2), AMOUNT) - @Amount) < 0.01
+          AND ISNULL(CANCELLED, 0) = 0
+        ORDER BY LOGICALREF DESC;
+
+        IF @ClflineRef IS NULL
+            THROW 51013, 'Existing Logo cash line has no matching customer ledger line.', 1;
+
+        SET @ExternalRef = CONCAT(N'CLFLINE-', @ClflineRef);
+        EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;
+        RETURN;
+    END;
 
     BEGIN TRANSACTION;
 
-    INSERT INTO dbo.LG_003_01_KSLINES (
-        CARDREF, DATE_, HOUR_, MINUTE_, TRCODE, SPECODE, CYPHCODE, FICHENO,
-        LINEEXP, AMOUNT, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
-        CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC,
-        DOCODE
-    )
-    VALUES (
-        @CashboxRef, @CollectionDate, @Hour, @Minute, 11, @Specode, @CyphCode, @FicheNo,
-        @LineExp, CONVERT(FLOAT, @Amount), 0, 1, @Now,
-        @Hour, @Minute, @Second,
-        @Docode
-    );
+    IF OBJECTPROPERTY(OBJECT_ID('dbo.LG_003_01_KSLINES'), 'TableHasIdentity') = 1
+    BEGIN
+        INSERT INTO dbo.LG_003_01_KSLINES (
+            CARDREF, DATE_, HOUR_, MINUTE_, TRCODE, SPECODE, CYPHCODE, FICHENO,
+            LINEEXP, AMOUNT, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+            CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC,
+            DOCODE
+        )
+        VALUES (
+            @CashboxRef, @CollectionDate, @Hour, @Minute, 11, @Specode, @CyphCode, @FicheNo,
+            @LineExp, CONVERT(FLOAT, @Amount), 0, 1, @Now,
+            @Hour, @Minute, @Second,
+            @Docode
+        );
+        SET @KslinesRef = SCOPE_IDENTITY();
+    END
+    ELSE
+    BEGIN
+        SELECT @KslinesRef = ISNULL(MAX(LOGICALREF), 0) + 1 FROM dbo.LG_003_01_KSLINES WITH (UPDLOCK, TABLOCKX);
+        INSERT INTO dbo.LG_003_01_KSLINES (
+            LOGICALREF, CARDREF, DATE_, HOUR_, MINUTE_, TRCODE, SPECODE, CYPHCODE, FICHENO,
+            LINEEXP, AMOUNT, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+            CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC,
+            DOCODE
+        )
+        VALUES (
+            @KslinesRef, @CashboxRef, @CollectionDate, @Hour, @Minute, 11, @Specode, @CyphCode, @FicheNo,
+            @LineExp, CONVERT(FLOAT, @Amount), 0, 1, @Now,
+            @Hour, @Minute, @Second,
+            @Docode
+        );
+    END
 
-    SET @KslinesRef = SCOPE_IDENTITY();
-
-    INSERT INTO dbo.LG_003_01_CLFLINE (
-        CLIENTREF, SOURCEFREF, DATE_, MODULENR, TRCODE, SPECODE, CYPHCODE,
-        TRANNO, DOCODE, LINEEXP, SIGN, AMOUNT, TRCURR, TRRATE, TRNET,
-        REPORTRATE, REPORTNET, CANCELLED, CAPIBLOCK_CREATEDBY,
-        CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN,
-        CAPIBLOCK_CREATEDSEC
-    )
-    VALUES (
-        @CustomerRef, @KslinesRef, @CollectionDate, 10, @ClTrcode, @Specode, @CyphCode,
-        @FicheNo, @Docode, @LineExp, 1, CONVERT(FLOAT, @Amount), 0, 1, CONVERT(FLOAT, @Amount),
-        1, CONVERT(FLOAT, @Amount), 0, 1,
-        @Now, @Hour, @Minute, @Second
-    );
-
-    SET @ClflineRef = SCOPE_IDENTITY();
+    IF OBJECTPROPERTY(OBJECT_ID('dbo.LG_003_01_CLFLINE'), 'TableHasIdentity') = 1
+    BEGIN
+        INSERT INTO dbo.LG_003_01_CLFLINE (
+            CLIENTREF, SOURCEFREF, DATE_, MODULENR, TRCODE, SPECODE, CYPHCODE,
+            TRANNO, DOCODE, LINEEXP, SIGN, AMOUNT, TRCURR, TRRATE, TRNET,
+            REPORTRATE, REPORTNET, CANCELLED, CAPIBLOCK_CREATEDBY,
+            CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN,
+            CAPIBLOCK_CREATEDSEC
+        )
+        VALUES (
+            @CustomerRef, @KslinesRef, @CollectionDate, 10, @ClTrcode, @Specode, @CyphCode,
+            @FicheNo, @Docode, @LineExp, 1, CONVERT(FLOAT, @Amount), 0, 1, CONVERT(FLOAT, @Amount),
+            1, CONVERT(FLOAT, @Amount), 0, 1,
+            @Now, @Hour, @Minute, @Second
+        );
+        SET @ClflineRef = SCOPE_IDENTITY();
+    END
+    ELSE
+    BEGIN
+        SELECT @ClflineRef = ISNULL(MAX(LOGICALREF), 0) + 1 FROM dbo.LG_003_01_CLFLINE WITH (UPDLOCK, TABLOCKX);
+        INSERT INTO dbo.LG_003_01_CLFLINE (
+            LOGICALREF, CLIENTREF, SOURCEFREF, DATE_, MODULENR, TRCODE, SPECODE, CYPHCODE,
+            TRANNO, DOCODE, LINEEXP, SIGN, AMOUNT, TRCURR, TRRATE, TRNET,
+            REPORTRATE, REPORTNET, CANCELLED, CAPIBLOCK_CREATEDBY,
+            CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN,
+            CAPIBLOCK_CREATEDSEC
+        )
+        VALUES (
+            @ClflineRef, @CustomerRef, @KslinesRef, @CollectionDate, 10, @ClTrcode, @Specode, @CyphCode,
+            @FicheNo, @Docode, @LineExp, 1, CONVERT(FLOAT, @Amount), 0, 1, CONVERT(FLOAT, @Amount),
+            1, CONVERT(FLOAT, @Amount), 0, 1,
+            @Now, @Hour, @Minute, @Second
+        );
+    END
 
     UPDATE dbo.LG_003_01_KSLINES
        SET TRANSREF = @ClflineRef

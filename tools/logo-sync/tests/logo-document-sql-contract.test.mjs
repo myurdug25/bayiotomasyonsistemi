@@ -63,6 +63,41 @@ function splitTopLevelList(source) {
   return items;
 }
 
+function matchingParenEnd(source, start) {
+  let depth = 0;
+  let inString = false;
+
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+
+    if (character === "'" && next === "'") {
+      index += 1;
+      continue;
+    }
+
+    if (character === "'") {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (character === "(") {
+      depth += 1;
+    } else if (character === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
 function insertValuesCount(body, tableName) {
   const insertStart = body.indexOf(`INSERT INTO ${tableName}`);
   assert.notEqual(insertStart, -1, `${tableName} insert should exist`);
@@ -71,12 +106,15 @@ function insertValuesCount(body, tableName) {
   assert.notEqual(valuesStart, -1, `${tableName} values should exist`);
 
   const columnsStart = body.indexOf("(", insertStart);
-  const columnsEnd = body.indexOf(")\n", columnsStart);
-  const valuesEnd = body.indexOf("\n    );", valuesStart);
+  const columnsEnd = matchingParenEnd(body, columnsStart);
+  const valuesParenStart = body.indexOf("(", valuesStart);
+  const valuesEnd = matchingParenEnd(body, valuesParenStart);
+  assert.notEqual(columnsEnd, -1, `${tableName} columns should close`);
+  assert.notEqual(valuesEnd, -1, `${tableName} values should close`);
 
   return {
     columns: splitTopLevelList(body.slice(columnsStart + 1, columnsEnd)),
-    values: splitTopLevelList(body.slice(valuesStart + "VALUES (".length, valuesEnd)),
+    values: splitTopLevelList(body.slice(valuesParenStart + 1, valuesEnd)),
   };
 }
 

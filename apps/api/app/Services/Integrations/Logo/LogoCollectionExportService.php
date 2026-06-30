@@ -7,6 +7,7 @@ use App\Models\Collection;
 use App\Models\Dealer;
 use App\Services\Integrations\IntegrationSyncStateService;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -55,14 +56,19 @@ class LogoCollectionExportService
                 });
             })
             ->orderBy('date')
-            ->orderBy('id')
-            ->limit($limit);
+            ->orderBy('id');
 
         if ($dealer) {
             $query->where('dealer_id', $dealer->id);
         }
 
-        $collections = $query->get();
+        $candidateLimit = min(2000, max(100, $limit * 5));
+        $collections = $query
+            ->limit($candidateLimit)
+            ->get()
+            ->filter(fn (Collection $collection): bool => $this->retryEligible($collection))
+            ->take($limit)
+            ->values();
 
         return [
             'received' => $collections->count(),
@@ -122,6 +128,7 @@ class LogoCollectionExportService
                 if ($status === 'failed' && $error !== null) {
                     Arr::set($meta, 'integrations.logo.last_error', $error);
                 }
+                $meta = $this->withRetryMeta($meta, $status, $error, $syncTimestamp);
 
                 $collection->fill([
                     'sync_status' => $status,
@@ -294,6 +301,63 @@ class LogoCollectionExportService
         $normalized = trim((string) $value);
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    private function retryEligible(Collection $collection): bool
+    {
+        if ($collection->sync_status !== 'failed') {
+            return true;
+        }
+
+        $attempts = (int) data_get($collection->meta, 'integrations.logo.retry.attempt_count', 0);
+        if ($attempts >= $this->maxRetryAttempts()) {
+            return false;
+        }
+
+        $nextRetryAt = $this->nullableString(
+            data_get($collection->meta, 'integrations.logo.retry.next_retry_at')
+        );
+
+        return $nextRetryAt === null || Carbon::parse($nextRetryAt)->isPast();
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>
+     */
+    private function withRetryMeta(array $meta, string $status, ?string $error, Carbon $timestamp): array
+    {
+        if ($status !== 'failed') {
+            Arr::set($meta, 'integrations.logo.retry', [
+                'attempt_count' => 0,
+                'next_retry_at' => null,
+                'last_attempted_at' => $timestamp->toIso8601String(),
+                'dead_lettered_at' => null,
+            ]);
+
+            return $meta;
+        }
+
+        $attempts = (int) data_get($meta, 'integrations.logo.retry.attempt_count', 0) + 1;
+        $baseDelay = max(1, (int) config('integrations.logo.retry.base_delay_seconds', 30));
+        $maxDelay = max($baseDelay, (int) config('integrations.logo.retry.max_delay_seconds', 3600));
+        $delay = min($maxDelay, $baseDelay * (2 ** min(20, $attempts - 1)));
+        $deadLettered = $attempts >= $this->maxRetryAttempts();
+
+        Arr::set($meta, 'integrations.logo.retry', [
+            'attempt_count' => $attempts,
+            'next_retry_at' => $deadLettered ? null : $timestamp->copy()->addSeconds($delay)->toIso8601String(),
+            'last_attempted_at' => $timestamp->toIso8601String(),
+            'last_error' => $error,
+            'dead_lettered_at' => $deadLettered ? $timestamp->toIso8601String() : null,
+        ]);
+
+        return $meta;
+    }
+
+    private function maxRetryAttempts(): int
+    {
+        return max(1, (int) config('integrations.logo.retry.max_attempts', 8));
     }
 
     private function normalizeCashboxCode(mixed $code, mixed $name = null): ?string

@@ -100,6 +100,7 @@ function buildConfig() {
     deriveLedgerSyncUrl(process.env.POWERSA_SYNC_URL);
   const syncKey = (process.env.POWERSA_LEDGER_SYNC_KEY ?? process.env.POWERSA_SYNC_KEY ?? "").trim();
   const dealerId = parseInteger(process.env.POWERSA_DEALER_ID, undefined);
+  const modifiedLookbackMs = parseInteger(process.env.LOGO_LEDGER_MODIFIED_LOOKBACK_MS, 300_000);
 
   return {
     logo: {
@@ -138,6 +139,7 @@ function buildConfig() {
       dealerId,
       dealerCode: nullable(process.env.POWERSA_DEALER_CODE),
       forceFull: parseBoolean(process.env.SYNC_FORCE_FULL, false),
+      modifiedLookbackMs: Math.max(60_000, modifiedLookbackMs),
       stateFile: path.resolve(scriptDir, process.env.SYNC_LEDGER_STATE_FILE ?? ".ledger-sync-state.json"),
     },
   };
@@ -211,10 +213,10 @@ function resolveSyncPlan(currentConfig, schema, syncState) {
   ]);
   const logicalRefColumn = findColumn(schema.columns, ["LOGICALREF"]);
 
-  if (!modifiedColumn || !logicalRefColumn) {
+  if (!logicalRefColumn) {
     return {
       mode: "full",
-      reason: "modified_date_or_LOGICALREF_missing",
+      reason: "LOGICALREF_missing",
     };
   }
 
@@ -231,17 +233,25 @@ function resolveSyncPlan(currentConfig, schema, syncState) {
     syncState &&
     syncState.database === currentConfig.logo.database &&
     syncState.ledger_table === currentConfig.logo.ledgerTable &&
-    typeof syncState.last_modified_at === "string" &&
     Number.isFinite(Number(syncState.last_logicalref))
   ) {
+    const lastCheckedAt =
+      normalizeString(syncState.saved_at) ??
+      normalizeString(syncState.last_modified_at);
+    const modifiedSince = lastCheckedAt
+      ? new Date(new Date(lastCheckedAt).getTime() - currentConfig.sync.modifiedLookbackMs)
+      : null;
+
     return {
       mode: "delta",
       reason: "state_file",
       modifiedColumn,
       logicalRefColumn,
       cursor: {
-        last_modified_at: syncState.last_modified_at,
         last_logicalref: Number(syncState.last_logicalref),
+        modified_since: modifiedColumn && modifiedSince && !Number.isNaN(modifiedSince.getTime())
+          ? modifiedSince
+          : null,
       },
     };
   }
@@ -270,18 +280,25 @@ async function fetchLedgerRows(pool, currentConfig, schema, syncPlan) {
   }
 
   if (syncPlan.mode === "delta") {
-    request.input("lastModifiedAt", sql.DateTime2, new Date(syncPlan.cursor.last_modified_at));
     request.input("lastLogicalRef", sql.Int, syncPlan.cursor.last_logicalref);
-    const modifiedColumn = quoteIdentifier(syncPlan.modifiedColumn);
     const logicalRefColumn = quoteIdentifier(syncPlan.logicalRefColumn);
-    query += `
-      AND ${modifiedColumn} IS NOT NULL
-      AND (
-        ${modifiedColumn} > @lastModifiedAt
-        OR (${modifiedColumn} = @lastModifiedAt AND ${logicalRefColumn} > @lastLogicalRef)
-      )
-      ORDER BY ${modifiedColumn} ASC, ${logicalRefColumn} ASC
-    `;
+
+    if (syncPlan.modifiedColumn && syncPlan.cursor.modified_since instanceof Date) {
+      request.input("modifiedSince", sql.DateTime2, syncPlan.cursor.modified_since);
+      const modifiedColumn = quoteIdentifier(syncPlan.modifiedColumn);
+      query += `
+        AND (
+          ${logicalRefColumn} > @lastLogicalRef
+          OR (${modifiedColumn} IS NOT NULL AND ${modifiedColumn} >= @modifiedSince)
+        )
+        ORDER BY ${logicalRefColumn} ASC
+      `;
+    } else {
+      query += `
+        AND ${logicalRefColumn} > @lastLogicalRef
+        ORDER BY ${logicalRefColumn} ASC
+      `;
+    }
   } else if (syncPlan.modifiedColumn && syncPlan.logicalRefColumn) {
     const modifiedColumn = quoteIdentifier(syncPlan.modifiedColumn);
     const logicalRefColumn = quoteIdentifier(syncPlan.logicalRefColumn);
@@ -396,21 +413,25 @@ function normalizeLedgerType(value, debit, credit) {
 }
 
 function buildSyncState(currentConfig, rows) {
-  const lastRow = rows[rows.length - 1];
-  const lastModifiedAt = normalizeValue(
-    readFirst(lastRow, [
+  const lastLogicalRef = rows.reduce((highest, row) => {
+    const logicalRef = Number(readFirst(row, ["LOGICALREF", "logicalref", "external_ref"]) ?? 0);
+
+    return Number.isFinite(logicalRef) ? Math.max(highest, logicalRef) : highest;
+  }, 0);
+  const modifiedValues = rows
+    .map((row) => normalizeValue(readFirst(row, [
       "CAPIBLOCK_MODIFIEDDATE",
       "capiblock_modifieddate",
       "CAPIBLOK_MODIFIEDDATE",
       "capiblok_modifieddate",
-    ])
-  );
-  const lastLogicalRef = Number(readFirst(lastRow, ["LOGICALREF", "logicalref", "external_ref"]) ?? 0);
+    ])))
+    .filter(Boolean)
+    .sort();
 
   return {
     database: currentConfig.logo.database,
     ledger_table: currentConfig.logo.ledgerTable,
-    last_modified_at: lastModifiedAt,
+    last_modified_at: modifiedValues.at(-1) ?? null,
     last_logicalref: Number.isFinite(lastLogicalRef) ? lastLogicalRef : 0,
     saved_at: new Date().toISOString(),
   };
