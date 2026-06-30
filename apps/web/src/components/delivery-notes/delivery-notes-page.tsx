@@ -33,6 +33,7 @@ import {
   type PosSaleListItemDto,
   updatePosSale,
 } from "@/lib/api";
+import { printPageInPlace } from "@/lib/print-page";
 import { LogoSyncBadge, LogoSyncInline } from "@/components/integrations/logo-sync-badge";
 
 type EditLine = {
@@ -274,11 +275,7 @@ export function DeliveryNotesPage() {
   };
 
   const openPrintWindow = (saleId: number) => {
-    const printWindow = window.open(`/pos/print/sale/${saleId}`, "_blank", "noopener,noreferrer");
-
-    if (!printWindow) {
-      toast.error("Yazdırma penceresi engellendi. Tarayıcı popup izni verin.");
-    }
+    printPageInPlace(`/pos/print/sale/${saleId}`);
   };
 
   const saveSelectedSale = () => {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -31,6 +30,7 @@ import {
   updateWarehouseOrderItem,
   type WarehouseReadyOrderItem,
 } from "@/lib/api";
+import { printPageInPlace } from "@/lib/print-page";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -767,12 +767,10 @@ export function WarehouseOrdersPage() {
                         </Button>
                         <Button
                           className={cn(WAREHOUSE_TABLE_ACTION_CLASSNAME, WAREHOUSE_PRINT_ACTION_CLASSNAME, "h-10 px-2 text-[11px]")}
-                          asChild
+                          onClick={() => printPageInPlace(`/warehouse/orders/${order.id}/print`)}
                         >
-                          <Link href={`/warehouse/orders/${order.id}/print`} target="_blank" rel="noreferrer">
-                            <Printer className="h-4 w-4 shrink-0" />
-                            Form
-                          </Link>
+                          <Printer className="h-4 w-4 shrink-0" />
+                          Form
                         </Button>
                         <Button
                           className={cn(WAREHOUSE_TABLE_ACTION_CLASSNAME, WAREHOUSE_PRIMARY_ACTION_CLASSNAME, "h-10 px-2 text-[11px]")}
@@ -924,12 +922,10 @@ export function WarehouseOrdersPage() {
                                   WAREHOUSE_TABLE_ACTION_CLASSNAME,
                                   WAREHOUSE_PRINT_ACTION_CLASSNAME
                                 )}
-                                asChild
+                                onClick={() => printPageInPlace(`/warehouse/orders/${order.id}/print`)}
                               >
-                                <Link href={`/warehouse/orders/${order.id}/print`} target="_blank" rel="noreferrer">
-                                  <Printer className="h-4 w-4 shrink-0" />
-                                  <span className="truncate">Sipariş Formu</span>
-                                </Link>
+                                <Printer className="h-4 w-4 shrink-0" />
+                                <span className="truncate">Sipariş Formu</span>
                               </Button>
                             <Button
                               className={cn(

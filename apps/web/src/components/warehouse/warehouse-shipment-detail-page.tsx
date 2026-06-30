@@ -32,6 +32,7 @@ import {
   type WarehouseShipmentItemDto,
   type WarehouseShipmentState,
 } from "@/lib/api";
+import { printPageInPlace } from "@/lib/print-page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -926,15 +927,20 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                 <span className="uppercase leading-tight tracking-[0.08em]">Sipariş Tutarı</span>
                 <span className="text-sm leading-none text-white">{toPlainMoney(orderTotal)}</span>
               </div>
-              <Button type="button" variant="outline" className="point-secondary-button h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black" asChild>
-                <a href={printUrls.packingSlip} target="_blank" rel="noreferrer">
-                  <Printer className="h-5 w-5" /> Depo Transfer
-                </a>
+              <Button
+                type="button"
+                variant="outline"
+                className="point-secondary-button h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black"
+                onClick={() => printPageInPlace(printUrls.packingSlip)}
+              >
+                <Printer className="h-5 w-5" /> Depo Transfer
               </Button>
-              <Button type="button" className="point-primary-button h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black" asChild>
-                <a href={printUrls.label} target="_blank" rel="noreferrer">
-                  <Printer className="h-5 w-5" /> Kargo Etiketi
-                </a>
+              <Button
+                type="button"
+                className="point-primary-button h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black"
+                onClick={() => printPageInPlace(printUrls.label)}
+              >
+                <Printer className="h-5 w-5" /> Kargo Etiketi
               </Button>
               <Button
                 type="button"

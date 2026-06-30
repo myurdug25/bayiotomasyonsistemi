@@ -364,7 +364,7 @@ export default function WarehouseOrderPrintPage() {
   const customerLocation = destination || customerAddress || "Adres bilgisi yok";
 
   return (
-    <main className="min-h-screen bg-white px-4 py-5 text-[#222]">
+    <main className="min-h-screen bg-transparent print:bg-white px-4 py-5 text-[#222]">
       <style jsx global>{`
         @page {
           size: A4 portrait;
