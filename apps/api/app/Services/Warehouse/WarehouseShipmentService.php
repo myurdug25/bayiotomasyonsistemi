@@ -811,7 +811,6 @@ class WarehouseShipmentService
 
             $itemCount = ShipmentItem::query()
                 ->where('shipment_id', $model->id)
-                ->lockForUpdate()
                 ->count();
 
             if ($itemCount <= 1) {

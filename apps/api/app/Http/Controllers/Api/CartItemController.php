@@ -105,7 +105,17 @@ class CartItemController extends Controller
 
             $product = Product::query()
                 ->select(['id', 'vat_rate'])
+                ->with('stockSummary')
                 ->find($productId);
+
+            if ($product && $product->stockSummary) {
+                $available = (int) $product->stockSummary->available_total;
+                if ($quantity > $available) {
+                    throw ValidationException::withMessages([
+                        'quantity' => ["Stok yetersiz. Bu üründen en fazla {$available} adet alabilirsiniz."],
+                    ]);
+                }
+            }
 
             $item = CartItem::query()
                 ->where('cart_id', $cart->id)
