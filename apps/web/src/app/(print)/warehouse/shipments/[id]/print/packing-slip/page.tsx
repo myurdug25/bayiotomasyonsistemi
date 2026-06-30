@@ -146,12 +146,6 @@ export default function WarehousePackingSlipPrintPage() {
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-4 flex w-full max-w-4xl justify-end">
-        <Button size="sm" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Yazdır
-        </Button>
-      </div>
-
       <section className="mx-auto w-full max-w-4xl border border-neutral-300 bg-white p-4">
         <header className="flex items-start justify-between gap-3 border-b border-neutral-300 pb-3">
           <div>

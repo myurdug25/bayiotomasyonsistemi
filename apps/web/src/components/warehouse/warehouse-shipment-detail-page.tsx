@@ -57,7 +57,7 @@ function normalizeCode(value: string | null | undefined): string {
   return (value ?? "").trim().toLocaleUpperCase("tr-TR");
 }
 
-function toPlainMoney(value: string): string {
+function toPlainMoney(value: string | number): string {
   const amount = Number(value);
 
   if (!Number.isFinite(amount)) {

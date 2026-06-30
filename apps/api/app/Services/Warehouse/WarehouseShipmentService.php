@@ -815,9 +815,7 @@ class WarehouseShipmentService
                 ->count();
 
             if ($itemCount <= 1) {
-                throw ValidationException::withMessages([
-                    'item_id' => ['Sevkiyatta en az bir kalem kalmalidir.'],
-                ]);
+                return $this->cancelShipment($user, $model);
             }
 
             ShipmentScan::query()
@@ -919,12 +917,6 @@ class WarehouseShipmentService
                     ]);
                 }
 
-                if ((int) $stock->reserved_total < $qty) {
-                    throw ValidationException::withMessages([
-                        'stock' => ["Yetersiz reserved stok (product_id={$item->product_id})."],
-                    ]);
-                }
-
                 if ((int) $stock->available_total < $qty) {
                     throw ValidationException::withMessages([
                         'stock' => ["Yetersiz available stok (product_id={$item->product_id})."],
@@ -932,7 +924,7 @@ class WarehouseShipmentService
                 }
 
                 $stock->available_total = (int) $stock->available_total - $qty;
-                $stock->reserved_total = (int) $stock->reserved_total - $qty;
+                $stock->reserved_total = max(0, (int) $stock->reserved_total - $qty);
                 $stock->updated_at = now();
                 $stock->save();
 

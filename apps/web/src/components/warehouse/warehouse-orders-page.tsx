@@ -515,7 +515,7 @@ export function WarehouseOrdersPage() {
           throw error;
         }
 
-        const retryPayload = { ...payload };
+        const retryPayload = { ...payload } as any;
         if (shouldRetryWithoutAssignedUser) {
           delete retryPayload.assigned_user_id;
         }

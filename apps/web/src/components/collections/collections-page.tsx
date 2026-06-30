@@ -847,7 +847,7 @@ export function CollectionsPage() {
           : "";
       const noteText = row.note ? ` - ${row.note}` : "";
 
-      return `${index + 1}. ${formatLedgerDate(row.date)} - ${getCollectionMethodLabel(row)} - ${formatAmount(row.amount, row.currency)}${referenceText}${transferBankText}${physicalPosBankText}${noteText}`;
+      return `${index + 1}. ${formatLedgerDate(row.date)} - ${getCollectionMethodLabel(row)} - ${formatAmount(String(row.amount), String(row.currency))}${referenceText}${transferBankText}${physicalPosBankText}${noteText}`;
     });
 
     return [
@@ -977,7 +977,7 @@ export function CollectionsPage() {
     setDueDate(String(fields.due_date ?? ""));
     setCheckValorDays(String(fields.valor_days ?? ""));
     setBatumTransferBank(getBatumTransferBankValue(fields.bank_name));
-    setPosBank(getPosBankValue(fields.pos_bank));
+    setPosBank(getPosBankValue(String(fields.pos_bank)));
     setFactoryPos(fields.factory_pos_account === "fabrika_2" ? "fabrika_2" : "fabrika_1");
     setPosPaymentType(fields.pos_payment_type === "taksitli" ? "taksitli" : "pesin");
     setPosInstallmentCount(fields.installment ? String(fields.installment) : "");
@@ -2022,7 +2022,7 @@ export function CollectionsPage() {
                         </div>
                         <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
                           <p className="text-right text-xl font-black text-[var(--brand-primary-strong)]">
-                            {formatAmount(row.amount, row.currency)}
+                            {formatAmount(String(row.amount), String(row.currency))}
                           </p>
                           <div className="flex items-center gap-2">
                             <Button

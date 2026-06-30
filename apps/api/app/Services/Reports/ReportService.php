@@ -58,7 +58,8 @@ class ReportService
         $dealerId = $this->resolveDealerIdOrFail($user, $filters['dealer_id'] ?? null);
         $perPage = min((int) ($filters['per_page'] ?? 25), 100);
         $asOfDate = Carbon::parse((string) ($filters['date_to'] ?? now()->toDateString()))->toDateString();
-        $entryDateExpr = 'COALESCE(`date`, entry_date)';
+        $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $entryDateExpr = "COALESCE({$dateCol}, entry_date)";
         $ageDaysSql = $this->ageInDaysSql($entryDateExpr);
 
         $ledgerAggregate = LedgerEntry::query()
@@ -407,7 +408,8 @@ class ReportService
     {
         $dealerId = $this->resolveDealerIdOrFail($user, $filters['dealer_id'] ?? null);
         $perPage = min((int) ($filters['per_page'] ?? 25), 100);
-        $collectionDateExpr = 'COALESCE(collections.`date`, collections.collection_date)';
+        $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $collectionDateExpr = "COALESCE(collections.{$dateCol}, collections.collection_date)";
 
         $base = CollectionModel::query()
             ->join('customers', 'customers.id', '=', 'collections.customer_id')
@@ -835,6 +837,10 @@ class ReportService
 
         if ($driver === 'sqlite') {
             return "CAST((julianday(?) - julianday(DATE({$dateExpr}))) AS INTEGER)";
+        }
+
+        if ($driver === 'pgsql') {
+            return "CAST(? AS DATE) - DATE({$dateExpr})";
         }
 
         return "DATEDIFF(?, {$dateExpr})";

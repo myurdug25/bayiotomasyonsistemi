@@ -33,7 +33,7 @@ class CustomerController extends Controller
             && ! $request->boolean('has_balance_due')
             && ! $request->boolean('has_order_balance');
 
-        $baseQuery = Customer::query();
+        $baseQuery = Customer::query()->where('is_active', true);
 
         $customerAccessScope->applyToCustomerQuery($baseQuery, $user, 'customers', $selectionMode);
 

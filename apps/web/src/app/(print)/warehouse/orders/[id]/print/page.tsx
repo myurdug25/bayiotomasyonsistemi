@@ -462,12 +462,6 @@ export default function WarehouseOrderPrintPage() {
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-3 flex w-full max-w-[210mm] justify-end">
-        <Button className="bg-[#004c2e] text-white hover:bg-[#063b27]" size="sm" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Yazdır / PDF Kaydet
-        </Button>
-      </div>
-
       <section className="order-form-sheet mx-auto bg-white px-[6mm] py-[6mm]">
         <HeaderInfo
           order={order}

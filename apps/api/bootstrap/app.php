@@ -7,6 +7,7 @@ use App\Console\Commands\Users\SyncOperationalUsersCommand;
 use App\Http\Middleware\ApiPerformanceLogger;
 use App\Http\Middleware\EnsureUserHasMenuPermission;
 use App\Http\Middleware\EnsureUserHasRole;
+use App\Http\Middleware\SanitizeInputStrings;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
@@ -38,7 +39,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return '/login';
         });
-        $middleware->appendToGroup('api', ApiPerformanceLogger::class);
+        $middleware->appendToGroup('api', [
+            SanitizeInputStrings::class,
+            ApiPerformanceLogger::class,
+        ]);
         $middleware->alias([
             'menu' => EnsureUserHasMenuPermission::class,
             'role' => EnsureUserHasRole::class,

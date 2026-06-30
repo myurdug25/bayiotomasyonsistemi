@@ -56,7 +56,7 @@ function toMoney(value: string | number | null | undefined): number {
 type ReportTables = NonNullable<PosDayEndReport["report_tables"]>;
 type SaleReportRow = ReportTables["normal_sales"][number];
 type CollectionReportRow = ReportTables["cash_collections"][number];
-type PanelTone = "emerald";
+type PanelTone = "emerald" | "slate" | "amber" | "rose" | "blue" | "indigo" | "violet";
 
 const emptyReportTables: ReportTables = {
   normal_sales: [],

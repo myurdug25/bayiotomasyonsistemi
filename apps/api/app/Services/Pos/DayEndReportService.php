@@ -441,7 +441,8 @@ class DayEndReportService
      */
     private function applyPointCollectionFilters(Builder $query, User $user, array $filters): Builder
     {
-        $dateColumn = 'COALESCE(`date`, collection_date)';
+        $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $dateColumn = "COALESCE({$dateCol}, collection_date)";
 
         $query->where(function (Builder $scope) use ($filters): void {
             $scope->where('meta->source', 'point_collection');

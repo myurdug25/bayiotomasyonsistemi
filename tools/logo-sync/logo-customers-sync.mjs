@@ -94,7 +94,7 @@ function buildConfig() {
   const timeoutMs = parseInteger(process.env.LOGO_SQL_REQUEST_TIMEOUT_MS, 30000);
   const cardTypes = parseIntegerList(
     process.env.LOGO_CUSTOMER_CARDTYPES ?? process.env.LOGO_CUSTOMER_CARDTYPE,
-    [1, 3]
+    [1, 2, 3, 4]
   );
   const syncUrl =
     nullable(process.env.POWERSA_CUSTOMERS_SYNC_URL) ??

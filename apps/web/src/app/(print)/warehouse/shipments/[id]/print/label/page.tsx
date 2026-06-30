@@ -362,12 +362,6 @@ export default function WarehouseLabelPrintPage() {
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-3 flex w-full max-w-[100mm] justify-end">
-        <Button size="sm" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Yazdır
-        </Button>
-      </div>
-
       <section className="label-sheet mx-auto">
         <div className="label-inner">
           <div className="label-topbar">

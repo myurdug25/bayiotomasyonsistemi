@@ -76,12 +76,16 @@ function isPrimitive(value: unknown): value is string | number | boolean {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
 
-function parseNumericLike(value: string | number): number | null {
+function containsKeyword(value: string | number | boolean, keyword: string): boolean {
+  return String(value).toLocaleLowerCase("tr-TR").includes(keyword.toLocaleLowerCase("tr-TR"));
+}
+
+function parseNumericLike(value: string | number | boolean): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
   }
 
-  const source = value.trim();
+  const source = String(value).trim();
   if (!source) {
     return null;
   }
@@ -207,7 +211,7 @@ function extractPreviewRows(key: ReportKey, payload: ReportPayload): Array<Recor
         Tutar: isPrimitive(record.net_total) ? formatMetricValue("net_total", record.net_total, "TRY") : "-",
       };
     })
-    .filter((row): row is Record<string, string> => row !== null);
+    .filter((row) => row !== null) as Array<Record<string, string>>;
 }
 
 function extractCustomerFilterOptions(...payloads: ReportPayload[]): CustomerFilterOption[] {

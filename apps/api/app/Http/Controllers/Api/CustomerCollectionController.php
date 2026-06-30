@@ -33,7 +33,7 @@ class CustomerCollectionController extends Controller
         $dateFrom = $validated['date_from'] ?? null;
         $dateTo = $validated['date_to'] ?? null;
         $method = $validated['method'] ?? null;
-        $dateCol = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
         $dateColumn = "COALESCE({$dateCol}, collection_date)";
         $user = $request->user();
         $displayUser = $user instanceof User ? $user : null;
@@ -130,7 +130,7 @@ class CustomerCollectionController extends Controller
      */
     private function collectionTabSummaries(Customer $customer, ?string $dateFrom, ?string $dateTo, ?User $user): array
     {
-        $dateCol = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
         $dateColumn = "COALESCE({$dateCol}, collection_date)";
         $channelExpression = $this->collectionChannelExpression();
         $rows = CollectionModel::query()
@@ -259,7 +259,7 @@ class CustomerCollectionController extends Controller
 
     private function invoiceQuery(Customer $customer, ?string $dateFrom, ?string $dateTo)
     {
-        $dateCol = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
 
         return $customer->ledgerEntries()
             ->effectiveForCustomerBalance()
@@ -317,14 +317,16 @@ class CustomerCollectionController extends Controller
 
     public function store(
         StoreCustomerCollectionRequest $request,
-        Customer $customer
+        Customer $customer,
+        LogoWritePublisher $logoWritePublisher,
+        LedgerWriter $ledgerWriter
     ): JsonResponse {
         $this->authorize('createCollection', $customer);
 
         $validated = $request->validated();
         $user = $request->user();
 
-        $collection = DB::transaction(function () use ($validated, $customer, $user) {
+        $collection = DB::transaction(function () use ($validated, $customer, $user, $logoWritePublisher, $ledgerWriter) {
             $collectionDate = $validated['date'] ?? $validated['collection_date'] ?? now()->toDateString();
             $submittedMeta = is_array($validated['meta'] ?? null) ? $validated['meta'] : [];
             $referenceFields = $validated['reference_fields'] ?? data_get($submittedMeta, 'reference_fields', []);
@@ -373,7 +375,7 @@ class CustomerCollectionController extends Controller
                 'customer_id' => $customer->id,
                 'source_system' => 'b2b',
                 'source_reference' => null,
-                'sync_status' => $requiresManagerApproval ? 'reviewing' : 'draft',
+                'sync_status' => $requiresManagerApproval ? 'reviewing' : 'pending',
                 'sync_error' => null,
                 'last_synced_at' => null,
                 'collected_by_user_id' => $user->id,
@@ -388,6 +390,19 @@ class CustomerCollectionController extends Controller
                 'note' => $validated['note'] ?? null,
                 'meta' => $meta,
             ]);
+
+            if ($collection->sync_status === 'pending') {
+                $meta = is_array($collection->meta) ? $collection->meta : [];
+                data_set($meta, 'integrations.logo.submitted_at', now()->toIso8601String());
+                data_set($meta, 'integrations.logo.submitted_by_user_id', $user->id);
+                $collection->forceFill(['meta' => $meta])->save();
+
+                $this->writeCollectionLedgerEntry($collection, $ledgerWriter);
+
+                if ($this->shouldQueueForLogoExport($customer)) {
+                    $logoWritePublisher->queueCollectionCreate($collection);
+                }
+            }
 
             return $collection;
         });

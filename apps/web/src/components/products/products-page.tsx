@@ -41,7 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const PAGE_LIMIT = 12;
-const SEARCH_DEBOUNCE_MS = 120;
+const SEARCH_DEBOUNCE_MS = 500;
 const MIN_SEARCH_LENGTH = 2;
 const PRODUCT_PREVIEW_IMAGE_WIDTH = 960;
 const ALL_FILTER_VALUE = "__all";
@@ -144,13 +144,13 @@ function currencyLabel(currency: string | null | undefined): string {
   return normalized || "TRY";
 }
 
-function formatPriceValue(value: string | null, currency?: string | null): string {
+function formatPriceValue(value: string | null | undefined, currency?: string | null): string {
   if (!value) {
     return "-";
   }
 
   const parsed = parseDecimalValue(value);
-  if (!Number.isFinite(parsed)) {
+  if (parsed === null || !Number.isFinite(parsed)) {
     return value;
   }
 
@@ -961,7 +961,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const [vehicleFitmentsPreview, setVehicleFitmentsPreview] = useState<ProductVehicleFitmentsPreview | null>(null);
   const [previousPurchasePreview, setPreviousPurchasePreview] = useState<ProductPreviousPurchasePreview | null>(null);
   const [cartModalProduct, setCartModalProduct] = useState<ProductSearchItem | null>(null);
-  const [cartModalQuantity, setCartModalQuantity] = useState(1);
+  const [cartModalQuantity, setCartModalQuantity] = useState<number | string>(1);
   const [cartCalculatorOpen, setCartCalculatorOpen] = useState(false);
   const [cartPricesIncludeVat, setCartPricesIncludeVat] = useState(false);
   const [calculatorDisplay, setCalculatorDisplay] = useState("0");
@@ -1098,7 +1098,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
         shouldFetchProducts,
       },
     ],
-    initialPageParam: { cursor: null, page: 1 } satisfies ProductSearchPageParam,
+    initialPageParam: { cursor: null, page: 1 } as ProductSearchPageParam,
     queryFn: ({ signal, pageParam }) =>
       searchProducts(
         {
@@ -1281,8 +1281,14 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   }, [resetCalculator]);
 
   const handleCartModalQuantityChange = useCallback(
-    (nextQty: number) => {
-      setCartModalQuantity(Math.max(1, Math.floor(nextQty || 1)));
+    (nextQty: number | string) => {
+      if (nextQty === "") {
+        setCartModalQuantity("");
+        return;
+      }
+      const parsed = Number(nextQty);
+      if (Number.isNaN(parsed)) return;
+      setCartModalQuantity(Math.max(0, Math.floor(parsed)));
     },
     []
   );
@@ -1295,7 +1301,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
-    handleSetQuantity(cartModalProduct.id, cartModalQuantity);
+    handleSetQuantity(cartModalProduct.id, Math.max(1, Number(cartModalQuantity) || 1));
     setCartModalProduct(null);
     setCartCalculatorOpen(false);
   }, [cartModalHasPrice, cartModalProduct, cartModalQuantity, handleSetQuantity, selectedCustomer]);
@@ -1893,8 +1899,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                     size="icon"
                     variant="outline"
                     className="h-16 w-16 rounded-2xl border-white/10 bg-slate-950/45 text-xl text-slate-200 hover:bg-slate-800 hover:text-white"
-                    disabled={cartModalQuantity <= 1 || mutating}
-                    onClick={() => handleCartModalQuantityChange(cartModalQuantity - 1)}
+                    disabled={Number(cartModalQuantity) <= 1 || mutating}
+                    onClick={() => handleCartModalQuantityChange(Number(cartModalQuantity) - 1)}
                   >
                     <Minus className="h-6 w-6" />
                   </Button>
@@ -1904,7 +1910,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                     inputMode="numeric"
                     min={1}
                     value={cartModalQuantity}
-                    onChange={(event) => handleCartModalQuantityChange(Number(event.target.value))}
+                    onChange={(event) => handleCartModalQuantityChange(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
@@ -1919,7 +1925,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                     variant="outline"
                     className="h-16 w-16 rounded-2xl border-emerald-300/20 bg-emerald-300/10 text-xl text-emerald-200 hover:bg-emerald-300/18 hover:text-emerald-100"
                     disabled={mutating}
-                    onClick={() => handleCartModalQuantityChange(cartModalQuantity + 1)}
+                    onClick={() => handleCartModalQuantityChange(Number(cartModalQuantity) + 1)}
                   >
                     <Plus className="h-6 w-6" />
                   </Button>

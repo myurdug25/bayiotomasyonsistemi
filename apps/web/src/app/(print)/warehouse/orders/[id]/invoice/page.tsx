@@ -4,9 +4,8 @@ import { useMemo } from "react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Printer } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { getOrderDetail } from "@/lib/api";
 
 const SELLER = {
@@ -332,11 +331,6 @@ export default function WarehouseInvoicePage() {
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-3 flex w-full max-w-[210mm] justify-end">
-        <Button className="bg-[#2f6b45] text-white hover:bg-[#25583a]" size="sm" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Yazdır / PDF Kaydet
-        </Button>
-      </div>
 
       <section className="invoice-sheet relative mx-auto overflow-hidden bg-white px-[13mm] py-[10mm] shadow-2xl">
         <Image

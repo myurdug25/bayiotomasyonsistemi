@@ -2585,7 +2585,7 @@ export function PosPage() {
           </div>
         </div>
 
-        <Button className="h-16 w-full rounded-2xl text-base font-black" onClick={openPaymentModal} disabled={!canSubmitSale || isMutating}>
+        <Button className="h-16 w-full rounded-2xl text-base font-black" onClick={() => openPaymentModal()} disabled={!canSubmitSale || isMutating}>
           {createSaleMutation.isPending ? (
             <Loader2 className="h-5 w-5 animate-spin" />
           ) : saleType === "cash" ? (
@@ -2926,7 +2926,7 @@ export function PosPage() {
 
             <Button
               type="button"
-              onClick={openPaymentModal}
+              onClick={() => openPaymentModal()}
               disabled={!canSubmitSale || isMutating}
               className="mt-6 h-20 w-full rounded-[20px] text-2xl font-black"
             >

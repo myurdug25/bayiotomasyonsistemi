@@ -4499,9 +4499,213 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
   }
 
   @media (min-width: 1024px) {
+    --point-admin-muted: #9aa8bd;
+    --point-admin-accent: #60a5fa;
+    --point-admin-accent-soft: rgba(96, 165, 250, 0.14);
+    --point-admin-accent-strong: #bfdbfe;
+    background:
+      radial-gradient(circle at top right, rgba(96, 165, 250, 0.13), transparent 30%),
+      linear-gradient(180deg, #0b1220 0%, var(--point-admin-bg) 100%) !important;
+  }
+
+  .point-admin-shell .point-admin-header {
+    display: none !important;
+    border-color: var(--point-admin-border) !important;
+    background:
+      linear-gradient(135deg, var(--point-admin-panel) 0%, var(--point-admin-panel-2) 58%, var(--point-admin-panel) 100%) !important;
+    color: var(--point-admin-text) !important;
+  }
+
+  .point-admin-shell .point-admin-header a,
+  .point-admin-shell .point-admin-header button,
+  .point-admin-shell .point-admin-header [class*="bg-[var(--surface)]"] {
+    border-color: var(--point-admin-border) !important;
+    background-color: var(--point-admin-control) !important;
+    color: var(--point-admin-text) !important;
+  }
+
+  .point-admin-shell .point-admin-header a[class*="bg-[var(--brand-primary)]"] {
+    background: var(--point-admin-accent) !important;
+    color: #ffffff !important;
+  }
+
+  .point-admin-shell .point-sale-sidebar {
+    border-color: var(--point-admin-border) !important;
+    background:
+      linear-gradient(180deg, var(--point-admin-panel) 0%, var(--point-admin-control) 100%) !important;
+    box-shadow: 0 24px 56px -46px rgba(15, 23, 42, 0.5);
+  }
+
+  .point-admin-shell .point-sale-logo,
+  .point-admin-shell .point-sale-system-card,
+  .point-admin-shell .point-sale-nav-icon {
+    border-color: var(--point-admin-border) !important;
+    background: var(--point-admin-control) !important;
+  }
+
+  .point-sale-logo-transparent,
+  .point-sale-screen .point-sale-logo-transparent,
+  .point-admin-shell .point-sale-logo-transparent {
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .point-sale-brand-dark,
+  .point-sale-nav-image {
+    display: none;
+  }
+
+  .point-sale-brand-light,
+  .point-sale-nav-glyph {
+    display: flex;
+  }
+
+  .point-sale-screen[data-point-theme="dark"] .point-sale-brand-dark,
+  .point-sale-screen[data-point-theme="dark"] .point-sale-nav-image {
+    display: block;
+  }
+
+  .point-sale-screen[data-point-theme="dark"] .point-sale-brand-light,
+  .point-sale-screen[data-point-theme="dark"] .point-sale-nav-glyph {
+    display: none;
+  }
+
+  html[data-point-sidebar-collapsed="true"] .point-admin-page,
+  html[data-point-sidebar-collapsed="true"] .point-sale-screen {
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+  }
+
+  html[data-point-sidebar-collapsed="true"] .point-sale-sidebar {
+    width: 88px;
+  }
+
+  html[data-point-sidebar-collapsed="true"] .point-sale-sidebar .point-sale-nav-icon-image {
+    height: 58px !important;
+    width: 58px !important;
+  }
+
+  @media (min-width: 1024px) and (max-width: 1279px) {
+    .point-sale-sidebar {
+      width: 104px;
+      padding: 0.75rem !important;
+    }
+
+    .point-sale-sidebar .point-sale-logo {
+      height: 82px !important;
+      padding: 0.25rem !important;
+    }
+
+    .point-sale-sidebar .point-sale-brand-light {
+      display: none !important;
+    }
+
+    .point-sale-sidebar .point-sale-brand-dark {
+      display: block !important;
+    }
+
+    .point-sale-sidebar .point-sale-nav-item {
+      grid-template-columns: 1fr !important;
+      height: 72px !important;
+      justify-items: center;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
+
+    .point-sale-sidebar .point-sale-nav-label {
+      display: none !important;
+    }
+
+    .point-sale-sidebar .point-sale-nav-icon-image,
+    .point-sale-sidebar .point-sale-nav-image {
+      height: 58px !important;
+      width: 58px !important;
+    }
+  }
+
+  .point-admin-shell .point-sale-nav-item {
+    color: var(--point-admin-muted) !important;
+  }
+
+  .point-admin-shell .point-sale-nav-item[data-active="true"] {
+    border-color: color-mix(in oklab, var(--point-admin-accent) 55%, var(--point-admin-border)) !important;
+    background: var(--point-admin-accent-soft) !important;
+    color: var(--point-admin-accent-strong) !important;
+  }
+
+  .point-admin-shell .point-admin-hero,
+  .point-admin-shell .point-admin-panel,
+  .point-admin-shell .point-admin-stat,
+  .point-admin-shell .point-admin-soft {
+    border-color: var(--point-admin-border) !important;
+    background: var(--point-admin-panel) !important;
+    color: var(--point-admin-text) !important;
+    box-shadow:
+      0 20px 44px -38px rgba(15, 23, 42, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.48);
+  }
+
+  .point-admin-shell .point-admin-hero {
+    background:
+      radial-gradient(circle at top right, var(--point-admin-accent-soft), transparent 33%),
+      linear-gradient(180deg, var(--point-admin-panel) 0%, var(--point-admin-panel-2) 100%) !important;
+  }
+
+  .point-admin-shell .point-admin-stat,
+  .point-admin-shell .point-admin-soft,
+  .point-admin-shell .point-admin-panel-header {
+    background: var(--point-admin-control) !important;
+  }
+
+  .point-admin-shell h1,
+  .point-admin-shell h2,
+  .point-admin-shell h3,
+  .point-admin-shell .point-admin-page [class*="text-[var(--brand-primary-strong)]"] {
+    color: var(--point-admin-text) !important;
+  }
+
+  .point-admin-shell .point-admin-page [class*="text-[var(--muted-foreground)]"] {
+    color: var(--point-admin-muted) !important;
+  }
+
+  .point-admin-shell input,
+  .point-admin-shell textarea,
+  .point-admin-shell select {
+    border-color: var(--point-admin-border) !important;
+    background-color: var(--point-admin-control) !important;
+    color: var(--point-admin-text) !important;
+  }
+
+  .point-admin-shell input::placeholder,
+  .point-admin-shell textarea::placeholder {
+    color: var(--point-admin-muted) !important;
+  }
+
+  html[data-ui-theme="dark"] .point-admin-shell .bg-white,
+  html[data-ui-theme="dark"] .point-admin-shell .bg-\[\#fbfdfb\],
+  html[data-ui-theme="dark"] .point-admin-shell .bg-\[var\(--surface-soft\)\] {
+    background: var(--point-admin-panel) !important;
+  }
+
+  @media (min-width: 768px) {
+    .page-hero-title {
+      font-size: 1.7rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
     .page-hero-content {
       gap: 0.875rem;
       padding: 1rem 1.125rem;
     }
   }
+}
+
+/* Sidebar Scrollbar Gizleme */
+.app-sidebar-nav-region::-webkit-scrollbar {
+  display: none;
+}
+.app-sidebar-nav-region {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

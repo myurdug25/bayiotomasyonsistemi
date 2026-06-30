@@ -81,8 +81,10 @@ export function ClientErrorRecovery() {
     const handleWindowError = (event: ErrorEvent) => {
       const target = event.target;
       const targetSource =
-        target instanceof HTMLScriptElement || target instanceof HTMLLinkElement
-          ? target.src || target.href
+        target instanceof HTMLScriptElement
+          ? target.src
+          : target instanceof HTMLLinkElement
+          ? target.href
           : "";
 
       if (isNextChunkError(event.error) || isNextChunkError(event.message) || isNextChunkError(targetSource)) {

@@ -1430,7 +1430,7 @@ function DashboardTopDockIcon({
         <span className="absolute inset-[6px] rounded-[24px] bg-[radial-gradient(circle_at_50%_4%,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0.06)_34%,rgba(255,255,255,0)_70%)]" />
         {/* Yeni sidebar ikonları kendi cam kutusuyla geldiği için direkt yüklenir. */}
         <Image
-          src={item.emojiAsset}
+          src={item.emojiAsset ?? "/images/sidebar/default-icon.png"}
           alt={`${item.label} ikonu`}
           width={72}
           height={72}
@@ -2342,7 +2342,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside
           data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
           className={cn(
-            "app-sidebar-aside sticky top-0 h-screen z-20 hidden shrink-0 overflow-hidden transition-[width] duration-200 lg:block",
+            "app-sidebar-aside relative z-20 hidden shrink-0 overflow-hidden transition-[width] duration-200 lg:block",
             sidebarCollapsed ? "w-[60px]" : "w-[220px] 2xl:w-[256px]"
           )}
         >

@@ -33,7 +33,7 @@ import {
 import { Toggle } from "@/components/ui/toggle";
 
 const PAGE_LIMIT = 25;
-const SEARCH_DEBOUNCE_MS = 120;
+const SEARCH_DEBOUNCE_MS = 500;
 
 function toAmount(value: string): number {
   const normalized = value.replace(",", ".");

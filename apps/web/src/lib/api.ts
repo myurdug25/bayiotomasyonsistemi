@@ -541,6 +541,10 @@ export type CustomerListItem = {
   city: string | null;
   district: string | null;
   phone: string | null;
+  region_code?: string | null;
+  region_name?: string | null;
+  branch_code?: string | null;
+  branch_name?: string | null;
   source_system?: string | null;
   source_reference?: string | null;
   last_synced_at?: string | null;
@@ -709,6 +713,7 @@ export type OrderDetailResponse = {
     tax_total: string;
     grand_total: string;
     ordered_at: string;
+    approved_at?: string | null;
     shipping_method?: string | null;
     note?: string | null;
     logo_sync_status?: string | null;
