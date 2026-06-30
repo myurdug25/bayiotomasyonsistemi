@@ -559,8 +559,8 @@ class LogoProductSyncService
 
         $stockSummary = StockSummary::query()->find($product->id);
         $availableTotal = array_key_exists('available_total', $record)
-            ? $this->resolveLogoStockTotal($record, ['available_total', 'available', 'onhand_total', 'onhand', 'stock', 'quantity'], (int) ($record['available_total'] ?? 0))
-            : ($stockSummary?->available_total ?? 0);
+            ? max(0, $this->resolveLogoStockTotal($record, ['available_total', 'available', 'onhand_total', 'onhand', 'stock', 'quantity'], (int) ($record['available_total'] ?? 0)))
+            : max(0, (int) ($stockSummary?->available_total ?? 0));
         $reservedTotal = array_key_exists('reserved_total', $record)
             ? max(0, $this->resolveLogoStockTotal($record, ['reserved_total', 'reserved'], (int) ($record['reserved_total'] ?? 0)))
             : ($stockSummary?->reserved_total ?? 0);
@@ -845,7 +845,11 @@ class LogoProductSyncService
         }
 
         if (! empty($record['meta']) && is_array($record['meta'])) {
-            Arr::set($meta, 'integrations.logo.payload', $record['meta']);
+            $logoPayload = $record['meta'];
+            if (is_array($logoPayload['logo_stock'] ?? null)) {
+                $logoPayload['logo_stock'] = $this->normalizeLogoStock($logoPayload['logo_stock']);
+            }
+            Arr::set($meta, 'integrations.logo.payload', $logoPayload);
 
             foreach (['kod1', 'kod2', 'kod3', 'specode', 'specode2', 'specode3', 'specode4', 'specode5', 'stok_turu', 'brand_code', 'category_code'] as $key) {
                 $value = $this->nullableString($record['meta'][$key] ?? null);
@@ -874,10 +878,45 @@ class LogoProductSyncService
 
         $logoStock = data_get($record, 'meta.logo_stock');
         if (is_array($logoStock)) {
-            Arr::set($meta, 'integrations.logo.payload.logo_stock', $this->mergeStockOnlyLogoStock($meta, $logoStock));
+            Arr::set(
+                $meta,
+                'integrations.logo.payload.logo_stock',
+                $this->mergeStockOnlyLogoStock($meta, $this->normalizeLogoStock($logoStock))
+            );
         }
 
         return $meta;
+    }
+
+    /**
+     * @param  array<string, mixed>  $logoStock
+     * @return array<string, mixed>
+     */
+    private function normalizeLogoStock(array $logoStock): array
+    {
+        foreach (['available_total', 'available', 'onhand_total', 'onhand', 'stock', 'quantity', 'reserved_total', 'reserved'] as $key) {
+            if (is_numeric($logoStock[$key] ?? null)) {
+                $logoStock[$key] = max(0, (int) $logoStock[$key]);
+            }
+        }
+
+        if (is_array($logoStock['warehouses'] ?? null)) {
+            $logoStock['warehouses'] = array_map(function (mixed $warehouse): mixed {
+                if (! is_array($warehouse)) {
+                    return $warehouse;
+                }
+
+                foreach (['available_total', 'available', 'onhand_total', 'onhand', 'stock', 'quantity', 'reserved_total', 'reserved'] as $key) {
+                    if (is_numeric($warehouse[$key] ?? null)) {
+                        $warehouse[$key] = max(0, (int) $warehouse[$key]);
+                    }
+                }
+
+                return $warehouse;
+            }, $logoStock['warehouses']);
+        }
+
+        return $logoStock;
     }
 
     /**

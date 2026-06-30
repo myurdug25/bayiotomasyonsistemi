@@ -1237,7 +1237,7 @@ class PointPosAccessApiTest extends TestCase
         $this->postJson("/api/customers/{$customer->id}/collections/{$collection->id}/send")
             ->assertOk()
             ->assertJsonPath('collection.sync_status', 'pending')
-            ->assertJsonPath('message', 'Tahsilat gönderim kuyruğuna alındı.');
+            ->assertJsonPath('message', 'Tahsilat Logo’ya gönderiliyor.');
     }
 
     public function test_salesperson_collection_is_exported_with_matching_logo_cashbox(): void

@@ -303,7 +303,14 @@ class OrderController extends Controller
                     continue;
                 }
 
-                $reservedQuantity = min((int) $stock->available_total, (int) $item->quantity);
+                $availableQuantity = max(0, (int) $stock->available_total);
+                $reservedQuantity = min($availableQuantity, (int) $item->quantity);
+                if ((int) $stock->available_total !== $availableQuantity) {
+                    $stock->available_total = $availableQuantity;
+                    $stock->updated_at = now();
+                    $stock->save();
+                }
+
                 if ($reservedQuantity <= 0) {
                     continue;
                 }

@@ -54,6 +54,9 @@ class ReadyOrderResource extends JsonResource
         $sourcePanel = $this->nullableString(data_get($invoiceMeta, 'source_panel'))
             ?? $this->resolveSourcePanel($createdByRoleSlugs);
         $salesperson = $this->resolveSalesperson($createdBy, $createdByRoleSlugs);
+        $preferredWarehouseCode = $this->preferredWarehouseCode(
+            $this->note ?? $this->cart?->order_note ?? $this->cart?->note
+        );
 
         return [
             'id' => $this->id,
@@ -112,11 +115,21 @@ class ReadyOrderResource extends JsonResource
                 'updated_at' => $stockUpdatedAt?->toIso8601String(),
             ],
             'logo_warehouse_options' => $this->formatLogoWarehouses($logoWarehouses),
+            'preferred_warehouse_code' => $preferredWarehouseCode,
             'shipment' => $this->latestActiveShipment === null ? null : [
                 'id' => $this->latestActiveShipment->id,
                 'status' => $this->latestActiveShipment->status,
             ],
         ];
+    }
+
+    private function preferredWarehouseCode(?string $note): ?string
+    {
+        if ($note === null || preg_match('/Depo transfer:.*?Kod:\s*([A-Za-z0-9_-]+)/ui', $note, $matches) !== 1) {
+            return null;
+        }
+
+        return trim((string) ($matches[1] ?? '')) ?: null;
     }
 
     /**

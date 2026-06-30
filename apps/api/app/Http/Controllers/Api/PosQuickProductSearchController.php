@@ -513,12 +513,12 @@ class PosQuickProductSearchController extends Controller
     private function resolveVisibleAvailableTotal(array $meta, int $availableTotal, ?array $stockScope): int
     {
         if ($stockScope === null) {
-            return $availableTotal;
+            return max(0, $availableTotal);
         }
 
         $locations = $this->resolveStockLocations($meta, $availableTotal, $stockScope);
 
-        return array_sum(array_map(fn (array $location): int => (int) $location['stock'], $locations));
+        return max(0, array_sum(array_map(fn (array $location): int => max(0, (int) $location['stock']), $locations)));
     }
 
     /**
@@ -571,7 +571,7 @@ class PosQuickProductSearchController extends Controller
                 $locations[] = [
                     'branch' => $branch,
                     'warehouse_code' => $warehouseCode,
-                    'stock' => $stock ?? 0,
+                    'stock' => max(0, $stock ?? 0),
                     'shelf_address' => $this->resolveWarehouseShelfAddress($meta, $warehouse, $warehouseCode) ?? $generalShelfAddress,
                 ];
             }

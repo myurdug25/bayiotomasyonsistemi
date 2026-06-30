@@ -436,7 +436,7 @@ function getCollectionStatusLabel(row: CollectionRecord): string {
   }
 
   if (row.sync_status === "pending") {
-    return "Gönderim Bekliyor";
+    return "Logo'ya Gönderiliyor";
   }
 
   if (row.sync_status === "reviewing") {
@@ -648,15 +648,17 @@ export function CollectionsPage() {
   const [checkDraftItems, setCheckDraftItems] = useState<CheckDraftItem[]>([]);
   const [receiptActionsUnlocked, setReceiptActionsUnlocked] = useState(false);
 
-  const fetchList = (targetPage = page) => {
+  const fetchList = (targetPage = page, silent = false) => {
     if (!selectedCustomer) {
       setPayload(null);
       setPage(1);
       return;
     }
 
-    setListLoading(true);
-    setError(null);
+    if (!silent) {
+      setListLoading(true);
+      setError(null);
+    }
 
     void listCustomerCollections(selectedCustomer.id, {
       per_page: 30,
@@ -667,7 +669,11 @@ export function CollectionsPage() {
         setPage(targetPage);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Tahsilat listesi alınamadı"))
-      .finally(() => setListLoading(false));
+      .finally(() => {
+        if (!silent) {
+          setListLoading(false);
+        }
+      });
   };
 
   useEffect(() => {
@@ -675,6 +681,19 @@ export function CollectionsPage() {
     fetchList(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer?.id]);
+
+  useEffect(() => {
+    const hasPendingLogoWrite = payload?.data.some(
+      (row) => row.source_system === "b2b" && row.sync_status === "pending"
+    );
+    if (!selectedCustomer || !hasPendingLogoWrite) {
+      return;
+    }
+
+    const timer = window.setInterval(() => fetchList(page, true), 1500);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, payload?.data, selectedCustomer?.id]);
 
   useEffect(() => {
     if (isPointUser && (method === "check" || method === "factory_cc")) {
@@ -899,13 +918,13 @@ export function CollectionsPage() {
     : sendableRows.length > 0
       ? "Gönder"
       : hasQueuedCollectionRows
-        ? "Kuyrukta"
+        ? "İşleniyor"
         : "Gönder";
   const sendActionHelpText =
     sendableRows.length > 0
       ? `${sendableRows.length} kayıt Logo gönderimine hazır.`
       : hasQueuedCollectionRows
-        ? "Bu listedeki tahsilat gönderim kuyruğunda."
+        ? "Logo işlemi tamamlanıyor; sonuç otomatik yenilenecek."
         : "Gönderilecek uygun tahsilat yok.";
 
   const shellCardClassName =

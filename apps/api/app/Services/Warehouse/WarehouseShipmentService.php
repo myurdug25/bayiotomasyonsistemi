@@ -900,25 +900,6 @@ class WarehouseShipmentService
                 ]);
             }
 
-            $incompleteItems = $model->items
-                ->filter(fn (ShipmentItem $item): bool => (int) $item->shipped_qty < (int) $item->ordered_qty)
-                ->map(function (ShipmentItem $item): string {
-                    $missingQty = max(0, (int) $item->ordered_qty - (int) $item->shipped_qty);
-                    $label = trim((string) ($item->product?->sku ?: $item->product?->name ?: 'Urun'));
-
-                    return "{$label} (eksik: {$missingQty})";
-                })
-                ->values()
-                ->all();
-
-            if ($incompleteItems !== []) {
-                throw ValidationException::withMessages([
-                    'stock' => [
-                        'Fatura kesilemez. Eksik veya stokta olmayan urunler var: '.implode(', ', $incompleteItems),
-                    ],
-                ]);
-            }
-
             foreach ($model->items as $item) {
                 $qty = (int) $item->shipped_qty;
                 if ($qty <= 0) {
@@ -935,10 +916,12 @@ class WarehouseShipmentService
                     ]);
                 }
 
-                $warehouseAvailable = $this->resolveProductWarehouseAvailableTotal(
+                $warehouseSnapshot = $this->resolveProductWarehouseStockSnapshot(
                     $product,
                     $model->warehouse?->code
                 );
+                $warehouseAvailable = $warehouseSnapshot
+                    ?? max(0, (int) $product->stockSummary?->available_total);
 
                 if ($warehouseAvailable < $qty) {
                     $label = trim((string) ($product->sku ?: $product->name ?: "product_id={$item->product_id}"));
@@ -960,19 +943,21 @@ class WarehouseShipmentService
                     ]);
                 }
 
-                $totalPhysical = (int) $stock->available_total + (int) $stock->reserved_total;
-                if ($totalPhysical < $qty) {
+                $availableTotal = max(0, (int) $stock->available_total);
+                $reservedTotal = max(0, (int) $stock->reserved_total);
+                $totalPhysical = $availableTotal + $reservedTotal;
+                if ($warehouseSnapshot === null && $totalPhysical < $qty) {
                     throw ValidationException::withMessages([
                         'stock' => ["Yetersiz toplam stok (product_id={$item->product_id})."],
                     ]);
                 }
 
                 // Siparişin sevk edilen miktarını rezerve stoktan düş, yetmezse available'dan düş.
-                $reserveToConsume = min((int) $stock->reserved_total, $qty);
-                $availableToConsume = max(0, $qty - $reserveToConsume);
+                $reserveToConsume = min($reservedTotal, $qty);
+                $availableToConsume = min($availableTotal, max(0, $qty - $reserveToConsume));
 
-                $stock->reserved_total = (int) $stock->reserved_total - $reserveToConsume;
-                $stock->available_total = (int) $stock->available_total - $availableToConsume;
+                $stock->reserved_total = max(0, $reservedTotal - $reserveToConsume);
+                $stock->available_total = max(0, $availableTotal - $availableToConsume);
                 $stock->updated_at = now();
                 $stock->save();
 
@@ -1554,7 +1539,7 @@ class WarehouseShipmentService
         $nextStatus = 'approved';
 
         if ($shippedTotal > 0 && $shippedTotal < $orderedTotal) {
-            $nextStatus = 'partially_shipped';
+            $nextStatus = 'balance';
         }
 
         if ($orderedTotal > 0 && $shippedTotal >= $orderedTotal) {
@@ -1665,6 +1650,16 @@ class WarehouseShipmentService
 
     private function resolveProductWarehouseAvailableTotal(?Product $product, ?string $warehouseCode): int
     {
+        $warehouseStock = $this->resolveProductWarehouseStockSnapshot($product, $warehouseCode);
+        if ($warehouseStock !== null) {
+            return $warehouseStock;
+        }
+
+        return max(0, (int) ($product?->stockSummary?->available_total ?? 0));
+    }
+
+    private function resolveProductWarehouseStockSnapshot(?Product $product, ?string $warehouseCode): ?int
+    {
         $meta = is_array($product?->meta) ? $product->meta : [];
         $warehouses = data_get($meta, 'integrations.logo.payload.logo_stock.warehouses');
         $normalizedWarehouseCode = trim((string) $warehouseCode);
@@ -1698,7 +1693,7 @@ class WarehouseShipmentService
             }
         }
 
-        return (int) ($product?->stockSummary?->available_total ?? 0);
+        return null;
     }
 
     private function adjustProductWarehouseAvailableTotal(

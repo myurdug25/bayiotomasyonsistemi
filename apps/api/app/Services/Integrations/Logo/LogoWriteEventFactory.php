@@ -52,7 +52,7 @@ class LogoWriteEventFactory
             entityType: 'collection',
             entityId: (int) $collection->getKey(),
             dealerId: $collection->dealer_id,
-            idempotencyKey: 'B2B-COL-CREATE-'.$collection->id,
+            idempotencyKey: $collection->logoExportKey().'-CREATE',
             payload: $this->collectionPayload($collection),
         );
     }
@@ -132,7 +132,7 @@ class LogoWriteEventFactory
 
         return [
             'collection_id' => $collection->id,
-            'export_key' => 'B2B-COL-'.$collection->id,
+            'export_key' => $collection->logoExportKey(),
             'dealer_id' => $collection->dealer_id,
             'customer_id' => $collection->customer_id,
             'customer_code' => $customer?->code,

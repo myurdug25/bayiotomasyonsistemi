@@ -64,7 +64,7 @@ class LogoCollectionExportApiTest extends TestCase
             'is_active' => true,
         ]);
 
-        Collection::query()->create([
+        $exportableCollection = Collection::query()->create([
             'dealer_id' => $dealer->id,
             'customer_id' => $logoCustomer->id,
             'source_system' => 'b2b',
@@ -130,7 +130,7 @@ class LogoCollectionExportApiTest extends TestCase
             ->assertJsonPath('records.0.collection_id', 1)
             ->assertJsonPath('records.0.customer_code', 'CR-1001')
             ->assertJsonPath('records.0.customer_external_ref', '1001')
-            ->assertJsonPath('records.0.export_key', 'B2B-COL-1')
+            ->assertJsonPath('records.0.export_key', $exportableCollection->logoExportKey())
             ->assertJsonPath('records.0.cashbox_id', $cashbox->id)
             ->assertJsonPath('records.0.cashbox_code', '100.01.002')
             ->assertJsonPath('records.0.cashbox_name', 'Ahmet Arac Kasasi')
@@ -157,7 +157,7 @@ class LogoCollectionExportApiTest extends TestCase
             'is_active' => true,
         ]);
 
-        Collection::query()->create([
+        $collection = Collection::query()->create([
             'dealer_id' => $dealer->id,
             'customer_id' => $customer->id,
             'source_system' => 'b2b',
@@ -178,7 +178,7 @@ class LogoCollectionExportApiTest extends TestCase
             ->assertJsonPath('received', 1)
             ->assertJsonPath('records.0.customer_code', 'CR-1002')
             ->assertJsonPath('records.0.customer_external_ref', null)
-            ->assertJsonPath('records.0.export_key', 'B2B-COL-1');
+            ->assertJsonPath('records.0.export_key', $collection->logoExportKey());
     }
 
     public function test_logo_collection_pending_maps_local_point_cashbox_to_logo_cashbox(): void

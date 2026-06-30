@@ -124,7 +124,7 @@ class LogoOrderExportService
                 error: $status === 'failed' ? $error : null,
                 meta: [
                     'acknowledged' => true,
-                    'export_key' => 'B2B-ORDER-'.$order->id,
+                    'export_key' => $order->logoExportKey(),
                     'payload' => is_array($record['meta'] ?? null) ? $record['meta'] : [],
                 ],
                 payload: $record,
@@ -147,7 +147,7 @@ class LogoOrderExportService
 
         return [
             'order_id' => $order->id,
-            'export_key' => 'B2B-ORDER-'.$order->id,
+            'export_key' => $order->logoExportKey(),
             'dealer_id' => $order->dealer_id,
             'dealer_code' => $order->dealer?->code,
             'customer_id' => $order->customer_id,

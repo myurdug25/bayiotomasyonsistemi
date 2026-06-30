@@ -174,7 +174,7 @@ class CatalogController extends Controller
                 'net_price' => DisplayCurrency::formatPrice($rawNetPrice, $sourceCurrency, $user),
                 'list_price' => DisplayCurrency::formatPrice($rawListPrice, $sourceCurrency, $user),
                 'currency' => DisplayCurrency::normalize($sourceCurrency, $user),
-                'available_total' => (int) $item->available_total,
+                'available_total' => max(0, (int) $item->available_total),
             ];
 
             if ($includeCreatedAt) {

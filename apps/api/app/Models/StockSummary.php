@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -43,6 +44,22 @@ class StockSummary extends Model
             'reserved_total' => 'integer',
             'updated_at' => 'datetime',
         ];
+    }
+
+    protected function availableTotal(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value): int => max(0, (int) $value),
+            set: fn (mixed $value): int => max(0, (int) $value),
+        );
+    }
+
+    protected function reservedTotal(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value): int => max(0, (int) $value),
+            set: fn (mixed $value): int => max(0, (int) $value),
+        );
     }
 
     public function product(): BelongsTo

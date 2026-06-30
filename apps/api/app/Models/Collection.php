@@ -74,4 +74,11 @@ class Collection extends Model
     {
         return $this->hasMany(LedgerEntry::class);
     }
+
+    public function logoExportKey(): string
+    {
+        $createdAt = $this->created_at?->format('YmdHisv') ?? 'unknown';
+
+        return "B2B-COL-{$this->id}-{$createdAt}";
+    }
 }

@@ -638,7 +638,24 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('data.0.order_no', 'ORD-BARCODE-LOOKUP');
     }
 
-    public function test_shipped_order_remains_in_ready_list_and_exposes_its_shipment(): void
+    public function test_ready_order_preserves_checkout_warehouse_selection(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-PREFERRED');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-WH-PREFERRED',
+            'note' => 'Cari hesap · Depo transfer: ERZURUM DEPO · Kod: 1',
+        ]);
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-PREFERRED')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $ctx['order']->id)
+            ->assertJsonPath('data.0.preferred_warehouse_code', '1');
+    }
+
+    public function test_shipped_order_is_hidden_from_ready_list(): void
     {
         $dealer = $this->createDealer('DLR-WH-SHIPPED');
         $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
@@ -659,10 +676,7 @@ class WarehouseShipmentApiTest extends TestCase
 
         $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-SHIPPED')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $ctx['order']->id)
-            ->assertJsonPath('data.0.shipment.id', $shipment->id)
-            ->assertJsonPath('data.0.shipment.status', 'shipped');
+            ->assertJsonCount(0, 'data');
     }
 
     public function test_warehouse_user_can_view_order_detail_in_scope(): void
@@ -1216,7 +1230,7 @@ class WarehouseShipmentApiTest extends TestCase
         $this->assertSame(0, (int) $stock->reserved_total);
     }
 
-    public function test_finalize_rejects_incomplete_shipment_with_stock_warning(): void
+    public function test_finalize_invoices_available_stock_and_marks_remainder_as_balance(): void
     {
         $dealer = $this->createDealer('DLR-FIN-INCOMPLETE');
         $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
@@ -1243,21 +1257,29 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('data.remaining_items.0.remaining_qty', 1);
 
         $this->postJson("/api/warehouse/shipments/{$shipmentId}/finalize")
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['stock'])
-            ->assertJsonPath(
-                'errors.stock.0',
-                "Fatura kesilemez. Eksik veya stokta olmayan urunler var: {$ctx['product']->sku} (eksik: 1)"
-            );
+            ->assertOk()
+            ->assertJsonPath('data.shipment.status', 'partially_shipped')
+            ->assertJsonPath('data.shipment.order.status', 'balance')
+            ->assertJsonPath('data.totals.shipped_qty_total', 2)
+            ->assertJsonPath('data.totals.remaining_qty_total', 1);
 
         $this->assertDatabaseHas('shipments', [
             'id' => $shipmentId,
-            'status' => 'picking',
+            'status' => 'partially_shipped',
         ]);
-        $this->assertDatabaseMissing('stock_movements', [
+        $this->assertDatabaseHas('orders', [
+            'id' => $ctx['order']->id,
+            'status' => 'balance',
+        ]);
+        $this->assertDatabaseHas('stock_movements', [
             'source' => 'shipment',
             'source_id' => $shipmentId,
+            'qty' => '2.000',
         ]);
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-FIN-INCOMPLETE')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
     }
 
     public function test_finalize_rechecks_and_decrements_selected_warehouse_stock(): void
@@ -1540,7 +1562,7 @@ class WarehouseShipmentApiTest extends TestCase
             'grand_total' => $subtotal + $vatTotal,
             'ordered_at' => Carbon::now()->subMinute(),
             'approved_at' => $status === 'approved' ? Carbon::now() : null,
-            'note' => 'Warehouse order test',
+            'note' => (string) ($overrides['note'] ?? 'Warehouse order test'),
         ]);
 
         $orderItem = OrderItem::query()->create([

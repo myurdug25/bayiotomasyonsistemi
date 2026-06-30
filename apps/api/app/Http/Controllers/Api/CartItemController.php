@@ -109,8 +109,9 @@ class CartItemController extends Controller
                 ->find($productId);
 
             if ($product && $product->stockSummary) {
-                $available = (int) $product->stockSummary->available_total;
-                if ($quantity > $available) {
+                $available = max(0, (int) $product->stockSummary->available_total);
+                $allowsBackorder = $forceWarehouseTransfer || (bool) $cart->is_warehouse_transfer;
+                if (! $allowsBackorder && $quantity > $available) {
                     throw ValidationException::withMessages([
                         'quantity' => ["Stok yetersiz. Bu üründen en fazla {$available} adet alabilirsiniz."],
                     ]);
@@ -213,8 +214,8 @@ class CartItemController extends Controller
             'sku' => $item->product?->sku,
             'name' => $item->product?->name,
             'brand' => $item->product?->brand?->name,
-            'stock' => (int) ($item->product?->stockSummary?->available_total ?? 0),
-            'available_total' => (int) ($item->product?->stockSummary?->available_total ?? 0),
+            'stock' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
+            'available_total' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
             'qty' => $item->quantity,
             'quantity' => $item->quantity,
             'unit_price' => $item->unit_net_price,

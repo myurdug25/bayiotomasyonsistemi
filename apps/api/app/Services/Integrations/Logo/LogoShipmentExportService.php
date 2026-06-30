@@ -196,7 +196,7 @@ class LogoShipmentExportService
             'ledger_modulenr' => 4,
             'ledger_trcode' => 38,
             'target_tables' => ['INVOICE', 'STFICHE', 'STLINE', 'CLFLINE'],
-            'order_export_key' => $order ? 'B2B-ORDER-'.$order->id : null,
+            'order_export_key' => $order?->logoExportKey(),
         ];
 
         return [

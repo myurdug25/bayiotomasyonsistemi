@@ -95,7 +95,10 @@ export function WarehouseShipmentNewPage() {
       return;
     }
 
-    const firstLogoWarehouse = logoWarehouseOptions.find((warehouse) => warehouse.missing_quantity === 0)
+    const firstLogoWarehouse = logoWarehouseOptions.find(
+      (warehouse) => warehouse.warehouse_code === selectedOrder.preferred_warehouse_code
+    )
+      ?? logoWarehouseOptions.find((warehouse) => warehouse.missing_quantity === 0)
       ?? logoWarehouseOptions[0];
 
     if (firstLogoWarehouse) {

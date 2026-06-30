@@ -70,7 +70,7 @@ class LogoDocumentExportApiTest extends TestCase
             'dealer_id' => $dealer->id,
             'customer_id' => $customer->id,
             'status' => 'queued',
-            'meta' => ['export_key' => 'B2B-ORDER-'.$order->id],
+            'meta' => ['export_key' => $order->logoExportKey()],
         ]);
 
         $warehouse = Warehouse::query()->create([

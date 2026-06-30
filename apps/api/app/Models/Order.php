@@ -100,4 +100,9 @@ class Order extends Model
                 fn ($query) => $query->where('status', '!=', 'cancelled')
             );
     }
+
+    public function logoExportKey(): string
+    {
+        return 'B2B-ORDER-'.$this->order_no;
+    }
 }

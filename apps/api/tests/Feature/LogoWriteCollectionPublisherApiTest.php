@@ -73,6 +73,13 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('collection.sync_status', 'pending');
 
+        $ledgerEntry = LedgerEntry::query()
+            ->where('collection_id', $collection->id)
+            ->firstOrFail();
+        $this->assertSame('150.00', (string) $ledgerEntry->credit);
+        $this->assertSame($cashbox->id, (int) data_get($ledgerEntry->meta, 'cashbox_id'));
+        $this->assertSame($user->id, (int) $ledgerEntry->created_by_user_id);
+
         $state = IntegrationSyncState::query()
             ->where('system', 'logo')
             ->where('domain', 'collections-write')

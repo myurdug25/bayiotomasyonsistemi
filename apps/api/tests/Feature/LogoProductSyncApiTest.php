@@ -373,7 +373,7 @@ class LogoProductSyncApiTest extends TestCase
         $this->assertSame(1, Product::query()->count());
     }
 
-    public function test_logo_product_sync_accepts_negative_real_stock(): void
+    public function test_logo_product_sync_clamps_negative_real_stock_to_zero(): void
     {
         Product::query()->create([
             'sku' => 'PWS-3A760',
@@ -406,7 +406,7 @@ class LogoProductSyncApiTest extends TestCase
 
         $this->assertDatabaseHas('stock_summary', [
             'product_id' => $product->id,
-            'available_total' => -229,
+            'available_total' => 0,
             'reserved_total' => 0,
         ]);
     }

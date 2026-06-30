@@ -375,7 +375,7 @@ class CustomerCollectionController extends Controller
                 'customer_id' => $customer->id,
                 'source_system' => 'b2b',
                 'source_reference' => null,
-                'sync_status' => $requiresManagerApproval ? 'reviewing' : 'pending',
+                'sync_status' => $requiresManagerApproval ? 'reviewing' : 'draft',
                 'sync_error' => null,
                 'last_synced_at' => null,
                 'collected_by_user_id' => $user->id,
@@ -517,7 +517,7 @@ class CustomerCollectionController extends Controller
 
         return response()->json([
             'collection' => new CollectionResource($collection->fresh()),
-            'message' => 'Tahsilat gönderim kuyruğuna alındı.',
+            'message' => 'Tahsilat Logo’ya gönderiliyor.',
         ]);
     }
 
@@ -595,7 +595,7 @@ class CustomerCollectionController extends Controller
                 'queued' => $sendableCollections->count(),
                 'skipped' => $collections->count() - $sendableCollections->count(),
             ],
-            'message' => 'Tahsilatlar gönderim kuyruğuna alındı.',
+            'message' => 'Tahsilatlar Logo’ya gönderiliyor.',
         ]);
     }
 
@@ -812,7 +812,11 @@ class CustomerCollectionController extends Controller
         $configuredName = $this->nullableString($user->logo_cashbox_name);
 
         if ($configuredCode === null) {
-            return null;
+            throw ValidationException::withMessages([
+                'cashbox' => [
+                    'Bu plasiyer icin Logo kasa kodu tanimli degil. Tahsilat gondermeden once kullanici-kasa eslestirmesini tamamlayin.',
+                ],
+            ]);
         }
 
         return $this->resolveCashboxByCode(

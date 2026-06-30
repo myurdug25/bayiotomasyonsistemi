@@ -199,7 +199,7 @@ class LogoCollectionExportService
 
         return [
             'collection_id' => $collection->id,
-            'export_key' => 'B2B-COL-'.$collection->id,
+            'export_key' => $collection->logoExportKey(),
             'dealer_id' => $collection->dealer_id,
             'customer_id' => $collection->customer_id,
             'customer_code' => $customer?->code,
