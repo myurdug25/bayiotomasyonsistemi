@@ -39,7 +39,7 @@ class OrderListItemResource extends JsonResource
             'id' => $this->id,
             'order_id' => $this->id,
             'order_no' => $this->order_no,
-            'status' => $this->status,
+            'status' => $this->status === 'partially_shipped' ? 'balance' : $this->status,
             'dealer_id' => $this->dealer_id,
             'customer_id' => $this->customer_id,
             'customer' => [

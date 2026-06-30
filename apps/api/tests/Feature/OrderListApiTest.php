@@ -104,6 +104,28 @@ class OrderListApiTest extends TestCase
             ->assertJsonPath('data.0.customer.title', 'Beta Lastik');
     }
 
+    public function test_legacy_partial_shipment_is_listed_as_balance(): void
+    {
+        $dealer = $this->createDealer('DLR-ORD-BAL');
+        $sales = $this->createUserWithRole('salesperson', $dealer);
+
+        $this->createOrder($dealer, $sales, [
+            'order_no' => 'ORD-BAL-001',
+            'status' => 'partially_shipped',
+            'quantity' => 3,
+            'shipped_qty' => 2,
+        ]);
+
+        $this->actingAs($sales);
+
+        $this->getJson('/api/orders?status=balance')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.order_no', 'ORD-BAL-001')
+            ->assertJsonPath('data.0.status', 'balance')
+            ->assertJsonPath('data.0.remaining_quantity', 1);
+    }
+
     public function test_orders_list_returns_totals_and_timeline_summary(): void
     {
         $dealer = $this->createDealer('DLR-ORD-SUM');

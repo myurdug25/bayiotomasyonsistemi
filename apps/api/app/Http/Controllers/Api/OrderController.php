@@ -94,7 +94,11 @@ class OrderController extends Controller
         }
 
         if ($statuses !== []) {
-            $query->whereIn('status', $statuses);
+            $queryStatuses = $statuses;
+            if (in_array('balance', $statuses, true)) {
+                $queryStatuses[] = 'partially_shipped';
+            }
+            $query->whereIn('status', array_values(array_unique($queryStatuses)));
         }
 
         if ($q !== '') {
@@ -561,7 +565,7 @@ class OrderController extends Controller
             'order' => [
                 'id' => $order->id,
                 'order_no' => $order->order_no,
-                'status' => $order->status,
+                'status' => $order->status === 'partially_shipped' ? 'balance' : $order->status,
                 'dealer_id' => $order->dealer_id,
                 'customer_id' => $order->customer_id,
                 'currency' => $order->currency,
