@@ -60,4 +60,9 @@ class Shipment extends Model
     {
         return $this->hasMany(ShipmentScan::class);
     }
+
+    public function logoExportKey(): string
+    {
+        return 'B2B-SHIP-'.$this->shipment_no;
+    }
 }

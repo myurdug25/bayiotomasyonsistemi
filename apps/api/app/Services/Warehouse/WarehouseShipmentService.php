@@ -901,10 +901,54 @@ class WarehouseShipmentService
                 ]);
             }
 
+            $incompleteItems = $model->items
+                ->filter(fn (ShipmentItem $item): bool => (int) $item->shipped_qty < (int) $item->ordered_qty)
+                ->map(function (ShipmentItem $item): string {
+                    $missingQty = max(0, (int) $item->ordered_qty - (int) $item->shipped_qty);
+                    $label = trim((string) ($item->product?->sku ?: $item->product?->name ?: 'Urun'));
+
+                    return "{$label} (eksik: {$missingQty})";
+                })
+                ->values()
+                ->all();
+
+            if ($incompleteItems !== []) {
+                throw ValidationException::withMessages([
+                    'stock' => [
+                        'Fatura kesilemez. Eksik veya stokta olmayan urunler var: '.implode(', ', $incompleteItems),
+                    ],
+                ]);
+            }
+
             foreach ($model->items as $item) {
                 $qty = (int) $item->shipped_qty;
                 if ($qty <= 0) {
                     continue;
+                }
+
+                $product = Product::query()
+                    ->lockForUpdate()
+                    ->find($item->product_id);
+
+                if (! $product instanceof Product) {
+                    throw ValidationException::withMessages([
+                        'stock' => ["Urun bulunamadi (product_id={$item->product_id})."],
+                    ]);
+                }
+
+                $warehouseAvailable = $this->resolveProductWarehouseAvailableTotal(
+                    $product,
+                    $model->warehouse?->code
+                );
+
+                if ($warehouseAvailable < $qty) {
+                    $label = trim((string) ($product->sku ?: $product->name ?: "product_id={$item->product_id}"));
+
+                    throw ValidationException::withMessages([
+                        'stock' => [
+                            "Fatura kesilemez. {$label} icin secili depoda yeterli stok yok (mevcut: {$warehouseAvailable}, istenen: {$qty}).",
+                        ],
+                    ]);
                 }
 
                 $stock = StockSummary::query()
@@ -932,6 +976,12 @@ class WarehouseShipmentService
                 $stock->available_total = (int) $stock->available_total - $availableToConsume;
                 $stock->updated_at = now();
                 $stock->save();
+
+                $this->adjustProductWarehouseAvailableTotal(
+                    $product,
+                    $model->warehouse?->code,
+                    -$qty
+                );
 
                 StockMovement::create([
                     'product_id' => $item->product_id,
@@ -982,7 +1032,7 @@ class WarehouseShipmentService
                 status: 'queued',
                 error: null,
                 meta: [
-                    'export_key' => 'B2B-SHIP-'.$model->id,
+                    'export_key' => $model->logoExportKey(),
                     'shipment_no' => $model->shipment_no,
                     'order_id' => $model->order_id,
                     'order_no' => $model->order?->order_no,
@@ -1094,6 +1144,18 @@ class WarehouseShipmentService
                     $stock->reserved_total = (int) $stock->reserved_total + $qty;
                     $stock->updated_at = now();
                     $stock->save();
+
+                    $product = Product::query()
+                        ->lockForUpdate()
+                        ->find($item->product_id);
+
+                    if ($product instanceof Product) {
+                        $this->adjustProductWarehouseAvailableTotal(
+                            $product,
+                            $model->warehouse?->code,
+                            $qty
+                        );
+                    }
 
                     StockMovement::create([
                         'product_id' => $item->product_id,
@@ -1638,6 +1700,62 @@ class WarehouseShipmentService
         }
 
         return (int) ($product?->stockSummary?->available_total ?? 0);
+    }
+
+    private function adjustProductWarehouseAvailableTotal(
+        Product $product,
+        ?string $warehouseCode,
+        int $delta
+    ): void {
+        $normalizedWarehouseCode = trim((string) $warehouseCode);
+        if ($normalizedWarehouseCode === '' || $delta === 0) {
+            return;
+        }
+
+        $meta = is_array($product->meta) ? $product->meta : [];
+        $warehouses = data_get($meta, 'integrations.logo.payload.logo_stock.warehouses');
+        if (! is_array($warehouses)) {
+            return;
+        }
+
+        $changed = false;
+
+        foreach ($warehouses as $index => $warehouse) {
+            if (! is_array($warehouse)) {
+                continue;
+            }
+
+            $code = $this->firstArrayScalar($warehouse, [
+                'warehouse_code',
+                'branch_code',
+                'code',
+                'invenno',
+                'warehouse_no',
+            ]);
+
+            if ($code !== $normalizedWarehouseCode) {
+                continue;
+            }
+
+            $current = $this->firstIntegerValue($warehouse, [
+                'available_total',
+                'available',
+                'onhand_total',
+                'onhand',
+                'stock',
+                'quantity',
+            ]);
+            $warehouses[$index]['available_total'] = max(0, $current + $delta);
+            $changed = true;
+            break;
+        }
+
+        if (! $changed) {
+            return;
+        }
+
+        data_set($meta, 'integrations.logo.payload.logo_stock.warehouses', $warehouses);
+        $product->forceFill(['meta' => $meta])->save();
     }
 
     /**

@@ -106,7 +106,7 @@ class LogoDocumentExportApiTest extends TestCase
             'entity_type' => Shipment::class,
             'entity_id' => $shipment->id,
             'status' => 'queued',
-            'meta' => ['export_key' => 'B2B-SHIP-'.$shipment->id],
+            'meta' => ['export_key' => $shipment->logoExportKey()],
         ]);
 
         $returnRequest = ReturnRequest::query()->create([
@@ -198,6 +198,7 @@ class LogoDocumentExportApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('received', 1)
             ->assertJsonPath('records.0.shipment_id', $shipment->id)
+            ->assertJsonPath('records.0.export_key', 'B2B-SHIP-SHP-DOC-001')
             ->assertJsonPath('records.0.warehouse_code', '01')
             ->assertJsonPath('records.0.items.0.shipped_qty', 2)
             ->assertJsonPath('records.0.logo.document_type', 'wholesale_sales_invoice')

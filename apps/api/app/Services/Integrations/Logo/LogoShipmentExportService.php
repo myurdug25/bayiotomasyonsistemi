@@ -127,7 +127,7 @@ class LogoShipmentExportService
                 error: $status === 'failed' ? $error : null,
                 meta: [
                     'acknowledged' => true,
-                    'export_key' => 'B2B-SHIP-'.$shipment->id,
+                    'export_key' => $shipment->logoExportKey(),
                     'payload' => is_array($record['meta'] ?? null) ? $record['meta'] : [],
                 ],
                 payload: $record,
@@ -201,7 +201,7 @@ class LogoShipmentExportService
 
         return [
             'shipment_id' => $shipment->id,
-            'export_key' => 'B2B-SHIP-'.$shipment->id,
+            'export_key' => $shipment->logoExportKey(),
             'dealer_id' => $order?->dealer_id,
             'dealer_code' => $order?->dealer?->code,
             'order_id' => $shipment->order_id,

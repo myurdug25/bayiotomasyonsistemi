@@ -1216,6 +1216,119 @@ class WarehouseShipmentApiTest extends TestCase
         $this->assertSame(0, (int) $stock->reserved_total);
     }
 
+    public function test_finalize_rejects_incomplete_shipment_with_stock_warning(): void
+    {
+        $dealer = $this->createDealer('DLR-FIN-INCOMPLETE');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-FIN-INCOMPLETE',
+            'quantity' => 3,
+            'stock_available' => 2,
+            'stock_reserved' => 0,
+        ]);
+
+        $shipmentId = (int) $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+        ])->json('data.shipment.id');
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/scan", [
+            'barcode' => $ctx['product']->sku,
+            'qty' => 3,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.shipped_items.0.shipped_qty', 2)
+            ->assertJsonPath('data.remaining_items.0.remaining_qty', 1);
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/finalize")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['stock'])
+            ->assertJsonPath(
+                'errors.stock.0',
+                "Fatura kesilemez. Eksik veya stokta olmayan urunler var: {$ctx['product']->sku} (eksik: 1)"
+            );
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $shipmentId,
+            'status' => 'picking',
+        ]);
+        $this->assertDatabaseMissing('stock_movements', [
+            'source' => 'shipment',
+            'source_id' => $shipmentId,
+        ]);
+    }
+
+    public function test_finalize_rechecks_and_decrements_selected_warehouse_stock(): void
+    {
+        $dealer = $this->createDealer('DLR-FIN-WAREHOUSE-STOCK');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-FIN-WAREHOUSE-STOCK',
+            'quantity' => 2,
+            'stock_available' => 12,
+            'stock_reserved' => 2,
+            'warehouse_code' => '0',
+            'product_meta' => [
+                'barcode' => 'BC-FIN-WAREHOUSE-STOCK',
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'logo_stock' => [
+                                'warehouses' => [
+                                    [
+                                        'warehouse_code' => '0',
+                                        'warehouse_name' => 'ERZURUM POINT',
+                                        'available_total' => 2,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $shipmentId = (int) $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+        ])->json('data.shipment.id');
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/scan", [
+            'barcode' => $ctx['product']->sku,
+            'qty' => 2,
+        ])->assertOk();
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/finalize")
+            ->assertOk()
+            ->assertJsonPath('data.shipment.status', 'shipped');
+
+        $ctx['product']->refresh();
+        $this->assertSame(
+            0,
+            (int) data_get(
+                $ctx['product']->meta,
+                'integrations.logo.payload.logo_stock.warehouses.0.available_total'
+            )
+        );
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/cancel")
+            ->assertOk()
+            ->assertJsonPath('data.shipment.status', 'cancelled');
+
+        $ctx['product']->refresh();
+        $this->assertSame(
+            2,
+            (int) data_get(
+                $ctx['product']->meta,
+                'integrations.logo.payload.logo_stock.warehouses.0.available_total'
+            )
+        );
+    }
+
     public function test_scan_caps_full_row_pick_to_available_stock_and_keeps_remainder(): void
     {
         $dealer = $this->createDealer('DLR-WH-STOCK-CAP');
@@ -1301,10 +1414,12 @@ class WarehouseShipmentApiTest extends TestCase
 
         Http::assertSent(function ($request): bool {
             $payload = $request->data();
+            $shipment = Shipment::query()->findOrFail((int) data_get($payload, 'record.shipment_id'));
 
             return $request->url() === 'https://logo-bridge.test/shipments/export'
                 && $request->hasHeader('Authorization', 'Bearer test-token')
                 && data_get($payload, 'record.shipment_id') !== null
+                && data_get($payload, 'record.export_key') === $shipment->logoExportKey()
                 && data_get($payload, 'record.logo.document_type') === 'wholesale_sales_invoice'
                 && data_get($payload, 'record.logo.ledger_trcode') === 38;
         });
@@ -1403,7 +1518,7 @@ class WarehouseShipmentApiTest extends TestCase
                 'name' => (string) ($overrides['product_name'] ?? 'Warehouse Test Product'),
                 'vat_rate' => $vatRate,
                 'is_active' => true,
-                'meta' => [
+                'meta' => $overrides['product_meta'] ?? [
                     'barcode' => (string) ($overrides['barcode'] ?? ('BC-'.Str::upper(Str::random(8)))),
                 ],
             ]);

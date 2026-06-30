@@ -64,7 +64,7 @@ class LogoShipmentImmediateExportService
                 'external_ref' => $externalRef,
                 'error' => $error,
                 'meta' => [
-                    'export_key' => $record['export_key'] ?? 'B2B-SHIP-'.$shipment->getKey(),
+                    'export_key' => $record['export_key'] ?? $shipment->logoExportKey(),
                     'immediate_export' => true,
                     'bridge' => is_array(data_get($body, 'meta')) ? data_get($body, 'meta') : [],
                 ],
@@ -102,7 +102,7 @@ class LogoShipmentImmediateExportService
                 'external_ref' => null,
                 'error' => $message,
                 'meta' => [
-                    'export_key' => $record['export_key'] ?? 'B2B-SHIP-'.$shipment->getKey(),
+                    'export_key' => $record['export_key'] ?? $shipment->logoExportKey(),
                     'immediate_export' => true,
                 ],
             ]],

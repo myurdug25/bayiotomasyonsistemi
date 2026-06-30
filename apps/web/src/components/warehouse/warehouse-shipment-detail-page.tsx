@@ -564,6 +564,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
     },
   });
 
