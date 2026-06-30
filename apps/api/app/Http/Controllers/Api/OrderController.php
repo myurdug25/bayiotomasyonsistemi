@@ -99,11 +99,11 @@ class OrderController extends Controller
 
         if ($q !== '') {
             $query->where(function (Builder $builder) use ($q): void {
-                $builder->where('order_no', 'ilike', "%{$q}%")
+                $builder->whereLike('order_no', "%{$q}%", caseSensitive: false)
                     ->orWhereHas('customer', function (Builder $customerQuery) use ($q): void {
                         $customerQuery
-                            ->where('code', 'ilike', "{$q}%")
-                            ->orWhere('name', 'ilike', "%{$q}%");
+                            ->whereLike('code', "{$q}%", caseSensitive: false)
+                            ->orWhereLike('name', "%{$q}%", caseSensitive: false);
                     });
             });
         }

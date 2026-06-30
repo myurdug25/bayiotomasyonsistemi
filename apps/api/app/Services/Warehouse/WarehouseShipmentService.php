@@ -918,6 +918,12 @@ class WarehouseShipmentService
                 }
 
                 $totalPhysical = (int) $stock->available_total + (int) $stock->reserved_total;
+                if ($totalPhysical < $qty) {
+                    throw ValidationException::withMessages([
+                        'stock' => ["Yetersiz toplam stok (product_id={$item->product_id})."],
+                    ]);
+                }
+
                 // Siparişin sevk edilen miktarını rezerve stoktan düş, yetmezse available'dan düş.
                 $reserveToConsume = min((int) $stock->reserved_total, $qty);
                 $availableToConsume = max(0, $qty - $reserveToConsume);

@@ -6,9 +6,9 @@ const ssh = new NodeSSH();
 async function run() {
   try {
     await ssh.connect({
-      host: '62.72.20.30',
-      username: 'root',
-      password: 'Bilekpay.x4322'
+      host: process.env.POWERSA_SSH_HOST,
+      username: process.env.POWERSA_SSH_USER ?? 'root',
+      password: process.env.POWERSA_SSH_PASSWORD
     });
     
     const scriptContent = fs.readFileSync('tools/logo-sync/update_customer_salespersons.php', 'utf8');

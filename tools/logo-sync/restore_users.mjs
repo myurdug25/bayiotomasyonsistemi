@@ -97,9 +97,9 @@ const ssh = new NodeSSH();
 async function check() {
   try {
     await ssh.connect({
-      host: '62.72.20.30',
-      username: 'root',
-      password: 'Bilekpay.x4322'
+      host: process.env.POWERSA_SSH_HOST,
+      username: process.env.POWERSA_SSH_USER ?? 'root',
+      password: process.env.POWERSA_SSH_PASSWORD
     });
     
     fs.writeFileSync('restore_users.php', scriptContent);

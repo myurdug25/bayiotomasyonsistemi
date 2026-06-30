@@ -66,8 +66,8 @@ class CustomerUserController extends Controller
         if ($search !== '') {
             $query->where(function (Builder $builder) use ($search): void {
                 $builder
-                    ->where('code', 'ilike', "{$search}%")
-                    ->orWhere('name', 'ilike', "%{$search}%");
+                    ->whereLike('code', "{$search}%", caseSensitive: false)
+                    ->orWhereLike('name', "%{$search}%", caseSensitive: false);
             });
         }
 

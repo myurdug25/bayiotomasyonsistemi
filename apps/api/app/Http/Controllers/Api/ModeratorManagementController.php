@@ -125,12 +125,12 @@ class ModeratorManagementController extends Controller
 
                     $query->where(function ($searchQuery) use ($like): void {
                         $searchQuery
-                            ->where('code', 'ilike', $like)
-                            ->orWhere('name', 'ilike', $like)
-                            ->orWhere('contact_name', 'ilike', $like)
-                            ->orWhere('phone', 'ilike', $like)
-                            ->orWhere('city', 'ilike', $like)
-                            ->orWhere('district', 'ilike', $like);
+                            ->whereLike('code', $like, caseSensitive: false)
+                            ->orWhereLike('name', $like, caseSensitive: false)
+                            ->orWhereLike('contact_name', $like, caseSensitive: false)
+                            ->orWhereLike('phone', $like, caseSensitive: false)
+                            ->orWhereLike('city', $like, caseSensitive: false)
+                            ->orWhereLike('district', $like, caseSensitive: false);
                     });
                 })
                 ->with([

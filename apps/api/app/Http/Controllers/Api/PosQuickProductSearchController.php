@@ -9,6 +9,7 @@ use App\Models\Dealer;
 use App\Models\PriceList;
 use App\Models\Product;
 use App\Models\ProductCodeAlias;
+use App\Models\User;
 use App\Support\CustomerFeaturePermissions;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
@@ -181,11 +182,11 @@ class PosQuickProductSearchController extends Controller
 
         $query->where(function (Builder $builder) use ($prefix, $contains, $normalizedSearch) {
             $builder
-                ->where('products.sku', 'ilike', $prefix)
-                ->orWhere('products.oem_code', 'ilike', $prefix)
-                ->orWhere('products.sku', 'ilike', $contains)
-                ->orWhere('products.oem_code', 'ilike', $contains)
-                ->orWhere('products.name', 'ilike', $contains);
+                ->whereLike('products.sku', $prefix, caseSensitive: false)
+                ->orWhereLike('products.oem_code', $prefix, caseSensitive: false)
+                ->orWhereLike('products.sku', $contains, caseSensitive: false)
+                ->orWhereLike('products.oem_code', $contains, caseSensitive: false)
+                ->orWhereLike('products.name', $contains, caseSensitive: false);
 
             $this->applyNormalizedProductCodeSearchConstraint($builder, $normalizedSearch);
             $this->applyCodeAliasSearchConstraint($builder, $normalizedSearch);
@@ -326,7 +327,7 @@ class PosQuickProductSearchController extends Controller
      * @param  Collection<int, mixed>  $items
      * @return Collection<int, array<string, mixed>>
      */
-    private function mapProducts(Collection $items, CacheRepository $cache, int $dealerId, \App\Models\User $user, ?array $stockScope): Collection
+    private function mapProducts(Collection $items, CacheRepository $cache, int $dealerId, User $user, ?array $stockScope): Collection
     {
         $productIds = $items
             ->pluck('id')
@@ -1131,8 +1132,8 @@ class PosQuickProductSearchController extends Controller
                 ->where(function ($aliasQuery) use ($normalizedSearch): void {
                     $aliasQuery
                         ->where('pca.normalized_code', $normalizedSearch)
-                        ->orWhere('pca.normalized_code', 'ilike', $normalizedSearch.'%')
-                        ->orWhere('pca.normalized_code', 'ilike', '%'.$normalizedSearch.'%');
+                        ->orWhereLike('pca.normalized_code', $normalizedSearch.'%', caseSensitive: false)
+                        ->orWhereLike('pca.normalized_code', '%'.$normalizedSearch.'%', caseSensitive: false);
                 });
         });
     }
@@ -1147,8 +1148,8 @@ class PosQuickProductSearchController extends Controller
             $codeQuery
                 ->where('products.sku', $search)
                 ->orWhere('products.oem_code', $search)
-                ->orWhere('products.sku', 'ilike', $prefix)
-                ->orWhere('products.oem_code', 'ilike', $prefix);
+                ->orWhereLike('products.sku', $prefix, caseSensitive: false)
+                ->orWhereLike('products.oem_code', $prefix, caseSensitive: false);
 
             if ($normalizedSearch !== null) {
                 $normalizedPrefix = $normalizedSearch.'%';
@@ -1156,8 +1157,8 @@ class PosQuickProductSearchController extends Controller
                 $codeQuery
                     ->orWhere('products.sku', $normalizedSearch)
                     ->orWhere('products.oem_code', $normalizedSearch)
-                    ->orWhere('products.sku', 'ilike', $normalizedPrefix)
-                    ->orWhere('products.oem_code', 'ilike', $normalizedPrefix)
+                    ->orWhereLike('products.sku', $normalizedPrefix, caseSensitive: false)
+                    ->orWhereLike('products.oem_code', $normalizedPrefix, caseSensitive: false)
                     ->orWhereExists(function ($query) use ($normalizedSearch): void {
                         $query->selectRaw('1')
                             ->from('product_code_aliases as pca')
@@ -1165,7 +1166,7 @@ class PosQuickProductSearchController extends Controller
                             ->where(function ($aliasQuery) use ($normalizedSearch): void {
                                 $aliasQuery
                                     ->where('pca.normalized_code', $normalizedSearch)
-                                    ->orWhere('pca.normalized_code', 'ilike', $normalizedSearch.'%');
+                                    ->orWhereLike('pca.normalized_code', $normalizedSearch.'%', caseSensitive: false);
                             });
                     });
             }
@@ -1240,7 +1241,7 @@ class PosQuickProductSearchController extends Controller
     private function applyLogoPayloadCodeSearchConstraint(Builder $builder, string $contains): void
     {
         foreach (self::LOGO_CODE_SEARCH_PATHS as $path) {
-            $builder->orWhere($path, 'ilike', $contains);
+            $builder->orWhereLike($path, $contains, caseSensitive: false);
         }
     }
 
@@ -1249,7 +1250,7 @@ class PosQuickProductSearchController extends Controller
         foreach (self::LOGO_CODE_SEARCH_PATHS as $path) {
             $builder
                 ->orWhere($path, $search)
-                ->orWhere($path, 'ilike', $prefix);
+                ->orWhereLike($path, $prefix, caseSensitive: false);
         }
     }
 

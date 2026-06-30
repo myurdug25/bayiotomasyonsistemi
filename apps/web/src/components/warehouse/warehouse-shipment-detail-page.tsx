@@ -776,10 +776,6 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
 
   const shipment = shipmentState.shipment;
   const orderTotal = shipment.order.grand_total ?? shipmentState.totals.gonderilen_tutar;
-  const shipmentItemCount = new Set([
-    ...shipmentState.remaining_items.map((item) => item.id),
-    ...shipmentState.shipped_items.map((item) => item.id),
-  ]).size;
   const hasShippedRows = shipmentState.shipped_items.length > 0;
   const canReturnAll = !isReadOnly && hasShippedRows && !returnAllItemsMutation.isPending;
   const customer = shipment.order.customer;

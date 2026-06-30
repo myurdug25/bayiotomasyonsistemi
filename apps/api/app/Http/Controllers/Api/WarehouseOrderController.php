@@ -40,6 +40,8 @@ class WarehouseOrderController extends Controller
                 'items:id,order_id,product_id,quantity,shipped_qty',
                 'items.product:id,sku,name,meta',
                 'items.product.stockSummary:product_id,available_total,reserved_total,updated_at',
+                'latestActiveShipment' => fn ($shipmentQuery) => $shipmentQuery
+                    ->select(['shipments.id', 'shipments.order_id', 'shipments.status']),
                 'user:id,name',
                 'user.roles:id,slug,name',
             ])
@@ -104,15 +106,15 @@ class WarehouseOrderController extends Controller
             $query->where(function (Builder $builder) use ($q): void {
                 if (ctype_digit($q)) {
                     $builder->whereKey((int) $q)
-                        ->orWhere('order_no', 'ilike', "%{$q}%");
+                        ->orWhereLike('order_no', "%{$q}%", caseSensitive: false);
                 } else {
-                    $builder->where('order_no', 'ilike', "%{$q}%");
+                    $builder->whereLike('order_no', "%{$q}%", caseSensitive: false);
                 }
 
                 $builder->orWhereHas('customer', function (Builder $customerQuery) use ($q): void {
                     $customerQuery
-                        ->where('code', 'ilike', "%{$q}%")
-                        ->orWhere('name', 'ilike', "%{$q}%");
+                        ->whereLike('code', "%{$q}%", caseSensitive: false)
+                        ->orWhereLike('name', "%{$q}%", caseSensitive: false);
                 });
             });
         }

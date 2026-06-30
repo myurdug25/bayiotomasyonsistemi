@@ -112,6 +112,10 @@ class ReadyOrderResource extends JsonResource
                 'updated_at' => $stockUpdatedAt?->toIso8601String(),
             ],
             'logo_warehouse_options' => $this->formatLogoWarehouses($logoWarehouses),
+            'shipment' => $this->latestActiveShipment === null ? null : [
+                'id' => $this->latestActiveShipment->id,
+                'status' => $this->latestActiveShipment->status,
+            ],
         ];
     }
 

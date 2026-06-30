@@ -829,10 +829,10 @@ class ProductSearchController extends Controller
 
         $builder->where(function (Builder $searchQuery) use ($search, $contains): void {
             $searchQuery
-                ->where('products.name', 'ilike', $contains)
-                ->orWhere('products.oem_code', 'ilike', $contains)
-                ->orWhere('products.sku', 'ilike', $contains)
-                ->orWhere('brands.name', 'ilike', $contains);
+                ->whereLike('products.name', $contains, caseSensitive: false)
+                ->orWhereLike('products.oem_code', $contains, caseSensitive: false)
+                ->orWhereLike('products.sku', $contains, caseSensitive: false)
+                ->orWhereLike('brands.name', $contains, caseSensitive: false);
 
             $this->applyKeywordProductTextSearchOr($searchQuery, $search);
         });
@@ -852,10 +852,10 @@ class ProductSearchController extends Controller
                     $compactContains = '%'.$this->escapeLike($token['compact']).'%';
 
                     $tokenQuery
-                        ->where('products.name', 'ilike', $rawContains)
-                        ->orWhere('products.oem_code', 'ilike', $rawContains)
-                        ->orWhere('products.sku', 'ilike', $rawContains)
-                        ->orWhere('brands.name', 'ilike', $rawContains);
+                        ->whereLike('products.name', $rawContains, caseSensitive: false)
+                        ->orWhereLike('products.oem_code', $rawContains, caseSensitive: false)
+                        ->orWhereLike('products.sku', $rawContains, caseSensitive: false)
+                        ->orWhereLike('brands.name', $rawContains, caseSensitive: false);
 
                     if (mb_strlen($token['compact'], 'UTF-8') >= 2) {
                         $tokenQuery
@@ -935,7 +935,7 @@ class ProductSearchController extends Controller
                     ->where(function (Builder $builder) use ($booleanSearch, $contains): void {
                         $builder
                             ->whereRaw('MATCH(products.sku, products.oem_code, products.name) AGAINST (? IN BOOLEAN MODE)', [$booleanSearch])
-                            ->orWhere('brands.name', 'ilike', $contains);
+                            ->orWhereLike('brands.name', $contains, caseSensitive: false);
                     })
                     ->orderByDesc('search_score')
                     ->orderByDesc('products.id')
@@ -2825,9 +2825,9 @@ class ProductSearchController extends Controller
                 $appendProductQuery(function (Builder $query) use ($prefixValues): void {
                     $query->where(function (Builder $codeQuery) use ($prefixValues): void {
                         foreach ($prefixValues as $index => $prefix) {
-                            $method = $index === 0 ? 'where' : 'orWhere';
-                            $codeQuery->{$method}('products.sku', 'ilike', $prefix)
-                                ->orWhere('products.oem_code', 'ilike', $prefix);
+                            $method = $index === 0 ? 'whereLike' : 'orWhereLike';
+                            $codeQuery->{$method}('products.sku', $prefix, caseSensitive: false)
+                                ->orWhereLike('products.oem_code', $prefix, caseSensitive: false);
                         }
                     });
                 });
@@ -2911,7 +2911,7 @@ class ProductSearchController extends Controller
                 ->where(function (Builder $query) use ($normalizedSearch): void {
                     $query
                         ->where('normalized_code', $normalizedSearch)
-                        ->orWhere('normalized_code', 'ilike', $normalizedSearch.'%');
+                        ->orWhereLike('normalized_code', $normalizedSearch.'%', caseSensitive: false);
                 })
                 ->orderByRaw('normalized_code = ? DESC', [$normalizedSearch])
                 ->orderBy('normalized_code')
@@ -3002,8 +3002,8 @@ class ProductSearchController extends Controller
                 ->where(function ($aliasQuery) use ($normalizedSearch): void {
                     $aliasQuery
                         ->where('pca.normalized_code', $normalizedSearch)
-                        ->orWhere('pca.normalized_code', 'ilike', $normalizedSearch.'%')
-                        ->orWhere('pca.normalized_code', 'ilike', '%'.$normalizedSearch.'%');
+                        ->orWhereLike('pca.normalized_code', $normalizedSearch.'%', caseSensitive: false)
+                        ->orWhereLike('pca.normalized_code', '%'.$normalizedSearch.'%', caseSensitive: false);
                 });
         });
     }

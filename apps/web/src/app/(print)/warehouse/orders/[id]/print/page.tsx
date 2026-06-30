@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Printer } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { getOrderDetail, type OrderDetailResponse } from "@/lib/api";
 
 type PrintOrder = OrderDetailResponse["order"];

@@ -516,7 +516,7 @@ export function WarehouseOrdersPage() {
           throw error;
         }
 
-        const retryPayload = { ...payload } as any;
+        const retryPayload: Parameters<typeof createWarehouseShipment>[0] = { ...payload };
         if (shouldRetryWithoutAssignedUser) {
           delete retryPayload.assigned_user_id;
         }
@@ -540,6 +540,16 @@ export function WarehouseOrdersPage() {
       toast.error(error instanceof Error ? error.message : "Sevkiyat başlatılamadı.");
     },
   });
+
+  const openShipment = (order: WarehouseReadyOrderItem) => {
+    if (order.shipment?.id) {
+      router.push(`/warehouse/shipments/${order.shipment.id}`);
+      return;
+    }
+
+    setShipmentOrder(order);
+    setSelectedWarehouseStaffId(warehouseStaff[0] ? String(warehouseStaff[0].id) : "");
+  };
 
   return (
     <div className="space-y-4">
@@ -766,13 +776,10 @@ export function WarehouseOrdersPage() {
                         </Button>
                         <Button
                           className={cn(WAREHOUSE_TABLE_ACTION_CLASSNAME, WAREHOUSE_PRIMARY_ACTION_CLASSNAME, "h-10 px-2 text-[11px]")}
-                          onClick={() => {
-                            setShipmentOrder(order);
-                            setSelectedWarehouseStaffId(warehouseStaff[0] ? String(warehouseStaff[0].id) : "");
-                          }}
+                          onClick={() => openShipment(order)}
                         >
                           <Truck className="h-4 w-4 shrink-0" />
-                          Sevkiyat
+                          {order.shipment?.id ? "Sevkiyatı Aç" : "Sevkiyat"}
                         </Button>
                       </div>
                     </article>
@@ -932,14 +939,11 @@ export function WarehouseOrdersPage() {
                               onClick={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
-                                  setShipmentOrder(order);
-                                  setSelectedWarehouseStaffId(
-                                    warehouseStaff[0] ? String(warehouseStaff[0].id) : ""
-                                  );
+                                  openShipment(order);
                                 }}
                               >
                                 <Truck className="h-4 w-4 shrink-0" />
-                                <span className="truncate">Sevkiyat</span>
+                                <span className="truncate">{order.shipment?.id ? "Sevkiyatı Aç" : "Sevkiyat"}</span>
                               </Button>
                             </div>
                           </TableCell>

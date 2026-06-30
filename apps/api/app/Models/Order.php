@@ -91,4 +91,13 @@ class Order extends Model
     {
         return $this->hasMany(Shipment::class);
     }
+
+    public function latestActiveShipment(): HasOne
+    {
+        return $this->hasOne(Shipment::class)
+            ->ofMany(
+                ['id' => 'max'],
+                fn ($query) => $query->where('status', '!=', 'cancelled')
+            );
+    }
 }

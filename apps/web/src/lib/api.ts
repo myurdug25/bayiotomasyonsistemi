@@ -1541,6 +1541,10 @@ export type WarehouseReadyOrderItem = {
     item_count: number;
     is_active: boolean;
   }>;
+  shipment?: {
+    id: number;
+    status: string;
+  } | null;
 };
 
 export type WarehouseShipmentItemDto = {

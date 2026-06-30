@@ -90,14 +90,14 @@ class ReturnRequestController extends Controller
 
         if ($q !== '') {
             $query->where(function (Builder $builder) use ($q): void {
-                $builder->where('request_no', 'ilike', "%{$q}%")
+                $builder->whereLike('request_no', "%{$q}%", caseSensitive: false)
                     ->orWhereHas('order', function (Builder $orderQuery) use ($q): void {
-                        $orderQuery->where('order_no', 'ilike', "%{$q}%");
+                        $orderQuery->whereLike('order_no', "%{$q}%", caseSensitive: false);
                     })
                     ->orWhereHas('customer', function (Builder $customerQuery) use ($q): void {
                         $customerQuery
-                            ->where('code', 'ilike', "{$q}%")
-                            ->orWhere('name', 'ilike', "%{$q}%");
+                            ->whereLike('code', "{$q}%", caseSensitive: false)
+                            ->orWhereLike('name', "%{$q}%", caseSensitive: false);
                     });
             });
         }

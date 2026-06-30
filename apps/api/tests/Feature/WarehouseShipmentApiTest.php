@@ -638,6 +638,33 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('data.0.order_no', 'ORD-BARCODE-LOOKUP');
     }
 
+    public function test_shipped_order_remains_in_ready_list_and_exposes_its_shipment(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-SHIPPED');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-WH-SHIPPED',
+            'status' => 'shipped',
+        ]);
+
+        $shipment = Shipment::query()->create([
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+            'shipment_no' => 'SHP-WH-SHIPPED',
+            'status' => 'shipped',
+            'created_by' => $warehouseUser->id,
+        ]);
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-SHIPPED')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $ctx['order']->id)
+            ->assertJsonPath('data.0.shipment.id', $shipment->id)
+            ->assertJsonPath('data.0.shipment.status', 'shipped');
+    }
+
     public function test_warehouse_user_can_view_order_detail_in_scope(): void
     {
         $dealer = $this->createDealer('DLR-WH-DET-001');
@@ -1057,6 +1084,41 @@ class WarehouseShipmentApiTest extends TestCase
         ]);
     }
 
+    public function test_deleting_last_shipment_item_cancels_shipment_and_returns_order_to_list(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-LAST-ITEM');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-WH-LAST-ITEM',
+            'quantity' => 1,
+        ]);
+
+        $createResponse = $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+        ])->assertCreated();
+
+        $shipmentId = (int) $createResponse->json('data.shipment.id');
+        $shipmentItemId = (int) $createResponse->json('data.remaining_items.0.id');
+
+        $this->deleteJson("/api/warehouse/shipments/{$shipmentId}/items/{$shipmentItemId}")
+            ->assertOk()
+            ->assertJsonPath('data.shipment.status', 'cancelled');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $ctx['order']->id,
+            'status' => 'approved',
+        ]);
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-LAST-ITEM')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $ctx['order']->id)
+            ->assertJsonPath('data.0.shipment', null);
+    }
+
     public function test_can_create_scan_and_finalize_shipment(): void
     {
         $dealer = $this->createDealer('DLR-FIN-001');
@@ -1108,7 +1170,7 @@ class WarehouseShipmentApiTest extends TestCase
         $stock = StockSummary::query()->findOrFail($ctx['product']->id);
         $stock->refresh();
 
-        $this->assertSame(18, (int) $stock->available_total);
+        $this->assertSame(20, (int) $stock->available_total);
         $this->assertSame(3, (int) $stock->reserved_total);
 
         $orderItem = OrderItem::query()->findOrFail($ctx['orderItem']->id);
@@ -1120,6 +1182,38 @@ class WarehouseShipmentApiTest extends TestCase
             'source' => 'shipment',
             'source_id' => $shipmentId,
         ]);
+    }
+
+    public function test_finalize_uses_available_stock_when_reserved_stock_is_missing(): void
+    {
+        $dealer = $this->createDealer('DLR-FIN-RESERVE-GAP');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-FIN-RESERVE-GAP',
+            'quantity' => 2,
+            'stock_available' => 5,
+            'stock_reserved' => 0,
+        ]);
+
+        $shipmentId = (int) $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+        ])->json('data.shipment.id');
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/scan", [
+            'barcode' => $ctx['product']->sku,
+            'qty' => 2,
+        ])->assertOk();
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/finalize")
+            ->assertOk()
+            ->assertJsonPath('data.shipment.status', 'shipped');
+
+        $stock = StockSummary::query()->findOrFail($ctx['product']->id);
+        $this->assertSame(3, (int) $stock->available_total);
+        $this->assertSame(0, (int) $stock->reserved_total);
     }
 
     public function test_scan_caps_full_row_pick_to_available_stock_and_keeps_remainder(): void

@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Printer } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import { getPosSale } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 
 const VAT_RATE_LABEL = "%20";
 

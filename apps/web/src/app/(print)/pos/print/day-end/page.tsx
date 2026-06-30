@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Printer } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import {
   getCurrentPosSession,
   getPosDayEndReport,
   type PosSaleType,
 } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 
 function formatMoney(value: string | number) {
   const amount = typeof value === "number" ? value : Number(value);
