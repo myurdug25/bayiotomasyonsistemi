@@ -58,7 +58,7 @@ class WarehouseOrderController extends Controller
                 'note',
                 'created_at',
             ])
-            ->where('status', 'approved');
+            ->whereIn('status', ['approved', 'picking', 'packed']);
 
         if (! $user->hasRole('admin')) {
             $query->where('dealer_id', $user->dealer_id);

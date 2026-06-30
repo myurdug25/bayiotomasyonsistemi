@@ -1282,6 +1282,7 @@ export function PosPage() {
 
       return rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
     },
+    refetchInterval: 15_000,
   });
 
   const openSessionMutation = useMutation({
@@ -1539,6 +1540,7 @@ export function PosPage() {
     },
     enabled: canAccessPos && pointLedgerDialogOpen && Boolean(selectedCustomer),
     staleTime: 30_000,
+    refetchInterval: 15_000,
   });
   const pointLedgerRows = useMemo(
     () => pointLedgerQuery.data?.data ?? [],
@@ -4023,7 +4025,7 @@ export function PosPage() {
                   </Button>
                   <Input
                     value={quickQtyInput}
-                    onChange={(event) => setQuickQtyInput(event.target.value.replace(/[^\d]/g, "") || "1")}
+                    onChange={(event) => setQuickQtyInput(event.target.value.replace(/[^\d]/g, ""))}
                     inputMode="numeric"
                     className="h-16 rounded-none border-0 bg-transparent text-center text-xl font-black shadow-none focus-visible:ring-0"
                     disabled={isMutating}
@@ -4403,7 +4405,7 @@ export function PosPage() {
                 <Input
                   ref={pointQtyInputRef}
                   value={pointQtyInput}
-                  onChange={(event) => setPointQtyInput(event.target.value.replace(/[^\d]/g, "") || "1")}
+                  onChange={(event) => setPointQtyInput(event.target.value.replace(/[^\d]/g, ""))}
                   onFocus={(event) => {
                     setPointFocusedInput("qty");
                     event.currentTarget.select();
