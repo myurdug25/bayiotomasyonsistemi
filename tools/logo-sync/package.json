@@ -17,6 +17,7 @@
     "sync:daemon": "node logo-sync-daemon.mjs",
     "sync:doctor": "node logo-sync-doctor.mjs",
     "campaigns:discover": "node logo-campaigns-discover.mjs",
+    "deploy:collections-sql": "node deploy-sql-file.mjs collection",
     "write:preflight": "node logo-write-preflight.mjs",
     "write:queue-status": "node logo-write-queue-status.mjs"
   },
