@@ -51,6 +51,8 @@ async function main() {
     `);
 
     const priceTable = assertSafeTableName(config.priceTable);
+    const campaignTable = assertSafeTableName(config.campaignTable);
+    const campaignLineTable = assertSafeTableName(config.campaignLineTable);
     const priceColumns = await pool
       .request()
       .input("tableName", sql.NVarChar(128), priceTable.split(".").at(-1).replaceAll("[", "").replaceAll("]", ""))
@@ -60,6 +62,19 @@ async function main() {
         WHERE TABLE_NAME = @tableName
         ORDER BY ORDINAL_POSITION;
       `);
+
+    const campaignColumns = await loadColumns(pool, campaignTable);
+    const campaignLineColumns = await loadColumns(pool, campaignLineTable);
+    const campaignRows = await pool.request().query(`
+      SELECT *
+      FROM ${campaignTable} WITH (NOLOCK)
+      ORDER BY LOGICALREF;
+    `);
+    const campaignLineRows = await pool.request().query(`
+      SELECT TOP (500) *
+      FROM ${campaignLineTable} WITH (NOLOCK)
+      ORDER BY LOGICALREF;
+    `);
 
     const duplicatePriceCards = await pool.request().query(`
       SELECT TOP (100)
@@ -95,6 +110,12 @@ async function main() {
       price_table: priceTable,
       candidate_tables: candidateTables.recordset ?? [],
       price_columns: (priceColumns.recordset ?? []).map((row) => row.COLUMN_NAME),
+      campaign_table: campaignTable,
+      campaign_columns: campaignColumns,
+      campaign_rows: campaignRows.recordset ?? [],
+      campaign_line_table: campaignLineTable,
+      campaign_line_columns: campaignLineColumns,
+      campaign_line_sample: campaignLineRows.recordset ?? [],
       products_with_multiple_sales_prices: duplicatePriceCards.recordset ?? [],
       price_samples: sampleRows.recordset ?? [],
     }, null, 2));
@@ -127,7 +148,24 @@ function buildConfig() {
   return {
     connection,
     priceTable: nullable(process.env.LOGO_PRICE_TABLE) ?? logoFirmTable("PRCLIST"),
+    campaignTable: nullable(process.env.LOGO_CAMPAIGN_TABLE) ?? logoFirmTable("CAMPAIGN"),
+    campaignLineTable: nullable(process.env.LOGO_CAMPAIGN_LINE_TABLE) ?? logoFirmTable("CMPGNLINE"),
   };
+}
+
+async function loadColumns(pool, tableName) {
+  const plainTableName = tableName.split(".").at(-1).replaceAll("[", "").replaceAll("]", "");
+  const result = await pool
+    .request()
+    .input("tableName", sql.NVarChar(128), plainTableName)
+    .query(`
+      SELECT COLUMN_NAME
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = @tableName
+      ORDER BY ORDINAL_POSITION;
+    `);
+
+  return (result.recordset ?? []).map((row) => row.COLUMN_NAME);
 }
 
 function validateConfig(config) {
