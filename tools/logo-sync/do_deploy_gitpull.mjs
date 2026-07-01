@@ -71,12 +71,6 @@ async function deploy() {
     await uploadFiles(frontendFiles, path.join(repoRoot, 'apps', 'web'), `${remoteRoot}/web`);
 
     console.log('Running artisan command...');
-    await run(
-      `set -e; ` +
-      `cd '${remoteRoot}/backend'; ` +
-      `php artisan fix:factory-names; ` +
-      `php artisan migrate --force`
-    );
 
     console.log('Uploading verified frontend build...');
     const uploaded = await ssh.putDirectory(
