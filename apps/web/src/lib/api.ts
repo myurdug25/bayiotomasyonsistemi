@@ -689,6 +689,8 @@ export type OrderCreateResponse = {
       name: string;
       brand: string | null;
       quantity: number;
+      shipped_qty: number;
+      remaining_quantity: number;
       unit_net_price: string;
       tax_rate: string;
       line_total: string;

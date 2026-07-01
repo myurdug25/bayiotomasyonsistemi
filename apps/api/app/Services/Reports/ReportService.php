@@ -236,18 +236,6 @@ class ReportService
             ])
             ->selectSub(
                 DB::table('order_items')
-                    ->selectRaw('COALESCE(SUM(quantity), 0)')
-                    ->whereColumn('order_items.order_id', 'orders.id'),
-                'order_quantity'
-            )
-            ->selectSub(
-                DB::table('order_items')
-                    ->selectRaw('COALESCE(SUM(shipped_qty), 0)')
-                    ->whereColumn('order_items.order_id', 'orders.id'),
-                'shipped_quantity'
-            )
-            ->selectSub(
-                DB::table('order_items')
                     ->selectRaw('COALESCE(SUM(CASE WHEN quantity > COALESCE(shipped_qty, 0) THEN quantity - COALESCE(shipped_qty, 0) ELSE 0 END), 0)')
                     ->whereColumn('order_items.order_id', 'orders.id'),
                 'remaining_quantity'
@@ -276,8 +264,6 @@ class ReportService
                     'currency' => $row->currency,
                     'subtotal' => $this->money($row->subtotal),
                     'grand_total' => $this->money($row->grand_total),
-                    'order_quantity' => (int) $row->order_quantity,
-                    'shipped_quantity' => (int) $row->shipped_quantity,
                     'remaining_quantity' => (int) $row->remaining_quantity,
                     'ordered_at' => $row->ordered_at,
                     'logo_sync_status' => $row->logo_sync_status,

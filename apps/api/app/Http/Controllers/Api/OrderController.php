@@ -631,6 +631,8 @@ class OrderController extends Controller
                     'name' => $item->product?->name,
                     'brand' => $item->product?->brand?->name,
                     'quantity' => $item->quantity,
+                    'shipped_qty' => $item->shipped_qty,
+                    'remaining_quantity' => max(0, (int) $item->quantity - (int) $item->shipped_qty),
                     'unit_net_price' => $item->unit_net_price,
                     'tax_rate' => $item->tax_rate,
                     'line_total' => $item->line_total,

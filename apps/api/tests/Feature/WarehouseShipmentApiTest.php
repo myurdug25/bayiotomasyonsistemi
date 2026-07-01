@@ -1349,8 +1349,8 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.order_no', 'ORD-FIN-BALANCE-TWO')
-            ->assertJsonPath('data.0.order_quantity', 7)
-            ->assertJsonPath('data.0.shipped_quantity', 5)
+            ->assertJsonMissingPath('data.0.order_quantity')
+            ->assertJsonMissingPath('data.0.shipped_quantity')
             ->assertJsonPath('data.0.remaining_quantity', 2);
     }
 

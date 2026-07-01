@@ -182,8 +182,6 @@ type OrderRow = {
     title: string;
   };
   grand_total: string;
-  order_quantity?: number;
-  shipped_quantity?: number;
   remaining_quantity?: number;
   currency: string;
   ordered_at: string;
@@ -278,12 +276,22 @@ export function OrdersPage() {
   const hasActiveFilters = Boolean(query) || Boolean(dateFrom) || Boolean(dateTo) || statuses.length > 0;
   const displayRows = useMemo(() => report?.data ?? [], [report?.data]);
   const listedOrderCount = displayRows.length;
+  const balanceOnlyMode = statuses.length === 1 && statuses[0] === "balance";
   const summaryOpenOrderCount = report?.summary.open_order_count ?? 0;
   const summaryOpenGrandTotal = report?.summary.open_grand_total ?? "0";
   const detailStockShortageCount = useMemo(
     () =>
       detailPayload?.order.items.filter((item) => (item.logo_stock?.available_total ?? 0) < item.quantity).length ?? 0,
     [detailPayload?.order.items]
+  );
+  const detailIsBalance = detailPayload?.order.status === "balance";
+  const detailBalanceItems = useMemo(
+    () => detailPayload?.order.items.filter((item) => item.remaining_quantity > 0) ?? [],
+    [detailPayload?.order.items]
+  );
+  const detailBalanceQuantity = useMemo(
+    () => detailBalanceItems.reduce((sum, item) => sum + item.remaining_quantity, 0),
+    [detailBalanceItems]
   );
 
   const toggleStatus = (status: string) => {
@@ -505,9 +513,9 @@ export function OrdersPage() {
                     <tr className="border-b border-white/10 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
                       <th className="py-3">No</th>
                       <th className="py-3">Müşteri</th>
-                      <th className="py-3">Durum</th>
+                      <th className="py-3">{balanceOnlyMode ? "Bakiye Adedi" : "Durum"}</th>
                       <th className="py-3">Tarih</th>
-                      <th className="py-3 text-right">Tutar</th>
+                      {!balanceOnlyMode ? <th className="py-3 text-right">Tutar</th> : null}
                       <th className="py-3 text-right">İşlem</th>
                     </tr>
                   </thead>
@@ -538,17 +546,23 @@ export function OrdersPage() {
                           {row.customer.code} - {row.customer.title}
                         </td>
                         <td className="py-3">
-                          <div className="flex flex-wrap gap-1.5">
-                            <OrderStatusBadge status={row.status} />
-                            {(row.remaining_quantity ?? 0) > 0 ? (
-                              <Badge variant="outline" className="rounded-full border-yellow-300/40 bg-yellow-300/10 px-3 py-1 text-[12px] font-black text-yellow-100">
-                                Bakiye {row.remaining_quantity}
-                              </Badge>
-                            ) : null}
-                          </div>
+                          {balanceOnlyMode ? (
+                            <strong className="text-lg font-black text-yellow-100">{row.remaining_quantity ?? 0}</strong>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              <OrderStatusBadge status={row.status} />
+                              {(row.remaining_quantity ?? 0) > 0 ? (
+                                <Badge variant="outline" className="rounded-full border-yellow-300/40 bg-yellow-300/10 px-3 py-1 text-[12px] font-black text-yellow-100">
+                                  Bakiye {row.remaining_quantity}
+                                </Badge>
+                              ) : null}
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 text-slate-400">{formatOrderDateTime(row.ordered_at)}</td>
-                        <td className="py-3 text-right font-black text-white">{formatTry(row.grand_total, row.currency)}</td>
+                        {!balanceOnlyMode ? (
+                          <td className="py-3 text-right font-black text-white">{formatTry(row.grand_total, row.currency)}</td>
+                        ) : null}
                         <td className="py-3 text-right">
                           <Button
                             variant="outline"
@@ -636,22 +650,29 @@ export function OrdersPage() {
 
             {!detailLoading && !detailError && detailPayload ? (
               <>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
-                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Kalem</p>
-                    <p className="mt-1 text-2xl font-black text-white">{detailPayload.order.items.length}</p>
+                {detailIsBalance ? (
+                  <div className="rounded-[18px] border border-yellow-300/25 bg-yellow-300/10 px-5 py-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-yellow-100/70">Bakiye Adedi</p>
+                    <p className="mt-1 text-3xl font-black text-yellow-100">{detailBalanceQuantity}</p>
                   </div>
-                  <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
-                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Toplam Adet</p>
-                    <p className="mt-1 text-2xl font-black text-white">
-                      {detailPayload.order.items.reduce((sum, item) => sum + item.quantity, 0)}
-                    </p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
+                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Kalem</p>
+                      <p className="mt-1 text-2xl font-black text-white">{detailPayload.order.items.length}</p>
+                    </div>
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
+                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Toplam Adet</p>
+                      <p className="mt-1 text-2xl font-black text-white">
+                        {detailPayload.order.items.reduce((sum, item) => sum + item.quantity, 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
+                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Stok Eksik</p>
+                      <p className="mt-1 text-2xl font-black text-white">{detailStockShortageCount}</p>
+                    </div>
                   </div>
-                  <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
-                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Stok Eksik</p>
-                    <p className="mt-1 text-2xl font-black text-white">{detailStockShortageCount}</p>
-                  </div>
-                </div>
+                )}
 
                 <Card className="border-white/10 bg-white/[0.035] text-slate-100 shadow-none">
                   <CardContent className="p-4 text-sm">
@@ -675,7 +696,8 @@ export function OrdersPage() {
                       </div>
                     ) : null}
 
-                    <div className="mt-3 space-y-1 rounded-[14px] border border-white/10 bg-black/15 px-3 py-2">
+                    {!detailIsBalance ? (
+                      <div className="mt-3 space-y-1 rounded-[14px] border border-white/10 bg-black/15 px-3 py-2">
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400">Ara Toplam</span>
                         <span className="font-semibold text-slate-100">{formatTry(detailPayload.order.subtotal, detailPayload.order.currency)}</span>
@@ -692,30 +714,37 @@ export function OrdersPage() {
                         <span>Genel Toplam</span>
                         <span>{formatTry(detailPayload.order.grand_total, detailPayload.order.currency)}</span>
                       </div>
-                    </div>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
 
                 <Card className="border-white/10 bg-white/[0.035] text-slate-100 shadow-none">
                   <CardHeader className="border-b border-white/10 pb-3">
-                    <CardTitle className="text-lg font-black text-white">Sipariş Kalemleri</CardTitle>
+                    <CardTitle className="text-lg font-black text-white">
+                      {detailIsBalance ? "Bakiye Ürünleri" : "Sipariş Kalemleri"}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[760px] text-left text-sm">
+                      <table className={`w-full text-left text-sm ${detailIsBalance ? "min-w-[460px]" : "min-w-[760px]"}`}>
                         <thead>
                           <tr className="border-b border-white/10 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
                             <th className="py-2">Ürün</th>
                             <th className="py-2">Marka</th>
-                            <th className="py-2 text-right">Adet</th>
-                            <th className="py-2 text-right">Stok</th>
-                            <th className="py-2 text-right">Durum</th>
-                            <th className="py-2 text-right">Birim</th>
-                            <th className="py-2 text-right">Tutar</th>
+                            <th className="py-2 text-right">{detailIsBalance ? "Bakiye Adedi" : "Adet"}</th>
+                            {!detailIsBalance ? (
+                              <>
+                                <th className="py-2 text-right">Stok</th>
+                                <th className="py-2 text-right">Durum</th>
+                                <th className="py-2 text-right">Birim</th>
+                                <th className="py-2 text-right">Tutar</th>
+                              </>
+                            ) : null}
                           </tr>
                         </thead>
                         <tbody>
-                          {detailPayload.order.items.map((item) => {
+                          {(detailIsBalance ? detailBalanceItems : detailPayload.order.items).map((item) => {
                             const available = item.logo_stock?.available_total ?? 0;
                             const stockMeta = stockStatusMeta(available, item.quantity);
 
@@ -726,19 +755,25 @@ export function OrdersPage() {
                                   <p className="text-xs font-semibold text-slate-500">{item.sku ?? "-"}</p>
                                 </td>
                                 <td className="py-2 font-semibold text-slate-300">{item.brand ?? "-"}</td>
-                                <td className="py-2 text-right font-semibold text-slate-100">{item.quantity}</td>
-                                <td className="py-2 text-right font-black text-white">{available}</td>
-                                <td className="py-2 text-right">
-                                  <Badge variant="outline" className={`font-semibold ${stockMeta.className}`}>
-                                    {stockMeta.label}
-                                  </Badge>
+                                <td className={`py-2 text-right font-black ${detailIsBalance ? "text-xl text-yellow-100" : "text-slate-100"}`}>
+                                  {detailIsBalance ? item.remaining_quantity : item.quantity}
                                 </td>
-                                <td className="py-2 text-right font-semibold text-slate-100">
-                                  {formatTry(item.unit_net_price, item.currency)}
-                                </td>
-                                <td className="py-2 text-right font-black text-white">
-                                  {formatTry(item.line_total, item.currency)}
-                                </td>
+                                {!detailIsBalance ? (
+                                  <>
+                                    <td className="py-2 text-right font-black text-white">{available}</td>
+                                    <td className="py-2 text-right">
+                                      <Badge variant="outline" className={`font-semibold ${stockMeta.className}`}>
+                                        {stockMeta.label}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2 text-right font-semibold text-slate-100">
+                                      {formatTry(item.unit_net_price, item.currency)}
+                                    </td>
+                                    <td className="py-2 text-right font-black text-white">
+                                      {formatTry(item.line_total, item.currency)}
+                                    </td>
+                                  </>
+                                ) : null}
                               </tr>
                             );
                           })}

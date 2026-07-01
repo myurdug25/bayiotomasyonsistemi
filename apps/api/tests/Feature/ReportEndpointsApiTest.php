@@ -194,8 +194,8 @@ class ReportEndpointsApiTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.order_no', 'ORD-BALANCE-001')
             ->assertJsonPath('data.0.status', 'picking')
-            ->assertJsonPath('data.0.order_quantity', 5)
-            ->assertJsonPath('data.0.shipped_quantity', 4)
+            ->assertJsonMissingPath('data.0.order_quantity')
+            ->assertJsonMissingPath('data.0.shipped_quantity')
             ->assertJsonPath('data.0.remaining_quantity', 1);
     }
 

@@ -109,7 +109,7 @@ class OrderListApiTest extends TestCase
         $dealer = $this->createDealer('DLR-ORD-BAL');
         $sales = $this->createUserWithRole('salesperson', $dealer);
 
-        $this->createOrder($dealer, $sales, [
+        $order = $this->createOrder($dealer, $sales, [
             'order_no' => 'ORD-BAL-001',
             'status' => 'partially_shipped',
             'quantity' => 3,
@@ -124,6 +124,12 @@ class OrderListApiTest extends TestCase
             ->assertJsonPath('data.0.order_no', 'ORD-BAL-001')
             ->assertJsonPath('data.0.status', 'balance')
             ->assertJsonPath('data.0.remaining_quantity', 1);
+
+        $this->getJson('/api/orders/'.$order->id)
+            ->assertOk()
+            ->assertJsonPath('order.status', 'balance')
+            ->assertJsonPath('order.items.0.shipped_qty', 2)
+            ->assertJsonPath('order.items.0.remaining_quantity', 1);
     }
 
     public function test_orders_list_returns_totals_and_timeline_summary(): void
