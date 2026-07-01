@@ -2500,6 +2500,7 @@ export type CampaignProgressDto = {
   progress_pct: number;
   is_completed: boolean;
   remaining: number;
+  discount_percent?: number | null;
   starts_at?: string | null;
   ends_at?: string | null;
   product_skus: string[];
