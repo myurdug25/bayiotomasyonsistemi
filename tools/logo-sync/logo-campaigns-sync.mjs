@@ -80,7 +80,7 @@ async function main() {
     const campaignRows = await pool.request().query(`
       SELECT *
       FROM ${campaignTable} WITH (NOLOCK)
-      WHERE ISNULL(ACTIVE, 1) = 1
+      WHERE ISNULL(ACTIVE, 0) = 0
       ORDER BY LOGICALREF
     `);
 
