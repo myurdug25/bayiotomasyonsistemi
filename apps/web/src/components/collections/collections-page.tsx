@@ -59,6 +59,8 @@ import {
   fetchNextCollectionSequence,
   sendCustomerCollections,
   updateCustomerCollection,
+  listCustomers,
+  type CustomerListItem,
 } from "@/lib/api";
 import { notifyPosDayEndRefresh } from "@/lib/pos-day-end-events";
 import { cn } from "@/lib/utils";
@@ -660,9 +662,42 @@ function AddBankModal({ onAdd }: { onAdd: () => void }) {
 
 function AddFactoryPosModal({ onAdd }: { onAdd: () => void }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<CustomerListItem[]>([]);
+  const [searching, setSearching] = useState(false);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (search.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      void listCustomers({ q: search.trim(), limit: 5 })
+        .then((res) => {
+          if (!cancelled) setResults(res.data);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [search]);
+
+  const handleSelectCustomer = (customer: CustomerListItem) => {
+    setCode(customer.code);
+    setName(customer.title);
+    setSearch("");
+    setResults([]);
+  };
 
   const handleSave = async () => {
     if (!code || !name) return;
@@ -677,6 +712,7 @@ function AddFactoryPosModal({ onAdd }: { onAdd: () => void }) {
       setOpen(false);
       setCode("");
       setName("");
+      setSearch("");
       onAdd();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Cari Pos eklenemedi");
@@ -695,6 +731,35 @@ function AddFactoryPosModal({ onAdd }: { onAdd: () => void }) {
           <DialogTitle>Cari Pos Ekle (Fabrika)</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
+          <div className="space-y-2 relative">
+            <label className="text-sm font-medium text-amber-500">Cari Hesap Ara</label>
+            <Input 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)} 
+              placeholder="Min. 3 karakter giriniz..." 
+              className="border-amber-500/50 focus-visible:ring-amber-500/20"
+            />
+            {searching && (
+              <div className="absolute right-3 top-[34px]">
+                <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+              </div>
+            )}
+            {results.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 max-h-48 overflow-auto rounded-md border border-white/10 bg-[var(--surface-soft)] p-1 shadow-xl">
+                {results.map((customer) => (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    onClick={() => handleSelectCustomer(customer)}
+                    className="flex w-full flex-col items-start rounded-sm px-3 py-2 text-left text-sm hover:bg-[var(--brand-primary-soft)] hover:text-[var(--brand-primary)]"
+                  >
+                    <span className="font-bold">{customer.code}</span>
+                    <span className="truncate text-xs text-[var(--muted-foreground)]">{customer.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Logo Cari Kodu</label>
             <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Örn: 120-61-031" />

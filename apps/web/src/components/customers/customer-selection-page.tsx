@@ -292,18 +292,14 @@ export function CustomerSelectionPage() {
                 : "bg-[linear-gradient(180deg,#fbfdfb_0%,#f5f9f5_100%)]"
             )}
           >
-            {isSalesperson ? (
-              <Button
-                className="mb-3 h-14 w-full rounded-[16px] bg-amber-500 font-black text-slate-950 hover:bg-amber-400"
-                asChild
-              >
-                <Link href="/pos/expenses">
-                  <ReceiptText className="h-5 w-5 mr-2" />
-                  Giderler
-                </Link>
-              </Button>
-            ) : null}
-            <div className="grid gap-3 lg:grid-cols-[minmax(340px,1fr)_112px_104px_172px_172px] lg:items-end">
+            <div
+              className={cn(
+                "grid gap-3 lg:items-end",
+                isSalesperson
+                  ? "lg:grid-cols-[minmax(220px,1fr)_112px_104px_172px_172px_140px]"
+                  : "lg:grid-cols-[minmax(340px,1fr)_112px_104px_172px_172px]"
+              )}
+            >
               <div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-4 top-4 h-5 w-5 text-[var(--brand-primary)]" />
@@ -344,12 +340,13 @@ export function CustomerSelectionPage() {
                 Sil
               </Button>
 
+              <div className="mt-4 flex w-full flex-col items-center gap-3 md:flex-row">
               <Toggle
                 pressed={hasCart}
                 onPressedChange={setHasCart}
                 aria-label="Has cart filter"
                 className={cn(
-                  "h-16 w-full justify-center gap-2 rounded-[16px] border px-4 text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(30,90,54,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(30,90,54,0.9)]",
+                  "h-16 w-full md:w-auto md:flex-1 justify-center gap-2 rounded-[16px] border px-4 text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(20,54,34,0.7)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(20,54,34,0.85)]",
                   hasCart
                     ? "border-[#3f8f54] bg-[#2f7f56] text-white hover:bg-[#276d49]"
                     : isDarkMode
@@ -367,7 +364,7 @@ export function CustomerSelectionPage() {
                 onPressedChange={setHasOrderBalance}
                 aria-label="Has order balance filter"
                 className={cn(
-                  "h-16 w-full justify-center gap-2 rounded-[16px] border px-4 text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(145,40,38,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(145,40,38,0.9)]",
+                  "h-16 w-full md:w-auto md:flex-1 justify-center gap-2 rounded-[16px] border px-4 text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(145,40,38,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(145,40,38,0.9)]",
                   hasOrderBalance
                     ? "border-[#c3403c] bg-[#b83232] text-white hover:bg-[#9f292b]"
                     : isDarkMode
@@ -379,6 +376,18 @@ export function CustomerSelectionPage() {
                 <Wallet className="h-5 w-5" />
                 Bakiye Siparişi
               </Toggle>
+
+              {isSalesperson ? (
+                <Button
+                  className="h-16 w-full md:w-auto md:flex-1 rounded-[16px] bg-amber-500 font-black text-slate-950 hover:bg-amber-400"
+                  asChild
+                >
+                  <Link href="/pos/expenses">
+                    <ReceiptText className="h-5 w-5 mr-2" />
+                    Giderler
+                  </Link>
+                </Button>
+              ) : null}
             </div>
 
             {hasActiveFilters ? (

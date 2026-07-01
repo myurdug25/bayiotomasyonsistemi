@@ -358,7 +358,7 @@ export function PlasiyerHomePage() {
                 Son 1 Ayda Açılan Ürünler
               </CardTitle>
               <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                Logo'dan son 30 günde açılan aktif ürünler
+                Logo&apos;dan son 30 günde açılan aktif ürünler
               </p>
             </div>
             <span className="dashboard-quick-card-badge">
