@@ -80,10 +80,7 @@ async function main() {
       checked_at: new Date().toISOString(),
       campaign_table: campaignTable,
       campaign_columns: campaignColumns,
-      campaign_rows: campaignRows.recordset ?? [],
-      campaign_line_table: campaignLineTable,
-      campaign_line_columns: campaignLineColumns,
-      campaign_line_sample: campaignLineRows.recordset ?? [],
+      campaign_rows: campaignRows.recordset ?? []
     }, null, 2));
   } finally {
     await pool.close();
