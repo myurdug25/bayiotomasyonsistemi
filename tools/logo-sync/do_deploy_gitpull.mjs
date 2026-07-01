@@ -11,6 +11,7 @@ const remoteBuildStage = `${remoteRoot}/web/.next-codex-${stamp}`;
 const backendFiles = [
   'app/Http/Controllers/Api/CustomerCollectionController.php',
   'app/Console/Commands/FixFactoryNames.php',
+  'database/migrations/2026_07_01_141027_create_finance_sequences_table.php',
 ];
 
 const frontendFiles = [
@@ -73,7 +74,8 @@ async function deploy() {
     await run(
       `set -e; ` +
       `cd '${remoteRoot}/backend'; ` +
-      `php artisan fix:factory-names`
+      `php artisan fix:factory-names; ` +
+      `php artisan migrate --force`
     );
 
     console.log('Uploading verified frontend build...');

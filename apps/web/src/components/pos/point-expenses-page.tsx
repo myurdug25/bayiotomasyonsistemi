@@ -383,7 +383,7 @@ export function PointExpensesPage() {
                       step="0.01"
                       {...form.register("amount", { valueAsNumber: true })}
                       disabled={createExpenseMutation.isPending}
-                      className="h-12 rounded-[12px] text-lg font-bold"
+                      className="h-12 rounded-[12px] text-lg font-bold bg-background border border-input shadow-sm"
                     />
                   </div>
                   <div>
@@ -392,7 +392,7 @@ export function PointExpensesPage() {
                       type="date"
                       defaultValue={new Date().toISOString().slice(0, 10)}
                       disabled={true}
-                      className="h-12 rounded-[12px] bg-muted/50 text-lg font-bold text-muted-foreground opacity-100"
+                      className="h-12 rounded-[12px] text-lg font-bold text-muted-foreground opacity-100 bg-muted border border-input shadow-sm"
                     />
                   </div>
                 </div>
@@ -403,7 +403,7 @@ export function PointExpensesPage() {
                     placeholder="Masraf ile ilgili açıklama (Örn: Araç bakımı 34ABC12)"
                     {...form.register("note")}
                     disabled={createExpenseMutation.isPending}
-                    className="min-h-[100px] resize-none rounded-[14px] text-base font-medium"
+                    className="min-h-[100px] resize-none rounded-[14px] text-base font-medium bg-background border border-input shadow-sm"
                   />
                 </div>
 
