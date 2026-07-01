@@ -101,6 +101,7 @@ class CampaignController extends Controller
             'campaigns.*.ends_at'          => ['nullable', 'date'],
             'campaigns.*.is_active'        => ['boolean'],
             'campaigns.*.meta'             => ['nullable', 'array'],
+            'campaigns.*.discount_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
             'campaigns.*.products'         => ['nullable', 'array'],
             'campaigns.*.products.*'       => ['string', 'max:191'],
         ]);
@@ -127,6 +128,7 @@ class CampaignController extends Controller
                         'description'      => $row['description'] ?? null,
                         'customer_group'   => $row['customer_group'] ?? null,
                         'target_quantity'  => (int) $row['target_quantity'],
+                        'discount_percent' => isset($row['discount_percent']) ? (int) $row['discount_percent'] : null,
                         'group_field'      => $row['group_field'] ?? 'specode',
                         'starts_at'        => $row['starts_at'] ?? null,
                         'ends_at'          => $row['ends_at'] ?? null,
@@ -194,6 +196,7 @@ class CampaignController extends Controller
             'description'     => $campaign->description,
             'customer_group'  => $campaign->customer_group,
             'target_quantity' => $campaign->target_quantity,
+            'discount_percent'=> $campaign->discount_percent,
             'starts_at'       => $campaign->starts_at?->toDateString(),
             'ends_at'         => $campaign->ends_at?->toDateString(),
             'is_active'       => $campaign->is_active,

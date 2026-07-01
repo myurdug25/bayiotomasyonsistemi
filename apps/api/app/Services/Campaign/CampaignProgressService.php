@@ -99,6 +99,7 @@ class CampaignProgressService
                 'progress_pct'      => $progressPct,
                 'is_completed'      => $isCompleted,
                 'remaining'         => $remaining,
+                'discount_percent'  => $campaign->discount_percent,
                 'starts_at'         => $campaign->starts_at?->toDateString(),
                 'ends_at'           => $campaign->ends_at?->toDateString(),
                 'product_skus'      => $campaignProductSkus,

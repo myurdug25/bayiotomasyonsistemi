@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('campaigns', function (Blueprint $table) {
-            $table->decimal('discount_percent', 5, 2)->nullable()->after('target_quantity')->comment('Kampanyanın sağlayacağı indirim yüzdesi');
+            $table->unsignedTinyInteger('discount_percent')->nullable()->after('target_quantity')->comment('Kampanyanın sağlayacağı indirim yüzdesi');
         });
     }
 

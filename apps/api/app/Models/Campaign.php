@@ -30,7 +30,7 @@ class Campaign extends Model
     {
         return [
             'target_quantity' => 'integer',
-            'discount_percent' => 'decimal:2',
+            'discount_percent' => 'integer',
             'is_active'       => 'boolean',
             'starts_at'       => 'date',
             'ends_at'         => 'date',

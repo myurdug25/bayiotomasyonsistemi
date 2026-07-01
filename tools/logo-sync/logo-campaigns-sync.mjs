@@ -157,8 +157,10 @@ async function main() {
         Number(row.ACTIVE ?? row.active ?? 1) === 1 &&
         (!endsAt || new Date(endsAt) >= new Date());
 
-      // Kampanya ürün kodlarını çek
+      // Kampanya ürün kodlarını ve formülü çek
       let productSkus = [];
+      let discountPercent = null;
+      let lineCondition = null;
 
       if (lineTableExists) {
         try {
@@ -168,11 +170,28 @@ async function main() {
             .query(`
               SELECT *
               FROM ${campaignLineTable} WITH (NOLOCK)
-              WHERE CMPGNREF = @campRef
+              WHERE CAMPCARDREF = @campRef OR CMPGNREF = @campRef
               ORDER BY LOGICALREF
             `);
 
           for (const lineRow of lineRows.recordset) {
+            // Formülden indirim oranını çıkar (örn: P76*(35/100) -> 35)
+            const formula = lineRow.FORMULA ?? lineRow.MATHFORMULA ?? lineRow.DISCPER ?? "";
+            const conditionStr = lineRow.CONDITION ?? lineRow.COND ?? "";
+            
+            if (!discountPercent && formula) {
+              const match = String(formula).match(/\*\s*\(\s*(\d+)\s*\/\s*100\s*\)/);
+              if (match) {
+                discountPercent = parseInt(match[1], 10);
+              } else {
+                const flatMatch = String(formula).match(/(\d+)/);
+                if (flatMatch) discountPercent = parseInt(flatMatch[1], 10);
+              }
+            }
+            if (!lineCondition && conditionStr) {
+               lineCondition = String(conditionStr);
+            }
+
             // Ürün kodu: ITEMS tablosundan çek veya doğrudan al
             const stockRef = lineRow.STOCKREF ?? lineRow.MATREF ?? lineRow.ITEMREF ?? null;
             if (stockRef) {
@@ -194,9 +213,9 @@ async function main() {
               }
             }
 
-            // Alternatif: doğrudan MATCODE veya STOCKCODE alanı varsa
+            // Alternatif: doğrudan MATCODE, CONDITEMCODE veya STOCKCODE alanı varsa
             const directCode = normalizeString(
-              lineRow.MATCODE ?? lineRow.STOCKCODE ?? lineRow.ITEMCODE ?? null
+              lineRow.MATCODE ?? lineRow.STOCKCODE ?? lineRow.ITEMCODE ?? lineRow.CONDITEMCODE ?? null
             );
             if (directCode && !productSkus.includes(directCode)) {
               productSkus.push(directCode);
@@ -209,6 +228,18 @@ async function main() {
         }
       }
 
+      // Adet bulma: Başlık isminden veya satır koşulundan çıkar (örn: "KAMPANYASI 10", "5 ADE", "P76*(5/100)")
+      let targetQty = 1;
+      const titleMatch = (code + " " + name).match(/(?:\s|-|^)(\d+)\s*(?:ADE|ADET|LI|Lİ|'Lİ|'LI)?(?:\s|-|$)/i);
+      if (titleMatch) {
+         targetQty = parseInt(titleMatch[1], 10);
+      } else if (lineCondition) {
+         const condMatch = lineCondition.match(/\*\s*\(\s*(\d+)\s*\/\s*100\s*\)/);
+         if (condMatch) {
+             targetQty = parseInt(condMatch[1], 10);
+         }
+      }
+
       productSkus = [...new Set(productSkus)].filter((s) => s !== "");
 
       campaigns.push({
@@ -218,6 +249,7 @@ async function main() {
         description: normalizeString(row.NOTES ?? row.DESCRIPTION2 ?? null),
         customer_group: customerGroup,
         target_quantity: targetQty,
+        discount_percent: discountPercent,
         group_field: "specode",
         starts_at: startsAt,
         ends_at: endsAt,
@@ -230,7 +262,7 @@ async function main() {
       });
 
       console.log(
-        `[logo-campaigns-sync] Kampanya: ${name} (grup: ${customerGroup ?? "hepsi"}, hedef: ${targetQty}, ürün: ${productSkus.length})`
+        `[logo-campaigns-sync] Kampanya: ${code} (grup: ${customerGroup ?? "hepsi"}, hedef: ${targetQty}, indirim: %${discountPercent ?? 0}, ürün: ${productSkus.length})`
       );
     }
 

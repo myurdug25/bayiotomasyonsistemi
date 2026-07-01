@@ -18,6 +18,7 @@ return new class extends Migration
             // Örn: F1, F2 ... F12 - birden fazla grup virgülle ayrılabilir
             $table->string('customer_group', 128)->nullable()->comment('F1, F2 gibi cari grup kodu');
             $table->unsignedInteger('target_quantity')->default(1)->comment('Kampanya koşulu: kaç adet');
+            $table->unsignedInteger('discount_percent')->nullable()->comment('Kampanya indirimi (ör: 35)');
             $table->string('group_field', 32)->default('specode')->comment('Logo\'da hangi alan grup tutuyor: specode, specode2, tradinggrp');
             $table->date('starts_at')->nullable();
             $table->date('ends_at')->nullable();
