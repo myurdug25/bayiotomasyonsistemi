@@ -4,6 +4,7 @@ return [
     'logo' => [
         'customer_sync_key' => env('LOGO_CUSTOMER_SYNC_KEY', ''),
         'product_sync_key' => env('LOGO_PRODUCT_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', '')),
+        'campaign_sync_enabled' => env('LOGO_CAMPAIGN_SYNC_ENABLED', false),
         'ledger_sync_key' => env('LOGO_LEDGER_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', '')),
         'collection_sync_key' => env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', '')),
         'pos_sale_sync_key' => env('LOGO_POS_SALE_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', ''))),

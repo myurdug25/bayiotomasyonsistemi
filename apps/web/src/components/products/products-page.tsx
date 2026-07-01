@@ -1907,15 +1907,14 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                </p>
 	              ) : null}
 
-                {cartModalCampaigns.length > 0 ? (
-                  <div className="mt-5 rounded-[24px] border border-amber-300/20 bg-amber-300/[0.07] p-4">
+                <div className="mt-5 rounded-[24px] border border-amber-300/20 bg-amber-300/[0.07] p-4">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <p className="text-[12px] font-black uppercase tracking-[0.16em] text-amber-200">
-                          Logo Kampanyaları
+                          Kampanyalar
                         </p>
                         <p className="mt-1 text-xs font-semibold text-slate-400">
-                          Miktara uygun kademe otomatik seçilir; kampanya siz etkinleştirince uygulanır.
+                          Kampanya tanımlandığında miktara uygun kademe burada seçilebilir.
                         </p>
                       </div>
                       {cartModalApplicableCampaign ? (
@@ -1924,7 +1923,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         </span>
                       ) : null}
                     </div>
-                    <div className="grid gap-3 lg:grid-cols-2">
+                    {cartModalCampaigns.length > 0 ? (
+                      <div className="grid gap-3 lg:grid-cols-2">
                       {cartModalCampaigns.map((campaign) => {
                         const quantity = Math.max(1, Number(cartModalQuantity) || 1);
                         const applicableTier = [...campaign.tiers]
@@ -1980,9 +1980,16 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                           </div>
                         );
                       })}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/30 px-4 py-5 text-center">
+                        <p className="text-sm font-black text-slate-300">Bu ürün için aktif kampanya tanımlanmamış.</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          Kampanya veri bağlantısı daha sonra buraya bağlanacak.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                ) : null}
 
 	              <div className="mt-5 rounded-[24px] border border-emerald-300/15 bg-emerald-300/[0.055] p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

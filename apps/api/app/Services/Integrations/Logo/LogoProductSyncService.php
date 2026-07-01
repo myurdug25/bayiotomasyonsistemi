@@ -838,6 +838,10 @@ class LogoProductSyncService
      */
     private function syncCampaignPrices(Product $product, array $record): int
     {
+        if (! (bool) config('integrations.logo.campaign_sync_enabled', false)) {
+            return 0;
+        }
+
         if (! array_key_exists('campaign_prices', $record) || ! is_array($record['campaign_prices'])) {
             return 0;
         }

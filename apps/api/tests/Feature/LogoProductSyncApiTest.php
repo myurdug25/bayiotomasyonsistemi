@@ -21,6 +21,7 @@ class LogoProductSyncApiTest extends TestCase
 
         config([
             'integrations.logo.product_sync_key' => 'test-sync-key',
+            'integrations.logo.campaign_sync_enabled' => true,
             'meilisearch.enabled' => false,
         ]);
     }

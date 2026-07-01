@@ -198,7 +198,7 @@ export function CartDrawer({ darkMode = false }: { darkMode?: boolean }) {
                 <p className="text-xs text-[var(--muted-foreground)]">{item.sku}</p>
                 {item.campaign_key ? (
                   <span className="mt-2 inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300">
-                    Logo kampanyası aktif
+                    Kampanya aktif
                   </span>
                 ) : null}
 

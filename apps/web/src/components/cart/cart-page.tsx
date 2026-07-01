@@ -584,7 +584,7 @@ export function CartPage() {
                           <p className="line-clamp-2 text-base font-black leading-6 text-[var(--foreground)]">{item.name}</p>
                           {item.campaign_key ? (
                             <span className="mt-1 inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300">
-                              Logo kampanyası aktif
+                              Kampanya aktif
                             </span>
                           ) : null}
                         </td>
