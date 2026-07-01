@@ -783,6 +783,7 @@ export function CollectionsPage() {
   const collectionReceiptCaptureRef = useRef<HTMLDivElement | null>(null);
   const roleSlugs = useMemo(() => user?.roles.map((role) => role.slug) ?? [], [user?.roles]);
   const isPointUser = roleSlugs.includes("point");
+  const isAdminUser = roleSlugs.includes("admin");
   const visibleMethods = useMemo(
     () => METHODS.filter((value) => !isPointUser || (value !== "check" && value !== "factory_cc")),
     [isPointUser]
@@ -1823,7 +1824,7 @@ export function CollectionsPage() {
                 <div className={cn(fieldShellClassName, "md:col-span-2")}>
                   <label className={cn(fieldLabelClassName, "flex items-center justify-between")}>
                     <span>Banka</span>
-                    <AddBankModal onAdd={handleRefreshFinanceDefinitions} />
+                    {isAdminUser ? <AddBankModal onAdd={handleRefreshFinanceDefinitions} /> : null}
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     {visiblePosBankOptions.map((option) => (
@@ -1852,11 +1853,11 @@ export function CollectionsPage() {
                   <div className={cn(fieldShellClassName, "md:col-span-2")}>
                     <label className={cn(fieldLabelClassName, "flex items-center justify-between")}>
                       <span>{method === "factory_cc" ? "Cari Pos Seçimi" : "Pos Seçimi"}</span>
-                      {method === "factory_cc" ? (
+                      {isAdminUser && method === "factory_cc" ? (
                         <AddFactoryPosModal onAdd={handleRefreshFinanceDefinitions} />
-                      ) : (
+                      ) : isAdminUser ? (
                         <AddBankModal onAdd={handleRefreshFinanceDefinitions} />
-                      )}
+                      ) : null}
                     </label>
                     <Select
                       value={method === "factory_cc" ? factoryPos : posBank}

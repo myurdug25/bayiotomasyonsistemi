@@ -304,6 +304,7 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
             ->assertJsonPath('collection.reference_fields.collection_channel', 'factory')
             ->assertJsonPath('collection.reference_fields.factory_pos_account', '120-61-031')
             ->assertJsonPath('collection.reference_fields.factory_customer_code', '120-61-031')
+            ->assertJsonPath('collection.reference_no', 'FBC0001')
             ->assertJsonPath('collection.note', 'FBC0001 Fabrika Kart Cari 120-61-031')
             ->assertJsonMissingPath('collection.meta.cashbox_id');
     }
@@ -404,6 +405,48 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
                 ->assertJsonPath('collection.reference_fields.bank_logo_code', '02')
                 ->assertJsonMissingPath('collection.meta.cashbox_id');
         }
+    }
+
+    public function test_transfer_uses_he_sequence_and_preview_does_not_consume_it(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-HE-'.Str::upper(Str::random(4)),
+            'name' => 'Transfer Dealer',
+            'is_active' => true,
+        ]);
+        $user = $this->createUserWithRole('point', $dealer);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '2001',
+            'sync_status' => 'synced',
+            'code' => '120-25-998',
+            'name' => 'Havale Cari',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/collections/next-sequence?type=transfer')
+            ->assertOk()
+            ->assertJsonPath('next_sequence', 'HE0001');
+
+        $this->getJson('/api/collections/next-sequence?type=transfer')
+            ->assertOk()
+            ->assertJsonPath('next_sequence', 'HE0001');
+
+        $this->postJson("/api/customers/{$customer->id}/collections", [
+            'method' => 'transfer',
+            'amount' => 500,
+            'reference_fields' => ['bank_code' => 'ziraat_bankasi'],
+        ])
+            ->assertCreated()
+            ->assertJsonPath('collection.reference_no', 'HE0001')
+            ->assertJsonPath('collection.note', 'HE0001 Havale Cari ZIRAAT BANKASI')
+            ->assertJsonMissingPath('collection.meta.cashbox_id');
+
+        $this->getJson('/api/collections/next-sequence?type=transfer')
+            ->assertOk()
+            ->assertJsonPath('next_sequence', 'HE0002');
     }
 
     private function createUserWithRole(string $roleSlug, Dealer $dealer): User

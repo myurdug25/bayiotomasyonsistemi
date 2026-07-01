@@ -2476,7 +2476,7 @@ export async function listFinanceDefinitions(type?: FinanceDefinitionDto["type"]
 }
 
 export async function createFinanceDefinition(payload: Omit<FinanceDefinitionDto, "id">) {
-  return apiFetch<{ data: FinanceDefinitionDto }>("/api/finance-definitions", {
+  return apiFetch<{ data: FinanceDefinitionDto }>("/api/admin/finance-definitions", {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -340,7 +340,7 @@ export function CustomerSelectionPage() {
                 Sil
               </Button>
 
-              <div className="mt-4 flex flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3 px-2 sm:px-4">
+              <div className="col-span-full mt-3 flex flex-row items-stretch justify-center gap-2 px-2 sm:gap-3 sm:px-4 lg:contents">
               <Toggle
                 pressed={hasCart}
                 onPressedChange={setHasCart}
@@ -388,6 +388,7 @@ export function CustomerSelectionPage() {
                   </Link>
                 </Button>
               ) : null}
+            </div>
             </div>
 
             {hasActiveFilters ? (

@@ -183,7 +183,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware(['role:admin,dealer_admin,salesperson,cashier,point', 'menu:collections,pos'])->group(function (): void {
         Route::get('/finance-definitions', [FinanceDefinitionController::class, 'index']);
-        Route::post('/finance-definitions', [FinanceDefinitionController::class, 'store']);
         Route::get('/collections/next-sequence', [CustomerCollectionController::class, 'nextSequence']);
         Route::get('/customers/{customer}/collections', [CustomerCollectionController::class, 'index']);
         Route::post('/customers/{customer}/collections', [CustomerCollectionController::class, 'store']);
