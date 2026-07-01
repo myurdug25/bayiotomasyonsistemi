@@ -21,6 +21,7 @@ const defaultFastSteps = [
   "pos-sales",
   "pos-expenses",
   "documents-export",
+  "campaigns",
 ];
 const defaultSlowSteps = ["product-stocks"];
 const defaultMaintenanceSteps = ["product-catalog", "pos-expenses-import"];
@@ -192,8 +193,11 @@ function resolveStep(name) {
           "POWERSA_SHIPMENTS_PENDING_URL",
           "POWERSA_RETURNS_PENDING_URL",
           "POWERSA_RETURN_SCRAPS_PENDING_URL",
-          "POWERSA_SYNC_URL"
         ),
+    },
+    campaigns: {
+      script: "logo-campaigns-sync.mjs",
+      when: () => hasAny("POWERSA_SYNC_URL", "POWERSA_CAMPAIGNS_SYNC_URL"),
     },
   };
 
