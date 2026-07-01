@@ -170,7 +170,7 @@ async function main() {
             .query(`
               SELECT *
               FROM ${campaignLineTable} WITH (NOLOCK)
-              WHERE CAMPCARDREF = @campRef OR CMPGNREF = @campRef
+              WHERE CAMPCARDREF = @campRef
               ORDER BY LOGICALREF
             `);
 
@@ -382,7 +382,7 @@ function buildConfig() {
     itemTable:
       nullable(process.env.LOGO_PRODUCT_TABLE) ?? logoFirmTable("ITEMS"),
     apiBase: String(
-      process.env.B2B_API_BASE ?? process.env.API_BASE ?? "http://localhost:8000"
+      process.env.B2B_API_BASE ?? process.env.API_BASE ?? "https://powersab2b.com"
     ).replace(/\/$/, ""),
     apiKey: nullable(process.env.B2B_API_KEY ?? process.env.LOGO_API_KEY),
   };
