@@ -37,6 +37,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   ApiClientError,
   type CustomerCollectionsResponse,
   type CollectionRecord,
@@ -47,6 +55,8 @@ import {
   getCurrentPosSession,
   listCustomerCollections,
   listFinanceDefinitions,
+  createFinanceDefinition,
+  fetchNextCollectionSequence,
   sendCustomerCollections,
   updateCustomerCollection,
 } from "@/lib/api";
@@ -593,6 +603,116 @@ function normalizeWhatsAppPhone(phone?: string | null): string {
   return digits;
 }
 
+function AddBankModal({ onAdd }: { onAdd: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!code || !name) return;
+    setSaving(true);
+    try {
+      await createFinanceDefinition({
+        type: "bank",
+        code,
+        name,
+        is_active: true,
+      });
+      setOpen(false);
+      setCode("");
+      setName("");
+      onAdd();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Banka eklenemedi");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="h-6 px-2 text-xs">+ Ekle</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Banka Ekle (Havale / EFT)</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Logo Banka Kodu</label>
+            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Örn: AKBANK-01" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Banka Adı</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Örn: Akbank A.Ş." />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>İptal</Button>
+          <Button onClick={handleSave} disabled={saving || !code || !name}>Kaydet</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddFactoryPosModal({ onAdd }: { onAdd: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!code || !name) return;
+    setSaving(true);
+    try {
+      await createFinanceDefinition({
+        type: "factory",
+        code,
+        name,
+        is_active: true,
+      });
+      setOpen(false);
+      setCode("");
+      setName("");
+      onAdd();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Cari Pos eklenemedi");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="h-6 px-2 text-xs">+ Ekle</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cari Pos Ekle (Fabrika)</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Logo Cari Kodu</label>
+            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Örn: 120-61-031" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Cari Unvanı</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Örn: Fabrika Cari" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>İptal</Button>
+          <Button onClick={handleSave} disabled={saving || !code || !name}>Kaydet</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function CollectionsPage() {
   const { selectedCustomer, user } = useSession();
   const collectionReceiptCaptureRef = useRef<HTMLDivElement | null>(null);
@@ -627,7 +747,8 @@ export function CollectionsPage() {
   const [checkValorDays, setCheckValorDays] = useState("");
   const [batumTransferBank, setBatumTransferBank] = useState<BatumTransferBankType>("georgia_bank");
   const [posBank, setPosBank] = useState<PosBankType>("yapi_kredi");
-  const [factoryPos, setFactoryPos] = useState<FactoryPosType>("120-61-031");
+  const [factoryPos, setFactoryPos] = useState<FactoryPosType>("");
+  const [sequence, setSequence] = useState("");
   const [posPaymentType, setPosPaymentType] = useState<PosPaymentType>("pesin");
   const [posInstallmentCount, setPosInstallmentCount] = useState("");
   const [checkDraftItems, setCheckDraftItems] = useState<CheckDraftItem[]>([]);
@@ -668,10 +789,32 @@ export function CollectionsPage() {
   }, [selectedCustomer?.id]);
 
   useEffect(() => {
+    handleRefreshFinanceDefinitions();
+  }, []);
+
+  const handleRefreshFinanceDefinitions = () => {
     void listFinanceDefinitions()
       .then((response) => setFinanceDefinitions(response.data))
       .catch((err) => setError(err instanceof Error ? err.message : "Finans tanımları alınamadı"));
-  }, []);
+  };
+
+  useEffect(() => {
+    if (editingCollection || !["factory_cc", "cc", "transfer"].includes(method)) {
+      setSequence("");
+      return;
+    }
+    
+    let cancelled = false;
+    void fetchNextCollectionSequence(method)
+      .then((res) => {
+        if (!cancelled) setSequence(res.next_sequence);
+      })
+      .catch(() => {
+        if (!cancelled) setSequence("");
+      });
+      
+    return () => { cancelled = true; };
+  }, [method, editingCollection]);
 
   useEffect(() => {
     const hasPendingLogoWrite = payload?.data.some(
@@ -1613,7 +1756,10 @@ export function CollectionsPage() {
 
               {method === "cc" && isBatumBranch ? (
                 <div className={cn(fieldShellClassName, "md:col-span-2")}>
-                  <label className={fieldLabelClassName}>Banka</label>
+                  <label className={cn(fieldLabelClassName, "flex items-center justify-between")}>
+                    <span>Banka</span>
+                    <AddBankModal onAdd={handleRefreshFinanceDefinitions} />
+                  </label>
                   <div className="grid grid-cols-2 gap-3">
                     {visiblePosBankOptions.map((option) => (
                       <button
@@ -1639,8 +1785,13 @@ export function CollectionsPage() {
               {(method === "cc" && !isBatumBranch) || method === "factory_cc" ? (
                 <>
                   <div className={cn(fieldShellClassName, "md:col-span-2")}>
-                    <label className={fieldLabelClassName}>
-                      {method === "factory_cc" ? "Cari Pos Seçimi" : "Pos Seçimi"}
+                    <label className={cn(fieldLabelClassName, "flex items-center justify-between")}>
+                      <span>{method === "factory_cc" ? "Cari Pos Seçimi" : "Pos Seçimi"}</span>
+                      {method === "factory_cc" ? (
+                        <AddFactoryPosModal onAdd={handleRefreshFinanceDefinitions} />
+                      ) : (
+                        <AddBankModal onAdd={handleRefreshFinanceDefinitions} />
+                      )}
                     </label>
                     <Select
                       value={method === "factory_cc" ? factoryPos : posBank}
@@ -1675,9 +1826,11 @@ export function CollectionsPage() {
                 <Textarea
                   value={editingCollection?.note ?? (
                     method === "factory_cc"
-                      ? factoryOptions.find((option) => option.value === factoryPos)?.label ?? factoryPos
+                      ? `${sequence || "FBC-[OTO]"} ${selectedCustomer?.title ?? ""} ${factoryOptions.find((option) => option.value === factoryPos)?.label ?? factoryPos}`
                       : method === "cc"
-                        ? `FP##### ${selectedCustomer?.title ?? ""} ${visiblePosBankOptions.find((option) => option.value === posBank)?.label ?? posBank}`
+                        ? `${sequence || "FP-[OTO]"} ${selectedCustomer?.title ?? ""} ${visiblePosBankOptions.find((option) => option.value === posBank)?.label ?? posBank}`
+                      : method === "transfer"
+                        ? `${sequence || "HE-[OTO]"} ${selectedCustomer?.title ?? ""} ${visiblePosBankOptions.find((option) => option.value === (isBatumBranch ? batumTransferBank : posBank))?.label ?? (isBatumBranch ? batumTransferBank : posBank)}`
                         : note
                   )}
                   readOnly
