@@ -229,14 +229,14 @@ async function main() {
       }
 
       // Adet bulma: Başlık isminden veya satır koşulundan çıkar (örn: "KAMPANYASI 10", "5 ADE", "P76*(5/100)")
-      let targetQty = 1;
+      let parsedTargetQty = targetQty;
       const titleMatch = (code + " " + name).match(/(?:\s|-|^)(\d+)\s*(?:ADE|ADET|LI|Lİ|'Lİ|'LI)?(?:\s|-|$)/i);
       if (titleMatch) {
-         targetQty = parseInt(titleMatch[1], 10);
+         parsedTargetQty = parseInt(titleMatch[1], 10);
       } else if (lineCondition) {
          const condMatch = lineCondition.match(/\*\s*\(\s*(\d+)\s*\/\s*100\s*\)/);
          if (condMatch) {
-             targetQty = parseInt(condMatch[1], 10);
+             parsedTargetQty = parseInt(condMatch[1], 10);
          }
       }
 
@@ -248,7 +248,7 @@ async function main() {
         name: name || `Kampanya ${ref}`,
         description: normalizeString(row.NOTES ?? row.DESCRIPTION2 ?? null),
         customer_group: customerGroup,
-        target_quantity: targetQty,
+        target_quantity: parsedTargetQty,
         discount_percent: discountPercent,
         group_field: "specode",
         starts_at: startsAt,
@@ -262,7 +262,7 @@ async function main() {
       });
 
       console.log(
-        `[logo-campaigns-sync] Kampanya: ${code} (grup: ${customerGroup ?? "hepsi"}, hedef: ${targetQty}, indirim: %${discountPercent ?? 0}, ürün: ${productSkus.length})`
+        `[logo-campaigns-sync] Kampanya: ${code} (grup: ${customerGroup ?? "hepsi"}, hedef: ${parsedTargetQty}, indirim: %${discountPercent ?? 0}, ürün: ${productSkus.length})`
       );
     }
 
