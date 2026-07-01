@@ -76,48 +76,14 @@ async function main() {
       ORDER BY LOGICALREF;
     `);
 
-    const duplicatePriceCards = await pool.request().query(`
-      SELECT TOP (100)
-        CARDREF,
-        COUNT(*) AS price_row_count,
-        MIN(PRICE) AS minimum_price,
-        MAX(PRICE) AS maximum_price
-      FROM ${priceTable} WITH (NOLOCK)
-      WHERE ISNULL(ACTIVE, 0) = 0
-        AND ISNULL(PTYPE, 2) = 2
-      GROUP BY CARDREF
-      HAVING COUNT(*) > 1
-      ORDER BY COUNT(*) DESC, CARDREF;
-    `);
-
-    const sampleRows = await pool.request().query(`
-      SELECT TOP (200) *
-      FROM ${priceTable} WITH (NOLOCK)
-      WHERE CARDREF IN (
-        SELECT TOP (25) CARDREF
-        FROM ${priceTable} WITH (NOLOCK)
-        WHERE ISNULL(ACTIVE, 0) = 0
-          AND ISNULL(PTYPE, 2) = 2
-        GROUP BY CARDREF
-        HAVING COUNT(*) > 1
-        ORDER BY COUNT(*) DESC, CARDREF
-      )
-      ORDER BY CARDREF, PRIORITY DESC, LOGICALREF DESC;
-    `);
-
     console.log(JSON.stringify({
       checked_at: new Date().toISOString(),
-      price_table: priceTable,
-      candidate_tables: candidateTables.recordset ?? [],
-      price_columns: (priceColumns.recordset ?? []).map((row) => row.COLUMN_NAME),
       campaign_table: campaignTable,
       campaign_columns: campaignColumns,
       campaign_rows: campaignRows.recordset ?? [],
       campaign_line_table: campaignLineTable,
       campaign_line_columns: campaignLineColumns,
       campaign_line_sample: campaignLineRows.recordset ?? [],
-      products_with_multiple_sales_prices: duplicatePriceCards.recordset ?? [],
-      price_samples: sampleRows.recordset ?? [],
     }, null, 2));
   } finally {
     await pool.close();
