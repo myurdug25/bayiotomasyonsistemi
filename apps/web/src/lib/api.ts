@@ -2475,6 +2475,53 @@ export async function listFinanceDefinitions(type?: FinanceDefinitionDto["type"]
   );
 }
 
+// ── Kampanya Tipleri ──────────────────────────────────────────────────────────
+
+export type CampaignDto = {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  customer_group?: string | null;
+  target_quantity: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  is_active: boolean;
+  product_skus: string[];
+};
+
+export type CampaignProgressDto = {
+  campaign_id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  target_quantity: number;
+  cart_quantity: number;
+  progress_pct: number;
+  is_completed: boolean;
+  remaining: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  product_skus: string[];
+};
+
+/**
+ * Müşterinin grubuna ait aktif kampanyaları listeler.
+ */
+export async function fetchCampaigns(customerId?: number) {
+  const qs = customerId !== undefined ? `?customer_id=${customerId}` : "";
+  return apiFetch<{ data: CampaignDto[] }>(`/api/campaigns${qs}`);
+}
+
+/**
+ * Müşterinin aktif sepetine göre kampanya ilerlemesini döner.
+ */
+export async function fetchCampaignProgress(customerId: number) {
+  return apiFetch<{ data: CampaignProgressDto[] }>(
+    `/api/customers/${customerId}/campaign-progress`
+  );
+}
+
 export async function createFinanceDefinition(payload: Omit<FinanceDefinitionDto, "id">) {
   return apiFetch<{ data: FinanceDefinitionDto }>("/api/admin/finance-definitions", {
     method: "POST",

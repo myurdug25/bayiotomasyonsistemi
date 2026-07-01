@@ -18,6 +18,9 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import { useCart } from "@/components/cart/cart-provider";
+import { SearchSelect } from "@/components/ui/search-select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CampaignPanel } from "@/components/campaigns/campaign-progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -37,6 +40,8 @@ import {
   getProductFilterOptions,
   resolveApiBaseUrl,
   searchProducts,
+  fetchCampaignProgress,
+  type CampaignProgressDto,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -482,6 +487,7 @@ type ProductRowProps = {
   showRetailPriceHint: boolean;
   tableGridStyle: CSSProperties;
   style?: CSSProperties;
+  campaignNames?: string[];
   onOpenCartModal: (product: ProductSearchItem, currentQty: number) => void;
   onPreviewImage: (preview: ProductImagePreview) => void;
   onShowCompetitorCodes: (preview: ProductCompetitorCodesPreview) => void;
@@ -712,6 +718,7 @@ const ProductRow = memo(function ProductRow({
   showRetailPriceHint,
   tableGridStyle,
   style,
+  campaignNames,
   onOpenCartModal,
   onPreviewImage,
   onShowCompetitorCodes,
@@ -759,10 +766,23 @@ const ProductRow = memo(function ProductRow({
           ) : null}
         </div>
 
-        <div role="cell" className="flex min-w-0 items-center border-l border-[var(--brand-border)] px-2 py-1">
+        <div role="cell" className="flex min-w-0 items-start border-l border-[var(--brand-border)] px-2 py-1 flex-col justify-center gap-0.5">
           <p className="line-clamp-2 text-[12px] font-semibold leading-[14px] text-[var(--foreground)]">
             {product.name}
           </p>
+          {campaignNames && campaignNames.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {campaignNames.map((cname) => (
+                <span
+                  key={cname}
+                  className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-300 border border-amber-500/30"
+                  title={cname}
+                >
+                  🏆 {cname}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div role="cell" className="flex min-w-0 items-center border-l border-[var(--brand-border)] px-1.5 py-1">
@@ -1137,6 +1157,33 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     placeholderData: (previousData) => previousData,
   });
 
+  const campaignProgressQuery = useQuery({
+    queryKey: ["campaignProgress", selectedCustomer?.id],
+    queryFn: async () => {
+      if (!selectedCustomer?.id) return { campaigns: [], eligible_campaigns: [] };
+      return fetchCampaignProgress();
+    },
+    enabled: Boolean(selectedCustomer?.id),
+    staleTime: 60_000, // 1 dakika
+  });
+
+  const campaignSkuMap = useMemo(() => {
+    const map = new Map<string, { id: number; name: string }[]>();
+    const allCampaigns = campaignProgressQuery.data?.campaigns || [];
+    
+    for (const campaign of allCampaigns) {
+      for (const product of campaign.products || []) {
+        if (!product.sku) continue;
+        
+        const existing = map.get(product.sku) || [];
+        existing.push({ id: campaign.id, name: campaign.name });
+        map.set(product.sku, existing);
+      }
+    }
+    
+    return map;
+  }, [campaignProgressQuery.data]);
+
   const products = useMemo(() => {
     if (!shouldFetchProducts) {
       return [];
@@ -1466,6 +1513,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="admin-catalog-page space-y-4">
+      {campaignProgressQuery.data && campaignProgressQuery.data.campaigns.length > 0 && (
+        <CampaignPanel campaigns={campaignProgressQuery.data} />
+      )}
       <Card className="admin-catalog-list dashboard-panel-card min-h-[560px]">
         <CardHeader className="space-y-3 pb-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1717,6 +1767,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                 <div className={cn("rounded-xl border border-t-0 border-[var(--brand-border)]", compact ? "min-h-[360px]" : "min-h-[520px]")}>
                   {products.map((product) => {
                     const qty = qtyByProductId.get(product.id) ?? 0;
+                    const productCampaigns = campaignSkuMap.get(product.sku);
+                    const campaignNames = productCampaigns?.map((c) => c.name);
 
                     return (
                       <ProductRow
@@ -1731,6 +1783,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         visibleStockColumns={visibleStockColumns}
                         showRetailPriceHint={isPointPanel}
                         tableGridStyle={tableGridStyle}
+                        campaignNames={campaignNames}
                         onOpenCartModal={handleOpenCartModal}
 	                        onPreviewImage={setImagePreview}
 	                        onShowCompetitorCodes={setCompetitorCodesPreview}

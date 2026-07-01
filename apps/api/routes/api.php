@@ -49,6 +49,7 @@ use App\Http\Controllers\Api\UserNoteController;
 use App\Http\Controllers\Api\WarehouseOrderController;
 use App\Http\Controllers\Api\WarehouseShipmentController;
 use App\Http\Controllers\Api\WarehouseShipmentPrintController;
+use App\Http\Controllers\Api\CampaignController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('throttle:logo-integration')->group(function (): void {
@@ -74,6 +75,7 @@ Route::middleware('throttle:logo-integration')->group(function (): void {
     Route::post('/integrations/logo/return-scraps/ack', [LogoReturnScrapExportController::class, 'acknowledge']);
     Route::post('/integrations/logo/ledger/sync', [LogoLedgerSyncController::class, 'store']);
     Route::post('/integrations/logo/products/sync', [LogoProductSyncController::class, 'store']);
+    Route::post('/integrations/logo/campaigns/sync', [CampaignController::class, 'sync']);
 });
 
 Route::middleware('web')->group(function (): void {
@@ -179,6 +181,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/customers/{customer}/ledger', [CustomerLedgerController::class, 'index'])->middleware('menu:ledger');
         Route::apiResource('dealers', DealerController::class)->only(['index', 'show', 'update'])->middleware('menu:customers,search,cart,orders,reports,ledger,collections,dashboard,extra');
         Route::apiResource('customers', CustomerController::class)->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard,new-customer-card');
+        Route::get('/campaigns', [CampaignController::class, 'index']);
+        Route::get('/customers/{customer}/campaign-progress', [CampaignController::class, 'progress']);
     });
 
     Route::middleware(['role:admin,dealer_admin,salesperson,cashier,point', 'menu:collections,pos'])->group(function (): void {

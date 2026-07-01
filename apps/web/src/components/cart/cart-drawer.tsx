@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { CheckCircle2, Loader2, Minus, Plus, ShoppingCart } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchCampaignProgress } from "@/lib/api";
 
 import { useSession } from "@/components/auth/session-provider";
 import { useCart } from "@/components/cart/cart-provider";
+import { CampaignPanel } from "@/components/campaigns/campaign-progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -79,6 +82,16 @@ export function CartDrawer({ darkMode = false }: { darkMode?: boolean }) {
     0
   );
   const hasItems = lineCount > 0;
+
+  const campaignProgressQuery = useQuery({
+    queryKey: ["campaignProgress", selectedCustomer?.id],
+    queryFn: async () => {
+      if (!selectedCustomer?.id) return { campaigns: [], eligible_campaigns: [] };
+      return fetchCampaignProgress();
+    },
+    enabled: Boolean(selectedCustomer?.id) && open,
+    staleTime: 60_000,
+  });
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -162,6 +175,12 @@ export function CartDrawer({ darkMode = false }: { darkMode?: boolean }) {
         <Separator className="my-4" />
 
         <ScrollArea className="flex-1 pr-2">
+          {campaignProgressQuery.data && campaignProgressQuery.data.campaigns.length > 0 && (
+            <div className="mb-4">
+              <CampaignPanel campaigns={campaignProgressQuery.data} />
+            </div>
+          )}
+
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 4 }).map((_, index) => (
