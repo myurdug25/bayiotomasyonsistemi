@@ -510,6 +510,58 @@ BEGIN
 
     EXEC sp_executesql @NormalizeSql, N'@Ref INT', @Ref = @StockFicheRef;
 
+    MERGE dbo.LG_003_01_GNTOTST AS target
+    USING (
+        SELECT StockRef, @SourceIndex AS InvenNo, SUM(Quantity) AS TotalQty
+        FROM @Lines
+        GROUP BY StockRef
+    ) AS source
+    ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
+    WHEN MATCHED THEN
+        UPDATE SET ONHAND = ONHAND - source.TotalQty
+    WHEN NOT MATCHED THEN
+        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+
+    MERGE dbo.LG_003_01_GNTOTST AS target
+    USING (
+        SELECT StockRef, -1 AS InvenNo, SUM(Quantity) AS TotalQty
+        FROM @Lines
+        GROUP BY StockRef
+    ) AS source
+    ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
+    WHEN MATCHED THEN
+        UPDATE SET ONHAND = ONHAND - source.TotalQty
+    WHEN NOT MATCHED THEN
+        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+
+    MERGE dbo.LG_003_01_STINVTOT AS target
+    USING (
+        SELECT StockRef, @SourceIndex AS InvenNo, SUM(Quantity) AS TotalQty
+        FROM @Lines
+        GROUP BY StockRef
+    ) AS source
+    ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
+    WHEN MATCHED THEN
+        UPDATE SET ONHAND = ONHAND - source.TotalQty
+    WHEN NOT MATCHED THEN
+        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+
+    MERGE dbo.LG_003_01_STINVTOT AS target
+    USING (
+        SELECT StockRef, -1 AS InvenNo, SUM(Quantity) AS TotalQty
+        FROM @Lines
+        GROUP BY StockRef
+    ) AS source
+    ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
+    WHEN MATCHED THEN
+        UPDATE SET ONHAND = ONHAND - source.TotalQty
+    WHEN NOT MATCHED THEN
+        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+
     SET @ExternalRef = CONCAT(N'INVOICE-', @InvoiceRef);
     EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;
 
@@ -829,6 +881,58 @@ BEGIN
       AND t.name IN (N'tinyint', N'smallint', N'int', N'bigint', N'float', N'real', N'decimal', N'numeric', N'money', N'smallmoney');
 
     EXEC sp_executesql @NormalizeSql, N'@Ref INT', @Ref = @StockFicheRef;
+
+    MERGE dbo.LG_003_01_GNTOTST AS target
+    USING (
+        SELECT StockRef, @SourceIndex AS InvenNo, SUM(Quantity) AS TotalQty
+        FROM @Lines
+        GROUP BY StockRef
+    ) AS source
+    ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
+    WHEN MATCHED THEN
+        UPDATE SET ONHAND = ONHAND - source.TotalQty
+    WHEN NOT MATCHED THEN
+        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+
+    MERGE dbo.LG_003_01_GNTOTST AS target
+    USING (
+        SELECT StockRef, -1 AS InvenNo, SUM(Quantity) AS TotalQty
+        FROM @Lines
+        GROUP BY StockRef
+    ) AS source
+    ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
+    WHEN MATCHED THEN
+        UPDATE SET ONHAND = ONHAND - source.TotalQty
+    WHEN NOT MATCHED THEN
+        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+
+    MERGE dbo.LG_003_01_STINVTOT AS target
+    USING (
+        SELECT StockRef, @SourceIndex AS InvenNo, SUM(Quantity) AS TotalQty
+        FROM @Lines
+        GROUP BY StockRef
+    ) AS source
+    ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
+    WHEN MATCHED THEN
+        UPDATE SET ONHAND = ONHAND - source.TotalQty
+    WHEN NOT MATCHED THEN
+        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+
+    MERGE dbo.LG_003_01_STINVTOT AS target
+    USING (
+        SELECT StockRef, -1 AS InvenNo, SUM(Quantity) AS TotalQty
+        FROM @Lines
+        GROUP BY StockRef
+    ) AS source
+    ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
+    WHEN MATCHED THEN
+        UPDATE SET ONHAND = ONHAND - source.TotalQty
+    WHEN NOT MATCHED THEN
+        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
 
     SET @ExternalRef = CASE WHEN @IsInvoice = 1 THEN CONCAT(N'INVOICE-', @InvoiceRef) ELSE CONCAT(N'STFICHE-', @StockFicheRef) END;
     EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;

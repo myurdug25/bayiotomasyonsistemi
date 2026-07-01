@@ -2476,10 +2476,14 @@ export async function listFinanceDefinitions(type?: FinanceDefinitionDto["type"]
 }
 
 export async function createFinanceDefinition(payload: Omit<FinanceDefinitionDto, "id">) {
-  return apiFetch<{ data: FinanceDefinitionDto }>("/api/admin/finance-definitions", {
+  return apiFetch<{ data: FinanceDefinitionDto }>("/api/finance-definitions", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchNextCollectionSequence(type: string) {
+  return apiFetch<{ next_sequence: string }>(`/api/collections/next-sequence?type=${encodeURIComponent(type)}`);
 }
 
 export async function updateFinanceDefinition(

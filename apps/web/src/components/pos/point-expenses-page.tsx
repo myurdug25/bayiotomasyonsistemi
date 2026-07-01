@@ -1,19 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
-  Banknote,
-  Building2,
   CheckCircle2,
   Clock,
   FileText,
   Loader2,
-  MapPin,
   PlusCircle,
   ReceiptText,
   RefreshCcw,
@@ -35,6 +32,8 @@ import { notifyPosDayEndRefresh } from "@/lib/pos-day-end-events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_POINT_EXPENSE_CATEGORY = "Masraf";
@@ -98,22 +97,6 @@ function expenseSyncLabel(expense: PosExpenseDto): string {
   }
 
   return formatLogoOutboundStatus(expense.logo_sync_status);
-}
-
-function expenseSyncTone(expense: PosExpenseDto): string {
-  if (expense.source_system === "logo") {
-    return "border-[#72bf82]/50 text-[#b8f7b5]";
-  }
-
-  if (expense.logo_sync_status === "failed") {
-    return "border-[#f87171]/50 text-[#f87171]";
-  }
-
-  if (expense.logo_sync_status === "synced") {
-    return "border-[#72bf82]/50 text-[#b8f7b5]";
-  }
-
-  return "border-[#faee56]/50 text-[#faee56]";
 }
 
 function normalizeBranchText(value: string | null | undefined): string {
@@ -191,55 +174,6 @@ function resolveExpenseScope(
   };
 }
 
-function sessionScopeLabel(session: PosExpenseDto["cashbox"] | null | undefined, branchLabel: string): string {
-  if (!session) {
-    return `${branchLabel} kasası hazırlanıyor`;
-  }
-
-  const code = session.code?.trim();
-  const name = session.name?.trim();
-  if (code && name) {
-    return `${code} / ${name}`;
-  }
-
-  return code || name || `${branchLabel} point kasası`;
-}
-
-function ExpenseStat({
-  label,
-  value,
-  detail,
-  icon,
-  tone = "default",
-}: {
-  label: string;
-  value: string | number;
-  detail?: string;
-  icon: ReactNode;
-  tone?: "default" | "accent" | "yellow";
-}) {
-  return (
-    <div
-      className={cn(
-        "point-admin-stat rounded-[18px] border p-4",
-        tone === "yellow" && "border-[#9d8f36]/60 bg-[linear-gradient(135deg,rgba(250,238,86,0.2)_0%,rgba(26,42,25,0.92)_100%)]",
-        tone === "accent" && "border-[#4d805d]/70 bg-[linear-gradient(135deg,rgba(74,128,87,0.28)_0%,rgba(8,24,17,0.94)_100%)]"
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-black uppercase tracking-[0.13em] text-[var(--point-muted-strong)]">{label}</p>
-          <p className="mt-2 truncate text-2xl font-black text-[var(--point-text)]">{value}</p>
-          {detail ? <p className="mt-1 truncate text-xs font-semibold text-[var(--point-muted)]">{detail}</p> : null}
-        </div>
-        <span className="point-section-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border">
-          {icon}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export function PointExpensesPage() {
   const pointSessionBootstrapAttemptedRef = useRef(false);
   const { user } = useSession();
@@ -285,7 +219,6 @@ export function PointExpensesPage() {
   const currentSession = currentSessionQuery.data?.data ?? null;
   const currentCashbox = currentSession?.cashbox ?? null;
   const expenseScope = resolveExpenseScope(user, currentCashbox);
-  const scopeLabel = sessionScopeLabel(currentCashbox, expenseScope.branchLabel);
 
   useEffect(() => {
     if (isSalesperson) {
@@ -344,15 +277,6 @@ export function PointExpensesPage() {
   });
 
   const recentExpenses = useMemo<PosExpenseDto[]>(() => expensesQuery.data?.data ?? [], [expensesQuery.data?.data]);
-  const expenseTotal = useMemo(
-    () => recentExpenses.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0),
-    [recentExpenses]
-  );
-  const lastExpense = recentExpenses[0] ?? null;
-  const todayExpenseCount = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return recentExpenses.filter((expense) => (expense.expense_date || expense.created_at).slice(0, 10) === today).length;
-  }, [recentExpenses]);
 
   const submit = form.handleSubmit(async (values) => {
     if (!isSalesperson && !currentSession) {
@@ -379,250 +303,169 @@ export function PointExpensesPage() {
   const busy = (!isSalesperson && currentSessionQuery.isFetching) || expensesQuery.isFetching || openSessionMutation.isPending;
 
   return (
-    <div className="point-admin-page">
-      <div className="space-y-4">
-        <section className="point-admin-hero overflow-hidden rounded-[18px] border p-4 shadow-[0_28px_70px_-54px_rgba(0,0,0,0.95)]">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
-            <div className="flex min-w-0 items-start gap-4">
-              <span className="point-page-icon flex h-14 w-14 shrink-0 items-center justify-center rounded-[14px] border">
-                <ReceiptText className="h-7 w-7" />
-              </span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={cn(
-                      "rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.12em]",
-                      currentSession || isSalesperson
-                        ? "border-[#6fb878]/60 bg-[#1f6b45]/30 text-[#d8f5d9]"
-                        : "border-[#faee56]/45 bg-[#3b3719]/50 text-[#faee56]"
-                    )}
-                  >
-                    {isSalesperson ? "Plasiyer Gideri" : currentSession ? "Oturum Hazır" : "Oturum Hazırlanıyor"}
-                  </span>
-                  {currentSession ? (
-                    <span className="rounded-full border border-[#faee56]/45 bg-[#3b3719]/50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#faee56]">
-                      #{currentSession.id}
-                    </span>
-                  ) : null}
-                </div>
-                <h1 className="mt-3 text-3xl font-black tracking-tight text-[var(--point-text)] xl:text-4xl">{expenseScope.branchLabel} Masraf</h1>
-                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[var(--point-muted-strong)]">
-                  Açık {expenseScope.branchLabel} point kasasına masraf ekleyin, gün sonu toplamını ve Logo aktarım durumunu aynı ekranda takip edin.
-                </p>
-                {currentSession ? (
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs font-black text-[var(--point-muted-strong)]">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--point-border)] bg-[var(--point-control)] px-3 py-2">
-                      <MapPin className="h-3.5 w-3.5" />
-                      {expenseScope.branchLabel} kapsamı
-                    </span>
-                    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--point-border)] bg-[var(--point-control)] px-3 py-2">
-                      <Building2 className="h-3.5 w-3.5" />
-                      {scopeLabel}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
+    <div className="container py-8 md:py-12">
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-3xl font-black tracking-tight xl:text-4xl">Masraf Girişi</h1>
+          <p className="mt-2 text-sm font-semibold text-muted-foreground">
+            {isSalesperson ? "Plasiyer cüzdanınızdan masraf (bakım, pazarlama, vb.) girebilirsiniz." : "Kasa masrafı ekleyin ve takibini yapın."}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 rounded-xl"
+            disabled={busy}
+            onClick={() => {
+              void currentSessionQuery.refetch();
+              void expensesQuery.refetch();
+            }}
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" /> Yenile
+          </Button>
+          {!isSalesperson && (
+            <Button asChild className="h-10 rounded-xl" variant="default">
+              <Link href="/pos">
+                <Wallet className="mr-2 h-4 w-4" /> Satış
+              </Link>
+            </Button>
+          )}
+        </div>
+      </div>
 
-            <div className="point-admin-soft rounded-[16px] border p-4">
-              <p className="text-[11px] font-black uppercase tracking-[0.13em] text-[var(--point-muted-strong)]">{expenseScope.branchLabel} Masraf Toplamı</p>
-              <p className="mt-2 truncate text-3xl font-black text-[#faee56]">{formatCurrency(expenseTotal, expenseScope.currencyLabel)}</p>
-              <p className="mt-2 flex items-center gap-2 text-xs font-bold text-[var(--point-muted)]">
-                <Clock className="h-4 w-4" />
-                Gün sonu ile dinamik güncellenir.
-              </p>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="point-secondary-button h-11 rounded-[14px] font-black"
-                  disabled={busy}
-                  onClick={() => {
-                    void currentSessionQuery.refetch();
-                    void expensesQuery.refetch();
-                  }}
-                >
-                  <RefreshCcw className="h-4 w-4" /> Yenile
-                </Button>
-                <Button asChild className="point-yellow-action-button h-11 rounded-[14px] font-black">
-                  <Link href="/pos">
-                    <Wallet className="h-4 w-4" /> Satış
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-3 md:grid-cols-3">
-          <ExpenseStat
-            label="Oturum"
-            value={currentSession ? `#${currentSession.id}` : "Hazırlanıyor"}
-            detail={scopeLabel}
-            icon={<Wallet className="h-5 w-5" />}
-            tone="accent"
-          />
-          <ExpenseStat
-            label="Masraf Toplamı"
-            value={formatCurrency(expenseTotal, expenseScope.currencyLabel)}
-            detail={`Sadece ${expenseScope.branchLabel} kasa oturumu`}
-            icon={<Banknote className="h-5 w-5" />}
-            tone="yellow"
-          />
-          <ExpenseStat
-            label="Bugün"
-            value={todayExpenseCount}
-            detail={lastExpense ? `Son kayıt ${formatDate(lastExpense.expense_date || lastExpense.created_at)}` : "Henüz kayıt yok"}
-            icon={<FileText className="h-5 w-5" />}
-          />
-        </section>
-
-        {!currentSession && !isSalesperson ? (
-          <section className="point-admin-panel rounded-[22px] border p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-lg font-black text-[var(--point-text)]">{expenseScope.branchLabel} masraf ekranı için point oturumu hazırlanıyor.</p>
-                <p className="mt-1 text-sm font-semibold text-[var(--point-muted)]">Oturum hazırlandığında yalnızca bu kasaya masraf girişi aktif olur.</p>
-              </div>
-              <Button asChild className="point-yellow-action-button h-12 rounded-[14px] px-5 font-black">
-                <Link href="/pos">Hızlı Satışa Dön</Link>
-              </Button>
-            </div>
-          </section>
-        ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(360px,0.86fr)_minmax(0,1.14fr)]">
-            <section className="point-admin-panel rounded-[18px] border p-4 shadow-[0_20px_45px_-35px_rgba(0,0,0,0.7)]">
-              <div className="mb-4 flex items-center gap-3">
-                <span className="point-section-icon flex h-11 w-11 items-center justify-center rounded-[12px] border">
-                  <PlusCircle className="h-5 w-5" />
-                </span>
+      <div className="grid gap-8 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="lg:col-span-2 xl:col-span-3">
+          <Card className="rounded-[20px] shadow-sm">
+            <CardHeader className="bg-muted/30 pb-6 rounded-t-[20px] border-b">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <PlusCircle className="h-5 w-5 text-primary" /> Yeni Masraf Kaydet
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <form onSubmit={submit} className="space-y-6">
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.13em] text-[var(--point-muted-strong)]">{expenseScope.branchLabel} Masraf Kaydı</p>
-                  <h2 className="text-xl font-black text-[var(--point-text)]">Yeni masraf</h2>
-                </div>
-              </div>
-
-              <form className="space-y-4" onSubmit={submit}>
-                {isSalesperson ? (
-                  <div>
-                    <span className="mb-2 block text-sm font-black text-[var(--point-muted-strong)]">Gider Kategorisi</span>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {expenseCategories.map((category) => (
-                        <Button
+                  <label className="mb-3 block text-sm font-bold text-foreground">Gider Türü Seçiniz</label>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+                    {isSalesperson ? (
+                      expenseCategories.map((category) => (
+                        <button
                           key={category.id}
                           type="button"
-                          variant={selectedCategoryId === category.id ? "default" : "outline"}
-                          className="h-12 rounded-[12px] font-black"
+                          className={cn(
+                            "flex h-24 flex-col items-center justify-center gap-2 rounded-[16px] border-2 bg-background p-2 transition-all hover:border-primary/40 hover:bg-muted/50",
+                            selectedCategoryId === category.id && "border-primary bg-primary/5 text-primary shadow-sm ring-1 ring-primary/20"
+                          )}
                           onClick={() => form.setValue("categoryId", category.id, { shouldValidate: true })}
                         >
-                          {category.name}
-                        </Button>
-                      ))}
-                    </div>
+                          <FileText className="h-6 w-6" />
+                          <span className="text-center text-xs font-bold leading-tight">{category.name}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <button
+                        type="button"
+                        className="flex h-24 flex-col items-center justify-center gap-2 rounded-[16px] border-2 border-primary bg-primary/5 p-2 text-primary shadow-sm ring-1 ring-primary/20 transition-all"
+                      >
+                        <FileText className="h-6 w-6" />
+                        <span className="text-center text-xs font-bold leading-tight">{DEFAULT_POINT_EXPENSE_CATEGORY}</span>
+                      </button>
+                    )}
                   </div>
-                ) : null}
-                <label className="block">
-                  <span className="mb-2 block text-sm font-black text-[var(--point-muted-strong)]">Tutar ({expenseScope.currencyLabel})</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    {...form.register("amount", { valueAsNumber: true })}
-                    disabled={createExpenseMutation.isPending}
-                    className="h-16 rounded-[14px] text-3xl font-black"
-                  />
-                </label>
+                </div>
 
-                <label className="block">
-                  <span className="mb-2 block text-sm font-black text-[var(--point-muted-strong)]">Açıklama</span>
-                  <Input
-                    placeholder={`${expenseScope.branchLabel} masraf notu`}
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-foreground">Tutar ({expenseScope.currencyLabel})</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      {...form.register("amount", { valueAsNumber: true })}
+                      disabled={createExpenseMutation.isPending}
+                      className="h-12 rounded-[12px] text-lg font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-foreground">Tarih</label>
+                    <Input
+                      type="date"
+                      defaultValue={new Date().toISOString().slice(0, 10)}
+                      disabled={true}
+                      className="h-12 rounded-[12px] bg-muted/50 text-lg font-bold text-muted-foreground opacity-100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-foreground">Açıklama</label>
+                  <Textarea
+                    placeholder="Masraf ile ilgili açıklama (Örn: Araç bakımı 34ABC12)"
                     {...form.register("note")}
                     disabled={createExpenseMutation.isPending}
-                    className="h-14 rounded-[14px] text-base font-semibold"
+                    className="min-h-[100px] resize-none rounded-[14px] text-base font-medium"
                   />
-                </label>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="point-admin-soft rounded-[14px] border p-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--point-muted)]">Kategori</p>
-                    <p className="mt-1 text-lg font-black text-[var(--point-text)]">
-                      {isSalesperson
-                        ? expenseCategories.find((item) => item.id === selectedCategoryId)?.name ?? "Seçiniz"
-                        : DEFAULT_POINT_EXPENSE_CATEGORY}
-                    </p>
-                  </div>
-                  <div className="point-admin-soft rounded-[14px] border p-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--point-muted)]">Kasa</p>
-                    <p className="mt-1 truncate text-lg font-black text-[var(--point-text)]">
-                      {isSalesperson ? user?.name ?? "Plasiyer" : currentSession?.cashbox.code ?? expenseScope.branchLabel}
-                    </p>
-                  </div>
                 </div>
 
-                <Button type="submit" className="point-yellow-action-button h-16 w-full rounded-[14px] text-xl font-black" disabled={createExpenseMutation.isPending}>
-                  {createExpenseMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <ReceiptText className="h-5 w-5" />}
-                  Masraf Kaydet
+                <Button type="submit" size="lg" className="h-14 w-full rounded-[14px] text-lg font-black" disabled={createExpenseMutation.isPending}>
+                  {createExpenseMutation.isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ReceiptText className="mr-2 h-5 w-5" />}
+                  Masrafı Kaydet
                 </Button>
               </form>
-            </section>
+            </CardContent>
+          </Card>
+        </div>
 
-            <section className="point-admin-panel rounded-[18px] border p-4 shadow-[0_20px_45px_-35px_rgba(0,0,0,0.7)]">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.13em] text-[var(--point-muted-strong)]">{expenseScope.branchLabel} Masrafları</p>
-                  <h2 className="text-xl font-black text-[var(--point-text)]">Kasa hareketleri</h2>
-                </div>
-                <span className="rounded-full border border-[#faee56]/45 bg-[#3b3719]/50 px-3 py-1 text-xs font-black text-[#faee56]">
+        <div>
+          <Card className="h-full rounded-[20px] shadow-sm">
+            <CardHeader className="bg-muted/30 pb-4 rounded-t-[20px] border-b">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Son Hareketler</CardTitle>
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-black text-primary">
                   {recentExpenses.length} kayıt
                 </span>
               </div>
-
-              <div className="space-y-3">
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border">
                 {expensesQuery.isLoading ? (
-                  Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-20 w-full rounded-[16px]" />)
+                   Array.from({ length: 4 }).map((_, index) => <div key={index} className="p-4"><Skeleton className="h-16 w-full rounded-xl" /></div>)
                 ) : recentExpenses.length > 0 ? (
                   recentExpenses.map((expense) => (
-                    <div key={expense.id} className="point-admin-soft rounded-[14px] border px-4 py-3">
-                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_130px] md:items-center">
+                    <div key={expense.id} className="p-4 transition-colors hover:bg-muted/40">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-black text-[var(--point-text)]">{expense.category}</p>
-                            <span
-                              className={cn(
-                                "rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em]",
-                                expenseSyncTone(expense)
+                          <p className="truncate text-sm font-bold">{expense.category}</p>
+                          <p className="mt-1 line-clamp-2 text-xs font-medium text-muted-foreground">{expense.note?.trim() || "Açıklama yok"}</p>
+                          <p className="mt-2 text-[11px] font-semibold text-muted-foreground">{formatDate(expense.expense_date || expense.created_at)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="whitespace-nowrap font-black text-destructive">
+                            -{formatCurrency(expense.amount, expense.currency === "GEL" ? BATUM_CURRENCY_LABEL : DEFAULT_CURRENCY_LABEL)}
+                          </p>
+                          <div className="mt-1.5 flex justify-end">
+                            <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold text-muted-foreground bg-background">
+                              {expense.source_system === "logo" || expense.logo_sync_status === "synced" ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                              ) : (
+                                <Clock className="h-3.5 w-3.5 text-amber-500" />
                               )}
-                            >
                               {expenseSyncLabel(expense)}
                             </span>
                           </div>
-                          <p className="mt-1 truncate text-xs font-semibold text-[var(--point-muted)]">{expense.note?.trim() || "Açıklama yok"}</p>
-                          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-[var(--point-muted)]">
-                            {expense.source_system === "logo" || expense.logo_sync_status === "synced" ? (
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                            ) : (
-                              <Clock className="h-3.5 w-3.5" />
-                            )}
-                            {formatDate(expense.expense_date || expense.created_at)}
-                          </p>
-                        </div>
-                        <div className="rounded-[12px] border border-[#faee56]/30 bg-[#3b3719]/40 px-3 py-2 text-right">
-                          <p className="whitespace-nowrap text-lg font-black text-[#faee56]">{formatCurrency(expense.amount, expense.currency === "GEL" ? BATUM_CURRENCY_LABEL : DEFAULT_CURRENCY_LABEL)}</p>
-                          <p className="mt-1 text-[10px] font-black uppercase tracking-[0.1em] text-[var(--point-muted)]">{expense.currency === "GEL" ? "Batum" : expenseScope.branchLabel}</p>
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="rounded-[16px] border border-[var(--point-border)] bg-[var(--point-control)] p-4 text-sm font-semibold text-[var(--point-muted)]">
-                    Bu oturum için masraf girilmedi.
-                  </p>
+                  <div className="p-8 text-center text-sm font-medium text-muted-foreground">
+                    Kayıtlı masraf bulunamadı.
+                  </div>
                 )}
               </div>
-            </section>
-          </div>
-        )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

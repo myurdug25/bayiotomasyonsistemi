@@ -1895,6 +1895,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return sidebarItems[0]?.href ?? "/dashboard";
   }, [dealerAdminPanelRole, menuPermissionSet, moderatorStandaloneMode, pathname, posOnlyRole, roleSlugs, sidebarItems, warehouseStandaloneMode]);
   const isCustomerRoute = pathname === "/customers" || pathname.startsWith("/customers/");
+  const isPosExpensesRoute = pathname === "/pos/expenses" || pathname.startsWith("/pos/expenses/");
   const isNotesRoute = pathname === "/notes" || pathname.startsWith("/notes/");
   const isWarehouseRoute = pathname === "/warehouse" || pathname.startsWith("/warehouse/");
   const showCustomerContext =
@@ -1991,13 +1992,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (customerSelectionRequired && !selectedCustomer && !isCustomerRoute && !isNotesRoute) {
+    if (customerSelectionRequired && !selectedCustomer && !isCustomerRoute && !isNotesRoute && !isPosExpensesRoute) {
       const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
       router.replace(`/customers${next}`);
       return;
     }
 
-    if (!isPathAllowed(pathname, accessibleNavItems)) {
+    if (!isPathAllowed(pathname, accessibleNavItems) && !isPosExpensesRoute) {
       router.replace(fallbackPath);
     }
   }, [
@@ -2011,6 +2012,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     user,
     isCustomerRoute,
     isNotesRoute,
+    isPosExpensesRoute,
     isWarehouseRoute,
     posOnlyRole,
     moderatorStandaloneMode,
@@ -2149,7 +2151,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     [uiAccent]
   );
   const isRedirectingForCustomerSelection = Boolean(
-    status === "authenticated" && user && customerSelectionRequired && !selectedCustomer && !isCustomerRoute
+    status === "authenticated" && user && customerSelectionRequired && !selectedCustomer && !isCustomerRoute && !isPosExpensesRoute
   );
   const dashboardExperimentStyle = useMemo(
     () =>

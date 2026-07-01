@@ -25,11 +25,7 @@ return new class extends Migration
             $table->index(['type', 'is_active', 'sort_order']);
         });
 
-        Schema::create('finance_sequences', function (Blueprint $table): void {
-            $table->string('key', 64)->primary();
-            $table->unsignedBigInteger('next_value')->default(1);
-            $table->timestamps();
-        });
+
 
         $now = now();
         $rows = [
@@ -66,17 +62,12 @@ return new class extends Migration
             $rows
         ));
 
-        DB::table('finance_sequences')->insert([
-            'key' => 'physical_pos',
-            'next_value' => 1,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('finance_sequences');
+
         Schema::dropIfExists('finance_definitions');
     }
 };

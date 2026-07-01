@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -293,12 +294,13 @@ export function CustomerSelectionPage() {
           >
             {isSalesperson ? (
               <Button
-                type="button"
                 className="mb-3 h-14 w-full rounded-[16px] bg-amber-500 font-black text-slate-950 hover:bg-amber-400"
-                onClick={() => router.push("/pos/expenses")}
+                asChild
               >
-                <ReceiptText className="h-5 w-5" />
-                Giderler
+                <Link href="/pos/expenses">
+                  <ReceiptText className="h-5 w-5 mr-2" />
+                  Giderler
+                </Link>
               </Button>
             ) : null}
             <div className="grid gap-3 lg:grid-cols-[minmax(340px,1fr)_112px_104px_172px_172px] lg:items-end">

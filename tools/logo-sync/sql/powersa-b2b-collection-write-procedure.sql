@@ -327,13 +327,11 @@ BEGIN
 
     INSERT INTO dbo.LG_003_01_CSTRANS (
         DATE_, CSREF, ROLLREF, TRCODE, STATUS, CARDMD, CARDREF, STATNO,
-        LINENO_, FROMCASH, CANCELLED, CAPIBLOCK_CREATEDBY,
-        CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN,
-        CAPIBLOCK_CREATEDSEC
+        LINENO_, FROMCASH, CANCELLED
     )
     VALUES (
         @CollectionDate, @CardRef, @RollRef, 1, 0, 1, @CustomerRef, 1,
-        1, 0, 0, 1, @Now, @Hour, @Minute, @Second
+        1, 0, 0
     );
     SET @TransRef = SCOPE_IDENTITY();
 

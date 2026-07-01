@@ -852,13 +852,18 @@ class CustomerCollectionController extends Controller
                 ]);
             }
 
+            $referenceNo = $referenceNo ?: ($allocateSequence ? $this->nextFactoryReference() : null);
             $referenceFields['factory_pos_account'] = $factory->code;
             $referenceFields['factory_name'] = $factory->name;
             $referenceFields['factory_customer_code'] = $factory->logo_code ?: $factory->code;
             $referenceFields['finance_definition_id'] = $factory->id;
             unset($referenceFields['pos_payment_type'], $referenceFields['installment']);
 
-            return [$referenceFields, $referenceNo, $factory->name];
+            return [
+                $referenceFields,
+                $referenceNo,
+                trim(implode(' ', array_filter([$referenceNo, $customerName, mb_strtoupper($factory->name)]))),
+            ];
         }
 
         if ($method === 'cc') {
@@ -881,12 +886,17 @@ class CustomerCollectionController extends Controller
         if ($method === 'transfer') {
             $bankCode = trim((string) data_get($referenceFields, 'bank_code', data_get($referenceFields, 'bank_name', '')));
             $bank = $this->activeFinanceDefinition('bank', $bankCode, 'reference_fields.bank_code');
+            $referenceNo = $referenceNo ?: ($allocateSequence ? $this->nextTransferReference() : null);
             $referenceFields['bank_code'] = $bank->code;
             $referenceFields['bank_name'] = $bank->name;
             $referenceFields['bank_logo_code'] = $bank->logo_code;
             $referenceFields['finance_definition_id'] = $bank->id;
 
-            return [$referenceFields, $referenceNo, trim("{$customerName} ".mb_strtoupper($bank->name))];
+            return [
+                $referenceFields,
+                $referenceNo,
+                trim(implode(' ', array_filter([$referenceNo, $customerName, mb_strtoupper($bank->name)]))),
+            ];
         }
 
         if (in_array($method, ['check', 'note'], true)) {
@@ -931,6 +941,38 @@ class CustomerCollectionController extends Controller
         return 'FP'.str_pad((string) $value, 5, '0', STR_PAD_LEFT);
     }
 
+    private function nextTransferReference(): string
+    {
+        $row = DB::table('finance_sequences')
+            ->where('key', 'transfer')
+            ->lockForUpdate()
+            ->first();
+        $value = max(1, (int) ($row?->next_value ?? 1));
+
+        DB::table('finance_sequences')->updateOrInsert(
+            ['key' => 'transfer'],
+            ['next_value' => $value + 1, 'updated_at' => now(), 'created_at' => $row ? $row->created_at : now()]
+        );
+
+        return 'HE'.str_pad((string) $value, 5, '0', STR_PAD_LEFT);
+    }
+
+    private function nextFactoryReference(): string
+    {
+        $row = DB::table('finance_sequences')
+            ->where('key', 'factory')
+            ->lockForUpdate()
+            ->first();
+        $value = max(1, (int) ($row?->next_value ?? 1));
+
+        DB::table('finance_sequences')->updateOrInsert(
+            ['key' => 'factory'],
+            ['next_value' => $value + 1, 'updated_at' => now(), 'created_at' => $row ? $row->created_at : now()]
+        );
+
+        return 'FBC'.str_pad((string) $value, 4, '0', STR_PAD_LEFT);
+    }
+
     private function resolveSalespersonCashbox(User $user): ?Cashbox
     {
         $configuredCode = $this->nullableString($user->logo_cashbox_code);
@@ -948,6 +990,48 @@ class CustomerCollectionController extends Controller
             code: $configuredCode,
             name: $configuredName ?? (($this->nullableString($user->name) ?? 'Plasiyer').' Kasasi')
         );
+    }
+
+    public function index(Request $request, Customer $customer): JsonResponse
+    {
+        $cursor = Collection::query()
+            ->with(['cashbox'])
+            ->where('customer_id', $customer->id)
+            ->orderByDesc('id')
+            ->cursorPaginate((int) $request->input('limit', 15));
+
+        return response()->json(['data' => $cursor->items(), 'next_cursor' => $cursor->nextCursor()?->encode()]);
+    }
+
+    public function nextSequence(Request $request): JsonResponse
+    {
+        $type = $request->query('type');
+        
+        $key = match ($type) {
+            'factory_cc' => 'factory',
+            'transfer' => 'transfer',
+            'cc' => 'physical_pos',
+            default => null,
+        };
+
+        if (!$key) {
+            return response()->json(['next_sequence' => '']);
+        }
+
+        $row = DB::table('finance_sequences')->where('key', $key)->first();
+        $value = max(1, (int) ($row?->next_value ?? 1));
+
+        $prefix = match ($key) {
+            'factory' => 'FBC',
+            'transfer' => 'HE',
+            'physical_pos' => 'FP',
+        };
+        $pad = match ($key) {
+            'factory' => 4,
+            default => 5,
+        };
+
+        return response()->json(['next_sequence' => $prefix . str_pad((string) $value, $pad, '0', STR_PAD_LEFT)]);
     }
 
     private function resolveCashboxByCode(string $code, string $name): Cashbox

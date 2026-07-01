@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 import sql from "mssql";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.join(scriptDir, "..", "..", ".env");
+const envPath = path.join(scriptDir, "..", "..", "apps", "api", ".env");
 
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
@@ -40,17 +40,26 @@ async function run() {
   await pool.connect();
   console.log("Connected to Logo DB.");
 
-  const sqlPath = path.join(scriptDir, "sql", "powersa-b2b-order-shipment-pos-write-procedure.sql");
-  const sqlContent = fs.readFileSync(sqlPath, "utf-8");
+  const filesToDeploy = [
+    "powersa-b2b-order-shipment-pos-write-procedure.sql",
+    "powersa-b2b-collection-write-procedure.sql",
+    "powersa-b2b-pos-expense-write-procedure.sql"
+  ];
 
-  const blocks = sqlContent.split(/^GO\s*$/im).filter(b => b.trim().length > 0);
+  for (const file of filesToDeploy) {
+    const sqlPath = path.join(scriptDir, "sql", file);
+    console.log(`Deploying ${file}...`);
+    const sqlContent = fs.readFileSync(sqlPath, "utf-8");
 
-  for (const block of blocks) {
-    try {
-      await pool.request().batch(block);
-      console.log("Executed block successfully.");
-    } catch (err) {
-      console.error("Error executing block:", err.message);
+    const blocks = sqlContent.split(/^GO\s*$/im).filter(b => b.trim().length > 0);
+
+    for (const block of blocks) {
+      try {
+        await pool.request().batch(block);
+        console.log(`Executed block in ${file} successfully.`);
+      } catch (err) {
+        console.error(`Error executing block in ${file}:`, err.message);
+      }
     }
   }
 
