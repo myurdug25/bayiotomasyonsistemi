@@ -304,7 +304,7 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
             ->assertJsonPath('collection.reference_fields.collection_channel', 'factory')
             ->assertJsonPath('collection.reference_fields.factory_pos_account', '120-61-031')
             ->assertJsonPath('collection.reference_fields.factory_customer_code', '120-61-031')
-            ->assertJsonPath('collection.note', '120-61-031')
+            ->assertJsonPath('collection.note', 'FBC0001 Fabrika Kart Cari 120-61-031')
             ->assertJsonMissingPath('collection.meta.cashbox_id');
     }
 
@@ -391,7 +391,7 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
 
         $this->actingAs($user);
 
-        foreach (['FP00001', 'FP00002'] as $expectedReference) {
+        foreach (['FP0001', 'FP0002'] as $expectedReference) {
             $this->postJson("/api/customers/{$customer->id}/collections", [
                 'method' => 'cc',
                 'amount' => 250,

@@ -5,9 +5,9 @@ const ssh = new NodeSSH();
 async function run() {
   try {
     await ssh.connect({
-      host: '62.72.20.30',
+      host: process.env.POWERSA_SSH_HOST,
       username: 'root',
-      password: 'Bilekpay.x4322'
+      password: process.env.POWERSA_SSH_PASSWORD
     });
     console.log("Connected to server...");
     

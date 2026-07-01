@@ -15,9 +15,9 @@ conn.on('ready', () => {
         });
     });
 }).connect({
-    host: '62.72.20.30',
+    host: process.env.POWERSA_SSH_HOST,
     port: 22,
     username: 'root',
-    password: 'Bilekpay.x4322',
+    password: process.env.POWERSA_SSH_PASSWORD,
     readyTimeout: 20000
 });
