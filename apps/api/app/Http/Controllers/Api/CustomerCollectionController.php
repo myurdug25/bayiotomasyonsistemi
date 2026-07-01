@@ -992,17 +992,6 @@ class CustomerCollectionController extends Controller
         );
     }
 
-    public function index(Request $request, Customer $customer): JsonResponse
-    {
-        $cursor = Collection::query()
-            ->with(['cashbox'])
-            ->where('customer_id', $customer->id)
-            ->orderByDesc('id')
-            ->cursorPaginate((int) $request->input('limit', 15));
-
-        return response()->json(['data' => $cursor->items(), 'next_cursor' => $cursor->nextCursor()?->encode()]);
-    }
-
     public function nextSequence(Request $request): JsonResponse
     {
         $type = $request->query('type');

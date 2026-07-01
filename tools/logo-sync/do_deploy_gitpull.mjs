@@ -11,7 +11,6 @@ const remoteBuildStage = `${remoteRoot}/web/.next-codex-${stamp}`;
 const backendFiles = [
   'app/Http/Controllers/Api/CustomerCollectionController.php',
   'app/Console/Commands/FixFactoryNames.php',
-  'database/migrations/2026_07_01_135208_create_finance_sequences_table.php',
 ];
 
 const frontendFiles = [
@@ -110,7 +109,7 @@ async function deploy() {
     console.log(activation);
 
     const backendResult = await run(
-      `cd '${remoteRoot}/backend' && php artisan optimize:clear && php artisan migrate --force && php artisan queue:restart`,
+      `cd '${remoteRoot}/backend' && php artisan optimize:clear && php artisan queue:restart`,
     );
     console.log(backendResult);
 
