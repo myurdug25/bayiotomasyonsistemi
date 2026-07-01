@@ -18,8 +18,8 @@ class FixFactoryNames extends Command
             if ($customer) {
                 DB::table('finance_definitions')
                     ->where('id', $factory->id)
-                    ->update(['name' => $customer->name, 'logo_name' => $customer->name]);
-                $this->info("Updated {$factory->code} to {$customer->name}");
+                    ->update(['name' => $customer->title, 'logo_name' => $customer->title]);
+                $this->info("Updated {$factory->code} to {$customer->title}");
             } else {
                 $this->warn("Customer not found for code {$factory->code}");
             }
