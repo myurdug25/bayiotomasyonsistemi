@@ -454,6 +454,18 @@ export type ProductSearchItem = {
   currency?: string | null;
   special_discount_rate?: string | null;
   special_discounted_price?: string | null;
+  campaigns?: Array<{
+    key: string;
+    name: string;
+    tiers: Array<{
+      min_quantity: number;
+      unit_price: string;
+      currency: string;
+      condition?: string | null;
+      starts_at?: string | null;
+      ends_at?: string | null;
+    }>;
+  }>;
   vat_rate?: string | null;
   available_total: number;
   open_cart_quantity?: number;
@@ -574,6 +586,7 @@ export type CartItemDto = {
   vat_rate: string;
   line_total: string;
   currency: string;
+  campaign_key?: string | null;
 };
 
 export type CartWarehouseOption = {
@@ -2065,6 +2078,7 @@ export async function upsertCartItem(payload: {
   shipping_method?: string;
   warehouse_transfer?: boolean;
   order_note?: string;
+  campaign_key?: string | null;
 }) {
   return apiFetch<CartResponse>("/api/cart/items", {
     method: "POST",

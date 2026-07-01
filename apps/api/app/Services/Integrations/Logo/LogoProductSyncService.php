@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\IntegrationSyncState;
 use App\Models\PriceList;
 use App\Models\Product;
+use App\Models\ProductCampaignPrice;
 use App\Models\ProductCodeAlias;
 use App\Models\StockSummary;
 use App\Services\Integrations\IntegrationSyncStateService;
@@ -65,6 +66,7 @@ class LogoProductSyncService
             'prices_synced' => 0,
             'images_synced' => 0,
             'code_aliases_synced' => 0,
+            'campaign_prices_synced' => 0,
         ];
 
         $defaultPriceList = $this->resolvePriceList(
@@ -150,6 +152,7 @@ class LogoProductSyncService
                     $summary['prices_synced']++;
                 }
 
+                $summary['campaign_prices_synced'] += $this->syncCampaignPrices($product, $record);
                 $summary['code_aliases_synced'] += $this->syncCodeAliases($product, $record);
             }
         });
@@ -828,6 +831,67 @@ class LogoProductSyncService
         ]);
 
         return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     */
+    private function syncCampaignPrices(Product $product, array $record): int
+    {
+        if (! array_key_exists('campaign_prices', $record) || ! is_array($record['campaign_prices'])) {
+            return 0;
+        }
+
+        $sourceReferences = [];
+        $synced = 0;
+
+        foreach ($record['campaign_prices'] as $campaign) {
+            if (! is_array($campaign)) {
+                continue;
+            }
+
+            $sourceReference = $this->nullableString($campaign['source_reference'] ?? null);
+            $campaignKey = $this->nullableString($campaign['campaign_key'] ?? null);
+            $name = $this->nullableString($campaign['name'] ?? null);
+
+            if ($sourceReference === null || $campaignKey === null || $name === null) {
+                continue;
+            }
+
+            ProductCampaignPrice::query()->updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'source_reference' => $sourceReference,
+                ],
+                [
+                    'campaign_key' => $campaignKey,
+                    'name' => $name,
+                    'condition' => $this->nullableString($campaign['condition'] ?? null),
+                    'min_quantity' => max(1, (int) ($campaign['min_quantity'] ?? 1)),
+                    'unit_price' => $campaign['unit_price'],
+                    'currency' => strtoupper($this->nullableString($campaign['currency'] ?? null) ?? 'TRY'),
+                    'priority' => (int) ($campaign['priority'] ?? 0),
+                    'branch' => isset($campaign['branch']) ? (int) $campaign['branch'] : null,
+                    'starts_at' => $campaign['starts_at'] ?? null,
+                    'ends_at' => $campaign['ends_at'] ?? null,
+                    'is_active' => (bool) ($campaign['is_active'] ?? true),
+                    'meta' => is_array($campaign['meta'] ?? null) ? $campaign['meta'] : null,
+                ]
+            );
+
+            $sourceReferences[] = $sourceReference;
+            $synced++;
+        }
+
+        ProductCampaignPrice::query()
+            ->where('product_id', $product->id)
+            ->when(
+                $sourceReferences !== [],
+                fn ($query) => $query->whereNotIn('source_reference', $sourceReferences)
+            )
+            ->update(['is_active' => false]);
+
+        return $synced;
     }
 
     /**

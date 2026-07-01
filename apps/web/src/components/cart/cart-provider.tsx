@@ -36,7 +36,7 @@ type CartContextType = {
   setWarehouseTransfer: (value: boolean) => void;
   setOrderNote: (value: string) => void;
   refresh: () => Promise<void>;
-  upsertQuantity: (productId: number, quantity: number) => Promise<void>;
+  upsertQuantity: (productId: number, quantity: number, campaignKey?: string | null) => Promise<void>;
   removeItemByProduct: (productId: number) => Promise<void>;
   saveCheckoutMeta: () => Promise<void>;
   createOrderFromCart: (options?: { note?: string; checkoutSummaryMode?: "detailed" | "excluded" | "included" }) => Promise<void>;
@@ -186,7 +186,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   const upsertQuantity = useCallback(
-    async (productId: number, quantity: number) => {
+    async (productId: number, quantity: number, campaignKey?: string | null) => {
       if (!selectedCustomer) {
         setError("Önce müşteri seçmelisiniz");
         return;
@@ -221,6 +221,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       try {
         await ensureCsrfCookie();
+        const currentItem = cartData?.items.find((line) => line.product_id === productId);
 
         const data = await upsertCartItem({
           product_id: productId,
@@ -229,6 +230,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           shipping_method: shippingMethod || undefined,
           warehouse_transfer: effectiveWarehouseTransfer,
           order_note: normalizeOrderNoteForScope(orderNote, isBatumBranch),
+          campaign_key: campaignKey === undefined ? (currentItem?.campaign_key ?? null) : campaignKey,
         });
 
         setCartData(data);
@@ -292,6 +294,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         shipping_method: shippingMethod || undefined,
         warehouse_transfer: effectiveWarehouseTransfer,
         order_note: normalizeOrderNoteForScope(orderNote, isBatumBranch),
+        campaign_key: firstItem.campaign_key ?? null,
       });
 
       setCartData(data);
@@ -332,6 +335,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         shipping_method: shippingMethod || undefined,
         warehouse_transfer: effectiveWarehouseTransfer,
         order_note: checkoutNote,
+        campaign_key: firstItem.campaign_key ?? null,
       });
 
       const orderResponse = await createOrder({

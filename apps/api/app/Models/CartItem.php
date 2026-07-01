@@ -19,6 +19,7 @@ class CartItem extends Model
         'quantity',
         'unit_net_price',
         'currency',
+        'campaign_key',
         'discount_rate',
         'vat_rate',
         'line_total',

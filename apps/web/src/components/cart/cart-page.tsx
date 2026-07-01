@@ -582,6 +582,11 @@ export function CartPage() {
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-4 py-4 align-middle">
                           <p className="line-clamp-2 text-base font-black leading-6 text-[var(--foreground)]">{item.name}</p>
+                          {item.campaign_key ? (
+                            <span className="mt-1 inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300">
+                              Logo kampanyası aktif
+                            </span>
+                          ) : null}
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-4 py-4 align-middle">
                           <p className="truncate text-sm font-black text-[var(--foreground)]">{item.brand ?? "-"}</p>

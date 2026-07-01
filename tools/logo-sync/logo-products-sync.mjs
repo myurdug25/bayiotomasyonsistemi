@@ -2317,6 +2317,7 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
   ]);
   const beginDateColumn = findColumn(schema.columns, ["BEGDATE", "BEGIN_DATE", "STARTDATE"]);
   const endDateColumn = findColumn(schema.columns, ["ENDDATE", "END_DATE", "STOPDATE"]);
+  const activeColumn = findColumn(schema.columns, ["ACTIVE", "IS_ACTIVE"]);
 
   if (!referenceColumn || !amountColumn) {
     console.warn(
@@ -2339,6 +2340,10 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
     query += ` AND ${priceTypeColumn} = @priceType`;
   }
 
+  if (activeColumn) {
+    query += ` AND ISNULL(${activeColumn}, 0) = 0`;
+  }
+
   if (beginDateColumn) {
     query += ` AND (${beginDateColumn} IS NULL OR ${beginDateColumn} <= GETDATE())`;
   }
@@ -2359,10 +2364,12 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
 
   const result = await request.query(query);
   const snapshot = new Map();
+  const fallbackByProduct = new Map();
+  const campaignsByProduct = new Map();
 
   for (const row of result.recordset ?? []) {
     const productRef = normalizeString(readFirst(row, ["product_ref", referenceColumn]));
-    if (!productRef || snapshot.has(productRef)) {
+    if (!productRef) {
       continue;
     }
 
@@ -2371,7 +2378,7 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
       continue;
     }
 
-    snapshot.set(productRef, {
+    const price = {
       list_price: listPrice,
       currency: normalizeCurrencyCode(readFirst(row, ["currency", currencyColumn])),
       meta: compactObject({
@@ -2391,10 +2398,129 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
         shiptyp: normalizeString(readFirst(row, ["SHIPTYP", "shiptyp"])),
         specialized: normalizeInteger(readFirst(row, ["SPECIALIZED", "specialized"])),
       }),
-    });
+    };
+
+    if (!fallbackByProduct.has(productRef)) {
+      fallbackByProduct.set(productRef, price);
+    }
+
+    const campaign = mapLogoCampaignPrice(row, price);
+    if (campaign) {
+      if (!campaignsByProduct.has(productRef)) {
+        campaignsByProduct.set(productRef, new Map());
+      }
+
+      const dedupeKey = [
+        campaign.campaign_key,
+        campaign.min_quantity,
+        campaign.unit_price,
+        campaign.currency,
+      ].join("|");
+      const productCampaigns = campaignsByProduct.get(productRef);
+      const existing = productCampaigns.get(dedupeKey);
+
+      if (!existing || (campaign.branch === -1 && existing.branch !== -1)) {
+        productCampaigns.set(dedupeKey, campaign);
+      }
+      continue;
+    }
+
+    if (!snapshot.has(productRef)) {
+      snapshot.set(productRef, price);
+    }
+  }
+
+  for (const logicalRef of logicalRefs) {
+    const productRef = String(logicalRef);
+    const price = snapshot.get(productRef) ?? fallbackByProduct.get(productRef);
+    const campaignPrices = [...(campaignsByProduct.get(productRef)?.values() ?? [])];
+
+    if (price) {
+      snapshot.set(productRef, {
+        ...price,
+        campaign_prices: campaignPrices,
+      });
+    }
   }
 
   return snapshot;
+}
+
+function mapLogoCampaignPrice(row, price) {
+  const definition = normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]));
+  const condition = normalizeString(readFirst(row, ["CONDITION", "condition"]));
+  const isCampaign = Boolean(condition) || /\bKAMPANYA(?:SI)?\b/iu.test(definition ?? "");
+
+  if (!isCampaign || !isPublicCampaignPrice(row)) {
+    return null;
+  }
+
+  const minQuantity = parseLogoCampaignMinQuantity(condition);
+  if (minQuantity === null) {
+    return null;
+  }
+
+  const name = definition ?? "Logo Kampanyası";
+  const campaignKey = `logo:${name.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim()}`;
+  const sourceReference = normalizeString(readFirst(row, ["LOGICALREF"]));
+
+  if (!sourceReference) {
+    return null;
+  }
+
+  return {
+    source_reference: sourceReference,
+    campaign_key: campaignKey,
+    name,
+    condition,
+    min_quantity: minQuantity,
+    unit_price: price.list_price,
+    currency: price.currency,
+    priority: normalizeInteger(readFirst(row, ["PRIORITY"])) ?? 0,
+    branch: normalizeInteger(readFirst(row, ["BRANCH"])),
+    starts_at: readFirst(row, ["BEGDATE", "BEGIN_DATE", "STARTDATE"]) ?? null,
+    ends_at: readFirst(row, ["ENDDATE", "END_DATE", "STOPDATE"]) ?? null,
+    is_active: true,
+    meta: compactObject({
+      source: "logo_prclist",
+      code: normalizeString(readFirst(row, ["CODE"])),
+      definition,
+      incvat: normalizeInteger(readFirst(row, ["INCVAT"])),
+      uomref: normalizeString(readFirst(row, ["UOMREF"])),
+    }),
+  };
+}
+
+function parseLogoCampaignMinQuantity(condition) {
+  if (!condition) {
+    return 1;
+  }
+
+  const normalized = condition.replace(/\s+/g, "");
+  let match = normalized.match(/^p1>(\d+)$/i);
+  if (match) {
+    return Number.parseInt(match[1], 10) + 1;
+  }
+
+  match = normalized.match(/^p1>=(\d+)$/i);
+  if (match) {
+    return Math.max(1, Number.parseInt(match[1], 10));
+  }
+
+  return null;
+}
+
+function isPublicCampaignPrice(row) {
+  return [
+    "CLIENTCODE",
+    "CLSPECODE",
+    "CLSPECODE2",
+    "CLSPECODE3",
+    "CLSPECODE4",
+    "CLSPECODE5",
+    "CLTRADINGGRP",
+    "CLCYPHCODE",
+  ].every((column) => normalizeString(readFirst(row, [column])) === null);
 }
 
 async function fetchProductUnits(pool, productUnitSchema, unitSchema, unitSetSchema, logicalRefs) {
@@ -3504,6 +3630,7 @@ function mapProductRow(
     logo_name3: logoName3,
     cyphcode: normalizeString(readFirst(row, ["cyphcode", "CYPHCODE"])),
     logo_price: price?.meta ?? null,
+    logo_campaign_prices: price?.campaign_prices ?? [],
     logo_units: unitInfo,
     logo_stock: stock
       ? {
@@ -3582,6 +3709,10 @@ function mapProductRow(
   if (listPrice !== null) {
     record.list_price = listPrice;
     record.currency = normalizeCurrencyCode(price?.currency ?? readFirst(row, ["currency", "CURRENCY"]));
+  }
+
+  if (price?.campaign_prices) {
+    record.campaign_prices = price.campaign_prices;
   }
 
   return record;

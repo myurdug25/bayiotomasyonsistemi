@@ -30,6 +30,7 @@ class UpsertCartItemRequest extends FormRequest
             'qty' => ['nullable', 'integer', 'min:1'],
             'quantity' => ['required', 'integer', 'min:1'],
             'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'campaign_key' => ['nullable', 'string', 'max:191'],
             'shipping_method' => ['nullable', 'string', 'max:120'],
             'warehouse_transfer' => ['nullable', 'boolean'],
             'order_note' => ['nullable', 'string', 'max:2000'],

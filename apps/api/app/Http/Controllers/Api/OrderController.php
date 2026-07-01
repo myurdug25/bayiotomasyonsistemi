@@ -380,6 +380,7 @@ class OrderController extends Controller
                     'tax_rate' => $item->vat_rate ?? $item->product?->vat_rate ?? 0,
                     'line_total' => $item->line_total,
                     'currency' => $item->currency,
+                    'campaign_key' => $item->campaign_key,
                 ]);
             }
 

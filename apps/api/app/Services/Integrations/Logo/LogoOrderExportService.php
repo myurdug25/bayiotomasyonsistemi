@@ -223,6 +223,7 @@ class LogoOrderExportService
                     'vat_rate' => $this->money($item->tax_rate),
                     'line_total' => $this->money($item->line_total),
                     'currency' => strtoupper((string) $item->currency),
+                    'campaign_key' => $item->campaign_key,
                     'logo' => [
                         'stock_ref' => data_get($productMeta, 'integrations.logo.external_ref'),
                         'unitset_ref' => data_get($logoPayload, 'unitset_ref') ?? data_get($logoPayload, 'raw.UNITSETREF'),

@@ -962,6 +962,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const [previousPurchasePreview, setPreviousPurchasePreview] = useState<ProductPreviousPurchasePreview | null>(null);
   const [cartModalProduct, setCartModalProduct] = useState<ProductSearchItem | null>(null);
   const [cartModalQuantity, setCartModalQuantity] = useState<number | string>(1);
+  const [cartModalCampaignKey, setCartModalCampaignKey] = useState<string | null>(null);
   const [cartCalculatorOpen, setCartCalculatorOpen] = useState(false);
   const [cartPricesIncludeVat, setCartPricesIncludeVat] = useState(false);
   const [calculatorDisplay, setCalculatorDisplay] = useState("0");
@@ -1253,6 +1254,19 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const cartModalHasPrice = Boolean(cartModalProduct?.list_price ?? cartModalProduct?.net_price);
   const cartModalHasStock = (cartModalProduct?.available_total ?? 0) > 0;
   const cartModalCanSubmit = Boolean(cartModalProduct && selectedCustomer && cartModalHasPrice && !mutating);
+  const cartModalCampaigns = useMemo(
+    () => cartModalProduct?.campaigns ?? [],
+    [cartModalProduct?.campaigns]
+  );
+  const cartModalApplicableCampaign = useMemo(() => {
+    const campaign = cartModalCampaigns.find((item) => item.key === cartModalCampaignKey);
+    const quantity = Math.max(1, Number(cartModalQuantity) || 1);
+    const tier = campaign?.tiers
+      .filter((item) => item.min_quantity <= quantity)
+      .sort((left, right) => right.min_quantity - left.min_quantity)[0];
+
+    return campaign && tier ? { campaign, tier } : null;
+  }, [cartModalCampaignKey, cartModalCampaigns, cartModalQuantity]);
 
   const resetCalculator = useCallback(() => {
     setCalculatorDisplay("0");
@@ -1262,23 +1276,25 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   }, []);
 
   const handleSetQuantity = useCallback(
-    (productId: number, nextQty: number) => {
+    (productId: number, nextQty: number, campaignKey?: string | null) => {
       if (!selectedCustomer) {
         return;
       }
 
-      void upsertQuantity(productId, Math.max(0, nextQty));
+      void upsertQuantity(productId, Math.max(0, nextQty), campaignKey);
     },
     [selectedCustomer, upsertQuantity]
   );
 
   const handleOpenCartModal = useCallback((product: ProductSearchItem, currentQty: number) => {
+    const currentItem = cartData?.items.find((item) => item.product_id === product.id);
     setCartModalProduct(product);
     setCartModalQuantity(currentQty || "");
+    setCartModalCampaignKey(currentItem?.campaign_key ?? null);
     setCartCalculatorOpen(false);
     setCartPricesIncludeVat(false);
     resetCalculator();
-  }, [resetCalculator]);
+  }, [cartData?.items, resetCalculator]);
 
   const handleCartModalQuantityChange = useCallback(
     (nextQty: number | string) => {
@@ -1301,10 +1317,14 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
-    handleSetQuantity(cartModalProduct.id, Math.max(0, Number(cartModalQuantity) || 0));
+    handleSetQuantity(
+      cartModalProduct.id,
+      Math.max(0, Number(cartModalQuantity) || 0),
+      cartModalCampaignKey
+    );
     setCartModalProduct(null);
     setCartCalculatorOpen(false);
-  }, [cartModalHasPrice, cartModalProduct, cartModalQuantity, handleSetQuantity, selectedCustomer]);
+  }, [cartModalCampaignKey, cartModalHasPrice, cartModalProduct, cartModalQuantity, handleSetQuantity, selectedCustomer]);
 
   const handleCalculatorDigit = useCallback((digit: string) => {
     setCalculatorDisplay((current) => {
@@ -1886,6 +1906,83 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                  Bu ürün için stok bulunamadı, yine de sepete eklenebilir.
 	                </p>
 	              ) : null}
+
+                {cartModalCampaigns.length > 0 ? (
+                  <div className="mt-5 rounded-[24px] border border-amber-300/20 bg-amber-300/[0.07] p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-[12px] font-black uppercase tracking-[0.16em] text-amber-200">
+                          Logo Kampanyaları
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-400">
+                          Miktara uygun kademe otomatik seçilir; kampanya siz etkinleştirince uygulanır.
+                        </p>
+                      </div>
+                      {cartModalApplicableCampaign ? (
+                        <span className="rounded-full border border-emerald-300/25 bg-emerald-300/12 px-3 py-1 text-xs font-black text-emerald-100">
+                          Aktif: {formatPriceValue(cartModalApplicableCampaign.tier.unit_price, cartModalApplicableCampaign.tier.currency)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {cartModalCampaigns.map((campaign) => {
+                        const quantity = Math.max(1, Number(cartModalQuantity) || 1);
+                        const applicableTier = [...campaign.tiers]
+                          .filter((tier) => tier.min_quantity <= quantity)
+                          .sort((left, right) => right.min_quantity - left.min_quantity)[0] ?? null;
+                        const active = cartModalCampaignKey === campaign.key;
+
+                        return (
+                          <div
+                            key={campaign.key}
+                            className={cn(
+                              "rounded-2xl border p-4 transition-colors",
+                              active
+                                ? "border-emerald-300/40 bg-emerald-300/12"
+                                : "border-white/10 bg-slate-950/35"
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-black text-white">{campaign.name}</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {campaign.tiers.map((tier) => (
+                                    <span
+                                      key={`${campaign.key}-${tier.min_quantity}-${tier.unit_price}`}
+                                      className={cn(
+                                        "rounded-full border px-2.5 py-1 text-[11px] font-black",
+                                        applicableTier === tier
+                                          ? "border-amber-200/35 bg-amber-200/15 text-amber-100"
+                                          : "border-white/10 bg-white/[0.04] text-slate-400"
+                                      )}
+                                    >
+                                      {tier.min_quantity > 1 ? `${tier.min_quantity}+ adet` : "Tekli"} ·{" "}
+                                      {formatPriceValue(tier.unit_price, tier.currency)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className={cn(
+                                  "shrink-0 rounded-xl px-3 text-xs font-black",
+                                  active
+                                    ? "border-red-300/25 bg-red-400/10 text-red-100 hover:bg-red-400/18"
+                                    : "border-emerald-300/25 bg-emerald-300/10 text-emerald-100 hover:bg-emerald-300/18"
+                                )}
+                                disabled={!applicableTier || mutating}
+                                onClick={() => setCartModalCampaignKey(active ? null : campaign.key)}
+                              >
+                                {active ? "Kampanyayı Kapat" : "Kampanyayı Aktif Et"}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
 
 	              <div className="mt-5 rounded-[24px] border border-emerald-300/15 bg-emerald-300/[0.055] p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

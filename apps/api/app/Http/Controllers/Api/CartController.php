@@ -85,6 +85,7 @@ class CartController extends Controller
             'vat_rate' => $item->vat_rate,
             'line_total' => $item->line_total,
             'currency' => $item->currency,
+            'campaign_key' => $item->campaign_key,
         ])->values();
 
         $totals = $this->calculateTotals($cart);

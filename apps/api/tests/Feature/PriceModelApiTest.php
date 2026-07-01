@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\Dealer;
 use App\Models\Product;
+use App\Models\ProductCampaignPrice;
 use App\Models\Role;
 use App\Models\StockSummary;
 use App\Models\User;
@@ -73,6 +74,83 @@ class PriceModelApiTest extends TestCase
             'quantity' => 1,
         ])->assertOk()
             ->assertJsonPath('items.0.unit_price', '123.45');
+    }
+
+    public function test_logo_campaign_uses_single_price_for_nine_and_ten_plus_price_for_ten(): void
+    {
+        $dealer = $this->createDealer('DLR-CAMPAIGN-001');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 80,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        foreach ([
+            ['ref' => '78284', 'min' => 1, 'price' => 63.06, 'condition' => null],
+            ['ref' => '78355', 'min' => 10, 'price' => 52.49, 'condition' => 'p1>9'],
+        ] as $tier) {
+            ProductCampaignPrice::query()->create([
+                'product_id' => $product->id,
+                'source_reference' => $tier['ref'],
+                'campaign_key' => 'logo:pws filtre kampanyası',
+                'name' => 'PWS FİLTRE KAMPANYASI',
+                'condition' => $tier['condition'],
+                'min_quantity' => $tier['min'],
+                'unit_price' => $tier['price'],
+                'currency' => 'TRY',
+                'priority' => 1,
+                'starts_at' => today()->subDay(),
+                'ends_at' => today()->addMonth(),
+                'is_active' => true,
+            ]);
+        }
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku)
+            ->assertOk()
+            ->assertJsonPath('data.0.campaigns.0.name', 'PWS FİLTRE KAMPANYASI')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 1)
+            ->assertJsonPath('data.0.campaigns.0.tiers.1.min_quantity', 10);
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 9,
+            'campaign_key' => 'logo:pws filtre kampanyası',
+        ])->assertOk()
+            ->assertJsonPath('items.0.unit_price', '63.06')
+            ->assertJsonPath('items.0.campaign_key', 'logo:pws filtre kampanyası');
+
+        $cartResponse = $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 10,
+            'campaign_key' => 'logo:pws filtre kampanyası',
+        ]);
+
+        $cartResponse->assertOk()
+            ->assertJsonPath('items.0.unit_price', '52.49')
+            ->assertJsonPath('items.0.line_total', '524.90');
+
+        $orderResponse = $this->postJson('/api/orders', [
+            'cart_id' => $cartResponse->json('cart.id'),
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $orderResponse->json('order.id'),
+            'product_id' => $product->id,
+            'campaign_key' => 'logo:pws filtre kampanyası',
+            'quantity' => 10,
+            'unit_net_price' => 52.49,
+        ]);
     }
 
     public function test_cart_item_allows_zero_stock_when_price_exists(): void

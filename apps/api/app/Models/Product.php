@@ -75,6 +75,11 @@ class Product extends Model
         return $this->hasMany(BasePrice::class);
     }
 
+    public function campaignPrices(): HasMany
+    {
+        return $this->hasMany(ProductCampaignPrice::class);
+    }
+
     public function codeAliases(): HasMany
     {
         return $this->hasMany(ProductCodeAlias::class);

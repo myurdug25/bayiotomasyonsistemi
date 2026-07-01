@@ -9,6 +9,7 @@ use App\Models\CartItem;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\Pricing\ProductCampaignPricing;
 use App\Support\Cart\CartLogoIntegrationSummary;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
@@ -124,18 +125,36 @@ class CartItemController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            $unitPrice = (float) $price['net_price'];
+            $campaignKey = isset($validated['campaign_key'])
+                ? trim((string) $validated['campaign_key'])
+                : null;
+            $campaignPrice = $campaignKey !== null && $campaignKey !== ''
+                ? app(ProductCampaignPricing::class)->resolve($productId, $campaignKey, $quantity, $user)
+                : null;
+
+            if ($campaignKey !== null && $campaignKey !== '' && $campaignPrice === null) {
+                throw ValidationException::withMessages([
+                    'campaign_key' => ['Bu kampanya seçilen miktar için geçerli değil veya süresi dolmuş.'],
+                ]);
+            }
+
+            $unitPrice = (float) ($campaignPrice['unit_price'] ?? $price['net_price']);
+            $priceCurrency = (string) ($campaignPrice['currency'] ?? $price['currency']);
+            if ($campaignPrice !== null) {
+                $discountRate = 0.0;
+            }
             $grossTotal = $unitPrice * $quantity;
             $discountAmount = $grossTotal * ($discountRate / 100);
             $lineTotal = number_format($grossTotal - $discountAmount, 2, '.', '');
             $vatRate = (float) ($product?->vat_rate ?? 20.00);
-            $cart->fill(['currency' => $price['currency']])->save();
+            $cart->fill(['currency' => $priceCurrency])->save();
 
             if ($item !== null) {
                 $item->fill([
                     'quantity' => $quantity,
                     'unit_net_price' => $unitPrice,
-                    'currency' => $price['currency'],
+                    'currency' => $priceCurrency,
+                    'campaign_key' => $campaignPrice['campaign_key'] ?? null,
                     'discount_rate' => $discountRate,
                     'vat_rate' => $vatRate,
                     'line_total' => $lineTotal,
@@ -146,7 +165,8 @@ class CartItemController extends Controller
                     'product_id' => $productId,
                     'quantity' => $quantity,
                     'unit_net_price' => $unitPrice,
-                    'currency' => $price['currency'],
+                    'currency' => $priceCurrency,
+                    'campaign_key' => $campaignPrice['campaign_key'] ?? null,
                     'discount_rate' => $discountRate,
                     'vat_rate' => $vatRate,
                     'line_total' => $lineTotal,
@@ -225,6 +245,7 @@ class CartItemController extends Controller
             'vat_rate' => $item->vat_rate,
             'line_total' => $item->line_total,
             'currency' => $item->currency,
+            'campaign_key' => $item->campaign_key,
         ])->values();
 
         $totals = $this->calculateTotals($cart);

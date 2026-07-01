@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductCampaignPrice;
 use App\Models\StockSummary;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,60 @@ class LogoProductSyncApiTest extends TestCase
         $response
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Unauthorized integration request.');
+    }
+
+    public function test_logo_product_sync_upserts_quantity_campaign_tiers(): void
+    {
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'records' => [[
+                    'external_ref' => '7372',
+                    'sku' => 'CAMPAIGN-7372',
+                    'name' => 'Kampanyalı Filtre',
+                    'campaign_prices' => [
+                        [
+                            'source_reference' => '78284',
+                            'campaign_key' => 'logo:pws filtre kampanyası',
+                            'name' => 'PWS FİLTRE KAMPANYASI',
+                            'min_quantity' => 1,
+                            'unit_price' => 63.06,
+                            'currency' => 'TRY',
+                            'priority' => 3,
+                            'starts_at' => '2026-06-01',
+                            'ends_at' => '2026-12-31',
+                            'is_active' => true,
+                        ],
+                        [
+                            'source_reference' => '78355',
+                            'campaign_key' => 'logo:pws filtre kampanyası',
+                            'name' => 'PWS FİLTRE KAMPANYASI',
+                            'condition' => 'p1>9',
+                            'min_quantity' => 10,
+                            'unit_price' => 52.49,
+                            'currency' => 'TRY',
+                            'priority' => 2,
+                            'starts_at' => '2026-06-01',
+                            'ends_at' => '2026-12-31',
+                            'is_active' => true,
+                        ],
+                    ],
+                ]],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.campaign_prices_synced', 2);
+
+        $product = Product::query()->where('sku', 'CAMPAIGN-7372')->firstOrFail();
+        $this->assertSame(
+            [1, 10],
+            ProductCampaignPrice::query()
+                ->where('product_id', $product->id)
+                ->orderBy('min_quantity')
+                ->pluck('min_quantity')
+                ->all()
+        );
     }
 
     public function test_logo_product_sync_upserts_catalog_stock_and_base_prices(): void

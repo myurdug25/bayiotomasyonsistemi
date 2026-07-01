@@ -13,6 +13,7 @@ use App\Models\ProductCodeAlias;
 use App\Models\User;
 use App\Models\VehicleProduct;
 use App\Services\Meilisearch\ProductSearchService;
+use App\Services\Pricing\ProductCampaignPricing;
 use App\Support\CustomerFeaturePermissions;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
@@ -32,7 +33,7 @@ class ProductSearchController extends Controller
 
     private const SEARCH_RELATED_CACHE_TTL_SECONDS = 90;
 
-    private const SEARCH_RESPONSE_CACHE_VERSION = 8;
+    private const SEARCH_RESPONSE_CACHE_VERSION = 9;
 
     public function __invoke(
         SearchProductsRequest $request,
@@ -1055,8 +1056,9 @@ class ProductSearchController extends Controller
         $previousPurchasesByProduct = $this->previousPurchasesByProduct($productIds, $selectedCustomerId, $cache);
         $vehicleFitmentsByProduct = $this->vehicleFitmentsByProduct($productIds, $cache);
         $specialDiscountRate = $this->customerSpecialDiscountRate($selectedCustomerId);
+        $campaignsByProduct = app(ProductCampaignPricing::class)->forProducts($productIds, $user);
 
-        return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $user) {
+        return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $campaignsByProduct, $user) {
             $meta = $this->productMeta($item);
             $sourceCurrency = (string) ($item->currency ?? 'TRY');
             $rawNetPrice = $this->resolveHotPrice(
@@ -1101,6 +1103,7 @@ class ProductSearchController extends Controller
                 'currency' => DisplayCurrency::normalize($sourceCurrency, $user),
                 'special_discount_rate' => $specialDiscountRate !== null ? number_format($specialDiscountRate, 2, '.', '') : null,
                 'special_discounted_price' => DisplayCurrency::formatPrice($rawSpecialDiscountedPrice, $sourceCurrency, $user),
+                'campaigns' => $campaignsByProduct->get((int) $item->id, []),
                 'vat_rate' => $item->vat_rate !== null ? number_format((float) $item->vat_rate, 2, '.', '') : null,
                 'available_total' => $this->resolveVisibleAvailableTotal($meta, (int) $item->available_total, $stockScope),
                 'open_cart_quantity' => (int) ($openCartQuantityByProduct->get((int) $item->id) ?? 0),

@@ -25,6 +25,7 @@ class OrderItem extends Model
         'tax_rate',
         'line_total',
         'currency',
+        'campaign_key',
     ];
 
     /**
