@@ -152,9 +152,9 @@ async function main() {
         row.ENDDATE ?? row.FINDATE ?? row.ENDS_AT ?? null
       );
 
-      // Aktif mi?
+      // Aktif mi? (Logo'da 0 = Kullanımda, 1 = Kullanım Dışı)
       const isActive =
-        Number(row.ACTIVE ?? row.active ?? 1) === 1 &&
+        Number(row.ACTIVE ?? row.active ?? 0) === 0 &&
         (!endsAt || new Date(endsAt) >= new Date());
 
       // Kampanya ürün kodlarını ve formülü çek
