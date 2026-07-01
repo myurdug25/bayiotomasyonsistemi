@@ -55,7 +55,7 @@ class PosExpensePolicy
 
     private function canUsePos(User $user): bool
     {
-        return $user->hasAnyRole(['dealer_admin', 'cashier', 'point'])
+        return $user->hasAnyRole(['dealer_admin', 'salesperson', 'cashier', 'point'])
             || in_array('pos-expenses', MenuPermissions::forUser($user), true);
     }
 }

@@ -9,6 +9,7 @@ use App\Http\Resources\CollectionResource;
 use App\Models\Cashbox;
 use App\Models\Collection as CollectionModel;
 use App\Models\Customer;
+use App\Models\FinanceDefinition;
 use App\Models\LedgerEntry;
 use App\Models\User;
 use App\Services\Integrations\Logo\LogoWritePublisher;
@@ -332,6 +333,12 @@ class CustomerCollectionController extends Controller
             $referenceFields = $validated['reference_fields'] ?? data_get($submittedMeta, 'reference_fields', []);
             $referenceNo = $validated['reference_no']
                 ?? ($referenceFields['transfer_no'] ?? $referenceFields['check_no'] ?? $referenceFields['note_no'] ?? $referenceFields['auth_code'] ?? null);
+            [$referenceFields, $referenceNo, $automaticNote] = $this->prepareFinanceFields(
+                method: (string) $validated['method'],
+                customer: $customer,
+                referenceFields: is_array($referenceFields) ? $referenceFields : [],
+                referenceNo: $referenceNo,
+            );
             $meta = array_merge($submittedMeta, [
                 'reference_fields' => $referenceFields,
             ]);
@@ -359,7 +366,9 @@ class CustomerCollectionController extends Controller
                 $meta['reference_fields'] = $referenceFields;
             }
 
-            $cashbox = $isFactoryCollection ? null : $this->resolveCollectionCashbox($user, $meta);
+            $cashbox = $validated['method'] === 'cash' && ! $isFactoryCollection
+                ? $this->resolveCollectionCashbox($user, $meta)
+                : null;
 
             if ($cashbox instanceof Cashbox) {
                 $meta['cashbox_id'] = (int) $cashbox->id;
@@ -387,7 +396,7 @@ class CustomerCollectionController extends Controller
                 'currency' => strtoupper($validated['currency'] ?? 'TRY'),
                 'reference_no' => $referenceNo,
                 'reference_fields' => $referenceFields,
-                'note' => $validated['note'] ?? null,
+                'note' => $automaticNote,
                 'meta' => $meta,
             ]);
 
@@ -644,6 +653,13 @@ class CustomerCollectionController extends Controller
         $referenceFields = $validated['reference_fields'] ?? data_get($submittedMeta, 'reference_fields', []);
         $referenceNo = $validated['reference_no']
             ?? ($referenceFields['transfer_no'] ?? $referenceFields['check_no'] ?? $referenceFields['note_no'] ?? $referenceFields['auth_code'] ?? null);
+        [$referenceFields, $referenceNo, $automaticNote] = $this->prepareFinanceFields(
+            method: (string) $validated['method'],
+            customer: $customer,
+            referenceFields: is_array($referenceFields) ? $referenceFields : [],
+            referenceNo: $referenceNo,
+            allocateSequence: false,
+        );
         $meta = array_merge($submittedMeta, [
             'reference_fields' => $referenceFields,
         ]);
@@ -675,7 +691,9 @@ class CustomerCollectionController extends Controller
             unset($meta['manager_approval']);
         }
 
-        $cashbox = $isFactoryCollection ? null : $this->resolveCollectionCashbox($user, $meta);
+        $cashbox = $validated['method'] === 'cash' && ! $isFactoryCollection
+            ? $this->resolveCollectionCashbox($user, $meta)
+            : null;
 
         if ($cashbox instanceof Cashbox) {
             $meta['cashbox_id'] = (int) $cashbox->id;
@@ -701,7 +719,7 @@ class CustomerCollectionController extends Controller
             'currency' => strtoupper($validated['currency'] ?? 'TRY'),
             'reference_no' => $referenceNo,
             'reference_fields' => $referenceFields,
-            'note' => $validated['note'] ?? null,
+            'note' => $automaticNote,
             'meta' => $meta,
         ];
     }
@@ -804,6 +822,113 @@ class CustomerCollectionController extends Controller
         }
 
         return $this->resolveSalespersonCashbox($user);
+    }
+
+    /**
+     * @param  array<string, mixed>  $referenceFields
+     * @return array{0:array<string,mixed>,1:?string,2:string}
+     */
+    private function prepareFinanceFields(
+        string $method,
+        Customer $customer,
+        array $referenceFields,
+        ?string $referenceNo,
+        bool $allocateSequence = true,
+    ): array {
+        $customerName = trim((string) ($customer->name ?: $customer->code));
+        $channel = (string) data_get($referenceFields, 'collection_channel', '');
+
+        if ($method === 'cc' && $channel === 'factory') {
+            $factoryCode = trim((string) data_get($referenceFields, 'factory_pos_account', ''));
+            $factory = FinanceDefinition::query()
+                ->where('type', 'factory')
+                ->where('is_active', true)
+                ->where('code', $factoryCode)
+                ->first();
+
+            if (! $factory instanceof FinanceDefinition) {
+                throw ValidationException::withMessages([
+                    'reference_fields.factory_pos_account' => ['Seçilen fabrika aktif değil veya tanımlı değil.'],
+                ]);
+            }
+
+            $referenceFields['factory_pos_account'] = $factory->code;
+            $referenceFields['factory_name'] = $factory->name;
+            $referenceFields['factory_customer_code'] = $factory->logo_code ?: $factory->code;
+            $referenceFields['finance_definition_id'] = $factory->id;
+            unset($referenceFields['pos_payment_type'], $referenceFields['installment']);
+
+            return [$referenceFields, $referenceNo, $factory->name];
+        }
+
+        if ($method === 'cc') {
+            $bankCode = trim((string) data_get($referenceFields, 'pos_bank', ''));
+            $bank = $this->activeFinanceDefinition('bank', $bankCode, 'reference_fields.pos_bank');
+            $referenceNo = $referenceNo ?: ($allocateSequence ? $this->nextPhysicalPosReference() : null);
+            $referenceFields['pos_bank'] = $bank->code;
+            $referenceFields['bank_name'] = $bank->name;
+            $referenceFields['bank_logo_code'] = $bank->logo_code;
+            $referenceFields['finance_definition_id'] = $bank->id;
+            unset($referenceFields['pos_payment_type'], $referenceFields['installment']);
+
+            return [
+                $referenceFields,
+                $referenceNo,
+                trim(implode(' ', array_filter([$referenceNo, $customerName, mb_strtoupper($bank->name)]))),
+            ];
+        }
+
+        if ($method === 'transfer') {
+            $bankCode = trim((string) data_get($referenceFields, 'bank_code', data_get($referenceFields, 'bank_name', '')));
+            $bank = $this->activeFinanceDefinition('bank', $bankCode, 'reference_fields.bank_code');
+            $referenceFields['bank_code'] = $bank->code;
+            $referenceFields['bank_name'] = $bank->name;
+            $referenceFields['bank_logo_code'] = $bank->logo_code;
+            $referenceFields['finance_definition_id'] = $bank->id;
+
+            return [$referenceFields, $referenceNo, trim("{$customerName} ".mb_strtoupper($bank->name))];
+        }
+
+        if (in_array($method, ['check', 'note'], true)) {
+            $documentNo = trim((string) ($referenceFields['check_no'] ?? $referenceFields['note_no'] ?? $referenceNo ?? ''));
+
+            return [$referenceFields, $referenceNo, trim("{$documentNo} {$customerName}")];
+        }
+
+        return [$referenceFields, $referenceNo, trim("{$customerName} NAKİT")];
+    }
+
+    private function activeFinanceDefinition(string $type, string $code, string $field): FinanceDefinition
+    {
+        $definition = FinanceDefinition::query()
+            ->where('type', $type)
+            ->where('is_active', true)
+            ->where(function ($query) use ($code): void {
+                $query->where('code', $code)->orWhere('name', $code);
+            })
+            ->first();
+
+        if (! $definition instanceof FinanceDefinition) {
+            throw ValidationException::withMessages([$field => ['Seçilen finans tanımı aktif değil veya bulunamadı.']]);
+        }
+
+        return $definition;
+    }
+
+    private function nextPhysicalPosReference(): string
+    {
+        $row = DB::table('finance_sequences')
+            ->where('key', 'physical_pos')
+            ->lockForUpdate()
+            ->first();
+        $value = max(1, (int) ($row?->next_value ?? 1));
+
+        DB::table('finance_sequences')->updateOrInsert(
+            ['key' => 'physical_pos'],
+            ['next_value' => $value + 1, 'updated_at' => now(), 'created_at' => $row ? $row->created_at : now()]
+        );
+
+        return 'FP'.str_pad((string) $value, 5, '0', STR_PAD_LEFT);
     }
 
     private function resolveSalespersonCashbox(User $user): ?Cashbox

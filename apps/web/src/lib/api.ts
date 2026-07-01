@@ -269,6 +269,8 @@ export type ModeratorUserRecord = {
   logo_customer_specode4: string | null;
   logo_cashbox_code: string | null;
   logo_cashbox_name: string | null;
+  logo_expense_account_code: string | null;
+  logo_expense_account_name: string | null;
   selected_customer_id: number | null;
   name: string;
   username: string;
@@ -1563,6 +1565,18 @@ export type WarehouseReadyOrderItem = {
   } | null;
 };
 
+export type FinanceDefinitionDto = {
+  id: number;
+  type: "bank" | "factory" | "expense_category";
+  code: string;
+  name: string;
+  logo_code: string | null;
+  logo_name: string | null;
+  meta: Record<string, unknown> | null;
+  sort_order: number;
+  is_active: boolean;
+};
+
 export type WarehouseShipmentItemDto = {
   id: number;
   order_item_id: number;
@@ -2302,6 +2316,8 @@ export async function createModeratorUser(payload: {
   logo_customer_specode4?: string | null;
   logo_cashbox_code?: string | null;
   logo_cashbox_name?: string | null;
+  logo_expense_account_code?: string | null;
+  logo_expense_account_name?: string | null;
   name: string;
   username: string;
   email?: string | null;
@@ -2330,6 +2346,8 @@ export async function updateModeratorUser(
     logo_customer_specode4?: string | null;
     logo_cashbox_code?: string | null;
     logo_cashbox_name?: string | null;
+    logo_expense_account_code?: string | null;
+    logo_expense_account_name?: string | null;
     name?: string;
     username?: string;
     email?: string | null;
@@ -2449,6 +2467,29 @@ export async function listCustomerCollections(
   return apiFetch<CustomerCollectionsResponse>(
     `/api/customers/${customerId}/collections${toSearch(params ?? {})}`
   );
+}
+
+export async function listFinanceDefinitions(type?: FinanceDefinitionDto["type"], includeInactive = false) {
+  return apiFetch<{ data: FinanceDefinitionDto[] }>(
+    `/api/finance-definitions${toSearch({ ...(type ? { type } : {}), include_inactive: includeInactive || undefined })}`
+  );
+}
+
+export async function createFinanceDefinition(payload: Omit<FinanceDefinitionDto, "id">) {
+  return apiFetch<{ data: FinanceDefinitionDto }>("/api/admin/finance-definitions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateFinanceDefinition(
+  id: number,
+  payload: Omit<FinanceDefinitionDto, "id">
+) {
+  return apiFetch<{ data: FinanceDefinitionDto }>(`/api/admin/finance-definitions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function createCustomerCollection(
@@ -2661,7 +2702,8 @@ export async function listPosExpenses(params?: {
 }
 
 export async function createPosExpense(payload: {
-  pos_session_id: number;
+  pos_session_id?: number;
+  finance_definition_id?: number;
   amount: number;
   category: string;
   note?: string;

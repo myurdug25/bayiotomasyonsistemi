@@ -32,6 +32,8 @@ class User extends Authenticatable
         'logo_customer_specode4',
         'logo_cashbox_code',
         'logo_cashbox_name',
+        'logo_expense_account_code',
+        'logo_expense_account_name',
         'selected_customer_id',
         'name',
         'username',

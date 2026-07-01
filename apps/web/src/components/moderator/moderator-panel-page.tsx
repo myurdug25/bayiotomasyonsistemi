@@ -74,6 +74,8 @@ type UserFormState = {
   logo_customer_specode4: string;
   logo_cashbox_code: string;
   logo_cashbox_name: string;
+  logo_expense_account_code: string;
+  logo_expense_account_name: string;
   name: string;
   username: string;
   phone: string;
@@ -117,6 +119,8 @@ const EMPTY_USER_FORM: UserFormState = {
   logo_customer_specode4: "",
   logo_cashbox_code: "",
   logo_cashbox_name: "",
+  logo_expense_account_code: "",
+  logo_expense_account_name: "",
   name: "",
   username: "",
   phone: "",
@@ -499,6 +503,8 @@ function userRecordToForm(user: ModeratorUserRecord): UserFormState {
     logo_customer_specode4: user.logo_customer_specode4 ?? "",
     logo_cashbox_code: user.logo_cashbox_code ?? "",
     logo_cashbox_name: user.logo_cashbox_name ?? "",
+    logo_expense_account_code: user.logo_expense_account_code ?? "",
+    logo_expense_account_name: user.logo_expense_account_name ?? "",
     name: user.name,
     username: user.username,
     phone: user.phone ?? "",
@@ -848,6 +854,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       logo_customer_specode4: userForm.logo_customer_specode4.trim() || null,
       logo_cashbox_code: userForm.logo_cashbox_code.trim() || null,
       logo_cashbox_name: userForm.logo_cashbox_name.trim() || null,
+      logo_expense_account_code: userForm.logo_expense_account_code.trim() || null,
+      logo_expense_account_name: userForm.logo_expense_account_name.trim() || null,
       name: userForm.name.trim(),
       username: userForm.username.trim(),
       email: null,
@@ -1141,6 +1149,14 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                   placeholder="ERZURUM MERKEZ KASASI"
                 />
               </label>
+              <label className="space-y-2 text-sm">
+                <span className={cn("font-semibold", isDarkMode ? "text-[#dce9df]" : "text-[var(--brand-primary-strong)]")}>LOGO Gider Hesap Kodu</span>
+                <Input className={userModalInputClassName} value={userForm.logo_expense_account_code} onChange={(event) => setUserForm((prev) => ({ ...prev, logo_expense_account_code: event.target.value }))} placeholder="760.25.033" />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className={cn("font-semibold", isDarkMode ? "text-[#dce9df]" : "text-[var(--brand-primary-strong)]")}>LOGO Gider Hesap Adı</span>
+                <Input className={userModalInputClassName} value={userForm.logo_expense_account_name} onChange={(event) => setUserForm((prev) => ({ ...prev, logo_expense_account_name: event.target.value }))} />
+              </label>
 
               <div className={cn("space-y-3 rounded-2xl border p-3 md:col-span-2", userModalSoftClassName)}>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1320,6 +1336,14 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                 onChange={(event) => setUserForm((prev) => ({ ...prev, name: event.target.value }))}
                 placeholder="Ad soyad"
               />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-semibold text-[var(--brand-primary-strong)]">LOGO Gider Hesap Kodu</span>
+              <Input value={userForm.logo_expense_account_code} onChange={(event) => setUserForm((prev) => ({ ...prev, logo_expense_account_code: event.target.value }))} placeholder="760.25.033" />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-semibold text-[var(--brand-primary-strong)]">LOGO Gider Hesap Adı</span>
+              <Input value={userForm.logo_expense_account_name} onChange={(event) => setUserForm((prev) => ({ ...prev, logo_expense_account_name: event.target.value }))} />
             </label>
             <label className="space-y-2 text-sm">
               <span className="font-semibold text-[var(--brand-primary-strong)]">Kullanıcı Adı</span>
@@ -1643,6 +1667,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                   logo_customer_specode4: userForm.logo_customer_specode4.trim() || null,
                   logo_cashbox_code: userForm.logo_cashbox_code.trim() || null,
                   logo_cashbox_name: userForm.logo_cashbox_name.trim() || null,
+                  logo_expense_account_code: userForm.logo_expense_account_code.trim() || null,
+                  logo_expense_account_name: userForm.logo_expense_account_name.trim() || null,
                   name: userForm.name.trim(),
                   username: userForm.username.trim(),
                   email: null,
@@ -2060,6 +2086,12 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                 <Link href="/moderator/customers">
                   <Building2 className="h-3.5 w-3.5" />
                   Cari / Plasiyer Atama
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-9 rounded-xl px-3 text-xs font-extrabold">
+                <Link href="/moderator/finance">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Finans Tanımları
                 </Link>
               </Button>
             </div>

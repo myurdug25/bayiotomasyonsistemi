@@ -239,14 +239,16 @@ function hasProcedureParameter(parameters, name) {
 }
 
 async function exportCollection(pool, currentConfig, record, procedureParameters) {
-  const cashboxId = parseInteger(
-    record.cashbox_id,
-    currentConfig.logo.defaultCollectionCashboxId
-  );
-  const cashboxCode =
-    nullable(record.cashbox_code) ?? currentConfig.logo.defaultCollectionCashboxCode;
-  const cashboxName =
-    nullable(record.cashbox_name) ?? currentConfig.logo.defaultCollectionCashboxName;
+  const isCashCollection = String(record.method ?? "").trim().toLowerCase() === "cash";
+  const cashboxId = isCashCollection
+    ? parseInteger(record.cashbox_id, currentConfig.logo.defaultCollectionCashboxId)
+    : null;
+  const cashboxCode = isCashCollection
+    ? nullable(record.cashbox_code) ?? currentConfig.logo.defaultCollectionCashboxCode
+    : null;
+  const cashboxName = isCashCollection
+    ? nullable(record.cashbox_name) ?? currentConfig.logo.defaultCollectionCashboxName
+    : null;
   const request = pool.request();
   request.input("customerExternalRef", sql.NVarChar(128), nullable(record.customer_external_ref));
   request.input("customerCode", sql.NVarChar(64), nullable(record.customer_code));

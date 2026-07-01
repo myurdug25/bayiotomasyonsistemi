@@ -17,7 +17,8 @@ class StorePosExpenseRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'pos_session_id' => ['required', 'integer', 'exists:pos_sessions,id'],
+            'pos_session_id' => ['nullable', 'integer', 'exists:pos_sessions,id'],
+            'finance_definition_id' => ['nullable', 'integer', 'exists:finance_definitions,id'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'category' => ['required', 'string', 'max:80'],
             'note' => ['nullable', 'string', 'max:255'],

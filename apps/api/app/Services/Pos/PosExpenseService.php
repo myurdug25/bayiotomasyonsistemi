@@ -4,6 +4,7 @@ namespace App\Services\Pos;
 
 use App\Models\PosExpense;
 use App\Models\PosSession;
+use App\Models\FinanceDefinition;
 use App\Models\User;
 use App\Services\Integrations\IntegrationSyncStateService;
 use App\Support\MenuPermissions;
@@ -26,6 +27,10 @@ class PosExpenseService
     public function create(User $user, array $payload): PosExpense
     {
         return DB::transaction(function () use ($user, $payload): PosExpense {
+            if ($user->hasRole('salesperson') && empty($payload['pos_session_id'])) {
+                return $this->createSalespersonExpense($user, $payload);
+            }
+
             $session = PosSession::query()
                 ->with(['openedBy', 'cashbox'])
                 ->lockForUpdate()
@@ -59,6 +64,72 @@ class PosExpenseService
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function createSalespersonExpense(User $user, array $payload): PosExpense
+    {
+        $definition = FinanceDefinition::query()
+            ->where('type', 'expense_category')
+            ->where('is_active', true)
+            ->where(function (Builder $query) use ($payload): void {
+                if (! empty($payload['finance_definition_id'])) {
+                    $query->whereKey((int) $payload['finance_definition_id']);
+                } else {
+                    $query->where('code', (string) $payload['category']);
+                }
+            })
+            ->first();
+
+        if (! $definition instanceof FinanceDefinition) {
+            throw ValidationException::withMessages(['category' => ['Aktif gider kategorisi bulunamadı.']]);
+        }
+
+        $expenseAccountCode = $user->logo_expense_account_code ?: $definition->logo_code;
+        $expenseAccountName = $user->logo_expense_account_name ?: $definition->logo_name;
+
+        if (! filled($expenseAccountCode)) {
+            throw ValidationException::withMessages([
+                'expense_account' => ['Bu plasiyer için Logo gider cari kodu tanımlı değil.'],
+            ]);
+        }
+
+        if (! filled($user->logo_cashbox_code)) {
+            throw ValidationException::withMessages([
+                'cashbox' => ['Bu plasiyer için Logo kasa kodu tanımlı değil.'],
+            ]);
+        }
+
+        $expense = PosExpense::query()->create([
+            'pos_session_id' => null,
+            'dealer_id' => (int) $user->dealer_id,
+            'expense_date' => $payload['expense_date'] ?? now()->toDateString(),
+            'category' => $definition->name,
+            'amount' => number_format((float) $payload['amount'], 2, '.', ''),
+            'currency' => self::POINT_CURRENCY,
+            'note' => trim(implode(' ', array_filter([
+                $user->name,
+                $definition->name,
+                filled($payload['note'] ?? null) ? trim((string) $payload['note']) : null,
+            ]))),
+            'created_by_user_id' => $user->id,
+            'meta' => array_merge(is_array($payload['meta'] ?? null) ? $payload['meta'] : [], [
+                'scope' => 'salesperson',
+                'finance_definition_id' => $definition->id,
+                'expense_category_code' => $definition->code,
+                'logo_expense_account_code' => $expenseAccountCode,
+                'logo_expense_account_name' => $expenseAccountName,
+                'logo_category_code' => $definition->logo_code,
+                'cashbox_code' => $user->logo_cashbox_code,
+                'cashbox_name' => $user->logo_cashbox_name,
+            ]),
+        ]);
+
+        $this->queueExpenseForLogoExport($expense);
+
+        return $expense->fresh(['createdBy']);
+    }
+
+    /**
      * @param  Builder<PosExpense>  $query
      * @param  array<string, mixed>  $filters
      * @return Builder<PosExpense>
@@ -70,6 +141,10 @@ class PosExpenseService
 
             if ($user->hasAnyRole(['cashier', 'point']) && ! $user->hasRole('dealer_admin')) {
                 $query->whereHas('posSession', fn (Builder $q) => $q->where('opened_by', $user->id));
+            }
+
+            if ($user->hasRole('salesperson')) {
+                $query->where('created_by_user_id', $user->id);
             }
         }
 

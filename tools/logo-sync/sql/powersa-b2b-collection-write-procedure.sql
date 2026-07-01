@@ -94,6 +94,266 @@ BEGIN
 END;
 GO
 
+CREATE OR ALTER PROCEDURE dbo.PowersaB2B_WriteFactoryCollection
+    @CustomerRef INT,
+    @CollectionDate DATE,
+    @Amount DECIMAL(15, 2),
+    @ReferenceNo NVARCHAR(120),
+    @Note NVARCHAR(MAX),
+    @ExportKey NVARCHAR(128),
+    @PayloadJson NVARCHAR(MAX),
+    @ExternalRef NVARCHAR(128) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @FactoryCode VARCHAR(17) = CONVERT(VARCHAR(17), JSON_VALUE(@PayloadJson, '$.reference_fields.factory_customer_code'));
+    DECLARE @FactoryRef INT;
+    DECLARE @FicheRef INT;
+    DECLARE @CustomerLineRef INT;
+    DECLARE @FactoryLineRef INT;
+    DECLARE @FicheNo VARCHAR(17) = CONVERT(VARCHAR(17), RIGHT(REPLICATE('0', 17) + @ExportKey, 17));
+    DECLARE @Docode VARCHAR(33) = CONVERT(VARCHAR(33), LEFT(COALESCE(NULLIF(@ReferenceNo, N''), @ExportKey), 33));
+    DECLARE @LineExp VARCHAR(251) = CONVERT(VARCHAR(251), LEFT(COALESCE(NULLIF(@Note, N''), N'Powersa B2B fabrika kart çekimi'), 251));
+    DECLARE @Now DATETIME = GETDATE();
+    DECLARE @Hour SMALLINT = DATEPART(HOUR, @Now);
+    DECLARE @Minute SMALLINT = DATEPART(MINUTE, @Now);
+    DECLARE @Second SMALLINT = DATEPART(SECOND, @Now);
+
+    SELECT TOP 1 @FactoryRef = LOGICALREF
+    FROM dbo.LG_003_CLCARD WITH (NOLOCK)
+    WHERE CODE = @FactoryCode AND ISNULL(ACTIVE, 0) = 0;
+    IF @FactoryRef IS NULL
+        THROW 51031, 'Factory POS customer could not be resolved in Logo.', 1;
+
+    INSERT INTO dbo.LG_003_01_CLFICHE (
+        FICHENO, DATE_, DOCODE, TRCODE, GENEXP1, DEBIT, CREDIT,
+        REPDEBIT, REPCREDIT, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+        CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC,
+        ACCOUNTED, CANCELLED, HOUR_, MINUTE_
+    )
+    VALUES (
+        @FicheNo, @CollectionDate, @Docode, 3, CONVERT(VARCHAR(51), LEFT(@LineExp, 51)),
+        CONVERT(FLOAT, @Amount), CONVERT(FLOAT, @Amount), CONVERT(FLOAT, @Amount),
+        CONVERT(FLOAT, @Amount), 1, @Now, @Hour, @Minute, @Second, 0, 0, @Hour, @Minute
+    );
+    SET @FicheRef = SCOPE_IDENTITY();
+
+    INSERT INTO dbo.LG_003_01_CLFLINE (
+        CLIENTREF, SOURCEFREF, DATE_, MODULENR, TRCODE, TRANNO, DOCODE,
+        LINEEXP, SIGN, AMOUNT, TRCURR, TRRATE, TRNET, REPORTRATE,
+        REPORTNET, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+        CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC
+    )
+    VALUES (
+        @CustomerRef, @FicheRef, @CollectionDate, 5, 3, @FicheNo, @Docode,
+        @LineExp, 1, CONVERT(FLOAT, @Amount), 0, 1, CONVERT(FLOAT, @Amount), 1,
+        CONVERT(FLOAT, @Amount), 0, 1, @Now, @Hour, @Minute, @Second
+    );
+    SET @CustomerLineRef = SCOPE_IDENTITY();
+
+    INSERT INTO dbo.LG_003_01_CLFLINE (
+        CLIENTREF, SOURCEFREF, DATE_, MODULENR, TRCODE, TRANNO, DOCODE,
+        LINEEXP, SIGN, AMOUNT, TRCURR, TRRATE, TRNET, REPORTRATE,
+        REPORTNET, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+        CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC
+    )
+    VALUES (
+        @FactoryRef, @FicheRef, @CollectionDate, 5, 3, @FicheNo, @Docode,
+        @LineExp, 0, CONVERT(FLOAT, @Amount), 0, 1, CONVERT(FLOAT, @Amount), 1,
+        CONVERT(FLOAT, @Amount), 0, 1, @Now, @Hour, @Minute, @Second
+    );
+    SET @FactoryLineRef = SCOPE_IDENTITY();
+
+    SET @ExternalRef = CONCAT(N'CLFICHE-', @FicheRef, N'-CLFLINE-', @CustomerLineRef, N'-', @FactoryLineRef);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.PowersaB2B_WriteBankCollection
+    @CustomerRef INT,
+    @CollectionDate DATE,
+    @Method NVARCHAR(32),
+    @Amount DECIMAL(15, 2),
+    @ReferenceNo NVARCHAR(120),
+    @Note NVARCHAR(MAX),
+    @ExportKey NVARCHAR(128),
+    @PayloadJson NVARCHAR(MAX),
+    @ExternalRef NVARCHAR(128) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @BankCode VARCHAR(7) = CONVERT(VARCHAR(7), JSON_VALUE(@PayloadJson, '$.reference_fields.bank_logo_code'));
+    DECLARE @BankRef INT;
+    DECLARE @BankAccountRef INT;
+    DECLARE @BankFicheRef INT;
+    DECLARE @BankLineRef INT;
+    DECLARE @ClientLineRef INT;
+    DECLARE @FicheNo VARCHAR(17) = CONVERT(VARCHAR(17), RIGHT(REPLICATE('0', 17) + @ExportKey, 17));
+    DECLARE @Docode VARCHAR(33) = CONVERT(VARCHAR(33), LEFT(COALESCE(NULLIF(@ReferenceNo, N''), @ExportKey), 33));
+    DECLARE @LineExp VARCHAR(201) = CONVERT(VARCHAR(201), LEFT(COALESCE(NULLIF(@Note, N''), N'Powersa B2B banka tahsilatı'), 201));
+    DECLARE @Now DATETIME = GETDATE();
+    DECLARE @Hour SMALLINT = DATEPART(HOUR, @Now);
+    DECLARE @Minute SMALLINT = DATEPART(MINUTE, @Now);
+    DECLARE @Second SMALLINT = DATEPART(SECOND, @Now);
+
+    SELECT TOP 1 @BankRef = LOGICALREF
+    FROM dbo.LG_003_BNCARD WITH (NOLOCK)
+    WHERE CODE = @BankCode AND ISNULL(ACTIVE, 0) = 0;
+
+    IF @BankRef IS NULL
+        THROW 51020, 'Logo bank card could not be resolved for collection export.', 1;
+
+    SELECT TOP 1 @BankAccountRef = LOGICALREF
+    FROM dbo.LG_003_BANKACC WITH (NOLOCK)
+    WHERE BANKREF = @BankRef
+      AND ISNULL(ACTIVE, 0) = 0
+      AND (
+        (LOWER(@Method) = N'cc' AND DEFINITION_ LIKE N'%KREDİ KARTI%')
+        OR (LOWER(@Method) <> N'cc' AND DEFINITION_ NOT LIKE N'%KREDİ KARTI%')
+      )
+    ORDER BY CASE WHEN DEFINITION_ LIKE N'%POWERSA%' THEN 0 ELSE 1 END, LOGICALREF;
+
+    IF @BankAccountRef IS NULL
+        THROW 51021, 'Logo bank account could not be resolved for collection export.', 1;
+
+    INSERT INTO dbo.LG_003_01_BNFICHE (
+        DATE_, FICHENO, TRCODE, MODULENR, SIGN, DEBITTOT, CREDITTOT,
+        GENEXP1, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+        CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC,
+        BNACCOUNTREF
+    )
+    VALUES (
+        @CollectionDate, @FicheNo, 3, 7, 0, CONVERT(FLOAT, @Amount), 0,
+        CONVERT(VARCHAR(51), LEFT(@LineExp, 51)), 0, 1, @Now,
+        @Hour, @Minute, @Second, @BankAccountRef
+    );
+    SET @BankFicheRef = SCOPE_IDENTITY();
+
+    INSERT INTO dbo.LG_003_01_BNFLINE (
+        BANKREF, BNACCREF, CLIENTREF, SOURCEFREF, TRANSTYPE, DATE_,
+        SIGN, TRCODE, MODULENR, LINENR, TRANNO, DOCODE, LINEEXP,
+        TRCURR, AMOUNT, TRRATE, TRNET, REPORTRATE, REPORTNET,
+        CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+        CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC
+    )
+    VALUES (
+        @BankRef, @BankAccountRef, @CustomerRef, @BankFicheRef, 0, @CollectionDate,
+        0, 3, 7, 1, @FicheNo, @Docode, @LineExp,
+        0, CONVERT(FLOAT, @Amount), 1, CONVERT(FLOAT, @Amount), 1, CONVERT(FLOAT, @Amount),
+        0, 1, @Now, @Hour, @Minute, @Second
+    );
+    SET @BankLineRef = SCOPE_IDENTITY();
+
+    INSERT INTO dbo.LG_003_01_CLFLINE (
+        CLIENTREF, SOURCEFREF, DATE_, MODULENR, TRCODE, TRANNO, DOCODE,
+        LINEEXP, SIGN, AMOUNT, TRCURR, TRRATE, TRNET, REPORTRATE,
+        REPORTNET, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+        CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC
+    )
+    VALUES (
+        @CustomerRef, @BankLineRef, @CollectionDate, 7, 3, @FicheNo, @Docode,
+        @LineExp, 1, CONVERT(FLOAT, @Amount), 0, 1, CONVERT(FLOAT, @Amount), 1,
+        CONVERT(FLOAT, @Amount), 0, 1, @Now, @Hour, @Minute, @Second
+    );
+    SET @ClientLineRef = SCOPE_IDENTITY();
+
+    SET @ExternalRef = CONCAT(N'BNFLINE-', @BankLineRef, N'-CLFLINE-', @ClientLineRef);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.PowersaB2B_WriteChequeCollection
+    @CustomerRef INT,
+    @CollectionDate DATE,
+    @Method NVARCHAR(32),
+    @Amount DECIMAL(15, 2),
+    @ReferenceNo NVARCHAR(120),
+    @Note NVARCHAR(MAX),
+    @ExportKey NVARCHAR(128),
+    @PayloadJson NVARCHAR(MAX),
+    @ExternalRef NVARCHAR(128) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @DocumentNo VARCHAR(31) = CONVERT(VARCHAR(31), LEFT(COALESCE(
+        JSON_VALUE(@PayloadJson, '$.reference_fields.check_no'),
+        JSON_VALUE(@PayloadJson, '$.reference_fields.note_no'),
+        @ReferenceNo, @ExportKey
+    ), 31));
+    DECLARE @DueDate DATE = TRY_CONVERT(DATE, JSON_VALUE(@PayloadJson, '$.reference_fields.due_date'));
+    DECLARE @BankName VARCHAR(51) = CONVERT(VARCHAR(51), LEFT(COALESCE(JSON_VALUE(@PayloadJson, '$.reference_fields.bank_name'), N''), 51));
+    DECLARE @CardRef INT;
+    DECLARE @RollRef INT;
+    DECLARE @TransRef INT;
+    DECLARE @ClientLineRef INT;
+    DECLARE @RollNo VARCHAR(9) = CONVERT(VARCHAR(9), RIGHT(REPLICATE('0', 9) + CONVERT(VARCHAR(20), ABS(CHECKSUM(@ExportKey))), 9));
+    DECLARE @LineExp VARCHAR(201) = CONVERT(VARCHAR(201), LEFT(COALESCE(NULLIF(@Note, N''), N'Powersa B2B çek/senet'), 201));
+    DECLARE @Now DATETIME = GETDATE();
+    DECLARE @Hour SMALLINT = DATEPART(HOUR, @Now);
+    DECLARE @Minute SMALLINT = DATEPART(MINUTE, @Now);
+    DECLARE @Second SMALLINT = DATEPART(SECOND, @Now);
+
+    IF @DueDate IS NULL
+        THROW 51030, 'Cheque due date is required for Logo export.', 1;
+
+    INSERT INTO dbo.LG_003_01_CSCARD (
+        DOC, CURRSTAT, PORTFOYNO, SERINO, BANKNAME, DUEDATE, SETDATE,
+        AMOUNT, TRCURR, TRRATE, TRNET, REPORTRATE, REPORTNET, INUSE,
+        CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR,
+        CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC, CANCELLED, NEWSERINO,
+        STATUS
+    )
+    VALUES (
+        CASE WHEN LOWER(@Method) = N'note' THEN 2 ELSE 1 END, 1, @DocumentNo, @DocumentNo,
+        @BankName, @DueDate, @CollectionDate, CONVERT(FLOAT, @Amount), 0, 1,
+        CONVERT(FLOAT, @Amount), 1, CONVERT(FLOAT, @Amount), 1,
+        1, @Now, @Hour, @Minute, @Second, 0, @DocumentNo, 0
+    );
+    SET @CardRef = SCOPE_IDENTITY();
+
+    INSERT INTO dbo.LG_003_01_CSROLL (
+        CARDREF, ROLLNO, DATE_, TRCODE, CARDMD, PROCTYPE, DOCCNT, TOTAL,
+        TRCURR, TRRATE, TRNET, REPORTRATE, REPORTNET, GENEXP1,
+        CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR,
+        CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC, CANCELLED, DOCODE
+    )
+    VALUES (
+        @CustomerRef, @RollNo, @CollectionDate, 1, 1, 0, 1, CONVERT(FLOAT, @Amount),
+        0, 1, CONVERT(FLOAT, @Amount), 1, CONVERT(FLOAT, @Amount),
+        CONVERT(VARCHAR(51), LEFT(@LineExp, 51)), 1, @Now, @Hour, @Minute, @Second, 0,
+        CONVERT(VARCHAR(33), LEFT(@DocumentNo, 33))
+    );
+    SET @RollRef = SCOPE_IDENTITY();
+
+    INSERT INTO dbo.LG_003_01_CSTRANS (
+        DATE_, CSREF, ROLLREF, TRCODE, STATUS, CARDMD, CARDREF, STATNO,
+        LINENO_, FROMCASH, CANCELLED, CAPIBLOCK_CREATEDBY,
+        CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN,
+        CAPIBLOCK_CREATEDSEC
+    )
+    VALUES (
+        @CollectionDate, @CardRef, @RollRef, 1, 0, 1, @CustomerRef, 1,
+        1, 0, 0, 1, @Now, @Hour, @Minute, @Second
+    );
+    SET @TransRef = SCOPE_IDENTITY();
+
+    INSERT INTO dbo.LG_003_01_CLFLINE (
+        CLIENTREF, SOURCEFREF, DATE_, MODULENR, TRCODE, TRANNO, DOCODE,
+        LINEEXP, SIGN, AMOUNT, TRCURR, TRRATE, TRNET, REPORTRATE,
+        REPORTNET, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
+        CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC
+    )
+    VALUES (
+        @CustomerRef, @TransRef, @CollectionDate, 6, 61, @RollNo, @DocumentNo,
+        @LineExp, 1, CONVERT(FLOAT, @Amount), 0, 1, CONVERT(FLOAT, @Amount), 1,
+        CONVERT(FLOAT, @Amount), 0, 1, @Now, @Hour, @Minute, @Second
+    );
+    SET @ClientLineRef = SCOPE_IDENTITY();
+
+    SET @ExternalRef = CONCAT(N'CSCARD-', @CardRef, N'-CLFLINE-', @ClientLineRef);
+END;
+GO
+
 CREATE OR ALTER PROCEDURE dbo.PowersaB2B_ExportCollection
     @CustomerExternalRef NVARCHAR(128) = NULL,
     @CustomerCode NVARCHAR(64) = NULL,
@@ -147,6 +407,41 @@ BEGIN
 
     IF @CustomerRef IS NULL
         THROW 51010, 'Logo customer could not be resolved for collection export.', 1;
+
+    IF LOWER(COALESCE(@Method, N'')) IN (N'transfer', N'cc')
+       AND JSON_VALUE(@PayloadJson, '$.reference_fields.collection_channel') <> N'factory'
+    BEGIN
+        BEGIN TRANSACTION;
+        EXEC dbo.PowersaB2B_WriteBankCollection
+            @CustomerRef, @CollectionDate, @Method, @Amount, @ReferenceNo,
+            @Note, @ExportKey, @PayloadJson, @ExternalRef OUTPUT;
+        EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;
+        COMMIT TRANSACTION;
+        RETURN;
+    END;
+
+    IF LOWER(COALESCE(@Method, N'')) IN (N'check', N'note')
+    BEGIN
+        BEGIN TRANSACTION;
+        EXEC dbo.PowersaB2B_WriteChequeCollection
+            @CustomerRef, @CollectionDate, @Method, @Amount, @ReferenceNo,
+            @Note, @ExportKey, @PayloadJson, @ExternalRef OUTPUT;
+        EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;
+        COMMIT TRANSACTION;
+        RETURN;
+    END;
+
+    IF LOWER(COALESCE(@Method, N'')) = N'cc'
+       AND JSON_VALUE(@PayloadJson, '$.reference_fields.collection_channel') = N'factory'
+    BEGIN
+        BEGIN TRANSACTION;
+        EXEC dbo.PowersaB2B_WriteFactoryCollection
+            @CustomerRef, @CollectionDate, @Amount, @ReferenceNo, @Note,
+            @ExportKey, @PayloadJson, @ExternalRef OUTPUT;
+        EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;
+        COMMIT TRANSACTION;
+        RETURN;
+    END;
 
     IF @CashboxCode IS NOT NULL
     BEGIN

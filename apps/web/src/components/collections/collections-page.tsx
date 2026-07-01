@@ -41,10 +41,12 @@ import {
   type CustomerCollectionsResponse,
   type CollectionRecord,
   type PosSessionDto,
+  type FinanceDefinitionDto,
   createCustomerCollection,
   deleteCustomerCollection,
   getCurrentPosSession,
   listCustomerCollections,
+  listFinanceDefinitions,
   sendCustomerCollections,
   updateCustomerCollection,
 } from "@/lib/api";
@@ -55,10 +57,10 @@ const METHODS = ["cash", "transfer", "check", "cc", "factory_cc"] as const;
 
 type FormMethodType = (typeof METHODS)[number];
 type MethodType = FormMethodType | "note" | "invoice";
-type FactoryPosType = "fabrika_1" | "fabrika_2";
+type FactoryPosType = string;
 type PosPaymentType = "pesin" | "taksitli";
 type BatumTransferBankType = "georgia_bank" | "tbc_bank";
-type PosBankType = "yapi_kredi" | "ziraat_bankasi" | BatumTransferBankType;
+type PosBankType = string;
 type CheckImageDraft = {
   id: string;
   name: string;
@@ -135,22 +137,10 @@ const POS_BANK_OPTIONS: Array<{ value: PosBankType; label: string }> = [
   { value: "ziraat_bankasi", label: "Ziraat Bankası" },
 ];
 
-const FACTORY_POS_OPTIONS: Array<{ value: FactoryPosType; label: string }> = [
-  { value: "fabrika_1", label: "Fabrika 1" },
-  { value: "fabrika_2", label: "Fabrika 2" },
-];
-
-const POS_PAYMENT_OPTIONS: Array<{ value: PosPaymentType; label: string }> = [
-  { value: "pesin", label: "Peşin" },
-  { value: "taksitli", label: "Taksitli" },
-];
-
 const BATUM_TRANSFER_BANK_OPTIONS: Array<{ value: BatumTransferBankType; label: string }> = [
   { value: "georgia_bank", label: "Georgia Bank" },
   { value: "tbc_bank", label: "TBC Bank" },
 ];
-
-const INSTALLMENT_COUNT_OPTIONS = ["1", "2", "3", "4", "5", "6"] as const;
 
 const STANDARD_VALOR_DAY_LIMIT = 60;
 
@@ -354,12 +344,6 @@ function getCollectionClientValidationMessage(input: {
     }
     if (input.method === "factory_cc" && !input.factoryPos) {
       return "Fabrika Kart Çekimi için cari pos seçimi zorunlu.";
-    }
-    if (input.posPaymentType === "taksitli") {
-      const installmentCount = Number(input.posInstallmentCount);
-      if (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > 6) {
-        return "Taksit sayısı 1 ile 6 arasında olmalı.";
-      }
     }
   }
 
@@ -630,6 +614,7 @@ export function CollectionsPage() {
   const [editingCollection, setEditingCollection] = useState<CollectionRecord | null>(null);
   const [deletingCollectionId, setDeletingCollectionId] = useState<number | null>(null);
   const [currentPointSession, setCurrentPointSession] = useState<PosSessionDto | null>(null);
+  const [financeDefinitions, setFinanceDefinitions] = useState<FinanceDefinitionDto[]>([]);
 
   const [method, setMethod] = useState<FormMethodType>("cash");
   const [amount, setAmount] = useState("0");
@@ -642,7 +627,7 @@ export function CollectionsPage() {
   const [checkValorDays, setCheckValorDays] = useState("");
   const [batumTransferBank, setBatumTransferBank] = useState<BatumTransferBankType>("georgia_bank");
   const [posBank, setPosBank] = useState<PosBankType>("yapi_kredi");
-  const [factoryPos, setFactoryPos] = useState<FactoryPosType>("fabrika_1");
+  const [factoryPos, setFactoryPos] = useState<FactoryPosType>("120-61-031");
   const [posPaymentType, setPosPaymentType] = useState<PosPaymentType>("pesin");
   const [posInstallmentCount, setPosInstallmentCount] = useState("");
   const [checkDraftItems, setCheckDraftItems] = useState<CheckDraftItem[]>([]);
@@ -681,6 +666,12 @@ export function CollectionsPage() {
     fetchList(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer?.id]);
+
+  useEffect(() => {
+    void listFinanceDefinitions()
+      .then((response) => setFinanceDefinitions(response.data))
+      .catch((err) => setError(err instanceof Error ? err.message : "Finans tanımları alınamadı"));
+  }, []);
 
   useEffect(() => {
     const hasPendingLogoWrite = payload?.data.some(
@@ -728,7 +719,17 @@ export function CollectionsPage() {
     user?.region_name,
   ]);
 
-  const visiblePosBankOptions = isBatumBranch ? BATUM_TRANSFER_BANK_OPTIONS : POS_BANK_OPTIONS;
+  const bankOptions = financeDefinitions
+    .filter((item) => item.type === "bank" && item.is_active)
+    .map((item) => ({ value: item.code, label: item.name }));
+  const factoryOptions = financeDefinitions
+    .filter((item) => item.type === "factory" && item.is_active)
+    .map((item) => ({ value: item.code, label: item.logo_name || item.name }));
+  const visiblePosBankOptions = bankOptions.length
+    ? bankOptions.filter((option) => isBatumBranch
+      ? option.value === "georgia_bank" || option.value === "tbc_bank"
+      : option.value !== "georgia_bank" && option.value !== "tbc_bank")
+    : (isBatumBranch ? BATUM_TRANSFER_BANK_OPTIONS : POS_BANK_OPTIONS);
 
   useEffect(() => {
     if (method !== "cc") {
@@ -794,25 +795,19 @@ export function CollectionsPage() {
       }
     }
 
-    if (method === "transfer" && isBatumBranch) {
-      fields.bank_name = getBatumTransferBankLabel(batumTransferBank);
+    if (method === "transfer") {
+      const transferBank = isBatumBranch ? batumTransferBank : posBank;
+      fields.bank_code = transferBank;
+      fields.bank_name = visiblePosBankOptions.find((option) => option.value === transferBank)?.label ?? transferBank;
     }
 
     if (method === "factory_cc") {
       fields.collection_channel = "factory";
       fields.factory_pos_account = factoryPos;
-      fields.pos_payment_type = posPaymentType;
-      if (posPaymentType === "taksitli" && posInstallmentCount.trim()) {
-        fields.installment = Number(posInstallmentCount);
-      }
     }
 
     if (method === "cc") {
       fields.pos_bank = posBank;
-      fields.pos_payment_type = isBatumBranch ? "pesin" : posPaymentType;
-      if (!isBatumBranch && posPaymentType === "taksitli" && posInstallmentCount.trim()) {
-        fields.installment = Number(posInstallmentCount);
-      }
     }
 
     return fields;
@@ -826,8 +821,7 @@ export function CollectionsPage() {
     batumTransferBank,
     posBank,
     factoryPos,
-    posPaymentType,
-    posInstallmentCount,
+    visiblePosBankOptions,
   ]);
 
   const isListDisabled = listLoading || saving || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
@@ -966,7 +960,7 @@ export function CollectionsPage() {
     setCheckValorDays("");
     setBatumTransferBank("georgia_bank");
     setPosBank("yapi_kredi");
-    setFactoryPos("fabrika_1");
+    setFactoryPos(factoryOptions[0]?.value ?? "120-61-031");
     setPosPaymentType("pesin");
     setPosInstallmentCount("");
   };
@@ -997,7 +991,7 @@ export function CollectionsPage() {
     setCheckValorDays(String(fields.valor_days ?? ""));
     setBatumTransferBank(getBatumTransferBankValue(fields.bank_name));
     setPosBank(getPosBankValue(String(fields.pos_bank)));
-    setFactoryPos(fields.factory_pos_account === "fabrika_2" ? "fabrika_2" : "fabrika_1");
+    setFactoryPos(String(fields.factory_pos_account ?? factoryOptions[0]?.value ?? "120-61-031"));
     setPosPaymentType(fields.pos_payment_type === "taksitli" ? "taksitli" : "pesin");
     setPosInstallmentCount(fields.installment ? String(fields.installment) : "");
     setCheckDraftItems([]);
@@ -1152,7 +1146,6 @@ export function CollectionsPage() {
       amount: toAmount(amount),
       currency: customerDebtCurrency,
       date,
-      note: note || undefined,
       reference_fields: Object.keys(submitReferenceFields).length ? submitReferenceFields : undefined,
       meta: buildPointCollectionMeta(),
     };
@@ -1456,19 +1449,25 @@ export function CollectionsPage() {
               </div>
             </div>
 
-            {isBatumBranch && method === "transfer" ? (
+            {method === "transfer" ? (
               <div className="space-y-2">
                 <label className={fieldLabelClassName}>Banka</label>
                 <div className="grid grid-cols-2 gap-3">
-                  {BATUM_TRANSFER_BANK_OPTIONS.map((option) => (
+                  {visiblePosBankOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       disabled={isFormDisabled}
-                      onClick={() => setBatumTransferBank(option.value)}
+                      onClick={() => {
+                        if (isBatumBranch) {
+                          setBatumTransferBank(option.value as BatumTransferBankType);
+                        } else {
+                          setPosBank(option.value);
+                        }
+                      }}
                       className={cn(
                         "flex min-h-[62px] items-center justify-center gap-2 rounded-[16px] border px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
-                        batumTransferBank === option.value
+                        (isBatumBranch ? batumTransferBank : posBank) === option.value
                           ? "border-sky-300/70 bg-sky-300/14 text-sky-100 shadow-[0_18px_34px_-30px_rgba(56,189,248,0.7)]"
                           : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-sky-300/35 hover:bg-sky-300/8 hover:text-sky-100"
                       )}
@@ -1658,7 +1657,7 @@ export function CollectionsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(method === "factory_cc" ? FACTORY_POS_OPTIONS : visiblePosBankOptions).map((option) => (
+                        {(method === "factory_cc" ? factoryOptions : visiblePosBankOptions).map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -1666,67 +1665,23 @@ export function CollectionsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className={cn(fieldShellClassName, posPaymentType === "taksitli" ? "" : "md:col-span-2")}>
-                    <label className={fieldLabelClassName}>
-                      Taksitli mi Peşin mi
-                    </label>
-                    <Select
-                      value={posPaymentType}
-                      onValueChange={(value) => {
-                        const nextValue = value as PosPaymentType;
-                        setPosPaymentType(nextValue);
-                        if (nextValue === "pesin") {
-                          setPosInstallmentCount("");
-                        }
-                      }}
-                      disabled={isFormDisabled}
-                    >
-                      <SelectTrigger className={fieldClassName}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {POS_PAYMENT_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {posPaymentType === "taksitli" ? (
-                    <div className={fieldShellClassName}>
-                      <label className={fieldLabelClassName}>
-                        Taksit Sayısı
-                      </label>
-                      <Select
-                        value={posInstallmentCount}
-                        onValueChange={setPosInstallmentCount}
-                        disabled={isFormDisabled}
-                      >
-                        <SelectTrigger className={fieldClassName}>
-                          <SelectValue placeholder="Seçin" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {INSTALLMENT_COUNT_OPTIONS.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ) : null}
                 </>
               ) : null}
 
               <div className={cn(fieldShellClassName, "md:col-span-2")}>
                 <label className={fieldLabelClassName}>
-                  {method === "factory_cc" ? "Gönderilen Miktar" : "Açıklama (İsteğe Bağlı)"}
+                  Açıklama (Otomatik)
                 </label>
                 <Textarea
-                  value={note}
-                  disabled={isFormDisabled}
-                  onChange={(event) => setNote(event.target.value)}
+                  value={editingCollection?.note ?? (
+                    method === "factory_cc"
+                      ? factoryOptions.find((option) => option.value === factoryPos)?.label ?? factoryPos
+                      : method === "cc"
+                        ? `FP##### ${selectedCustomer?.title ?? ""} ${visiblePosBankOptions.find((option) => option.value === posBank)?.label ?? posBank}`
+                        : note
+                  )}
+                  readOnly
+                  disabled
                   placeholder=""
                   className={cn(fieldClassName, "h-auto min-h-[86px] py-3")}
                 />

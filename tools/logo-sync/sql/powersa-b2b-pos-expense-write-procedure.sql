@@ -90,6 +90,7 @@ CREATE OR ALTER PROCEDURE dbo.PowersaB2B_ExportPosExpense
     @Currency NVARCHAR(3) = N'TRY',
     @Note NVARCHAR(MAX) = NULL,
     @CashboxCode NVARCHAR(64) = NULL,
+    @AccountCode NVARCHAR(64) = NULL,
     @ExportKey NVARCHAR(128),
     @PayloadJson NVARCHAR(MAX) = NULL,
     @ExternalRef NVARCHAR(128) OUTPUT
@@ -110,6 +111,7 @@ BEGIN
         THROW 51060, 'POS expense amount must be greater than zero.', 1;
 
     DECLARE @CashboxRef INT;
+    DECLARE @AccountRef INT;
     DECLARE @FicheNo VARCHAR(17) = CONVERT(VARCHAR(17), RIGHT(REPLICATE('0', 17) + CONVERT(VARCHAR(128), @ExportKey), 17));
     DECLARE @Docode VARCHAR(33) = CONVERT(VARCHAR(33), LEFT(@ExportKey, 33));
     DECLARE @Specode VARCHAR(11) = CONVERT(VARCHAR(11), LEFT(@ExportKey, 11));
@@ -150,16 +152,27 @@ BEGIN
     IF @CashboxRef IS NULL
         THROW 51061, 'Logo cashbox could not be resolved for POS expense export.', 1;
 
+    IF @AccountCode IS NOT NULL
+    BEGIN
+        SELECT TOP 1 @AccountRef = LOGICALREF
+        FROM dbo.LG_003_EMUHACC WITH (NOLOCK)
+        WHERE CODE = CONVERT(VARCHAR(25), @AccountCode)
+          AND ISNULL(ACTIVE, 0) = 0;
+    END;
+
+    IF @AccountCode IS NOT NULL AND @AccountRef IS NULL
+        THROW 51062, 'Logo expense account could not be resolved.', 1;
+
     BEGIN TRANSACTION;
 
     INSERT INTO dbo.LG_003_01_KSLINES (
-        CARDREF, DATE_, HOUR_, MINUTE_, TRCODE, SPECODE, CYPHCODE, FICHENO,
+        CARDREF, ACCREF, DATE_, HOUR_, MINUTE_, TRCODE, SPECODE, CYPHCODE, FICHENO,
         LINEEXP, AMOUNT, CANCELLED, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE,
         CAPIBLOCK_CREATEDHOUR, CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC,
         DOCODE
     )
     VALUES (
-        @CashboxRef, @ExpenseDate, @Hour, @Minute, 12, @Specode, @CyphCode, @FicheNo,
+        @CashboxRef, @AccountRef, @ExpenseDate, @Hour, @Minute, 12, @Specode, @CyphCode, @FicheNo,
         @LineExp, CONVERT(FLOAT, @Amount), 0, 1, @Now,
         @Hour, @Minute, @Second,
         @Docode

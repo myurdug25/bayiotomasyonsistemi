@@ -1925,17 +1925,20 @@ class PointPosAccessApiTest extends TestCase
             'currency' => 'TRY',
             'date' => '2026-06-05',
             'note' => 'Güncel not',
+            'reference_fields' => [
+                'bank_code' => 'yapi_kredi',
+            ],
         ])
             ->assertOk()
             ->assertJsonPath('collection.method', 'transfer')
             ->assertJsonPath('collection.amount', '125.50')
-            ->assertJsonPath('collection.note', 'Güncel not');
+            ->assertJsonPath('collection.note', 'Edit Collection Customer YAPI KREDI');
 
         $this->assertDatabaseHas('collections', [
             'id' => $collection->id,
             'method' => 'transfer',
             'amount' => '125.50',
-            'note' => 'Güncel not',
+            'note' => 'Edit Collection Customer YAPI KREDI',
         ]);
 
         $this->deleteJson("/api/customers/{$customer->id}/collections/{$collection->id}")
@@ -2003,20 +2006,20 @@ class PointPosAccessApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('collection.sync_status', 'draft')
             ->assertJsonPath('collection.amount', '169.51')
-            ->assertJsonPath('collection.note', 'Düzeltilmiş tahsilat');
+            ->assertJsonPath('collection.note', 'Synced Collection Customer NAKİT');
 
         $this->assertDatabaseHas('collections', [
             'id' => $collection->id,
             'sync_status' => 'draft',
             'amount' => '169.51',
-            'note' => 'Düzeltilmiş tahsilat',
+            'note' => 'Synced Collection Customer NAKİT',
         ]);
 
         $this->assertDatabaseHas('ledger_entries', [
             'collection_id' => $collection->id,
             'credit' => '169.51',
             'amount' => '169.51',
-            'description' => 'Düzeltilmiş tahsilat',
+            'description' => 'Synced Collection Customer NAKİT',
         ]);
 
         $this->deleteJson("/api/customers/{$customer->id}/collections/{$collection->id}")

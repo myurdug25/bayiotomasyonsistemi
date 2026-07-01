@@ -295,17 +295,16 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
             'note' => 'Fabrikaya gonderilen miktar',
             'reference_fields' => [
                 'collection_channel' => 'factory',
-                'factory_pos_account' => 'fabrika_1',
-                'pos_payment_type' => 'pesin',
+                'factory_pos_account' => '120-61-031',
             ],
         ])
             ->assertCreated()
             ->assertJsonPath('collection.sync_status', 'draft')
             ->assertJsonPath('collection.meta.factory_collected', true)
             ->assertJsonPath('collection.reference_fields.collection_channel', 'factory')
-            ->assertJsonPath('collection.reference_fields.factory_pos_account', 'fabrika_1')
-            ->assertJsonPath('collection.reference_fields.pos_payment_type', 'pesin')
-            ->assertJsonPath('collection.note', 'Fabrikaya gonderilen miktar')
+            ->assertJsonPath('collection.reference_fields.factory_pos_account', '120-61-031')
+            ->assertJsonPath('collection.reference_fields.factory_customer_code', '120-61-031')
+            ->assertJsonPath('collection.note', '120-61-031')
             ->assertJsonMissingPath('collection.meta.cashbox_id');
     }
 
@@ -365,6 +364,46 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
         $this->postJson("/api/customers/{$customer->id}/collections/{$collection->id}/send")
             ->assertUnprocessable()
             ->assertJsonPath('errors.collection.0', 'Bu tahsilat müdür onayı bekliyor.');
+    }
+
+    public function test_physical_pos_uses_managed_bank_sequence_and_never_salesperson_cashbox(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-POS-FIN-'.Str::upper(Str::random(4)),
+            'name' => 'Physical Pos Dealer',
+            'is_active' => true,
+        ]);
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        $user->forceFill([
+            'logo_cashbox_code' => '100.01.002',
+            'logo_cashbox_name' => 'AHMET ARAÇ KASASI',
+        ])->save();
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'source_system' => 'logo',
+            'source_reference' => '1001',
+            'sync_status' => 'synced',
+            'code' => '120-25-999',
+            'name' => 'ABC Ticaret',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user);
+
+        foreach (['FP00001', 'FP00002'] as $expectedReference) {
+            $this->postJson("/api/customers/{$customer->id}/collections", [
+                'method' => 'cc',
+                'amount' => 250,
+                'note' => 'Kullanıcı bunu değiştirememeli',
+                'reference_fields' => ['pos_bank' => 'yapi_kredi'],
+            ])
+                ->assertCreated()
+                ->assertJsonPath('collection.reference_no', $expectedReference)
+                ->assertJsonPath('collection.note', "{$expectedReference} ABC Ticaret YAPI KREDI")
+                ->assertJsonPath('collection.reference_fields.bank_logo_code', '02')
+                ->assertJsonMissingPath('collection.meta.cashbox_id');
+        }
     }
 
     private function createUserWithRole(string $roleSlug, Dealer $dealer): User

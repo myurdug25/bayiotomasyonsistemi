@@ -26,7 +26,9 @@ import {
   createPosExpense,
   getCurrentPosSession,
   listPosExpenses,
+  listFinanceDefinitions,
   openPosSession,
+  type FinanceDefinitionDto,
   type PosExpenseDto,
 } from "@/lib/api";
 import { notifyPosDayEndRefresh } from "@/lib/pos-day-end-events";
@@ -41,6 +43,7 @@ const DEFAULT_CURRENCY_LABEL = "TL";
 
 const expenseSchema = z.object({
   amount: z.number().gt(0),
+  categoryId: z.number().int().positive().optional(),
   note: z.string().max(255).optional(),
 });
 
@@ -245,6 +248,7 @@ export function PointExpensesPage() {
     resolver: zodResolver(expenseSchema),
     defaultValues: {
       amount: 0,
+      categoryId: undefined,
       note: "",
     },
   });
@@ -253,7 +257,19 @@ export function PointExpensesPage() {
     queryKey: ["pos", "session", "current"],
     queryFn: () => getCurrentPosSession(),
     refetchInterval: 20_000,
+    enabled: !hasUserRole(user, "salesperson"),
   });
+  const isSalesperson = hasUserRole(user, "salesperson");
+  const definitionsQuery = useQuery({
+    queryKey: ["finance-definitions", "expense_category"],
+    queryFn: () => listFinanceDefinitions("expense_category"),
+    enabled: isSalesperson,
+  });
+  const expenseCategories = useMemo<FinanceDefinitionDto[]>(
+    () => definitionsQuery.data?.data ?? [],
+    [definitionsQuery.data?.data]
+  );
+  const selectedCategoryId = form.watch("categoryId");
 
   const openSessionMutation = useMutation({
     mutationFn: openPosSession,
@@ -272,6 +288,9 @@ export function PointExpensesPage() {
   const scopeLabel = sessionScopeLabel(currentCashbox, expenseScope.branchLabel);
 
   useEffect(() => {
+    if (isSalesperson) {
+      return;
+    }
     if (currentSession) {
       pointSessionBootstrapAttemptedRef.current = true;
       return;
@@ -287,7 +306,13 @@ export function PointExpensesPage() {
 
     pointSessionBootstrapAttemptedRef.current = true;
     void openSessionMutation.mutateAsync({ opening_cash: 0 });
-  }, [currentSession, currentSessionQuery.isFetching, openSessionMutation]);
+  }, [currentSession, currentSessionQuery.isFetching, isSalesperson, openSessionMutation]);
+
+  useEffect(() => {
+    if (isSalesperson && !selectedCategoryId && expenseCategories[0]) {
+      form.setValue("categoryId", expenseCategories[0].id);
+    }
+  }, [expenseCategories, form, isSalesperson, selectedCategoryId]);
 
   const expensesQuery = useQuery({
     queryKey: ["pos", "expenses", currentSession?.id ?? null, currentCashbox?.id ?? null],
@@ -297,7 +322,7 @@ export function PointExpensesPage() {
         cashbox_id: currentCashbox?.id ?? undefined,
         limit: 20,
       }),
-    enabled: Boolean(currentSession?.id),
+    enabled: isSalesperson || Boolean(currentSession?.id),
     refetchInterval: 20_000,
   });
 
@@ -330,25 +355,28 @@ export function PointExpensesPage() {
   }, [recentExpenses]);
 
   const submit = form.handleSubmit(async (values) => {
-    if (!currentSession) {
+    if (!isSalesperson && !currentSession) {
       toast.error("Açık POS oturumu hazırlanamadı.");
       return;
     }
 
     await createExpenseMutation.mutateAsync({
-      pos_session_id: currentSession.id,
+      pos_session_id: currentSession?.id,
+      finance_definition_id: isSalesperson ? values.categoryId : undefined,
       amount: values.amount,
-      category: DEFAULT_POINT_EXPENSE_CATEGORY,
+      category: isSalesperson
+        ? expenseCategories.find((item) => item.id === values.categoryId)?.code ?? ""
+        : DEFAULT_POINT_EXPENSE_CATEGORY,
       note: values.note?.trim() || undefined,
       meta: {
         scope: expenseScope.scopeKey,
-        cashbox_code: currentSession.cashbox.code ?? null,
-        cashbox_name: currentSession.cashbox.name ?? null,
+        cashbox_code: currentSession?.cashbox.code ?? null,
+        cashbox_name: currentSession?.cashbox.name ?? null,
       },
     });
   });
 
-  const busy = currentSessionQuery.isFetching || expensesQuery.isFetching || openSessionMutation.isPending;
+  const busy = (!isSalesperson && currentSessionQuery.isFetching) || expensesQuery.isFetching || openSessionMutation.isPending;
 
   return (
     <div className="point-admin-page">
@@ -364,12 +392,12 @@ export function PointExpensesPage() {
                   <span
                     className={cn(
                       "rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.12em]",
-                      currentSession
+                      currentSession || isSalesperson
                         ? "border-[#6fb878]/60 bg-[#1f6b45]/30 text-[#d8f5d9]"
                         : "border-[#faee56]/45 bg-[#3b3719]/50 text-[#faee56]"
                     )}
                   >
-                    {currentSession ? "Oturum Hazır" : "Oturum Hazırlanıyor"}
+                    {isSalesperson ? "Plasiyer Gideri" : currentSession ? "Oturum Hazır" : "Oturum Hazırlanıyor"}
                   </span>
                   {currentSession ? (
                     <span className="rounded-full border border-[#faee56]/45 bg-[#3b3719]/50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#faee56]">
@@ -449,7 +477,7 @@ export function PointExpensesPage() {
           />
         </section>
 
-        {!currentSession ? (
+        {!currentSession && !isSalesperson ? (
           <section className="point-admin-panel rounded-[22px] border p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
@@ -475,6 +503,24 @@ export function PointExpensesPage() {
               </div>
 
               <form className="space-y-4" onSubmit={submit}>
+                {isSalesperson ? (
+                  <div>
+                    <span className="mb-2 block text-sm font-black text-[var(--point-muted-strong)]">Gider Kategorisi</span>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {expenseCategories.map((category) => (
+                        <Button
+                          key={category.id}
+                          type="button"
+                          variant={selectedCategoryId === category.id ? "default" : "outline"}
+                          className="h-12 rounded-[12px] font-black"
+                          onClick={() => form.setValue("categoryId", category.id, { shouldValidate: true })}
+                        >
+                          {category.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <label className="block">
                   <span className="mb-2 block text-sm font-black text-[var(--point-muted-strong)]">Tutar ({expenseScope.currencyLabel})</span>
                   <Input
@@ -500,11 +546,17 @@ export function PointExpensesPage() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="point-admin-soft rounded-[14px] border p-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--point-muted)]">Kategori</p>
-                    <p className="mt-1 text-lg font-black text-[var(--point-text)]">{DEFAULT_POINT_EXPENSE_CATEGORY}</p>
+                    <p className="mt-1 text-lg font-black text-[var(--point-text)]">
+                      {isSalesperson
+                        ? expenseCategories.find((item) => item.id === selectedCategoryId)?.name ?? "Seçiniz"
+                        : DEFAULT_POINT_EXPENSE_CATEGORY}
+                    </p>
                   </div>
                   <div className="point-admin-soft rounded-[14px] border p-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--point-muted)]">Kasa</p>
-                    <p className="mt-1 truncate text-lg font-black text-[var(--point-text)]">{currentSession.cashbox.code ?? expenseScope.branchLabel}</p>
+                    <p className="mt-1 truncate text-lg font-black text-[var(--point-text)]">
+                      {isSalesperson ? user?.name ?? "Plasiyer" : currentSession?.cashbox.code ?? expenseScope.branchLabel}
+                    </p>
                   </div>
                 </div>
 

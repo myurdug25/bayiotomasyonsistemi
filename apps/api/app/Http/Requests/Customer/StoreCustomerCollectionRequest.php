@@ -95,15 +95,17 @@ class StoreCustomerCollectionRequest extends FormRequest
             'reference_fields.pos_bank' => [
                 Rule::requiredIf(fn () => (string) $this->input('method') === 'cc'
                     && (string) $this->input('reference_fields.collection_channel') !== 'factory'),
-                Rule::in(['yapi_kredi', 'ziraat_bankasi', 'georgia_bank', 'tbc_bank']),
+                'string',
+                'max:64',
             ],
             'reference_fields.factory_pos_account' => [
                 Rule::requiredIf(fn () => (string) $this->input('method') === 'cc'
                     && (string) $this->input('reference_fields.collection_channel') === 'factory'),
-                Rule::in(['fabrika_1', 'fabrika_2']),
+                'string',
+                'max:64',
             ],
             'reference_fields.pos_payment_type' => [
-                Rule::requiredIf(fn () => (string) $this->input('method') === 'cc'),
+                'nullable',
                 Rule::in(['pesin', 'taksitli']),
             ],
             'reference_fields.card_holder' => [
@@ -122,11 +124,15 @@ class StoreCustomerCollectionRequest extends FormRequest
                 'max:64',
             ],
             'reference_fields.installment' => [
-                Rule::requiredIf(fn () => (string) $this->input('method') === 'cc'
-                    && (string) $this->input('reference_fields.pos_payment_type') === 'taksitli'),
+                'nullable',
                 'integer',
                 'min:1',
                 'max:6',
+            ],
+            'reference_fields.bank_code' => [
+                Rule::requiredIf(fn () => (string) $this->input('method') === 'transfer'),
+                'string',
+                'max:64',
             ],
             'meta' => ['nullable', 'array'],
         ];

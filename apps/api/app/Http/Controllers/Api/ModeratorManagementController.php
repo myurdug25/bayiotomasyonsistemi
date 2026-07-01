@@ -68,6 +68,8 @@ class ModeratorManagementController extends Controller
                 'logo_customer_specode4',
                 'logo_cashbox_code',
                 'logo_cashbox_name',
+                'logo_expense_account_code',
+                'logo_expense_account_name',
                 'selected_customer_id',
                 'name',
                 'username',
@@ -194,6 +196,8 @@ class ModeratorManagementController extends Controller
             'logo_customer_specode4' => ['nullable', 'string', 'max:64'],
             'logo_cashbox_code' => ['nullable', 'string', 'max:64'],
             'logo_cashbox_name' => ['nullable', 'string', 'max:128'],
+            'logo_expense_account_code' => ['nullable', 'string', 'max:64'],
+            'logo_expense_account_name' => ['nullable', 'string', 'max:180'],
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:64', 'regex:/^[a-z0-9._-]+$/', 'unique:users,username'],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
@@ -231,6 +235,8 @@ class ModeratorManagementController extends Controller
                 'logo_customer_specode4' => $this->normalizedCodeField($validated, 'logo_customer_specode4'),
                 'logo_cashbox_code' => $this->normalizedCodeField($validated, 'logo_cashbox_code'),
                 'logo_cashbox_name' => $this->normalizedLabelField($validated, 'logo_cashbox_name'),
+                'logo_expense_account_code' => $this->normalizedCodeField($validated, 'logo_expense_account_code'),
+                'logo_expense_account_name' => $this->normalizedLabelField($validated, 'logo_expense_account_name'),
                 'selected_customer_id' => null,
                 'name' => $validated['name'],
                 'username' => $this->normalizeUsername($validated['username']),
@@ -276,6 +282,8 @@ class ModeratorManagementController extends Controller
             'logo_customer_specode4' => ['nullable', 'string', 'max:64'],
             'logo_cashbox_code' => ['nullable', 'string', 'max:64'],
             'logo_cashbox_name' => ['nullable', 'string', 'max:128'],
+            'logo_expense_account_code' => ['nullable', 'string', 'max:64'],
+            'logo_expense_account_name' => ['nullable', 'string', 'max:180'],
             'name' => ['sometimes', 'string', 'max:255'],
             'username' => ['sometimes', 'string', 'max:64', 'regex:/^[a-z0-9._-]+$/', Rule::unique('users', 'username')->ignore($user->id)],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
@@ -342,6 +350,16 @@ class ModeratorManagementController extends Controller
                     $validated,
                     'logo_cashbox_name',
                     $user->logo_cashbox_name
+                ),
+                'logo_expense_account_code' => $this->normalizedCodeField(
+                    $validated,
+                    'logo_expense_account_code',
+                    $user->logo_expense_account_code
+                ),
+                'logo_expense_account_name' => $this->normalizedLabelField(
+                    $validated,
+                    'logo_expense_account_name',
+                    $user->logo_expense_account_name
                 ),
                 'name' => $validated['name'] ?? $user->name,
                 'username' => array_key_exists('username', $validated)
@@ -954,6 +972,8 @@ class ModeratorManagementController extends Controller
             'logo_customer_specode4' => $user->logo_customer_specode4,
             'logo_cashbox_code' => $user->logo_cashbox_code,
             'logo_cashbox_name' => $user->logo_cashbox_name,
+            'logo_expense_account_code' => $user->logo_expense_account_code,
+            'logo_expense_account_name' => $user->logo_expense_account_name,
             'selected_customer_id' => $user->selected_customer_id,
             'name' => $user->name,
             'username' => $user->username,

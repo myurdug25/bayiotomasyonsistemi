@@ -203,6 +203,15 @@ class LogoCollectionExportService
         $logoDefaults = is_array(data_get($meta, 'integrations.logo.defaults'))
             ? data_get($meta, 'integrations.logo.defaults')
             : [];
+        $referenceFields = is_array($collection->reference_fields) ? $collection->reference_fields : [];
+        $targetTables = match ((string) $collection->method) {
+            'cash' => ['KSLINES', 'CLFLINE', 'PAYTRANS'],
+            'transfer', 'cc' => data_get($referenceFields, 'collection_channel') === 'factory'
+                ? ['CLFLINE', 'PAYTRANS']
+                : ['BNFICHE', 'BNFLINE', 'CLFLINE', 'PAYTRANS'],
+            'check', 'note' => ['CSCARD', 'CSROLL', 'CSTRANS', 'CLFLINE', 'PAYTRANS'],
+            default => ['CLFLINE'],
+        };
 
         return [
             'collection_id' => $collection->id,
@@ -216,7 +225,7 @@ class LogoCollectionExportService
             'amount' => number_format((float) $collection->amount, 2, '.', ''),
             'currency' => strtoupper((string) $collection->currency),
             'reference_no' => $collection->reference_no,
-            'reference_fields' => $collection->reference_fields ?? [],
+            'reference_fields' => $referenceFields,
             'note' => $collection->note,
             'cashbox_id' => $cashbox['id'] ?? null,
             'cashbox_code' => $cashbox['code'] ?? null,
@@ -234,7 +243,11 @@ class LogoCollectionExportService
                 'trans_no' => data_get($logoDefaults, 'trans_no') ?? $collection->reference_no,
                 'source_fref' => data_get($logoDefaults, 'source_fref'),
                 'paydef_ref' => data_get($logoDefaults, 'paydef_ref'),
-                'target_tables' => ['KSLINES', 'CLFLINE', 'PAYTRANS'],
+                'bank_code' => data_get($referenceFields, 'bank_logo_code'),
+                'factory_customer_code' => data_get($referenceFields, 'factory_customer_code'),
+                'due_date' => data_get($referenceFields, 'due_date'),
+                'document_no' => data_get($referenceFields, 'check_no') ?? data_get($referenceFields, 'note_no'),
+                'target_tables' => $targetTables,
             ],
             'sync_status' => $collection->sync_status,
             'sync_error' => $collection->sync_error,

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\CustomerCardRequestController;
 use App\Http\Controllers\Api\CustomerCollectionController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerLedgerController;
+use App\Http\Controllers\Api\FinanceDefinitionController;
 use App\Http\Controllers\Api\CustomerUserController;
 use App\Http\Controllers\Api\DealerController;
 use App\Http\Controllers\Api\LogoCollectionExportController;
@@ -122,6 +123,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('role:admin')->group(function (): void {
         Route::get('/admin/dashboard/overview', AdminDashboardOverviewController::class);
+        Route::post('/admin/finance-definitions', [FinanceDefinitionController::class, 'store']);
+        Route::patch('/admin/finance-definitions/{financeDefinition}', [FinanceDefinitionController::class, 'update']);
     });
 
     Route::middleware(['role:admin,moderator', 'menu:moderator'])->group(function (): void {
@@ -179,6 +182,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware(['role:admin,dealer_admin,salesperson,cashier,point', 'menu:collections,pos'])->group(function (): void {
+        Route::get('/finance-definitions', [FinanceDefinitionController::class, 'index']);
         Route::get('/customers/{customer}/collections', [CustomerCollectionController::class, 'index']);
         Route::post('/customers/{customer}/collections', [CustomerCollectionController::class, 'store']);
         Route::patch('/customers/{customer}/collections/{collection}', [CustomerCollectionController::class, 'update']);
@@ -188,7 +192,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('pos')
-        ->middleware(['role:admin,dealer_admin,cashier,point,warehouse', 'throttle:pos'])
+        ->middleware(['role:admin,dealer_admin,salesperson,cashier,point,warehouse', 'throttle:pos'])
         ->group(function () {
             Route::middleware('menu:pos,pos-expenses,pos-day-end')->group(function (): void {
                 Route::get('/customers', [CustomerController::class, 'index']);
@@ -205,7 +209,7 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::get('/sales/{posSale}/print/receipt', [PosSaleController::class, 'printReceipt']);
             });
 
-            Route::middleware('menu:pos-expenses')->group(function (): void {
+            Route::middleware('menu:pos-expenses,collections')->group(function (): void {
                 Route::get('/expenses', [PosExpenseController::class, 'index']);
                 Route::post('/expenses', [PosExpenseController::class, 'store']);
             });

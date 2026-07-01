@@ -201,6 +201,7 @@ async function exportExpense(pool, currentConfig, record) {
   request.input("currency", sql.NVarChar(3), nullable(record.currency) ?? "TRY");
   request.input("note", sql.NVarChar(sql.MAX), nullable(record.note));
   request.input("cashboxCode", sql.NVarChar(64), nullable(record.cashbox_code));
+  request.input("accountCode", sql.NVarChar(64), nullable(record.logo?.account_code));
   request.input("exportKey", sql.NVarChar(128), nullable(record.export_key));
   request.input(
     "payloadJson",
@@ -226,6 +227,7 @@ async function exportExpense(pool, currentConfig, record) {
       @Currency = @currency,
       @Note = @note,
       @CashboxCode = @cashboxCode,
+      @AccountCode = @accountCode,
       @ExportKey = @exportKey,
       @PayloadJson = @payloadJson,
       @ExternalRef = @ExternalRef OUTPUT;

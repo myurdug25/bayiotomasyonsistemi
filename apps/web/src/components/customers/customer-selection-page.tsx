@@ -7,6 +7,7 @@ import {
   Activity,
   Check,
   Loader2,
+  ReceiptText,
   Search,
   ShoppingBasket,
   Wallet,
@@ -290,6 +291,16 @@ export function CustomerSelectionPage() {
                 : "bg-[linear-gradient(180deg,#fbfdfb_0%,#f5f9f5_100%)]"
             )}
           >
+            {isSalesperson ? (
+              <Button
+                type="button"
+                className="mb-3 h-14 w-full rounded-[16px] bg-amber-500 font-black text-slate-950 hover:bg-amber-400"
+                onClick={() => router.push("/pos/expenses")}
+              >
+                <ReceiptText className="h-5 w-5" />
+                Giderler
+              </Button>
+            ) : null}
             <div className="grid gap-3 lg:grid-cols-[minmax(340px,1fr)_112px_104px_172px_172px] lg:items-end">
               <div>
                 <div className="relative">

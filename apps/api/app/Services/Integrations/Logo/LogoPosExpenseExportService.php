@@ -134,9 +134,13 @@ class LogoPosExpenseExportService
      */
     private function transformExpense(PosExpense $expense, IntegrationSyncState $state): array
     {
-        $cashbox = $expense->posSession?->cashbox;
-        $cashboxPayload = $this->normalizeCashboxPayload($cashbox?->id, $cashbox?->code, $cashbox?->name);
         $sourceMeta = is_array($expense->meta) ? $expense->meta : [];
+        $cashbox = $expense->posSession?->cashbox;
+        $cashboxPayload = $this->normalizeCashboxPayload(
+            $cashbox?->id,
+            $cashbox?->code ?? data_get($sourceMeta, 'cashbox_code'),
+            $cashbox?->name ?? data_get($sourceMeta, 'cashbox_name')
+        );
         $logoDefaults = is_array(data_get($sourceMeta, 'integrations.logo'))
             ? data_get($sourceMeta, 'integrations.logo')
             : [];
@@ -155,7 +159,8 @@ class LogoPosExpenseExportService
             'cashbox_code' => $cashboxPayload['code'] ?? null,
             'cashbox_name' => $cashboxPayload['name'] ?? null,
             'logo' => [
-                'account_code' => data_get($logoDefaults, 'account_code'),
+                'account_code' => data_get($sourceMeta, 'logo_expense_account_code')
+                    ?? data_get($logoDefaults, 'account_code'),
                 'account_ref' => data_get($logoDefaults, 'account_ref'),
                 'center_code' => data_get($logoDefaults, 'center_code'),
                 'center_ref' => data_get($logoDefaults, 'center_ref'),
