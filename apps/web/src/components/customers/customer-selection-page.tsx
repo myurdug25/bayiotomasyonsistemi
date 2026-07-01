@@ -340,13 +340,13 @@ export function CustomerSelectionPage() {
                 Sil
               </Button>
 
-              <div className="mt-4 flex w-full flex-col items-center gap-3 md:flex-row">
+              <div className="mt-4 flex flex-row flex-wrap items-stretch justify-center gap-2 sm:gap-3 px-2 sm:px-4">
               <Toggle
                 pressed={hasCart}
                 onPressedChange={setHasCart}
                 aria-label="Has cart filter"
                 className={cn(
-                  "h-16 w-full md:w-auto md:flex-1 justify-center gap-2 rounded-[16px] border px-4 text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(20,54,34,0.7)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(20,54,34,0.85)]",
+                  "h-16 flex-1 justify-center gap-2 rounded-[16px] border px-2 sm:px-4 text-[13px] sm:text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(20,54,34,0.7)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(20,54,34,0.85)]",
                   hasCart
                     ? "border-[#3f8f54] bg-[#2f7f56] text-white hover:bg-[#276d49]"
                     : isDarkMode
@@ -364,7 +364,7 @@ export function CustomerSelectionPage() {
                 onPressedChange={setHasOrderBalance}
                 aria-label="Has order balance filter"
                 className={cn(
-                  "h-16 w-full md:w-auto md:flex-1 justify-center gap-2 rounded-[16px] border px-4 text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(145,40,38,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(145,40,38,0.9)]",
+                  "h-16 flex-1 justify-center gap-2 rounded-[16px] border px-2 sm:px-4 text-[13px] sm:text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(145,40,38,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(145,40,38,0.9)]",
                   hasOrderBalance
                     ? "border-[#c3403c] bg-[#b83232] text-white hover:bg-[#9f292b]"
                     : isDarkMode
@@ -379,11 +379,11 @@ export function CustomerSelectionPage() {
 
               {isSalesperson ? (
                 <Button
-                  className="h-16 w-full md:w-auto md:flex-1 rounded-[16px] bg-amber-500 font-black text-slate-950 hover:bg-amber-400"
+                  className="h-16 flex-1 rounded-[16px] bg-amber-500 px-2 sm:px-4 text-[13px] sm:text-[15px] font-black text-slate-950 hover:bg-amber-400"
                   asChild
                 >
                   <Link href="/pos/expenses">
-                    <ReceiptText className="h-5 w-5 mr-2" />
+                    <ReceiptText className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" />
                     Giderler
                   </Link>
                 </Button>

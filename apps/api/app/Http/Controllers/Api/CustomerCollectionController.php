@@ -938,7 +938,7 @@ class CustomerCollectionController extends Controller
             ['next_value' => $value + 1, 'updated_at' => now(), 'created_at' => $row ? $row->created_at : now()]
         );
 
-        return 'FP'.str_pad((string) $value, 5, '0', STR_PAD_LEFT);
+        return 'FP'.str_pad((string) $value, 4, '0', STR_PAD_LEFT);
     }
 
     private function nextTransferReference(): string
@@ -954,7 +954,7 @@ class CustomerCollectionController extends Controller
             ['next_value' => $value + 1, 'updated_at' => now(), 'created_at' => $row ? $row->created_at : now()]
         );
 
-        return 'HE'.str_pad((string) $value, 5, '0', STR_PAD_LEFT);
+        return 'HE'.str_pad((string) $value, 4, '0', STR_PAD_LEFT);
     }
 
     private function nextFactoryReference(): string
@@ -1017,7 +1017,7 @@ class CustomerCollectionController extends Controller
         };
         $pad = match ($key) {
             'factory' => 4,
-            default => 5,
+            default => 4,
         };
 
         return response()->json(['next_sequence' => $prefix . str_pad((string) $value, $pad, '0', STR_PAD_LEFT)]);
