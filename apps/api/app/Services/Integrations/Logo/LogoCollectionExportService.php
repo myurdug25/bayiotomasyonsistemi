@@ -398,7 +398,8 @@ class LogoCollectionExportService
 
     private function isLocalPointCashboxCode(?string $code): bool
     {
-        return $code !== null && str_starts_with($code, 'POINT-');
+        return $code !== null
+            && (str_starts_with($code, 'POINT-') || $code === 'MAIN-POS');
     }
 
     private function pointLogoCashboxCode(?string $code, ?string $name): ?string

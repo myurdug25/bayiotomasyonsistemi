@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import dotenv from "dotenv";
 import sql from "mssql";
+import { triggerTargetedStockSync } from "./logo-targeted-stock-sync.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const scriptDir = path.dirname(scriptPath);
@@ -47,6 +48,7 @@ async function main() {
 
   try {
     const acknowledgements = [];
+    const syncedRecords = [];
 
     for (const record of records) {
       try {
@@ -59,6 +61,7 @@ async function main() {
             export_key: record.export_key,
           },
         });
+        syncedRecords.push(record);
         console.log(
           `[logo-sync] exported pos_sale_id=${record.pos_sale_id} external_ref=${externalReference ?? "null"}`
         );
@@ -77,6 +80,7 @@ async function main() {
     }
 
     await acknowledgeSales(config, acknowledgements);
+    triggerTargetedStockSync(syncedRecords, "pos_sales_invoice");
 
     console.log(
       `[logo-sync] completed. exported=${acknowledgements.filter((item) => item.status === "synced").length} failed=${acknowledgements.filter((item) => item.status === "failed").length} duration=${Date.now() - startedAt}ms`

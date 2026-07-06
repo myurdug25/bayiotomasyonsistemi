@@ -266,6 +266,9 @@ class CustomerCardRequestApiTest extends TestCase
     {
         $dealer = $this->createDealer('DLR-AUTO');
         $user = $this->createUserWithRole('salesperson', $dealer);
+        $user->forceFill([
+            'logo_customer_specode4' => 'A',
+        ])->save();
         $otherSalesperson = $this->createUserWithRole('salesperson', $dealer);
         $this->createCustomer($dealer, '120-06-001', 'Existing Ankara Customer');
 
@@ -299,6 +302,7 @@ class CustomerCardRequestApiTest extends TestCase
         $this->assertSame('b2b', $customer->source_system);
         $this->assertSame('pending', $customer->sync_status);
         $this->assertSame('F1', data_get($customer->meta, 'integrations.logo.payload.specode'));
+        $this->assertSame('A', data_get($customer->meta, 'integrations.logo.payload.specode4'));
         $this->assertSame('A', data_get($customer->meta, 'integrations.logo.payload.cyphcode'));
         $this->assertSame('person', data_get($customer->meta, 'integrations.logo.payload.customer_kind'));
         $this->assertStringStartsWith('e ( yeni cari - ', (string) data_get($customer->meta, 'integrations.logo.payload.e_collection_note'));
@@ -320,6 +324,9 @@ class CustomerCardRequestApiTest extends TestCase
         $dealer = $this->createDealer('DLR-DEALER-AUTO');
         $dealerAdmin = $this->createUserWithRole('dealer_admin', $dealer);
         $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $salesperson->forceFill([
+            'logo_customer_specode4' => 'D,H',
+        ])->save();
         $dealerAdmin->forceFill([
             'menu_permissions' => ['new-customer-card'],
         ])->save();
@@ -359,6 +366,7 @@ class CustomerCardRequestApiTest extends TestCase
         $this->assertSame('b2b', $customer->source_system);
         $this->assertSame('pending', $customer->sync_status);
         $this->assertSame('F1', data_get($customer->meta, 'integrations.logo.payload.specode'));
+        $this->assertSame('D', data_get($customer->meta, 'integrations.logo.payload.specode4'));
         $this->assertSame('D', data_get($customer->meta, 'integrations.logo.payload.cyphcode'));
 
         $this->getJson('/api/customers?'.http_build_query([

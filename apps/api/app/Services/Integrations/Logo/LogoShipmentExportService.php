@@ -4,16 +4,19 @@ namespace App\Services\Integrations\Logo;
 
 use App\Models\Dealer;
 use App\Models\IntegrationSyncState;
+use App\Models\LedgerEntry;
 use App\Models\Shipment;
 use App\Models\ShipmentItem;
 use App\Services\Integrations\IntegrationSyncStateService;
+use App\Services\Ledger\LedgerWriter;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 class LogoShipmentExportService
 {
     public function __construct(
-        private readonly IntegrationSyncStateService $syncState
+        private readonly IntegrationSyncStateService $syncState,
+        private readonly LedgerWriter $ledgerWriter,
     ) {}
 
     /**
@@ -134,10 +137,66 @@ class LogoShipmentExportService
                 syncedAt: now(),
             );
 
+            if ($status === 'synced') {
+                $this->recordShipmentInvoice($shipment, $externalReference);
+            }
+
             $summary[$status]++;
         }
 
         return $summary;
+    }
+
+    private function recordShipmentInvoice(Shipment $shipment, ?string $externalReference): LedgerEntry
+    {
+        $shipment->loadMissing(['order', 'items']);
+        $order = $shipment->order;
+
+        if (! $order) {
+            throw ValidationException::withMessages([
+                'shipment' => ['Faturaya baglanacak siparis bulunamadi.'],
+            ]);
+        }
+
+        $sourceReference = $externalReference ?? $shipment->logoExportKey();
+        $existing = LedgerEntry::query()
+            ->where('customer_id', $order->customer_id)
+            ->where('source_system', 'logo')
+            ->where('source_reference', $sourceReference)
+            ->first();
+
+        if ($existing instanceof LedgerEntry) {
+            return $existing;
+        }
+
+        $totals = $this->shipmentTotals($shipment->items);
+        $invoiceDate = optional($shipment->shipped_at ?? $shipment->updated_at)?->toDateString()
+            ?? now()->toDateString();
+
+        return $this->ledgerWriter->write([
+            'dealer_id' => $order->dealer_id,
+            'customer_id' => $order->customer_id,
+            'source_system' => 'logo',
+            'source_reference' => $sourceReference,
+            'last_synced_at' => now(),
+            'order_id' => $order->id,
+            'date' => $invoiceDate,
+            'type' => 'invoice',
+            'debit' => $totals['grand_total'],
+            'credit' => 0,
+            'currency' => $order->currency,
+            'reference_no' => $shipment->shipment_no,
+            'description' => 'Logo sevkiyat faturasi '.$shipment->shipment_no,
+            'created_by_user_id' => $shipment->created_by,
+            'meta' => [
+                'source' => 'logo_shipment_invoice',
+                'source_label' => 'Sevkiyat faturasi',
+                'shipment_id' => $shipment->id,
+                'shipment_no' => $shipment->shipment_no,
+                'order_no' => $order->order_no,
+                'export_key' => $shipment->logoExportKey(),
+            ],
+        ]);
     }
 
     /**

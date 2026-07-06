@@ -62,8 +62,16 @@ class WarehouseShipmentService
                 ]);
             }
 
-            $warehouse = $this->resolveWarehouse($warehouseId, $warehouseCode, $warehouseName);
             $assignedUser = $this->resolveAssignedWarehouseUser($assignedUserId, $user);
+            $assignedWarehouse = $this->preferredWarehouseForAssignedUser($assignedUser);
+
+            if ($assignedWarehouse !== null) {
+                $warehouseId = null;
+                $warehouseCode = $assignedWarehouse['code'];
+                $warehouseName = $assignedWarehouse['name'];
+            }
+
+            $warehouse = $this->resolveWarehouse($warehouseId, $warehouseCode, $warehouseName);
 
             $activeShipment = Shipment::query()
                 ->where('order_id', $order->id)
@@ -72,6 +80,21 @@ class WarehouseShipmentService
                 ->first();
 
             if ($activeShipment instanceof Shipment) {
+                $hasShippedItems = ShipmentItem::query()
+                    ->where('shipment_id', $activeShipment->id)
+                    ->where('shipped_qty', '>', 0)
+                    ->exists();
+
+                if (! $hasShippedItems && (int) $activeShipment->warehouse_id !== (int) $warehouse->id) {
+                    $activeShipment->forceFill([
+                        'warehouse_id' => $warehouse->id,
+                    ])->save();
+                }
+
+                if (! $hasShippedItems && (int) $activeShipment->warehouse_id === (int) $warehouse->id) {
+                    $this->syncWarehouseSelection($warehouse, $warehouseCode, $warehouseName);
+                }
+
                 $this->syncOpenShipmentItemsFromOrder($activeShipment, $order);
 
                 return $activeShipment->fresh([
@@ -191,11 +214,15 @@ class WarehouseShipmentService
     {
         $warehouse = null;
 
-        if ($warehouseId !== null && $warehouseId > 0) {
+        $code = trim((string) $warehouseCode);
+        if ($code !== '') {
+            $warehouse = Warehouse::query()->where('code', $code)->first();
+        }
+
+        if (! $warehouse instanceof Warehouse && $warehouseId !== null && $warehouseId > 0) {
             $warehouse = Warehouse::query()->find($warehouseId);
         }
 
-        $code = trim((string) $warehouseCode);
         if (! $warehouse instanceof Warehouse && $code !== '') {
             $warehouse = Warehouse::query()->firstOrCreate(
                 ['code' => $code],
@@ -212,7 +239,24 @@ class WarehouseShipmentService
             ]);
         }
 
+        $this->syncWarehouseSelection($warehouse, $warehouseCode, $warehouseName);
+
         return $warehouse;
+    }
+
+    private function syncWarehouseSelection(Warehouse $warehouse, ?string $warehouseCode, ?string $warehouseName): void
+    {
+        $code = trim((string) $warehouseCode);
+        $name = trim((string) $warehouseName);
+        $changes = [];
+
+        if ($name !== '' && trim((string) $warehouse->name) !== $name) {
+            $changes['name'] = $name;
+        }
+
+        if ($changes !== []) {
+            $warehouse->forceFill($changes)->save();
+        }
     }
 
     private function resolveAssignedWarehouseUser(?int $assignedUserId, User $fallbackUser): User
@@ -242,6 +286,43 @@ class WarehouseShipmentService
         }
 
         return $assignedUser;
+    }
+
+    /**
+     * @return array{code:string,name:string}|null
+     */
+    private function preferredWarehouseForAssignedUser(User $assignedUser): ?array
+    {
+        $identity = $this->normalizeWarehouseIdentity(implode(' ', [
+            (string) $assignedUser->name,
+            (string) $assignedUser->username,
+            (string) $assignedUser->email,
+        ]));
+
+        if ($identity === '') {
+            return null;
+        }
+
+        $choices = [
+            ['code' => '0', 'name' => 'ERZURUM POINT', 'needles' => ['ERZURUMPOINT', 'ERZPOINT']],
+            ['code' => '1', 'name' => 'ERZURUM DEPO', 'needles' => ['ERZURUMDEPO', 'ERZDEPO']],
+            ['code' => '2', 'name' => 'TRABZON DEPO', 'needles' => ['TRABZONDEPO']],
+            ['code' => '3', 'name' => 'SAMSUN DEPO', 'needles' => ['SAMSUNDEPO']],
+            ['code' => '4', 'name' => 'BATUM DEPO', 'needles' => ['BATUMDEPO']],
+        ];
+
+        foreach ($choices as $choice) {
+            foreach ($choice['needles'] as $needle) {
+                if (str_contains($identity, $needle)) {
+                    return [
+                        'code' => $choice['code'],
+                        'name' => $choice['name'],
+                    ];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -305,7 +386,11 @@ class WarehouseShipmentService
                 ]);
             }
 
-            $availableTotal = $this->resolveProductWarehouseAvailableTotal($product, $model->warehouse?->code);
+            $availableTotal = $this->resolveProductWarehouseAvailableTotal(
+                $product,
+                $model->warehouse?->code,
+                $model->warehouse?->name
+            );
             $availableForShipment = max(0, $availableTotal - $currentShippedQty);
             $effectiveQty = min($qty, $availableForShipment);
 
@@ -900,6 +985,9 @@ class WarehouseShipmentService
                 ]);
             }
 
+            $remainingWarehouseStockByProduct = [];
+            $finalizedQtyTotal = 0;
+
             foreach ($model->items as $item) {
                 $qty = (int) $item->shipped_qty;
                 if ($qty <= 0) {
@@ -918,19 +1006,35 @@ class WarehouseShipmentService
 
                 $warehouseSnapshot = $this->resolveProductWarehouseStockSnapshot(
                     $product,
-                    $model->warehouse?->code
+                    $model->warehouse?->code,
+                    $model->warehouse?->name
                 );
                 $warehouseAvailable = $warehouseSnapshot
                     ?? max(0, (int) $product->stockSummary?->available_total);
 
-                if ($warehouseAvailable < $qty) {
-                    $label = trim((string) ($product->sku ?: $product->name ?: "product_id={$item->product_id}"));
+                $stockKey = (string) $item->product_id;
+                if (! array_key_exists($stockKey, $remainingWarehouseStockByProduct)) {
+                    $remainingWarehouseStockByProduct[$stockKey] = $warehouseAvailable;
+                }
 
-                    throw ValidationException::withMessages([
-                        'stock' => [
-                            "Fatura kesilemez. {$label} icin secili depoda yeterli stok yok (mevcut: {$warehouseAvailable}, istenen: {$qty}).",
-                        ],
-                    ]);
+                $finalQty = min($qty, max(0, (int) $remainingWarehouseStockByProduct[$stockKey]));
+                $remainingWarehouseStockByProduct[$stockKey] = max(0, (int) $remainingWarehouseStockByProduct[$stockKey] - $finalQty);
+
+                if ($finalQty !== $qty) {
+                    $item->shipped_qty = $finalQty;
+                    $item->line_total_shipped = number_format(
+                        ((float) $item->unit_price) * $finalQty,
+                        2,
+                        '.',
+                        ''
+                    );
+                    $item->save();
+
+                    $qty = $finalQty;
+                }
+
+                if ($qty <= 0) {
+                    continue;
                 }
 
                 $stock = StockSummary::query()
@@ -945,27 +1049,18 @@ class WarehouseShipmentService
 
                 $availableTotal = max(0, (int) $stock->available_total);
                 $reservedTotal = max(0, (int) $stock->reserved_total);
-                $totalPhysical = $availableTotal + $reservedTotal;
-                if ($warehouseSnapshot === null && $totalPhysical < $qty) {
+                if ($warehouseSnapshot === null && $availableTotal < $qty) {
                     throw ValidationException::withMessages([
                         'stock' => ["Yetersiz toplam stok (product_id={$item->product_id})."],
                     ]);
                 }
 
-                // Siparişin sevk edilen miktarını rezerve stoktan düş, yetmezse available'dan düş.
+                // Fiziksel stok Logo ambar toplamıdır; fatura Logo'da oluşmadan yerelde azaltılmaz.
                 $reserveToConsume = min($reservedTotal, $qty);
-                $availableToConsume = min($availableTotal, max(0, $qty - $reserveToConsume));
 
                 $stock->reserved_total = max(0, $reservedTotal - $reserveToConsume);
-                $stock->available_total = max(0, $availableTotal - $availableToConsume);
                 $stock->updated_at = now();
                 $stock->save();
-
-                $this->adjustProductWarehouseAvailableTotal(
-                    $product,
-                    $model->warehouse?->code,
-                    -$qty
-                );
 
                 StockMovement::create([
                     'product_id' => $item->product_id,
@@ -991,6 +1086,13 @@ class WarehouseShipmentService
                     (int) $orderItem->shipped_qty + $qty
                 );
                 $orderItem->save();
+                $finalizedQtyTotal += $qty;
+            }
+
+            if ($finalizedQtyTotal <= 0) {
+                throw ValidationException::withMessages([
+                    'stock' => ['Fatura kesilemez. Secili depoda faturalanabilir canli stok bulunamadi.'],
+                ]);
             }
 
             $hasRemainingInShipment = ShipmentItem::query()
@@ -1128,18 +1230,6 @@ class WarehouseShipmentService
                     $stock->reserved_total = (int) $stock->reserved_total + $qty;
                     $stock->updated_at = now();
                     $stock->save();
-
-                    $product = Product::query()
-                        ->lockForUpdate()
-                        ->find($item->product_id);
-
-                    if ($product instanceof Product) {
-                        $this->adjustProductWarehouseAvailableTotal(
-                            $product,
-                            $model->warehouse?->code,
-                            $qty
-                        );
-                    }
 
                     StockMovement::create([
                         'product_id' => $item->product_id,
@@ -1288,7 +1378,11 @@ class WarehouseShipmentService
             $remainingQty = max(0, $orderedQty - $shippedQty);
             $lineTotalShipped = (float) $item->line_total_shipped;
             $productMeta = is_array($item->product?->meta) ? $item->product->meta : [];
-            $availableTotal = $this->resolveProductWarehouseAvailableTotal($item->product, $shipment->warehouse?->code);
+            $availableTotal = $this->resolveProductWarehouseAvailableTotal(
+                $item->product,
+                $shipment->warehouse?->code,
+                $shipment->warehouse?->name
+            );
 
             $orderedQtyTotal += $orderedQty;
             $shippedQtyTotal += $shippedQty;
@@ -1648,9 +1742,12 @@ class WarehouseShipmentService
         return null;
     }
 
-    private function resolveProductWarehouseAvailableTotal(?Product $product, ?string $warehouseCode): int
-    {
-        $warehouseStock = $this->resolveProductWarehouseStockSnapshot($product, $warehouseCode);
+    private function resolveProductWarehouseAvailableTotal(
+        ?Product $product,
+        ?string $warehouseCode,
+        ?string $warehouseName = null
+    ): int {
+        $warehouseStock = $this->resolveProductWarehouseStockSnapshot($product, $warehouseCode, $warehouseName);
         if ($warehouseStock !== null) {
             return $warehouseStock;
         }
@@ -1658,13 +1755,17 @@ class WarehouseShipmentService
         return max(0, (int) ($product?->stockSummary?->available_total ?? 0));
     }
 
-    private function resolveProductWarehouseStockSnapshot(?Product $product, ?string $warehouseCode): ?int
-    {
+    private function resolveProductWarehouseStockSnapshot(
+        ?Product $product,
+        ?string $warehouseCode,
+        ?string $warehouseName = null
+    ): ?int {
         $meta = is_array($product?->meta) ? $product->meta : [];
         $warehouses = data_get($meta, 'integrations.logo.payload.logo_stock.warehouses');
         $normalizedWarehouseCode = trim((string) $warehouseCode);
+        $normalizedWarehouseName = trim((string) $warehouseName);
 
-        if (is_array($warehouses) && $normalizedWarehouseCode !== '') {
+        if (is_array($warehouses) && ($normalizedWarehouseCode !== '' || $normalizedWarehouseName !== '')) {
             foreach ($warehouses as $warehouse) {
                 if (! is_array($warehouse)) {
                     continue;
@@ -1677,8 +1778,16 @@ class WarehouseShipmentService
                     'invenno',
                     'warehouse_no',
                 ]);
+                $name = $this->firstArrayScalar($warehouse, [
+                    'warehouse_name',
+                    'branch_name',
+                    'name',
+                    'depo_adi',
+                    'ambar_adi',
+                    'branch',
+                ]);
 
-                if ($code !== $normalizedWarehouseCode) {
+                if (! $this->warehouseIdentityMatches($code, $name, $normalizedWarehouseCode, $normalizedWarehouseName)) {
                     continue;
                 }
 
@@ -1691,9 +1800,33 @@ class WarehouseShipmentService
                     'quantity',
                 ]);
             }
+
+            return 0;
         }
 
         return null;
+    }
+
+    private function warehouseIdentityMatches(
+        ?string $candidateCode,
+        ?string $candidateName,
+        string $warehouseCode,
+        string $warehouseName
+    ): bool {
+        if ($warehouseCode !== '' && $candidateCode !== null && $this->normalizeWarehouseIdentity($candidateCode) === $this->normalizeWarehouseIdentity($warehouseCode)) {
+            return true;
+        }
+
+        if ($warehouseName !== '' && $candidateName !== null && $this->normalizeWarehouseIdentity($candidateName) === $this->normalizeWarehouseIdentity($warehouseName)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function normalizeWarehouseIdentity(string $value): string
+    {
+        return preg_replace('/[^A-Z0-9]+/', '', str($value)->trim()->upper()->ascii()->toString()) ?? '';
     }
 
     private function adjustProductWarehouseAvailableTotal(

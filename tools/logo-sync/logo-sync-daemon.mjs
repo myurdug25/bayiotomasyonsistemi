@@ -11,20 +11,25 @@ import dotenv from "dotenv";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
 const statusPath = path.join(scriptDir, "sync-daemon-status.json");
+const priorityStatusPath = path.join(scriptDir, "sync-daemon-priority-status.json");
 const lockPath = path.join(scriptDir, "sync-daemon.lock");
 const defaultCustomerExportProcedure = "dbo.PowersaB2B_ExportCustomer";
+const defaultPrioritySteps = ["customers-export"];
 const defaultFastSteps = [
-  "customers",
+  "documents-export",
+  "product-stocks",
   "ledger",
-  "customers-export",
   "collections",
   "pos-sales",
   "pos-expenses",
-  "documents-export",
+];
+const defaultSlowSteps = ["customers"];
+const defaultMaintenanceSteps = [
+  "product-catalog",
+  "pos-expenses-import",
+  "finance-definitions",
   "campaigns",
 ];
-const defaultSlowSteps = ["product-stocks"];
-const defaultMaintenanceSteps = ["product-catalog", "pos-expenses-import"];
 
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
@@ -47,21 +52,28 @@ main()
 async function main() {
   acquireLock();
   log(
-    `daemon started fastIntervalMs=${config.fastIntervalMs} slowIntervalMs=${config.slowIntervalMs} maintenanceIntervalMs=${config.maintenanceIntervalMs} fastSteps=${config.fastSteps.join(",")} slowSteps=${config.slowSteps.join(",") || "none"} maintenanceSteps=${config.maintenanceSteps.join(",") || "none"}`
+    `daemon started priorityIntervalMs=${config.priorityIntervalMs} fastIntervalMs=${config.fastIntervalMs} slowIntervalMs=${config.slowIntervalMs} maintenanceIntervalMs=${config.maintenanceIntervalMs} prioritySteps=${config.prioritySteps.join(",") || "none"} fastSteps=${config.fastSteps.join(",")} slowSteps=${config.slowSteps.join(",") || "none"} maintenanceSteps=${config.maintenanceSteps.join(",") || "none"}`
   );
 
+  await Promise.all([runGeneralLoop(), runPriorityLoop()]);
+  log("daemon stopped");
+}
+
+async function runGeneralLoop() {
   let nextSlowRunAt = 0;
   let nextMaintenanceRunAt = 0;
+  const priorityStepNames = new Set(config.prioritySteps);
+
   while (!stopping) {
     const loopStartedAt = Date.now();
-    const dueSteps = [...config.fastSteps];
+    const dueSteps = config.fastSteps.filter((step) => !priorityStepNames.has(step));
 
     if (config.slowSteps.length > 0 && loopStartedAt >= nextSlowRunAt) {
-      dueSteps.push(...config.slowSteps);
+      dueSteps.push(...config.slowSteps.filter((step) => !priorityStepNames.has(step)));
       nextSlowRunAt = loopStartedAt + config.slowIntervalMs;
     }
     if (config.maintenanceSteps.length > 0 && loopStartedAt >= nextMaintenanceRunAt) {
-      dueSteps.push(...config.maintenanceSteps);
+      dueSteps.push(...config.maintenanceSteps.filter((step) => !priorityStepNames.has(step)));
       nextMaintenanceRunAt = loopStartedAt + config.maintenanceIntervalMs;
     }
 
@@ -71,8 +83,20 @@ async function main() {
     const delayMs = summary.failed > 0 ? config.errorBackoffMs : config.fastIntervalMs;
     await delay(delayMs, () => stopping);
   }
+}
 
-  log("daemon stopped");
+async function runPriorityLoop() {
+  if (config.prioritySteps.length === 0) {
+    return;
+  }
+
+  while (!stopping) {
+    const summary = await runLoop(config.prioritySteps);
+    writeStatusFile(priorityStatusPath, summary, "priority status");
+
+    const delayMs = summary.failed > 0 ? config.errorBackoffMs : config.priorityIntervalMs;
+    await delay(delayMs, () => stopping);
+  }
 }
 
 async function runLoop(steps) {
@@ -139,6 +163,9 @@ function resolveStep(name) {
         SYNC_PRODUCTS_STOCK_ONLY: "true",
         SYNC_PRODUCTS_STOCK_FAST: "true",
         SYNC_PRODUCTS_STOCK_INCREMENTAL: "true",
+        SYNC_PRODUCTS_STOCK_SKIP_MOVEMENT_FALLBACK: "true",
+        SYNC_PRODUCTS_STOCK_REQUIRE_SUMMARY_ROW: "true",
+        SYNC_PRODUCTS_STOCK_INCLUDE_PRICE: "false",
       },
       when: () => hasAny("POWERSA_PRODUCTS_SYNC_URL"),
     },
@@ -199,6 +226,10 @@ function resolveStep(name) {
       script: "logo-campaigns-sync.mjs",
       when: () => hasAny("POWERSA_SYNC_URL", "POWERSA_CAMPAIGNS_SYNC_URL"),
     },
+    "finance-definitions": {
+      script: "logo-finance-definitions-sync.mjs",
+      when: () => hasAny("POWERSA_PRODUCTS_SYNC_KEY", "POWERSA_SYNC_KEY"),
+    },
   };
 
   return steps[name];
@@ -225,13 +256,20 @@ function runNodeScript(scriptName, extraEnv = {}) {
 
 function buildConfig() {
   return {
+    priorityIntervalMs: parseIntEnv("SYNC_DAEMON_PRIORITY_INTERVAL_MS", 3_000, 1_000, 60_000),
     fastIntervalMs: parseIntEnv("SYNC_DAEMON_FAST_INTERVAL_MS", 3_000, 1_000, 300_000),
     slowIntervalMs: parseIntEnv("SYNC_DAEMON_SLOW_INTERVAL_MS", 60_000, 10_000, 3_600_000),
     maintenanceIntervalMs: parseIntEnv("SYNC_DAEMON_MAINTENANCE_INTERVAL_MS", 300_000, 60_000, 86_400_000),
     errorBackoffMs: parseIntEnv("SYNC_DAEMON_ERROR_BACKOFF_MS", 30_000, 5_000, 600_000),
+    prioritySteps: parseStepList(process.env.SYNC_DAEMON_PRIORITY_STEPS, defaultPrioritySteps),
     fastSteps: parseStepList(process.env.SYNC_DAEMON_FAST_STEPS, defaultFastSteps),
     slowSteps: parseStepList(process.env.SYNC_DAEMON_SLOW_STEPS, defaultSlowSteps),
-    maintenanceSteps: parseStepList(process.env.SYNC_DAEMON_MAINTENANCE_STEPS, defaultMaintenanceSteps),
+    maintenanceSteps: [
+      ...new Set([
+        ...parseStepList(process.env.SYNC_DAEMON_MAINTENANCE_STEPS, defaultMaintenanceSteps),
+        "campaigns",
+      ]),
+    ],
   };
 }
 
@@ -311,10 +349,14 @@ function customerExportProcedure() {
 }
 
 function writeStatus(summary) {
+  writeStatusFile(statusPath, summary, "status");
+}
+
+function writeStatusFile(targetPath, summary, label) {
   try {
-    fs.writeFileSync(statusPath, JSON.stringify(summary, null, 2));
+    fs.writeFileSync(targetPath, JSON.stringify(summary, null, 2));
   } catch (error) {
-    log(`status write failed ${formatError(error)}`);
+    log(`${label} write failed ${formatError(error)}`);
   }
 }
 

@@ -8,6 +8,10 @@ use Illuminate\Support\Collection;
 
 class CampaignProgressService
 {
+    public function __construct(
+        private readonly CustomerCampaignGroupResolver $groupResolver
+    ) {}
+
     /**
      * Müşterinin grubuna ait aktif kampanyaları döner.
      *
@@ -15,12 +19,12 @@ class CampaignProgressService
      */
     public function campaignsForCustomer(Customer $customer): Collection
     {
-        $customerGroup = $this->resolveCustomerGroup($customer);
+        $customerGroups = $this->groupResolver->resolveAll($customer);
 
         return Campaign::with('campaignProducts')
             ->active()
             ->get()
-            ->filter(fn (Campaign $c): bool => $c->matchesGroup($customerGroup))
+            ->filter(fn (Campaign $c): bool => $c->matchesAnyGroup($customerGroups))
             ->values();
     }
 
@@ -35,7 +39,7 @@ class CampaignProgressService
     {
         // Sepetteki ürünleri SKU ve product_id ile indeksle
         $cartByProductId = [];
-        $cartBySku       = [];
+        $cartBySku = [];
 
         foreach ($cartItems as $item) {
             $pid = (int) ($item['product_id'] ?? 0);
@@ -84,56 +88,33 @@ class CampaignProgressService
                 }
             }
 
-            $targetQty   = max(1, (int) $campaign->target_quantity);
+            $targetQty = max(1, (int) $campaign->target_quantity);
             $isCompleted = $cartQuantity >= $targetQty;
             $progressPct = min(100, (int) round(($cartQuantity / $targetQty) * 100));
-            $remaining   = max(0, $targetQty - $cartQuantity);
+            $remaining = max(0, $targetQty - $cartQuantity);
 
             $result[] = [
-                'campaign_id'       => $campaign->id,
-                'code'              => $campaign->code,
-                'name'              => $campaign->name,
-                'description'       => $campaign->description,
-                'target_quantity'   => $targetQty,
-                'cart_quantity'     => $cartQuantity,
-                'progress_pct'      => $progressPct,
-                'is_completed'      => $isCompleted,
-                'remaining'         => $remaining,
-                'discount_percent'  => $campaign->discount_percent,
-                'starts_at'         => $campaign->starts_at?->toDateString(),
-                'ends_at'           => $campaign->ends_at?->toDateString(),
-                'product_skus'      => $campaignProductSkus,
+                'campaign_id' => $campaign->id,
+                'code' => $campaign->code,
+                'name' => $campaign->name,
+                'description' => $campaign->description,
+                'target_quantity' => $targetQty,
+                'cart_quantity' => $cartQuantity,
+                'progress_pct' => $progressPct,
+                'is_completed' => $isCompleted,
+                'remaining' => $remaining,
+                'discount_percent' => $campaign->discount_percent,
+                'starts_at' => $campaign->starts_at?->toDateString(),
+                'ends_at' => $campaign->ends_at?->toDateString(),
+                'product_skus' => $campaignProductSkus,
             ];
         }
 
         // Tamamlanmışları önce, sonra ilerleme yüzdesine göre sırala
-        usort($result, fn ($a, $b): int =>
-            $b['is_completed'] <=> $a['is_completed']
+        usort($result, fn ($a, $b): int => $b['is_completed'] <=> $a['is_completed']
             ?: $b['progress_pct'] <=> $a['progress_pct']
         );
 
         return $result;
-    }
-
-    /**
-     * Customer'ın Logo meta verisinden grup kodunu çeker.
-     * Logo'da SPECODE, SPECODE2 veya TRADINGGRP alanlarından biri kullanılır.
-     */
-    private function resolveCustomerGroup(Customer $customer): ?string
-    {
-        $meta = is_array($customer->meta) ? $customer->meta : [];
-
-        // Öncelik sırası: specode → trading_group → specode2
-        return $this->nullable($meta['specode'] ?? null)
-            ?? $this->nullable($meta['trading_group'] ?? null)
-            ?? $this->nullable($meta['tradinggrp'] ?? null)
-            ?? $this->nullable($meta['specode2'] ?? null)
-            ?? null;
-    }
-
-    private function nullable(mixed $value): ?string
-    {
-        $s = trim((string) ($value ?? ''));
-        return $s === '' ? null : $s;
     }
 }

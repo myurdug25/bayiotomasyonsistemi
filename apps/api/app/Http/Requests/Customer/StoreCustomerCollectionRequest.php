@@ -85,7 +85,7 @@ class StoreCustomerCollectionRequest extends FormRequest
             'reference_fields.images_json' => ['nullable', 'string'],
             'reference_fields.collection_channel' => [
                 'nullable',
-                Rule::in(['factory']),
+                Rule::in(['factory', 'physical_pos']),
             ],
             'reference_fields.factory_name' => [
                 'nullable',
@@ -98,6 +98,9 @@ class StoreCustomerCollectionRequest extends FormRequest
                 'string',
                 'max:64',
             ],
+            'reference_fields.pos_device' => ['nullable', 'string', 'max:64'],
+            'reference_fields.card_type' => ['nullable', 'string', 'max:64'],
+            'reference_fields.commission_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'reference_fields.factory_pos_account' => [
                 Rule::requiredIf(fn () => (string) $this->input('method') === 'cc'
                     && (string) $this->input('reference_fields.collection_channel') === 'factory'),

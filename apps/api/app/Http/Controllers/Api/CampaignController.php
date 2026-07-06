@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Integration\SyncLogoCampaignsRequest;
 use App\Models\Campaign;
 use App\Models\CampaignProduct;
 use App\Models\Customer;
@@ -9,7 +11,6 @@ use App\Models\Product;
 use App\Services\Campaign\CampaignProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 
 class CampaignController extends Controller
@@ -24,20 +25,19 @@ class CampaignController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $customerId = $request->query('customer_id');
-
-        if ($customerId !== null) {
-            /** @var Customer|null $customer */
-            $customer = Customer::find((int) $customerId);
-
-            if ($customer === null) {
-                return response()->json(['data' => []]);
-            }
-
-            $campaigns = $this->progressService->campaignsForCustomer($customer);
-        } else {
-            $campaigns = Campaign::with('campaignProducts')->active()->get();
+        $customerId = $request->query('customer_id', $request->user()?->selected_customer_id);
+        if ($customerId === null) {
+            return response()->json(['data' => []]);
         }
+
+        /** @var Customer|null $customer */
+        $customer = Customer::find((int) $customerId);
+        if ($customer === null) {
+            return response()->json(['data' => []]);
+        }
+
+        $this->authorize('view', $customer);
+        $campaigns = $this->progressService->campaignsForCustomer($customer);
 
         return response()->json([
             'data' => $campaigns->map(fn (Campaign $c) => $this->campaignPayload($c))->values(),
@@ -63,7 +63,7 @@ class CampaignController extends Controller
             ->join('carts', 'carts.id', '=', 'cart_items.cart_id')
             ->join('products', 'products.id', '=', 'cart_items.product_id')
             ->where('carts.customer_id', $customer->id)
-            ->where('carts.is_active', true)
+            ->where('carts.status', 'draft')
             ->select([
                 'cart_items.product_id',
                 'products.sku',
@@ -72,8 +72,8 @@ class CampaignController extends Controller
             ->get()
             ->map(fn ($row): array => [
                 'product_id' => (int) $row->product_id,
-                'sku'        => (string) $row->sku,
-                'quantity'   => (int) $row->quantity,
+                'sku' => (string) $row->sku,
+                'quantity' => (int) $row->quantity,
             ])
             ->all();
 
@@ -86,27 +86,11 @@ class CampaignController extends Controller
      * POST /integrations/logo/campaigns/sync
      * Logo sync script tarafından çağrılır — kampanyaları günceller.
      */
-    public function sync(Request $request): JsonResponse
+    public function sync(SyncLogoCampaignsRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'campaigns'                    => ['required', 'array'],
-            'campaigns.*.source_reference' => ['required', 'string', 'max:128'],
-            'campaigns.*.code'             => ['required', 'string', 'max:64'],
-            'campaigns.*.name'             => ['required', 'string', 'max:255'],
-            'campaigns.*.description'      => ['nullable', 'string', 'max:500'],
-            'campaigns.*.customer_group'   => ['nullable', 'string', 'max:128'],
-            'campaigns.*.target_quantity'  => ['required', 'integer', 'min:1'],
-            'campaigns.*.group_field'      => ['nullable', 'string', 'max:32'],
-            'campaigns.*.starts_at'        => ['nullable', 'date'],
-            'campaigns.*.ends_at'          => ['nullable', 'date'],
-            'campaigns.*.is_active'        => ['boolean'],
-            'campaigns.*.meta'             => ['nullable', 'array'],
-            'campaigns.*.discount_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
-            'campaigns.*.products'         => ['nullable', 'array'],
-            'campaigns.*.products.*'       => ['string', 'max:191'],
-        ]);
+        $validated = $request->validated();
 
-        $synced  = 0;
+        $synced = 0;
         $skipped = 0;
 
         DB::transaction(function () use ($validated, &$synced, &$skipped): void {
@@ -123,18 +107,18 @@ class CampaignController extends Controller
                 $campaign = Campaign::updateOrCreate(
                     ['source_reference' => $row['source_reference']],
                     [
-                        'code'             => $row['code'],
-                        'name'             => $row['name'],
-                        'description'      => $row['description'] ?? null,
-                        'customer_group'   => $row['customer_group'] ?? null,
-                        'target_quantity'  => (int) $row['target_quantity'],
+                        'code' => $row['code'],
+                        'name' => $row['name'],
+                        'description' => $row['description'] ?? null,
+                        'customer_group' => $row['customer_group'] ?? null,
+                        'target_quantity' => (int) $row['target_quantity'],
                         'discount_percent' => isset($row['discount_percent']) ? (int) $row['discount_percent'] : null,
-                        'group_field'      => $row['group_field'] ?? 'specode',
-                        'starts_at'        => $row['starts_at'] ?? null,
-                        'ends_at'          => $row['ends_at'] ?? null,
-                        'is_active'        => (bool) ($row['is_active'] ?? true),
-                        'meta'             => $row['meta'] ?? null,
-                        'last_synced_at'   => now(),
+                        'group_field' => $row['group_field'] ?? 'specode',
+                        'starts_at' => $row['starts_at'] ?? null,
+                        'ends_at' => $row['ends_at'] ?? null,
+                        'is_active' => (bool) ($row['is_active'] ?? true),
+                        'meta' => $row['meta'] ?? null,
+                        'last_synced_at' => now(),
                     ]
                 );
 
@@ -148,7 +132,7 @@ class CampaignController extends Controller
         });
 
         return response()->json([
-            'synced'  => $synced,
+            'synced' => $synced,
             'skipped' => $skipped,
             'message' => "Kampanya sync tamamlandı: {$synced} kampanya güncellendi.",
         ]);
@@ -156,51 +140,75 @@ class CampaignController extends Controller
 
     private function syncCampaignProducts(Campaign $campaign, array $skus): void
     {
-        if ($skus === []) {
+        $incomingSkus = collect($skus)
+            ->map(fn (mixed $sku): string => trim((string) $sku))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($incomingSkus->isEmpty()) {
             $campaign->campaignProducts()->delete();
+
             return;
         }
 
-        // Mevcut product_sku'ları al
-        $existingSkus = $campaign->campaignProducts()->pluck('product_sku')->all();
-        $incomingSkus = array_unique(array_map('trim', $skus));
-        $incomingSkus = array_filter($incomingSkus, fn (string $s): bool => $s !== '');
+        $existingSkus = $campaign->campaignProducts()
+            ->pluck('product_sku');
 
-        // Kaldırılanları sil
-        $toDelete = array_diff($existingSkus, $incomingSkus);
-        if ($toDelete !== []) {
-            $campaign->campaignProducts()->whereIn('product_sku', $toDelete)->delete();
+        $existingLookup = $existingSkus->flip();
+        $incomingLookup = $incomingSkus->flip();
+
+        $existingSkus
+            ->reject(fn (string $sku): bool => $incomingLookup->has($sku))
+            ->chunk(1000)
+            ->each(fn ($chunk) => $campaign->campaignProducts()
+                ->whereIn('product_sku', $chunk->all())
+                ->delete());
+
+        $toInsert = $incomingSkus
+            ->reject(fn (string $sku): bool => $existingLookup->has($sku))
+            ->values();
+
+        if ($toInsert->isEmpty()) {
+            return;
         }
 
-        // Yenileri ekle
-        $toInsert = array_diff($incomingSkus, $existingSkus);
+        $productIdsBySku = collect();
+        $toInsert->chunk(1000)->each(function ($chunk) use (&$productIdsBySku): void {
+            $productIdsBySku = $productIdsBySku->merge(
+                Product::query()
+                    ->whereIn('sku', $chunk->all())
+                    ->pluck('id', 'sku')
+            );
+        });
 
-        foreach ($toInsert as $sku) {
-            // SKU üzerinden ürünü bul
-            $product = Product::where('sku', $sku)->first();
-
-            CampaignProduct::create([
+        $timestamp = now();
+        $toInsert
+            ->map(fn (string $sku): array => [
                 'campaign_id' => $campaign->id,
-                'product_id'  => $product?->id,
+                'product_id' => $productIdsBySku->get($sku),
                 'product_sku' => $sku,
-            ]);
-        }
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+            ])
+            ->chunk(1000)
+            ->each(fn ($chunk) => CampaignProduct::query()->insertOrIgnore($chunk->all()));
     }
 
     private function campaignPayload(Campaign $campaign): array
     {
         return [
-            'id'              => $campaign->id,
-            'code'            => $campaign->code,
-            'name'            => $campaign->name,
-            'description'     => $campaign->description,
-            'customer_group'  => $campaign->customer_group,
+            'id' => $campaign->id,
+            'code' => $campaign->code,
+            'name' => $campaign->name,
+            'description' => $campaign->description,
+            'customer_group' => $campaign->customer_group,
             'target_quantity' => $campaign->target_quantity,
-            'discount_percent'=> $campaign->discount_percent,
-            'starts_at'       => $campaign->starts_at?->toDateString(),
-            'ends_at'         => $campaign->ends_at?->toDateString(),
-            'is_active'       => $campaign->is_active,
-            'product_skus'    => $campaign->campaignProducts->pluck('product_sku')->values()->all(),
+            'discount_percent' => $campaign->discount_percent,
+            'starts_at' => $campaign->starts_at?->toDateString(),
+            'ends_at' => $campaign->ends_at?->toDateString(),
+            'is_active' => $campaign->is_active,
+            'product_skus' => $campaign->campaignProducts->pluck('product_sku')->values()->all(),
         ];
     }
 }

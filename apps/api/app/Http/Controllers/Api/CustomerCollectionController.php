@@ -870,11 +870,31 @@ class CustomerCollectionController extends Controller
             $bankCode = trim((string) data_get($referenceFields, 'pos_bank', ''));
             $bank = $this->activeFinanceDefinition('bank', $bankCode, 'reference_fields.pos_bank');
             $referenceNo = $referenceNo ?: ($allocateSequence ? $this->nextPhysicalPosReference() : null);
+            $referenceFields['collection_channel'] = 'physical_pos';
             $referenceFields['pos_bank'] = $bank->code;
             $referenceFields['bank_name'] = $bank->name;
             $referenceFields['bank_logo_code'] = $bank->logo_code;
             $referenceFields['finance_definition_id'] = $bank->id;
-            unset($referenceFields['pos_payment_type'], $referenceFields['installment']);
+
+            $posDeviceCode = trim((string) data_get($referenceFields, 'pos_device', ''));
+            if ($posDeviceCode !== '') {
+                $posDevice = $this->activeFinanceDefinition('pos_device', $posDeviceCode, 'reference_fields.pos_device');
+                $referenceFields['pos_device'] = $posDevice->code;
+                $referenceFields['pos_device_name'] = $posDevice->name;
+                $referenceFields['pos_device_logo_code'] = $posDevice->logo_code;
+            }
+
+            $cardTypeCode = trim((string) data_get($referenceFields, 'card_type', ''));
+            if ($cardTypeCode !== '') {
+                $cardType = $this->activeFinanceDefinition('card_type', $cardTypeCode, 'reference_fields.card_type');
+                $referenceFields['card_type'] = $cardType->code;
+                $referenceFields['card_type_name'] = $cardType->name;
+            }
+            unset(
+                $referenceFields['pos_payment_type'],
+                $referenceFields['installment'],
+                $referenceFields['commission_rate']
+            );
 
             return [
                 $referenceFields,
@@ -913,6 +933,10 @@ class CustomerCollectionController extends Controller
         $definition = FinanceDefinition::query()
             ->where('type', $type)
             ->where('is_active', true)
+            ->when(
+                $type === 'bank',
+                fn ($query) => $query->whereNotIn('code', ['georgia_bank', 'tbc_bank'])
+            )
             ->where(function ($query) use ($code): void {
                 $query->where('code', $code)->orWhere('name', $code);
             })
@@ -995,7 +1019,7 @@ class CustomerCollectionController extends Controller
     public function nextSequence(Request $request): JsonResponse
     {
         $type = $request->query('type');
-        
+
         $key = match ($type) {
             'factory_cc' => 'factory',
             'transfer' => 'transfer',
@@ -1003,7 +1027,7 @@ class CustomerCollectionController extends Controller
             default => null,
         };
 
-        if (!$key) {
+        if (! $key) {
             return response()->json(['next_sequence' => '']);
         }
 
@@ -1020,7 +1044,7 @@ class CustomerCollectionController extends Controller
             default => 4,
         };
 
-        return response()->json(['next_sequence' => $prefix . str_pad((string) $value, $pad, '0', STR_PAD_LEFT)]);
+        return response()->json(['next_sequence' => $prefix.str_pad((string) $value, $pad, '0', STR_PAD_LEFT)]);
     }
 
     private function resolveCashboxByCode(string $code, string $name): Cashbox

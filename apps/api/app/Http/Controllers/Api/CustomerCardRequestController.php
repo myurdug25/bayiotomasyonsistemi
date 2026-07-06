@@ -758,10 +758,17 @@ class CustomerCardRequestController extends Controller
                 $salespersonId = (int) $user->id;
             }
 
+            $salesperson = $salespersonId !== null
+                ? User::query()
+                    ->select(['id', 'logo_customer_specode4'])
+                    ->find((int) $salespersonId)
+                : null;
+
             $logoPayload = array_filter([
                 'cardtype' => 3,
                 'customer_kind' => $customerCardRequest->customer_kind ?: 'company',
                 'specode' => $customerCardRequest->logo_special_code ?: 'F1',
+                'specode4' => $this->firstLogoCustomerSpecode4($salesperson?->logo_customer_specode4),
                 'cyphcode' => $customerCardRequest->logo_authorization_code,
                 'e_collection_note' => $customerCardRequest->logo_e_collection_note ?: $this->generateLogoECollectionNote(),
             ], fn ($value) => $value !== null && $value !== '');
@@ -810,6 +817,19 @@ class CustomerCardRequestController extends Controller
 
             return $customer;
         });
+    }
+
+    private function firstLogoCustomerSpecode4(?string $value): ?string
+    {
+        foreach (preg_split('/[,;|]+/', (string) $value) ?: [] as $entry) {
+            $normalized = Str::upper(trim($entry));
+
+            if ($normalized !== '') {
+                return $normalized;
+            }
+        }
+
+        return null;
     }
 
     /**

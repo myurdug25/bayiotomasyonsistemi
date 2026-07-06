@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('campaigns') || Schema::hasColumn('campaigns', 'discount_percent')) {
+            return;
+        }
+
         Schema::table('campaigns', function (Blueprint $table) {
             $table->unsignedTinyInteger('discount_percent')->nullable()->after('target_quantity')->comment('Kampanyanın sağlayacağı indirim yüzdesi');
         });
@@ -21,6 +25,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('campaigns') || ! Schema::hasColumn('campaigns', 'discount_percent')) {
+            return;
+        }
+
         Schema::table('campaigns', function (Blueprint $table) {
             $table->dropColumn('discount_percent');
         });

@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useSession } from "@/components/auth/session-provider";
 import {
@@ -88,6 +89,7 @@ function normalizeOrderNoteForScope(value: string | null | undefined, isBatumBra
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const { status, user, selectedCustomer } = useSession();
   const roleSlugs = Array.isArray(user?.roles) ? user.roles.map((role) => role.slug) : [];
   const warehouseTransferRequired = roleSlugs.includes("salesperson");
@@ -205,6 +207,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           await ensureCsrfCookie();
           await deleteCartItem(item.id);
           await refresh();
+          await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Kalem silinemedi";
           setError(message);
@@ -234,6 +237,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         });
 
         setCartData(data);
+        await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Sepet güncellenemedi";
         setError(message);
@@ -242,7 +246,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setMutating(false);
       }
     },
-    [cartData?.items, effectiveWarehouseTransfer, isBatumBranch, orderNote, refresh, selectedCustomer, shippingMethod]
+    [cartData?.items, effectiveWarehouseTransfer, isBatumBranch, orderNote, queryClient, refresh, selectedCustomer, shippingMethod]
   );
 
   const removeItemByProduct = useCallback(
@@ -259,6 +263,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         await ensureCsrfCookie();
         await deleteCartItem(item.id);
         await refresh();
+        if (selectedCustomer) {
+          await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Kalem silinemedi";
         setError(message);
@@ -267,7 +274,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setMutating(false);
       }
     },
-    [cartData?.items, refresh]
+    [cartData?.items, queryClient, refresh, selectedCustomer]
   );
 
   const saveCheckoutMeta = useCallback(async () => {
@@ -346,6 +353,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       });
 
       clearLocalCart();
+      await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
       toast.success(
         effectiveWarehouseTransfer
           ? `Sipariş depoya gönderildi: ${orderResponse.order.order_no}`
@@ -365,6 +373,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     orderNote,
     isBatumBranch,
     refresh,
+    queryClient,
     selectedCustomer,
     shippingMethod,
     effectiveWarehouseTransfer,

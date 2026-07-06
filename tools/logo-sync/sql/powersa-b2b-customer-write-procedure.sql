@@ -29,6 +29,25 @@ BEGIN
 END;
 GO
 
+/*
+  Repair cards previously exported by PowerSA with the legacy contact-name mapping.
+  The export log limits this correction to PowerSA-originated customer cards.
+*/
+UPDATE card
+   SET card.DEFINITION2 = CONVERT(VARCHAR(201), LEFT(card.CODE, 201)),
+       card.CAPIBLOCK_MODIFIEDBY = 1,
+       card.CAPIBLOCK_MODIFIEDDATE = GETDATE(),
+       card.CAPIBLOCK_MODIFIEDHOUR = DATEPART(HOUR, GETDATE()),
+       card.CAPIBLOCK_MODIFIEDMIN = DATEPART(MINUTE, GETDATE()),
+       card.CAPIBLOCK_MODIFIEDSEC = DATEPART(SECOND, GETDATE())
+FROM dbo.LG_003_CLCARD AS card
+INNER JOIN dbo.POWERSA_B2B_EXPORT_LOG AS export_log
+        ON TRY_CONVERT(INT, export_log.EXTERNAL_REF) = card.LOGICALREF
+       AND export_log.DOCUMENT_TYPE = N'customer'
+       AND export_log.STATUS = N'synced'
+WHERE ISNULL(card.DEFINITION2, '') <> card.CODE;
+GO
+
 CREATE OR ALTER PROCEDURE dbo.PowersaB2B_BeginExport
     @ExportKey NVARCHAR(128),
     @DocumentType NVARCHAR(64),
@@ -120,7 +139,7 @@ BEGIN
 
     DECLARE @Code VARCHAR(17) = CONVERT(VARCHAR(17), LEFT(LTRIM(RTRIM(@CustomerCode)), 17));
     DECLARE @Definition VARCHAR(201) = CONVERT(VARCHAR(201), LEFT(COALESCE(NULLIF(@Name, N''), @CustomerCode), 201));
-    DECLARE @Definition2 VARCHAR(201) = CONVERT(VARCHAR(201), LEFT(COALESCE(NULLIF(@ContactName, N''), N''), 201));
+    DECLARE @Definition2 VARCHAR(201) = CONVERT(VARCHAR(201), LEFT(@Code, 201));
     DECLARE @CardType SMALLINT = COALESCE(TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.meta.logo.cardtype')), 3);
     DECLARE @CustomerKind NVARCHAR(32) = NULLIF(JSON_VALUE(@PayloadJson, '$.meta.logo.customer_kind'), N'');
     DECLARE @Specode VARCHAR(11) = CONVERT(VARCHAR(11), LEFT(COALESCE(NULLIF(JSON_VALUE(@PayloadJson, '$.meta.logo.specode'), N''), N'F1'), 11));

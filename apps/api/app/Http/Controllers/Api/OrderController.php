@@ -18,7 +18,6 @@ use App\Models\StockSummary;
 use App\Models\User;
 use App\Services\Customers\CustomerAccessScopeService;
 use App\Services\Integrations\IntegrationSyncStateService;
-use App\Services\Ledger\LedgerWriter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
@@ -214,19 +213,21 @@ class OrderController extends Controller
                 ->first();
 
             if ($delta > 0) {
-                if (! $stock instanceof StockSummary || (int) $stock->available_total < $delta) {
+                $freeQuantity = $stock instanceof StockSummary
+                    ? max(0, (int) $stock->available_total - max(0, (int) $stock->reserved_total))
+                    : 0;
+
+                if (! $stock instanceof StockSummary || $freeQuantity < $delta) {
                     throw ValidationException::withMessages([
                         'quantity' => ['Bu artış için yeterli stok yok.'],
                     ]);
                 }
 
-                $stock->available_total = (int) $stock->available_total - $delta;
                 $stock->reserved_total = (int) $stock->reserved_total + $delta;
                 $stock->updated_at = now();
                 $stock->save();
             } elseif ($delta < 0 && $stock instanceof StockSummary) {
                 $releasedQuantity = abs($delta);
-                $stock->available_total = (int) $stock->available_total + $releasedQuantity;
                 $stock->reserved_total = max(0, (int) $stock->reserved_total - $releasedQuantity);
                 $stock->updated_at = now();
                 $stock->save();
@@ -252,7 +253,6 @@ class OrderController extends Controller
             }
 
             $this->recalculateOrderTotals($lockedOrder);
-            $this->syncOrderInvoiceLedger($lockedOrder);
 
             return $this->freshOrderDetailModel($lockedOrder);
         });
@@ -262,7 +262,6 @@ class OrderController extends Controller
 
     public function store(
         CreateOrderRequest $request,
-        LedgerWriter $ledgerWriter,
         IntegrationSyncStateService $syncState
     ): JsonResponse {
         $user = $request->user();
@@ -283,7 +282,7 @@ class OrderController extends Controller
 
         $forceWarehouseTransfer = $user->hasRole('salesperson');
 
-        $order = DB::transaction(function () use ($validated, $dealerId, $user, $ledgerWriter, $syncState, $forceWarehouseTransfer) {
+        $order = DB::transaction(function () use ($validated, $dealerId, $user, $syncState, $forceWarehouseTransfer) {
             $cart = $this->resolveDraftCartForOrder($user, $dealerId, $validated);
             $cart->loadMissing('customer');
             $items = $cart->items()->with('product')->lockForUpdate()->get();
@@ -300,36 +299,33 @@ class OrderController extends Controller
                 ->get()
                 ->keyBy('product_id');
 
-            foreach ($items as $item) {
-                /** @var StockSummary $stock */
-                $stock = $stocks->get($item->product_id);
-                if (! $stock instanceof StockSummary) {
-                    continue;
-                }
-
-                $availableQuantity = max(0, (int) $stock->available_total);
-                $reservedQuantity = min($availableQuantity, (int) $item->quantity);
-                if ((int) $stock->available_total !== $availableQuantity) {
-                    $stock->available_total = $availableQuantity;
-                    $stock->updated_at = now();
-                    $stock->save();
-                }
-
-                if ($reservedQuantity <= 0) {
-                    continue;
-                }
-
-                $stock->available_total -= $reservedQuantity;
-                $stock->reserved_total += $reservedQuantity;
-                $stock->updated_at = now();
-                $stock->save();
-            }
-
             $subtotalCents = 0;
             $discountTotalCents = 0;
             $taxTotalCents = 0;
 
             foreach ($items as $item) {
+                /** @var StockSummary $stock */
+                $stock = $stocks->get($item->product_id);
+                $availableQuantity = 0;
+                $reservedQuantity = 0;
+
+                if ($stock instanceof StockSummary) {
+                    $availableQuantity = max(0, (int) $stock->available_total);
+                    $freeQuantity = max(0, $availableQuantity - max(0, (int) $stock->reserved_total));
+                    $reservedQuantity = min($freeQuantity, (int) $item->quantity);
+                    if ((int) $stock->available_total !== $availableQuantity) {
+                        $stock->available_total = $availableQuantity;
+                        $stock->updated_at = now();
+                        $stock->save();
+                    }
+
+                    if ($reservedQuantity > 0) {
+                        $stock->reserved_total += $reservedQuantity;
+                        $stock->updated_at = now();
+                        $stock->save();
+                    }
+                }
+
                 $lineCents = $this->toCents($item->line_total);
                 $grossCents = $this->toCents((float) $item->unit_net_price * $item->quantity);
                 $taxRate = (float) ($item->vat_rate ?? $item->product?->vat_rate ?? 0);
@@ -338,6 +334,7 @@ class OrderController extends Controller
                 $subtotalCents += $lineCents;
                 $discountTotalCents += max(0, $grossCents - $lineCents);
                 $taxTotalCents += $taxCents;
+
             }
 
             $subtotal = $this->fromCents($subtotalCents);
@@ -347,9 +344,6 @@ class OrderController extends Controller
             $isWarehouseTransfer = $forceWarehouseTransfer || (bool) $cart->is_warehouse_transfer;
             $initialStatus = $isWarehouseTransfer ? 'approved' : 'pending';
             $orderNote = $this->resolveOrderNote($validated['note'] ?? null, $cart->order_note, $cart->note);
-            $checkoutSummary = $this->isBatumCustomer($cart->customer)
-                ? null
-                : $this->checkoutSummaryMeta($validated['checkout_summary_mode'] ?? null);
             $timestamp = now();
 
             $order = Order::create([
@@ -395,44 +389,6 @@ class OrderController extends Controller
             ]);
 
             $sourcePanel = $this->resolveSourcePanel($user);
-
-            $ledgerWriter->write([
-                'dealer_id' => $order->dealer_id,
-                'customer_id' => $order->customer_id,
-                'order_id' => $order->id,
-                'collection_id' => null,
-                'date' => now()->toDateString(),
-                'type' => 'invoice',
-                'debit' => $order->grand_total,
-                'credit' => 0,
-                'currency' => $order->currency,
-                'reference_no' => $order->order_no,
-                'description' => 'Invoice created from order '.$order->order_no,
-                'created_by_user_id' => $user->id,
-                'meta' => [
-                    'source' => 'order_checkout',
-                    'source_label' => 'Sipariş faturası',
-                    'source_panel' => $sourcePanel,
-                    'source_panel_label' => $this->sourcePanelLabel($sourcePanel),
-                    'warehouse_dispatch' => $isWarehouseTransfer,
-                    'checkout_summary' => $checkoutSummary,
-                    'order_no' => $order->order_no,
-                    'cart_id' => $cart->id,
-                    'shipping_method' => $cart->shipping_method,
-                    'created_by' => [
-                        'id' => $user->id,
-                        'name' => $user->name,
-                        'role_slugs' => $this->userRoleSlugs($user),
-                    ],
-                    'salesperson' => $user->hasRole('salesperson')
-                        ? [
-                            'id' => $user->id,
-                            'name' => $user->name,
-                        ]
-                        : null,
-                ],
-            ]);
-
             $cart->status = 'ordered';
             $cart->save();
 
@@ -1158,62 +1114,6 @@ class OrderController extends Controller
         $order->save();
     }
 
-    private function syncOrderInvoiceLedger(Order $order): void
-    {
-        $invoice = LedgerEntry::query()
-            ->where('order_id', $order->id)
-            ->where('type', 'invoice')
-            ->lockForUpdate()
-            ->latest('id')
-            ->first();
-
-        if (! $invoice instanceof LedgerEntry) {
-            return;
-        }
-
-        $oldDebitCents = $this->toCents($invoice->debit ?? $invoice->amount ?? 0);
-        $newDebitCents = $this->toCents($order->grand_total);
-        $deltaCents = $newDebitCents - $oldDebitCents;
-
-        $invoice->debit = $order->grand_total;
-        $invoice->amount = $order->grand_total;
-        if ($invoice->balance_after !== null) {
-            $invoice->balance_after = $this->fromCents($this->toCents($invoice->balance_after) + $deltaCents);
-        }
-        $invoice->save();
-
-        if ($deltaCents === 0) {
-            return;
-        }
-
-        $ledgerDate = $invoice->date ?? $invoice->entry_date;
-        $followingEntries = LedgerEntry::query()
-            ->where('customer_id', $invoice->customer_id)
-            ->where('id', '!=', $invoice->id)
-            ->whereNotNull('balance_after')
-            ->where(function (Builder $query) use ($invoice, $ledgerDate): void {
-                if ($ledgerDate !== null) {
-                    $query
-                        ->whereDate('date', '>', $ledgerDate)
-                        ->orWhere(function (Builder $sameDateQuery) use ($invoice, $ledgerDate): void {
-                            $sameDateQuery
-                                ->whereDate('date', $ledgerDate)
-                                ->where('id', '>', $invoice->id);
-                        });
-
-                    return;
-                }
-
-                $query->where('id', '>', $invoice->id);
-            })
-            ->get();
-
-        foreach ($followingEntries as $entry) {
-            $entry->balance_after = $this->fromCents($this->toCents($entry->balance_after) + $deltaCents);
-            $entry->save();
-        }
-    }
-
     private function freshOrderDetailModel(Order $order): Order
     {
         return $order->fresh([
@@ -1231,55 +1131,6 @@ class OrderController extends Controller
             'items.product.codeAliases',
             'statusHistory.changedBy',
         ]);
-    }
-
-    /**
-     * @return array{mode: string, code: string, label: string}
-     */
-    private function checkoutSummaryMeta(?string $mode): array
-    {
-        return match ($mode) {
-            'excluded' => [
-                'mode' => 'excluded',
-                'code' => '2-O',
-                'label' => '2 - O',
-            ],
-            'included' => [
-                'mode' => 'included',
-                'code' => '3-B',
-                'label' => '3 - B',
-            ],
-            default => [
-                'mode' => 'detailed',
-                'code' => '1-F',
-                'label' => '1 - F',
-            ],
-        };
-    }
-
-    private function isBatumCustomer(?Customer $customer): bool
-    {
-        if (! $customer instanceof Customer) {
-            return false;
-        }
-
-        if (str_starts_with(trim((string) $customer->code), '120-00-')) {
-            return true;
-        }
-
-        foreach ([
-            $customer->branch_code,
-            $customer->branch_name,
-            $customer->region_code,
-            $customer->region_name,
-            $customer->name,
-        ] as $value) {
-            if (str_contains(mb_strtoupper(trim((string) $value), 'UTF-8'), 'BATUM')) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private function logoSyncState(string $domain, string $entityType, int $entityId): ?IntegrationSyncState

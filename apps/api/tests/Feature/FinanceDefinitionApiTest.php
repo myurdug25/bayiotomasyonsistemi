@@ -2,9 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\Role;
 use App\Models\Dealer;
+use App\Models\FinanceDefinition;
 use App\Models\PosExpense;
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -12,6 +13,71 @@ use Tests\TestCase;
 class FinanceDefinitionApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_logo_integration_can_list_and_update_factory_account_names(): void
+    {
+        config()->set('integrations.logo.product_sync_key', 'finance-test-key');
+
+        $this->getJson('/api/integrations/logo/finance-definitions/pending')
+            ->assertUnauthorized();
+
+        $this->withHeader('X-Integration-Key', 'finance-test-key')
+            ->getJson('/api/integrations/logo/finance-definitions/pending')
+            ->assertOk()
+            ->assertJsonPath('received', 11)
+            ->assertJsonPath('records.0.code', '120-61-031');
+
+        $this->withHeader('X-Integration-Key', 'finance-test-key')
+            ->postJson('/api/integrations/logo/finance-definitions/sync', [
+                'records' => [[
+                    'type' => 'factory',
+                    'code' => '320-54-002',
+                    'name' => 'FABRİKA POS HESABI',
+                    'source_table' => 'dbo.LG_003_CLCARD',
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('received', 1)
+            ->assertJsonPath('updated', 1)
+            ->assertJsonPath('skipped', 0);
+
+        $definition = FinanceDefinition::query()
+            ->where('type', 'factory')
+            ->where('code', '320-54-002')
+            ->firstOrFail();
+
+        $this->assertSame('FABRİKA POS HESABI', $definition->name);
+        $this->assertSame('FABRİKA POS HESABI', $definition->logo_name);
+        $this->assertSame(
+            'dbo.LG_003_CLCARD',
+            data_get($definition->meta, 'integrations.logo.source_table'),
+        );
+
+        $this->withHeader('X-Integration-Key', 'finance-test-key')
+            ->postJson('/api/integrations/logo/finance-definitions/sync', [
+                'records' => [
+                    ['type' => 'bank', 'code' => '01', 'logo_code' => '01', 'name' => 'Ziraat Bankası', 'source_table' => 'dbo.LG_003_BNCARD'],
+                    ['type' => 'bank', 'code' => '02', 'logo_code' => '02', 'name' => 'Yapı Kredi', 'source_table' => 'dbo.LG_003_BNCARD'],
+                    ['type' => 'bank', 'code' => '10', 'logo_code' => '10', 'name' => 'Türkiye İş Bankası', 'source_table' => 'dbo.LG_003_BNCARD'],
+                ],
+                'full_snapshot_types' => ['bank'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('created', 1)
+            ->assertJsonPath('deactivated', 2);
+
+        $this->assertDatabaseHas('finance_definitions', [
+            'type' => 'bank',
+            'code' => '10',
+            'name' => 'Türkiye İş Bankası',
+            'is_active' => true,
+        ]);
+        $this->assertDatabaseHas('finance_definitions', [
+            'type' => 'bank',
+            'code' => 'georgia_bank',
+            'is_active' => false,
+        ]);
+    }
 
     public function test_collection_user_can_list_active_definitions_and_admin_can_manage_them(): void
     {
@@ -23,7 +89,7 @@ class FinanceDefinitionApiTest extends TestCase
         $this->actingAs($salesperson)
             ->getJson('/api/finance-definitions?type=bank')
             ->assertOk()
-            ->assertJsonCount(4, 'data')
+            ->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.logo_code', '01');
 
         $admin = User::factory()->create(['is_active' => true]);
@@ -75,7 +141,7 @@ class FinanceDefinitionApiTest extends TestCase
             Role::query()->firstOrCreate(['slug' => 'salesperson'], ['name' => 'Plasiyer'])->id,
         ]);
 
-        $categoryId = \App\Models\FinanceDefinition::query()
+        $categoryId = FinanceDefinition::query()
             ->where('type', 'expense_category')
             ->where('code', 'fuel')
             ->value('id');

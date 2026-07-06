@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Brand;
+use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\Dealer;
 use App\Models\IntegrationSyncState;
@@ -308,6 +309,78 @@ class ReportEndpointsApiTest extends TestCase
             ->assertJsonPath('summary.net_total', '300.00')
             ->assertJsonCount(1, 'data')
             ->assertJsonFragment(['name' => 'Urun A']);
+    }
+
+    public function test_collection_report_returns_factory_collector_customer_and_monthly_breakdowns(): void
+    {
+        $dealer = $this->createDealer('DLR-RPT-COL');
+        $admin = $this->createUserWithRole('admin');
+        $collector = $this->createUserWithRole('salesperson', $dealer);
+        $idleCollector = $this->createUserWithRole('salesperson', $dealer);
+        $customer = $this->createCustomer($dealer, 'COL-001', 'Tahsilat Carisi', [
+            'salesperson_user_id' => $collector->id,
+        ]);
+
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'b2b',
+            'date' => '2026-06-03',
+            'collection_date' => '2026-06-03',
+            'collected_by_user_id' => $collector->id,
+            'created_by_user_id' => $collector->id,
+            'method' => 'cash',
+            'amount' => 200,
+            'currency' => 'TRY',
+        ]);
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'b2b',
+            'date' => '2026-06-04',
+            'collection_date' => '2026-06-04',
+            'collected_by_user_id' => $collector->id,
+            'created_by_user_id' => $collector->id,
+            'method' => 'cc',
+            'amount' => 300,
+            'currency' => 'TRY',
+            'reference_fields' => ['collection_channel' => 'factory'],
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson('/api/reports/collections?dealer_id='.$dealer->id.'&date_from=2026-06-01&date_to=2026-06-30&top=10')
+            ->assertOk()
+            ->assertJsonPath('summary.collection_total', '500.00')
+            ->assertJsonPath('method_breakdown.0.method', 'cash')
+            ->assertJsonPath('method_breakdown.0.total', '200.00')
+            ->assertJsonPath('method_breakdown.2.method', 'factory_cc')
+            ->assertJsonPath('method_breakdown.2.total', '300.00')
+            ->assertJsonPath('collector_breakdown.0.user_id', $collector->id)
+            ->assertJsonPath('collector_breakdown.0.total', '500.00')
+            ->assertJsonPath('collector_breakdown.0.factory_card_total', '300.00')
+            ->assertJsonPath('collector_breakdown.1.user_id', $idleCollector->id)
+            ->assertJsonPath('collector_breakdown.1.total', '0.00')
+            ->assertJsonCount(2, 'collector_options')
+            ->assertJsonPath('customer_breakdown.0.customer_id', $customer->id)
+            ->assertJsonPath('customer_breakdown.0.total', '500.00')
+            ->assertJsonPath('monthly_breakdown.0.month', '2026-06')
+            ->assertJsonPath('monthly_breakdown.0.average', '250.00')
+            ->assertJsonPath('data.0.collector.id', $collector->id)
+            ->assertJsonPath('data.0.collector.name', $collector->name)
+            ->assertJsonPath('data.0.customer.id', $customer->id);
+
+        $this->getJson(
+            '/api/reports/collections?dealer_id='.$dealer->id.'&date_from=2026-06-01&date_to=2026-06-30'
+            .'&collector_id='.$collector->id
+            .'&method=factory_cc'
+        )
+            ->assertOk()
+            ->assertJsonPath('filters.collector_id', $collector->id)
+            ->assertJsonPath('filters.method', 'factory_cc')
+            ->assertJsonPath('summary.collection_count', 1)
+            ->assertJsonPath('summary.collection_total', '300.00')
+            ->assertJsonPath('data.0.method', 'factory_cc')
+            ->assertJsonPath('data.0.amount', '300.00');
     }
 
     public function test_admin_without_dealer_context_reads_all_dealers(): void

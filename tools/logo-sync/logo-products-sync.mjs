@@ -1802,29 +1802,16 @@ async function fetchStockSnapshotFromSummarySchema(pool, currentConfig, schema, 
   const result = await pool.request().query(
     dateColumn
       ? `
-        WITH RankedStock AS (
-          SELECT
-            ${referenceColumn} AS product_ref,
-            ${warehouseColumn ? "COALESCE(" + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
-            COALESCE(${availableColumn}, 0) AS available_total,
-            ${reservedColumn ? `COALESCE(${reservedColumn}, 0)` : "0"} AS reserved_total,
-            ROW_NUMBER() OVER (
-              PARTITION BY ${referenceColumn}${warehouseGroupSql}
-              ORDER BY
-                CASE WHEN CAST(${dateColumn} AS date) = CONVERT(date, '19190519', 112) THEN 0 ELSE 1 END,
-                ${dateColumn} DESC
-            ) AS rn
-          FROM ${schema.qualifiedName}
-          WHERE ${referenceColumn} IN (${refsSql})
-        )
         SELECT
-          product_ref,
-          warehouse_no,
-          SUM(available_total) AS available_total,
-          SUM(reserved_total) AS reserved_total
-        FROM RankedStock
-        WHERE rn = 1
-        GROUP BY product_ref, warehouse_no
+          ${referenceColumn} AS product_ref,
+          ${warehouseColumn ? "COALESCE(" + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
+          SUM(COALESCE(${availableColumn}, 0)) AS available_total,
+          ${reservedSql} AS reserved_total
+        FROM ${schema.qualifiedName}
+        WHERE ${referenceColumn} IN (${refsSql})
+          AND CAST(${dateColumn} AS date) >= CONVERT(date, '19190519', 112)
+          AND CAST(${dateColumn} AS date) <= CAST(GETDATE() AS date)
+        GROUP BY ${referenceColumn}${warehouseGroupSql}
       `
       : `
         SELECT
@@ -1866,8 +1853,11 @@ async function fetchStockSnapshotFromSummarySchema(pool, currentConfig, schema, 
     const reservedTotal = rowsForTotal.reduce((sum, row) => sum + row.reserved_total, 0);
 
     snapshot.set(productRef, {
-      available_total: onhandTotal - reservedTotal,
+      available_total: onhandTotal,
       reserved_total: reservedTotal,
+      authoritative: true,
+      source_kind: "warehouse_totals",
+      source_table: schema.qualifiedName,
       warehouses: warehouseRows.map((row) => ({
         invenno: row.invenno,
         warehouse_code: warehouseInfoByNo.get(row.invenno)?.code ?? String(row.invenno),
@@ -1875,7 +1865,7 @@ async function fetchStockSnapshotFromSummarySchema(pool, currentConfig, schema, 
         shelf_key: currentConfig.logo.warehouseRafKeyMap.get(row.invenno) ?? null,
         onhand_total: row.onhand_total,
         reserved_total: row.reserved_total,
-        available_total: row.onhand_total - row.reserved_total,
+        available_total: row.onhand_total,
       })),
     });
   }
@@ -2149,7 +2139,7 @@ function derivePrimaryStockTableNames(productTable) {
 
   const branchCandidates = directCandidates.flatMap((candidate) => deriveBranch01TableNames(candidate));
   const viewCandidates = [...directCandidates, ...branchCandidates].flatMap((candidate) => deriveLogoStockViewTableNames(candidate));
-  return uniqueColumns([...directCandidates, ...branchCandidates, ...viewCandidates]);
+  return uniqueColumns([...viewCandidates, ...branchCandidates, ...directCandidates]);
 }
 
 function derivePrimaryStockFicheTableNames() {
@@ -3375,6 +3365,8 @@ function mapStockOnlyProductRow(row, schema, stockByRef, currentConfig = config)
     stock?.available_total ??
     (rawStockAvailable !== null ? rawStockAvailable - Math.max(0, rawStockReserved ?? 0) : null);
 
+  // A missing warehouse-total row is not proof of zero stock. Skipping it prevents
+  // a wrong/empty Logo table selection from wiping every PowerSA stock value.
   if (stockAvailable === null && !stock) {
     return null;
   }
@@ -3383,11 +3375,15 @@ function mapStockOnlyProductRow(row, schema, stockByRef, currentConfig = config)
     ? {
         available_total: stock.available_total,
         reserved_total: stock.reserved_total,
+        authoritative: stock.authoritative === true,
+        source_kind: stock.source_kind ?? null,
+        source_table: stock.source_table ?? null,
         warehouses: stock.warehouses ?? [],
       }
     : {
         available_total: stockAvailable,
         reserved_total: Math.max(0, stockReserved),
+        authoritative: false,
         warehouses: [],
       };
 

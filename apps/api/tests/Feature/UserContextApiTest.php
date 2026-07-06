@@ -124,6 +124,41 @@ class UserContextApiTest extends TestCase
         ]);
     }
 
+    public function test_salesperson_can_select_assigned_logo_customer_even_when_specode4_differs(): void
+    {
+        $dealer = $this->createDealer('DLR-CTX-SP4-ASSIGNED');
+        $user = $this->createUserWithRole('salesperson', $dealer, [
+            'logo_customer_specode4' => 'A',
+        ]);
+        $customer = $this->createCustomer($dealer, 'CTX-CUST-SP4-ASSIGNED', $user, [
+            'source_system' => 'logo',
+            'source_reference' => '1672',
+            'sync_status' => 'synced',
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode' => 'F1',
+                            'specode4' => null,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->postJson('/api/context/customer', [
+            'customer_id' => $customer->id,
+        ])->assertOk()
+            ->assertJsonPath('context.customer.id', $customer->id);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'selected_customer_id' => $customer->id,
+        ]);
+    }
+
     public function test_show_context_clears_stale_out_of_scope_selected_customer(): void
     {
         $dealerA = $this->createDealer('DLR-CTX-ST-A');

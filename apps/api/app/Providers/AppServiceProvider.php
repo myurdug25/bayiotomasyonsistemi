@@ -2,13 +2,20 @@
 
 namespace App\Providers;
 
+use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\Dealer;
+use App\Models\LedgerEntry;
+use App\Models\Order;
 use App\Models\PosExpense;
 use App\Models\PosSale;
 use App\Models\PosSession;
 use App\Models\Product;
+use App\Models\ReturnRequest;
+use App\Models\Shipment;
+use App\Models\StockSummary;
 use App\Observers\ProductObserver;
+use App\Observers\RealtimeDomainObserver;
 use App\Policies\CustomerPolicy;
 use App\Policies\DealerPolicy;
 use App\Policies\PosExpensePolicy;
@@ -63,6 +70,13 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(PosSale::class, PosSalePolicy::class);
         Gate::policy(PosExpense::class, PosExpensePolicy::class);
         Product::observe(ProductObserver::class);
+        Collection::observe(RealtimeDomainObserver::class);
+        Customer::observe(RealtimeDomainObserver::class);
+        LedgerEntry::observe(RealtimeDomainObserver::class);
+        Order::observe(RealtimeDomainObserver::class);
+        ReturnRequest::observe(RealtimeDomainObserver::class);
+        Shipment::observe(RealtimeDomainObserver::class);
+        StockSummary::observe(RealtimeDomainObserver::class);
 
         if ($this->app->isLocal()) {
             DB::listen(function (QueryExecuted $query): void {
@@ -83,6 +97,14 @@ class AppServiceProvider extends ServiceProvider
                 ]);
             });
         }
+
+        RateLimiter::for('api', function (Request $request) {
+            $key = $request->user()?->id ?? $request->ip();
+
+            return [
+                Limit::perMinute(300)->by((string) $key),
+            ];
+        });
 
         RateLimiter::for('product-search', function (Request $request) {
             $key = $request->user()?->id ?? $request->ip();
@@ -122,11 +144,27 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('realtime-stream', function (Request $request) {
+            $key = $request->user()?->id ?? $request->ip();
+
+            return [
+                Limit::perMinute(300)->by((string) $key),
+            ];
+        });
+
         RateLimiter::for('pos', function (Request $request) {
             $key = $request->user()?->id ?? $request->ip();
 
             return [
-                Limit::perMinute(180)->by((string) $key),
+                Limit::perMinute(600)->by((string) $key),
+            ];
+        });
+
+        RateLimiter::for('warehouse', function (Request $request) {
+            $key = $request->user()?->id ?? $request->ip();
+
+            return [
+                Limit::perMinute(1800)->by((string) $key),
             ];
         });
     }

@@ -10,6 +10,7 @@ use App\Models\LedgerEntry;
 use App\Models\User;
 use App\Support\Pricing\DisplayCurrency;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class CustomerLedgerController extends Controller
 {
@@ -37,6 +38,7 @@ class CustomerLedgerController extends Controller
         $summary = $this->ledgerSummary(clone $baseQuery, $request->user());
 
         $entries = (clone $baseQuery)
+            ->with('collection')
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->paginate($perPage)
@@ -170,7 +172,7 @@ class CustomerLedgerController extends Controller
      */
     private function effectiveBalanceAfter(int $customerId, string $entryDate, int $entryId, array $excludedTypes = []): float
     {
-        $dateCol = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
+        $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
         $entryDateExpression = "DATE(COALESCE({$dateCol}, entry_date))";
 
         return (float) (LedgerEntry::query()

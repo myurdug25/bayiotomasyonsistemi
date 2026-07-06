@@ -23,7 +23,7 @@ final class MenuPermissions
             ['key' => 'new-customer-card', 'label' => 'Yeni Cari Kart', 'href' => '/new-customer-card'],
             ['key' => 'ledger', 'label' => 'Cari Hesap', 'href' => '/ledger'],
             ['key' => 'collections', 'label' => 'Tahsilat', 'href' => '/collections'],
-            ['key' => 'reports', 'label' => 'Raporlar', 'href' => '/reports'],
+            ['key' => 'reports', 'label' => 'Raporlama Merkezi', 'href' => '/reports'],
             ['key' => 'returns', 'label' => 'İade / Arıza', 'href' => '/returns'],
             ['key' => 'pos', 'label' => 'Hızlı Satış', 'href' => '/pos'],
             ['key' => 'pos-expenses', 'label' => 'POS Masraf', 'href' => '/pos/expenses'],

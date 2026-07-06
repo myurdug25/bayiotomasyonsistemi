@@ -87,6 +87,56 @@ class LogoCustomerExportApiTest extends TestCase
             ->assertJsonPath('records.1.sync_status', 'failed');
     }
 
+    public function test_logo_customer_pending_prioritizes_fresh_pending_customers_before_failed_retries(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOGO',
+            'name' => 'Logo Dealer',
+            'is_active' => true,
+        ]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'failed',
+            'sync_error' => 'Logo offline',
+            'code' => 'CR-FAILED-OLD',
+            'name' => 'Eski Hatali Cari',
+            'is_active' => true,
+            'updated_at' => now()->addMinutes(5),
+        ]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'code' => 'CR-PENDING-OLD',
+            'name' => 'Eski Bekleyen Cari',
+            'is_active' => true,
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'code' => 'CR-PENDING-NEW',
+            'name' => 'Yeni Bekleyen Cari',
+            'is_active' => true,
+            'updated_at' => now(),
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/customers/pending?limit=3');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('records.0.customer_code', 'CR-PENDING-NEW')
+            ->assertJsonPath('records.1.customer_code', 'CR-PENDING-OLD')
+            ->assertJsonPath('records.2.customer_code', 'CR-FAILED-OLD');
+    }
+
     public function test_logo_customer_ack_updates_sync_status_and_logo_metadata(): void
     {
         $dealer = Dealer::query()->create([
@@ -104,6 +154,14 @@ class LogoCustomerExportApiTest extends TestCase
             'is_active' => true,
             'meta' => [
                 'legacy' => 'keep',
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode' => 'F1',
+                            'cyphcode' => '120-MERKEZ',
+                        ],
+                    ],
+                ],
             ],
         ]);
 
@@ -137,6 +195,8 @@ class LogoCustomerExportApiTest extends TestCase
         $this->assertNull($customer->sync_error);
         $this->assertSame('keep', $customer->meta['legacy']);
         $this->assertSame('1001', $customer->meta['integrations']['logo']['external_ref']);
+        $this->assertSame('F1', $customer->meta['integrations']['logo']['payload']['specode']);
+        $this->assertSame('120-MERKEZ', $customer->meta['integrations']['logo']['payload']['cyphcode']);
         $this->assertSame('120.01.0001', $customer->meta['integrations']['logo']['payload']['logo_code']);
         $this->assertNotNull($customer->last_synced_at);
 

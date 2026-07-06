@@ -435,25 +435,23 @@ export function LedgerPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1320px] text-left text-[13px]">
+              <table className="w-full min-w-[980px] table-fixed text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-[var(--brand-border)] text-[11px] uppercase text-[var(--muted-foreground)]">
-                    <th className="px-3 py-2 text-center">Detay</th>
-                    <th className="px-3 py-2">Tarih</th>
-                    <th className="px-3 py-2">Kaynak</th>
-                    <th className="px-3 py-2">Tip</th>
-                    <th className="px-3 py-2">Satış Tipi</th>
-                    <th className="px-3 py-2">Açıklama</th>
-                    <th className="px-3 py-2">Referans</th>
-                    <th className="px-3 py-2 text-right">Borç</th>
-                    <th className="px-3 py-2 text-right">Alacak</th>
-                    <th className="px-3 py-2 text-right">Bakiye</th>
+                    <th className="w-[74px] px-2 py-2 text-center">Detay</th>
+                    <th className="w-[104px] px-2 py-2">Evrak Tarihi</th>
+                    <th className="w-[150px] px-2 py-2">İşlem Tipi</th>
+                    <th className="w-[190px] px-2 py-2">Belge / Kaynak Evrak</th>
+                    <th className="px-2 py-2">Açıklama</th>
+                    <th className="w-[120px] px-2 py-2 text-right">Borç</th>
+                    <th className="w-[120px] px-2 py-2 text-right">Alacak</th>
+                    <th className="w-[128px] px-2 py-2 text-right">Bakiye</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayRows.map((row) => (
                     <tr key={row.id} className="border-b border-[var(--brand-border)]/60 transition-colors hover:bg-[var(--surface-soft)]/70">
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-2 py-2.5 text-center">
                         {row.order_id ? (
                           <Button
                             type="button"
@@ -469,48 +467,54 @@ export function LedgerPage() {
                           <span className="text-sm font-semibold text-[var(--muted-foreground)]">-</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 font-medium">{formatLedgerDate(row.date)}</td>
-                      <td className="px-3 py-2.5">
-                        <Badge
-                          variant="outline"
-                          className={`h-6 px-2 text-xs font-black ${getSourceMeta(row.source_system).className}`}
-                          title={
-                            row.source_system === "logo"
-                              ? `Logo ref: ${row.source_reference ?? "-"} · Sync: ${formatSyncDateTime(row.last_synced_at)}`
-                              : row.source_system === "b2b"
-                                ? "B2B kaynaklı hareket"
-                                : "Yerel hareket"
-                          }
-                        >
-                          {getSourceMeta(row.source_system).label}
-                        </Badge>
+                      <td className="px-2 py-2.5 font-medium">{formatLedgerDate(row.document_date ?? row.date)}</td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge
+                            variant="outline"
+                            className={`h-6 px-2 text-xs font-semibold ${getLedgerTypeMeta(row.type).className}`}
+                          >
+                            {row.transaction_type_label ?? getLedgerTypeMeta(row.type).label}
+                          </Badge>
+                          {row.collection_method_label ? (
+                            <span className="rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.08em] text-emerald-100">
+                              {row.collection_method_label}
+                            </span>
+                          ) : null}
+                          <Badge
+                            variant="outline"
+                            className={`h-5 px-1.5 text-[10px] font-black ${getSourceMeta(row.source_system).className}`}
+                            title={
+                              row.source_system === "logo"
+                                ? `Logo ref: ${row.source_reference ?? "-"} · Sync: ${formatSyncDateTime(row.last_synced_at)}`
+                                : row.source_system === "b2b"
+                                  ? "B2B kaynaklı hareket"
+                                  : "Yerel hareket"
+                            }
+                          >
+                            {getSourceMeta(row.source_system).label}
+                          </Badge>
+                        </div>
                       </td>
-                      <td className="px-3 py-2.5">
-                        <Badge
-                          variant="outline"
-                          className={`h-6 px-2 text-xs font-semibold ${getLedgerTypeMeta(row.type).className}`}
-                        >
-                          {getLedgerTypeMeta(row.type).label}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-2.5">
+                        <p className="break-words font-bold text-[var(--foreground)]">{row.document_no || row.reference_no || "-"}</p>
+                        <p className="mt-1 break-words text-[11px] font-semibold text-[var(--muted-foreground)]">
+                          {row.source_document ? `Kaynak: ${row.source_document}` : "Kaynak evrak: -"}
+                        </p>
                         {row.checkout_summary ? (
                           <Badge
                             variant="outline"
-                            className={`h-6 px-2 text-xs font-black ${getCheckoutSummaryClass(row.checkout_summary.code)}`}
+                            className={`mt-1 h-5 px-1.5 text-[10px] font-black ${getCheckoutSummaryClass(row.checkout_summary.code)}`}
                             title={row.checkout_summary.label}
                           >
                             {row.checkout_summary.code}
                           </Badge>
-                        ) : (
-                          <span className="text-sm font-semibold text-[var(--muted-foreground)]">-</span>
-                        )}
+                        ) : null}
                       </td>
-                      <td className="px-3 py-2.5 font-medium">{row.description || "-"}</td>
-                      <td className="px-3 py-2.5 font-medium">{row.reference_no || "-"}</td>
-                      <td className="px-3 py-2.5 text-right font-medium">{formatAmount(row.debit, row.currency)}</td>
-                      <td className="px-3 py-2.5 text-right font-medium">{formatAmount(row.credit, row.currency)}</td>
-                      <td className="px-3 py-2.5 text-right font-bold">
+                      <td className="break-words px-2 py-2.5 font-medium">{row.description || "-"}</td>
+                      <td className="px-2 py-2.5 text-right font-medium">{formatAmount(row.debit, row.currency)}</td>
+                      <td className="px-2 py-2.5 text-right font-medium">{formatAmount(row.credit, row.currency)}</td>
+                      <td className="px-2 py-2.5 text-right font-bold">
                         {formatAmount(row.balance_after, row.currency)}
                       </td>
                     </tr>

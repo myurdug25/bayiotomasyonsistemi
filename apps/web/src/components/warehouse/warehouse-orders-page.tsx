@@ -77,6 +77,13 @@ type ShipmentWarehouseChoice = {
   warehouse_name?: string;
 };
 
+type WarehouseStaffChoice = {
+  id: number;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+};
+
 function toNumberOrUndefined(value: string): number | undefined {
   if (!value.trim()) {
     return undefined;
@@ -198,9 +205,59 @@ function countUniqueCustomers(orders: WarehouseReadyOrderItem[]): number {
   return customerKeys.size;
 }
 
-function resolveShipmentWarehouseChoice(order: WarehouseReadyOrderItem | null): ShipmentWarehouseChoice {
+function normalizeWarehouseIdentity(value: string | null | undefined): string {
+  return (value ?? "")
+    .trim()
+    .toLocaleUpperCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+function preferredWarehouseForStaff(staffUser: WarehouseStaffChoice | null): ShipmentWarehouseChoice | null {
+  const identity = normalizeWarehouseIdentity([staffUser?.name, staffUser?.email].filter(Boolean).join(" "));
+
+  if (!identity) {
+    return null;
+  }
+
+  const choices: Array<ShipmentWarehouseChoice & { needles: string[] }> = [
+    { warehouse_code: "0", warehouse_name: "ERZURUM POINT", needles: ["ERZURUMPOINT", "ERZPOINT"] },
+    { warehouse_code: "1", warehouse_name: "ERZURUM DEPO", needles: ["ERZURUMDEPO", "ERZDEPO"] },
+    { warehouse_code: "2", warehouse_name: "TRABZON DEPO", needles: ["TRABZONDEPO"] },
+    { warehouse_code: "3", warehouse_name: "SAMSUN DEPO", needles: ["SAMSUNDEPO"] },
+    { warehouse_code: "4", warehouse_name: "BATUM DEPO", needles: ["BATUMDEPO"] },
+  ];
+
+  return choices.find((choice) => choice.needles.some((needle) => identity.includes(needle))) ?? null;
+}
+
+function resolveShipmentWarehouseChoice(
+  order: WarehouseReadyOrderItem | null,
+  staffUser: WarehouseStaffChoice | null
+): ShipmentWarehouseChoice {
+  const staffWarehouse = preferredWarehouseForStaff(staffUser);
+
+  if (staffWarehouse?.warehouse_code) {
+    const warehouseOption = order?.logo_warehouse_options?.find(
+      (warehouse) => warehouse.warehouse_code === staffWarehouse.warehouse_code
+    );
+
+    return {
+      ...(warehouseOption?.warehouse_id ? { warehouse_id: warehouseOption.warehouse_id } : {}),
+      warehouse_code: staffWarehouse.warehouse_code,
+      warehouse_name: staffWarehouse.warehouse_name,
+    };
+  }
+
   const warehouseOption =
-    order?.logo_warehouse_options?.find((warehouse) => warehouse.missing_quantity === 0)
+    order?.logo_warehouse_options?.find(
+      (warehouse) =>
+        order.preferred_warehouse_code !== null
+        && order.preferred_warehouse_code !== undefined
+        && warehouse.warehouse_code === order.preferred_warehouse_code
+    )
+    ?? order?.logo_warehouse_options?.find((warehouse) => warehouse.missing_quantity === 0)
     ?? order?.logo_warehouse_options?.[0];
 
   if (warehouseOption) {
@@ -336,8 +393,8 @@ export function WarehouseOrdersPage() {
     [effectiveSelectedWarehouseStaffId, warehouseStaff]
   );
   const shipmentWarehouseChoice = useMemo(
-    () => resolveShipmentWarehouseChoice(shipmentOrder),
-    [shipmentOrder]
+    () => resolveShipmentWarehouseChoice(shipmentOrder, selectedWarehouseStaff),
+    [selectedWarehouseStaff, shipmentOrder]
   );
   const salespersonSourceRows = useMemo(
     () => [...(salespersonOptionsQuery.data?.data ?? []), ...rows],

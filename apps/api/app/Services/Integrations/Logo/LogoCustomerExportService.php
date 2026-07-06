@@ -41,7 +41,9 @@ class LogoCustomerExportService
         $query = Customer::query()
             ->where('source_system', 'b2b')
             ->whereIn('sync_status', $statuses)
-            ->orderBy('id')
+            ->orderByRaw("CASE WHEN sync_status = 'pending' THEN 0 ELSE 1 END")
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
             ->limit($limit);
 
         if ($dealer) {
@@ -100,7 +102,15 @@ class LogoCustomerExportService
                 }
 
                 if (! empty($record['meta']) && is_array($record['meta'])) {
-                    Arr::set($meta, 'integrations.logo.payload', $record['meta']);
+                    $existingLogoPayload = Arr::get($meta, 'integrations.logo.payload', []);
+                    Arr::set(
+                        $meta,
+                        'integrations.logo.payload',
+                        array_replace_recursive(
+                            is_array($existingLogoPayload) ? $existingLogoPayload : [],
+                            $record['meta']
+                        )
+                    );
                 }
 
                 if ($status === 'failed' && $error !== null) {

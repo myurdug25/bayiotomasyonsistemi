@@ -9,7 +9,7 @@ class FinanceDefinition extends Model
 {
     use HasFactory;
 
-    public const TYPES = ['bank', 'factory', 'expense_category'];
+    public const TYPES = ['bank', 'pos_device', 'card_type', 'factory', 'expense_category'];
 
     protected $fillable = [
         'type',

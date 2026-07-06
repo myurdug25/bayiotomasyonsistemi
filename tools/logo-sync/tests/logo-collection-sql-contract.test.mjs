@@ -26,3 +26,12 @@ test("collection export reconciles an existing cash and customer ledger pair", (
   assert.match(source, /SET @ExternalRef = CONCAT\(N'CLFLINE-', @ClflineRef\)/i);
   assert.match(source, /EXEC dbo\.PowersaB2B_FinishExport @ExportKey, @ExternalRef;\s*RETURN;/i);
 });
+
+test("physical POS without explicit channel is routed to bank collection", () => {
+  const source = fs.readFileSync(sqlPath, "utf8");
+
+  assert.match(
+    source,
+    /LOWER\(COALESCE\(@Method,\s*N''\)\) IN \(N'transfer',\s*N'cc'\)[\s\S]{0,160}ISNULL\(JSON_VALUE\(@PayloadJson,\s*'\$\.reference_fields\.collection_channel'\),\s*N''\) <> N'factory'/i
+  );
+});

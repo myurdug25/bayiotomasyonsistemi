@@ -228,6 +228,70 @@ class CustomerIndexApiTest extends TestCase
         $response->assertJsonPath('data.0.balance_summary.order_due', '810.25');
     }
 
+    public function test_customer_index_shows_new_pending_b2b_customer_before_logo_records(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-NEW-CUSTOMER',
+            'name' => 'New Customer Dealer',
+            'is_active' => true,
+        ]);
+
+        $salesRole = Role::query()->firstOrCreate(
+            ['slug' => 'salesperson'],
+            ['name' => 'Salesperson']
+        );
+
+        $user = User::factory()->create([
+            'dealer_id' => $dealer->id,
+            'logo_customer_specode4' => 'A',
+            'is_active' => true,
+        ]);
+        $user->roles()->sync([$salesRole->id]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'source_system' => 'logo',
+            'code' => '0000000000000001',
+            'name' => 'Existing Logo Customer',
+            'is_active' => true,
+        ]);
+
+        $pendingCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'code' => 'NEW-PENDING-CUSTOMER',
+            'name' => 'New Pending Customer',
+            'is_active' => true,
+        ]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => User::factory()->create(['dealer_id' => $dealer->id])->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'code' => 'OTHER-PENDING-CUSTOMER',
+            'name' => 'Other Pending Customer',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/customers?limit=10')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $pendingCustomer->id)
+            ->assertJsonPath('data.0.source_system', 'b2b');
+
+        $pendingCustomer->forceFill(['sync_status' => 'synced'])->save();
+
+        $this->getJson('/api/customers?limit=10')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $pendingCustomer->id)
+            ->assertJsonPath('data.0.source_system', 'b2b');
+    }
+
     public function test_customer_index_returns_logo_contact_fields_from_payload_fallbacks(): void
     {
         $dealer = Dealer::query()->create([
@@ -648,9 +712,10 @@ class CustomerIndexApiTest extends TestCase
 
         $this->getJson('/api/customers?limit=50')
             ->assertOk()
-            ->assertJsonPath('total_count', 1)
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.code', 'LOGO-A-NORMAL');
+            ->assertJsonPath('total_count', 2)
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['code' => 'LOGO-A-NORMAL'])
+            ->assertJsonFragment(['code' => 'LOGO-B-ASSIGNED']);
     }
 
     public function test_point_user_uses_logo_specode4_filter_before_branch_scope(): void

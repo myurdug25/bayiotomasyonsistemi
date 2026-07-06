@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Campaign;
+use App\Models\CampaignProduct;
 use App\Models\Customer;
 use App\Models\Dealer;
 use App\Models\Product;
@@ -151,6 +153,122 @@ class PriceModelApiTest extends TestCase
             'quantity' => 10,
             'unit_net_price' => 52.49,
         ]);
+    }
+
+    public function test_logo_group_campaign_is_limited_to_matching_customer_and_applies_discount(): void
+    {
+        $dealer = $this->createDealer('DLR-CAMPAIGN-GROUP');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$f1Customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $f1Customer->update([
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode' => 'SERVIS',
+                            'specode2' => 'F1',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $f2Customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => 'CR-CAMPAIGN-F2',
+            'name' => 'F2 Campaign Customer',
+            'is_active' => true,
+            'meta' => ['specode' => 'F2'],
+        ]);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 100,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $campaign = Campaign::query()->create([
+            'source_reference' => 'LOGO-CAMPAIGN-F1-5',
+            'code' => 'F1-5',
+            'name' => 'F1 5 Adet Kampanyasi',
+            'customer_group' => 'F1',
+            'target_quantity' => 5,
+            'discount_percent' => 10,
+            'group_field' => 'specode',
+            'is_active' => true,
+        ]);
+        CampaignProduct::query()->create([
+            'campaign_id' => $campaign->id,
+            'product_id' => $product->id,
+            'product_sku' => $product->sku,
+        ]);
+
+        $this->actingAs($user);
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $f1Customer->id,
+            'product_id' => $product->id,
+            'quantity' => 5,
+            'campaign_key' => 'F1-5',
+        ])->assertOk()
+            ->assertJsonPath('items.0.unit_price', '100.00')
+            ->assertJsonPath('items.0.discount_rate', '10.00')
+            ->assertJsonPath('items.0.line_total', '450.00')
+            ->assertJsonPath('items.0.campaign_key', 'F1-5');
+
+        $this->getJson("/api/customers/{$f1Customer->id}/campaign-progress")
+            ->assertOk()
+            ->assertJsonPath('data.0.code', 'F1-5')
+            ->assertJsonPath('data.0.cart_quantity', 5)
+            ->assertJsonPath('data.0.is_completed', true);
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $f2Customer->id,
+            'product_id' => $product->id,
+            'quantity' => 5,
+            'campaign_key' => 'F1-5',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['campaign_key']);
+
+        $this->getJson("/api/customers/{$f2Customer->id}/campaign-progress")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    public function test_logo_campaign_sync_requires_integration_key(): void
+    {
+        config()->set('integrations.logo.product_sync_key', 'campaign-test-key');
+
+        $payload = ['campaigns' => [[
+            'source_reference' => 'SYNC-SECURITY-1',
+            'code' => 'F1-SYNC',
+            'name' => 'F1 Sync Test',
+            'customer_group' => 'F1',
+            'target_quantity' => 5,
+            'discount_percent' => 10,
+            'is_active' => true,
+            'products' => ['SYNC-SKU-1'],
+        ]]];
+
+        $this->postJson('/api/integrations/logo/campaigns/sync', $payload)
+            ->assertUnauthorized();
+
+        $this->withHeader('X-Integration-Key', 'campaign-test-key')
+            ->postJson('/api/integrations/logo/campaigns/sync', $payload)
+            ->assertOk()
+            ->assertJsonPath('synced', 1);
+
+        $payload['campaigns'][0]['products'] = [123];
+
+        $this->withHeader('X-Integration-Key', 'campaign-test-key')
+            ->postJson('/api/integrations/logo/campaigns/sync', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['campaigns.0.products']);
     }
 
     public function test_cart_item_allows_zero_stock_when_price_exists(): void

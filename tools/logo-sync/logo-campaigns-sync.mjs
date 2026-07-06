@@ -121,15 +121,30 @@ async function main() {
       );
 
       // Cari grup bilgisi: farklı sürümlerde farklı alan adı olabilir
-      const customerGroup = normalizeString(
+      let customerGroup = normalizeString(
         row.CLTYPE ??          // cari tipi
         row.CLCARD_TYPE ??
         row.CARGROUPCODE ??
         row.CARDGRPCODE ??
         row.CUSTGROUP ??
+        row.CLSPECODE ??
+        row.TRADINGGRP ??
         row.SPECODE ??         // özel kod
         null
       );
+      let groupField = row.CLSPECODE
+        ? "clspecode"
+        : row.TRADINGGRP
+          ? "tradinggrp"
+          : "specode";
+
+      if (!customerGroup) {
+        const groupMatch = `${code ?? ""} ${name ?? ""}`.match(/(?:^|[^A-Z0-9])(F\d+)(?:[^A-Z0-9]|$)/i);
+        if (groupMatch) {
+          customerGroup = groupMatch[1].toUpperCase();
+          groupField = "campaign_code";
+        }
+      }
 
       // Hedef adet / koşul
       const targetQty = parseInt(
@@ -176,16 +191,20 @@ async function main() {
 
           for (const lineRow of lineRows.recordset) {
             // Formülden indirim oranını çıkar (örn: P76*(35/100) -> 35)
-            const formula = lineRow.FORMULA ?? lineRow.MATHFORMULA ?? lineRow.DISCPER ?? "";
+            const formula = lineRow.FORMULA ?? lineRow.MATHFORMULA ?? "";
             const conditionStr = lineRow.CONDITION ?? lineRow.COND ?? "";
-            
-            if (!discountPercent && formula) {
-              const match = String(formula).match(/\*\s*\(\s*(\d+)\s*\/\s*100\s*\)/);
+
+            if (discountPercent === null && Number.isFinite(Number(lineRow.DISCPER))) {
+              const directDiscount = Number(lineRow.DISCPER);
+              if (directDiscount >= 0 && directDiscount <= 100) {
+                discountPercent = directDiscount;
+              }
+            }
+
+            if (discountPercent === null && formula) {
+              const match = String(formula).match(/\*\s*\(\s*(\d+(?:[.,]\d+)?)\s*\/\s*100\s*\)/);
               if (match) {
-                discountPercent = parseInt(match[1], 10);
-              } else {
-                const flatMatch = String(formula).match(/(\d+)/);
-                if (flatMatch) discountPercent = parseInt(flatMatch[1], 10);
+                discountPercent = Number(match[1].replace(",", "."));
               }
             }
             if (!lineCondition && conditionStr) {
@@ -230,7 +249,7 @@ async function main() {
 
       // Adet bulma: Başlık isminden veya satır koşulundan çıkar (örn: "KAMPANYASI 10", "5 ADE", "P76*(5/100)")
       let parsedTargetQty = targetQty;
-      const titleMatch = (code + " " + name).match(/(?:\s|-|^)(\d+)\s*(?:ADE|ADET|LI|Lİ|'Lİ|'LI)?(?:\s|-|$)/i);
+      const titleMatch = (code + " " + name).match(/(?:\s|-|^)(\d+)\s*(?:AD|ADE|ADET|LI|Lİ|'Lİ|'LI)?(?:\s|-|$)/i);
       if (titleMatch) {
          parsedTargetQty = parseInt(titleMatch[1], 10);
       } else if (lineCondition) {
@@ -242,6 +261,20 @@ async function main() {
 
       productSkus = [...new Set(productSkus)].filter((s) => s !== "");
 
+      if (!customerGroup) {
+        console.warn(
+          `[logo-campaigns-sync] Kampanya atlandı: ${code || ref} için cari grubu çözülemedi.`
+        );
+        continue;
+      }
+
+      if (productSkus.length === 0) {
+        console.warn(
+          `[logo-campaigns-sync] Kampanya atlandı: ${code || ref} için ürün bulunamadı.`
+        );
+        continue;
+      }
+
       campaigns.push({
         source_reference: ref,
         code: code || `CAMP-${ref}`,
@@ -250,7 +283,7 @@ async function main() {
         customer_group: customerGroup,
         target_quantity: parsedTargetQty,
         discount_percent: discountPercent,
-        group_field: "specode",
+        group_field: groupField,
         starts_at: startsAt,
         ends_at: endsAt,
         is_active: isActive,
@@ -288,7 +321,7 @@ async function main() {
           ...(apiKey ? { "X-Integration-Key": apiKey } : {}),
         },
         body: JSON.stringify({ campaigns }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(config.requestTimeoutMs),
       }
     );
 
@@ -384,7 +417,16 @@ function buildConfig() {
     apiBase: String(
       process.env.B2B_API_BASE ?? process.env.API_BASE ?? "https://powersab2b.com"
     ).replace(/\/$/, ""),
-    apiKey: nullable(process.env.B2B_API_KEY ?? process.env.LOGO_API_KEY),
+    apiKey: nullable(
+      process.env.POWERSA_PRODUCTS_SYNC_KEY ??
+      process.env.POWERSA_SYNC_KEY ??
+      process.env.B2B_API_KEY ??
+      process.env.LOGO_API_KEY
+    ),
+    requestTimeoutMs: positiveInteger(
+      process.env.LOGO_CAMPAIGNS_SYNC_TIMEOUT_MS,
+      180_000
+    ),
   };
 }
 
@@ -425,6 +467,11 @@ function nullable(value) {
 function parseInteger(value) {
   const n = Number.parseInt(String(value ?? "").trim(), 10);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = parseInteger(value);
+  return parsed !== undefined && parsed > 0 ? parsed : fallback;
 }
 
 function parseBoolean(value, fallback) {

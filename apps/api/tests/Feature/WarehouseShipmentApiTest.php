@@ -17,6 +17,7 @@ use App\Models\StockMovement;
 use App\Models\StockSummary;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\Integrations\Logo\LogoShipmentExportService;
 use App\Support\Warehouse\CartWarehouseOptions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -162,26 +163,23 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('order.status', 'approved')
             ->assertJsonPath('order.note', $orderNote);
 
-        $invoiceEntry = LedgerEntry::query()
-            ->where('order_id', $orderResponse->json('order.id'))
-            ->where('type', 'invoice')
-            ->firstOrFail();
+        $stockAfterOrder = StockSummary::query()->findOrFail($product->id);
+        $this->assertSame(20, (int) $stockAfterOrder->available_total);
+        $this->assertSame(2, (int) $stockAfterOrder->reserved_total);
 
-        $this->assertSame('order_checkout', $invoiceEntry->meta['source']);
-        $this->assertSame('salesperson', $invoiceEntry->meta['source_panel']);
-        $this->assertTrue((bool) $invoiceEntry->meta['warehouse_dispatch']);
-        $this->assertSame('3-B', $invoiceEntry->meta['checkout_summary']['code']);
-        $this->assertSame('3 - B', $invoiceEntry->meta['checkout_summary']['label']);
+        $this->assertDatabaseMissing('ledger_entries', [
+            'order_id' => $orderResponse->json('order.id'),
+            'type' => 'invoice',
+        ]);
 
         $this
             ->getJson('/api/customers/'.$customer->id.'/ledger')
             ->assertOk()
-            ->assertJsonPath('data.0.checkout_summary.code', '3-B')
-            ->assertJsonPath('data.0.checkout_summary.label', '3 - B')
-            ->assertJsonPath('summary.total_debit', '240.00')
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('summary.total_debit', '0.00')
             ->assertJsonPath('summary.total_credit', '0.00')
-            ->assertJsonPath('summary.balance', '240.00')
-            ->assertJsonPath('summary.total_count', 1);
+            ->assertJsonPath('summary.balance', '0.00')
+            ->assertJsonPath('summary.total_count', 0);
 
         $this
             ->getJson('/api/orders/'.$orderResponse->json('order.id'))
@@ -316,6 +314,163 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('data.remaining_items.0.logo_stock.available_total', 4);
     }
 
+    public function test_shipment_detail_matches_selected_warehouse_by_name_without_falling_back_to_total_stock(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-SHIP-ERZ-NAME');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-WH-SHIP-ERZ-NAME',
+            'sku' => '9F 1320',
+            'quantity' => 42,
+            'stock_available' => 54,
+            'stock_reserved' => 0,
+            'warehouse_code' => 'ERZ-LOCAL',
+            'product_meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'logo_stock' => [
+                                'warehouses' => [
+                                    [
+                                        'warehouse_code' => '0',
+                                        'warehouse_name' => 'ERZURUM POINT',
+                                        'available_total' => 13,
+                                    ],
+                                    [
+                                        'warehouse_code' => '1',
+                                        'warehouse_name' => 'ERZURUM DEPO',
+                                        'available_total' => 41,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $ctx['warehouse']->forceFill(['name' => 'Erzurum Depo'])->save();
+
+        $shipmentId = (int) $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+            'warehouse_name' => 'ERZURUM DEPO',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.remaining_items.0.logo_stock.available_total', 41)
+            ->json('data.shipment.id');
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/scan", [
+            'barcode' => $ctx['product']->sku,
+            'qty' => 42,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.shipment.status', 'picking')
+            ->assertJsonPath('data.shipped_items.0.shipped_qty', 41)
+            ->assertJsonPath('data.remaining_items.0.remaining_qty', 1)
+            ->assertJsonPath('data.remaining_items.0.logo_stock.available_total', 41);
+    }
+
+    public function test_shipment_uses_assigned_warehouse_staff_location_over_auto_stock_choice(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-SHIP-STAFF-LOC');
+        $admin = $this->createUserWithRole('admin', $dealer);
+        $erzurumWarehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $erzurumWarehouseUser->forceFill(['name' => 'ERZURUM DEPO'])->save();
+        $this->actingAs($admin);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $admin, [
+            'order_no' => 'ORD-WH-SHIP-STAFF-LOC',
+            'sku' => '9F 1320 STAFF',
+            'quantity' => 42,
+            'stock_available' => 154,
+            'stock_reserved' => 0,
+            'warehouse_code' => '2',
+            'product_meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'logo_stock' => [
+                                'warehouses' => [
+                                    [
+                                        'warehouse_code' => '1',
+                                        'warehouse_name' => null,
+                                        'available_total' => 41,
+                                    ],
+                                    [
+                                        'warehouse_code' => '2',
+                                        'warehouse_name' => null,
+                                        'available_total' => 54,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        Warehouse::query()->firstOrCreate(
+            ['code' => '1'],
+            ['name' => 'ERZURUM DEPO', 'is_active' => true]
+        );
+
+        $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+            'warehouse_code' => '2',
+            'warehouse_name' => 'TRABZON DEPO',
+            'assigned_user_id' => $erzurumWarehouseUser->id,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.shipment.warehouse.code', '1')
+            ->assertJsonPath('data.shipment.warehouse.name', 'ERZURUM DEPO')
+            ->assertJsonPath('data.remaining_items.0.logo_stock.available_total', 41);
+    }
+
+    public function test_reopening_unpicked_shipment_updates_it_to_the_requested_warehouse(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-SHIP-REASSIGN');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-WH-SHIP-REASSIGN',
+            'sku' => 'SKU-WH-SHIP-REASSIGN',
+            'quantity' => 5,
+            'warehouse_code' => '0',
+        ]);
+        $erzurumWarehouse = Warehouse::query()->create([
+            'code' => '1',
+            'name' => 'ERZURUM DEPO',
+            'is_active' => true,
+        ]);
+
+        $firstResponse = $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+        ])->assertCreated();
+
+        $shipmentId = (int) $firstResponse->json('data.shipment.id');
+
+        $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $erzurumWarehouse->id,
+            'warehouse_code' => '1',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.shipment.id', $shipmentId)
+            ->assertJsonPath('data.shipment.warehouse.id', $erzurumWarehouse->id)
+            ->assertJsonPath('data.shipment.warehouse.code', '1');
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $shipmentId,
+            'warehouse_id' => $erzurumWarehouse->id,
+        ]);
+    }
+
     public function test_batum_checkout_does_not_write_checkout_summary_mode(): void
     {
         $dealer = $this->createDealer('DLR-BATUM-SUMMARY');
@@ -378,12 +533,10 @@ class WarehouseShipmentApiTest extends TestCase
 
         $orderResponse->assertCreated();
 
-        $invoiceEntry = LedgerEntry::query()
-            ->where('order_id', $orderResponse->json('order.id'))
-            ->where('type', 'invoice')
-            ->firstOrFail();
-
-        $this->assertNull($invoiceEntry->meta['checkout_summary']);
+        $this->assertDatabaseMissing('ledger_entries', [
+            'order_id' => $orderResponse->json('order.id'),
+            'type' => 'invoice',
+        ]);
     }
 
     public function test_customer_ledger_can_filter_by_collection_method(): void
@@ -458,8 +611,68 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.reference_no', 'TRF-001')
+            ->assertJsonPath('data.0.collection_method', 'transfer')
+            ->assertJsonPath('data.0.collection_method_label', 'Havale / EFT')
             ->assertJsonPath('summary.total_credit', '250.00')
             ->assertJsonPath('summary.total_count', 1);
+    }
+
+    public function test_customer_ledger_hides_legacy_order_checkout_balance_rows(): void
+    {
+        $dealer = $this->createDealer('DLR-LEDGER-PROVISIONAL');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $salesperson->id,
+            'code' => 'CR-LEDGER-PROVISIONAL',
+            'name' => 'Provisional Ledger Customer',
+            'is_active' => true,
+        ]);
+
+        LedgerEntry::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'date' => now()->toDateString(),
+            'type' => 'invoice',
+            'debit' => 600,
+            'credit' => 0,
+            'balance_after' => 600,
+            'entry_date' => now()->toDateString(),
+            'entry_type' => 'debit',
+            'amount' => 600,
+            'currency' => 'TRY',
+            'reference_no' => 'ORDER-PROVISIONAL',
+            'meta' => ['source' => 'order_checkout'],
+        ]);
+
+        LedgerEntry::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'logo',
+            'source_reference' => 'LOGO-INVOICE-REAL',
+            'date' => now()->toDateString(),
+            'type' => 'invoice',
+            'debit' => 300,
+            'credit' => 0,
+            'balance_after' => 300,
+            'entry_date' => now()->toDateString(),
+            'entry_type' => 'debit',
+            'amount' => 300,
+            'currency' => 'TRY',
+            'reference_no' => 'LOGO-INVOICE-REAL',
+            'meta' => ['source' => 'logo_shipment_invoice'],
+        ]);
+
+        $this->actingAs($salesperson)
+            ->getJson("/api/customers/{$customer->id}/ledger")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.reference_no', 'LOGO-INVOICE-REAL')
+            ->assertJsonPath('data.0.transaction_type', 'invoice')
+            ->assertJsonPath('data.0.transaction_type_label', 'Fatura')
+            ->assertJsonPath('data.0.document_no', 'LOGO-INVOICE-REAL')
+            ->assertJsonPath('summary.total_debit', '300.00')
+            ->assertJsonPath('summary.balance', '300.00');
     }
 
     public function test_packing_slip_print_returns_html(): void
@@ -754,7 +967,7 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('order.subtotal', '400.00')
             ->assertJsonPath('order.tax_total', '80.00')
             ->assertJsonPath('order.grand_total', '480.00')
-            ->assertJsonPath('order.items.0.logo_stock.available_total', 18)
+            ->assertJsonPath('order.items.0.logo_stock.available_total', 20)
             ->assertJsonPath('order.items.0.logo_stock.reserved_total', 7);
 
         $this->assertDatabaseHas('order_items', [
@@ -773,9 +986,9 @@ class WarehouseShipmentApiTest extends TestCase
         $this->assertDatabaseHas('ledger_entries', [
             'order_id' => $ctx['order']->id,
             'type' => 'invoice',
-            'debit' => '480.00',
-            'amount' => '480.00',
-            'balance_after' => '480.00',
+            'debit' => '240.00',
+            'amount' => '240.00',
+            'balance_after' => '240.00',
         ]);
 
         $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-QTY-001')
@@ -1198,7 +1411,7 @@ class WarehouseShipmentApiTest extends TestCase
         ]);
     }
 
-    public function test_finalize_uses_available_stock_when_reserved_stock_is_missing(): void
+    public function test_finalize_does_not_decrement_physical_stock_before_logo_sync(): void
     {
         $dealer = $this->createDealer('DLR-FIN-RESERVE-GAP');
         $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
@@ -1226,7 +1439,7 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('data.shipment.status', 'shipped');
 
         $stock = StockSummary::query()->findOrFail($ctx['product']->id);
-        $this->assertSame(3, (int) $stock->available_total);
+        $this->assertSame(5, (int) $stock->available_total);
         $this->assertSame(0, (int) $stock->reserved_total);
     }
 
@@ -1280,6 +1493,65 @@ class WarehouseShipmentApiTest extends TestCase
         $this->getJson('/api/warehouse/orders/ready?q=ORD-FIN-INCOMPLETE')
             ->assertOk()
             ->assertJsonCount(0, 'data');
+    }
+
+    public function test_finalize_rechecks_current_stock_and_keeps_new_shortage_as_balance(): void
+    {
+        $dealer = $this->createDealer('DLR-FIN-LIVE-STOCK-CAP');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-FIN-LIVE-STOCK-CAP',
+            'quantity' => 3,
+            'stock_available' => 3,
+            'stock_reserved' => 0,
+        ]);
+
+        $shipmentId = (int) $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+        ])->json('data.shipment.id');
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/scan", [
+            'barcode' => $ctx['product']->sku,
+            'qty' => 3,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.shipped_items.0.shipped_qty', 3);
+
+        StockSummary::query()
+            ->whereKey($ctx['product']->id)
+            ->update(['available_total' => 2]);
+
+        $this->postJson("/api/warehouse/shipments/{$shipmentId}/finalize")
+            ->assertOk()
+            ->assertJsonPath('data.shipment.status', 'partially_shipped')
+            ->assertJsonPath('data.shipment.order.status', 'balance')
+            ->assertJsonPath('data.totals.shipped_qty_total', 2)
+            ->assertJsonPath('data.totals.remaining_qty_total', 1);
+
+        $this->assertDatabaseHas('shipment_items', [
+            'shipment_id' => $shipmentId,
+            'product_id' => $ctx['product']->id,
+            'ordered_qty' => 3,
+            'shipped_qty' => 2,
+            'line_total_shipped' => '200.00',
+        ]);
+
+        $this->assertDatabaseHas('order_items', [
+            'id' => $ctx['orderItem']->id,
+            'quantity' => 3,
+            'shipped_qty' => 2,
+        ]);
+
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $ctx['product']->id,
+            'type' => 'out',
+            'source' => 'shipment',
+            'source_id' => $shipmentId,
+            'qty' => '2.000',
+        ]);
     }
 
     public function test_salesperson_order_seven_with_stock_five_lists_only_two_as_balance(): void
@@ -1354,7 +1626,7 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('data.0.remaining_quantity', 2);
     }
 
-    public function test_finalize_rechecks_and_decrements_selected_warehouse_stock(): void
+    public function test_finalize_rechecks_but_does_not_decrement_warehouse_stock_before_logo_sync(): void
     {
         $dealer = $this->createDealer('DLR-FIN-WAREHOUSE-STOCK');
         $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
@@ -1402,7 +1674,7 @@ class WarehouseShipmentApiTest extends TestCase
 
         $ctx['product']->refresh();
         $this->assertSame(
-            0,
+            2,
             (int) data_get(
                 $ctx['product']->meta,
                 'integrations.logo.payload.logo_stock.warehouses.0.available_total'
@@ -1527,6 +1799,31 @@ class WarehouseShipmentApiTest extends TestCase
             'status' => 'synced',
             'external_ref' => 'INVOICE-12345',
         ]);
+        $this->assertDatabaseHas('ledger_entries', [
+            'customer_id' => $ctx['customer']->id,
+            'order_id' => $ctx['order']->id,
+            'source_system' => 'logo',
+            'source_reference' => 'INVOICE-12345',
+            'type' => 'invoice',
+            'debit' => '120.00',
+            'amount' => '120.00',
+        ]);
+
+        app(LogoShipmentExportService::class)->acknowledge([
+            'records' => [[
+                'shipment_id' => $shipmentId,
+                'status' => 'synced',
+                'external_ref' => 'INVOICE-12345',
+            ]],
+        ]);
+
+        $this->assertSame(
+            1,
+            LedgerEntry::query()
+                ->where('source_system', 'logo')
+                ->where('source_reference', 'INVOICE-12345')
+                ->count()
+        );
     }
 
     public function test_cancel_after_finalize_reverses_stock_and_marks_cancelled(): void

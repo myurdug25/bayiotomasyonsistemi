@@ -12,6 +12,7 @@
     "sync:pos-sales": "node logo-pos-sales-export.mjs",
     "sync:pos-expenses": "node logo-pos-expenses-export.mjs",
     "sync:documents-export": "node logo-documents-export.mjs",
+    "sync:finance-definitions": "node logo-finance-definitions-sync.mjs",
     "sync:shipment-immediate-bridge": "node logo-shipment-immediate-bridge.mjs",
     "sync:all": "node logo-sync-all.mjs",
     "sync:daemon": "node logo-sync-daemon.mjs",

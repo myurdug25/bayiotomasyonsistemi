@@ -18,8 +18,6 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import { useCart } from "@/components/cart/cart-provider";
-import { SearchSelect } from "@/components/ui/search-select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CampaignPanel } from "@/components/campaigns/campaign-progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -41,7 +39,6 @@ import {
   resolveApiBaseUrl,
   searchProducts,
   fetchCampaignProgress,
-  type CampaignProgressDto,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -253,6 +250,51 @@ function formatProductModalPrice(product: ProductSearchItem, value: string | nul
   const vatRate = parseDecimalValue(product.vat_rate) ?? 0;
 
   return formatProductAmount(includeVat ? parsed * (1 + vatRate / 100) : parsed, product.currency);
+}
+
+function campaignTierUnitPrice(
+  product: ProductSearchItem,
+  tier: {
+    unit_price: string | null;
+    discount_percent?: number | null;
+  }
+): number | null {
+  const fixedPrice = parseDecimalValue(tier.unit_price);
+  if (fixedPrice !== null) {
+    return fixedPrice;
+  }
+
+  const basePrice = parseDecimalValue(product.net_price ?? product.list_price);
+  if (basePrice === null || tier.discount_percent === null || tier.discount_percent === undefined) {
+    return null;
+  }
+
+  return Math.max(0, basePrice * (1 - Number(tier.discount_percent) / 100));
+}
+
+function formatCampaignTierPrice(
+  product: ProductSearchItem,
+  tier: {
+    min_quantity: number;
+    unit_price: string | null;
+    currency?: string | null;
+    discount_percent?: number | null;
+  },
+  includeVat: boolean
+): { unit: string; total: string } {
+  const unitPrice = campaignTierUnitPrice(product, tier);
+  const vatRate = parseDecimalValue(product.vat_rate) ?? 0;
+  const displayUnitPrice =
+    unitPrice === null ? null : includeVat ? unitPrice * (1 + vatRate / 100) : unitPrice;
+  const currency = tier.unit_price ? tier.currency : product.currency;
+
+  return {
+    unit: formatProductAmount(displayUnitPrice, currency),
+    total: formatProductAmount(
+      displayUnitPrice === null ? null : displayUnitPrice * Math.max(1, tier.min_quantity),
+      currency
+    ),
+  };
 }
 
 function formatPackageQuantity(value: string | number | null | undefined): string {
@@ -1160,8 +1202,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const campaignProgressQuery = useQuery({
     queryKey: ["campaignProgress", selectedCustomer?.id],
     queryFn: async () => {
-      if (!selectedCustomer?.id) return { campaigns: [], eligible_campaigns: [] };
-      return fetchCampaignProgress();
+      if (!selectedCustomer?.id) return { data: [] };
+      return fetchCampaignProgress(selectedCustomer.id);
     },
     enabled: Boolean(selectedCustomer?.id),
     staleTime: 60_000, // 1 dakika
@@ -1169,15 +1211,15 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
   const campaignSkuMap = useMemo(() => {
     const map = new Map<string, { id: number; name: string }[]>();
-    const allCampaigns = campaignProgressQuery.data?.campaigns || [];
+    const allCampaigns = campaignProgressQuery.data?.data || [];
     
     for (const campaign of allCampaigns) {
-      for (const product of campaign.products || []) {
-        if (!product.sku) continue;
+      for (const sku of campaign.product_skus || []) {
+        if (!sku) continue;
         
-        const existing = map.get(product.sku) || [];
-        existing.push({ id: campaign.id, name: campaign.name });
-        map.set(product.sku, existing);
+        const existing = map.get(sku) || [];
+        existing.push({ id: campaign.campaign_id, name: campaign.name });
+        map.set(sku, existing);
       }
     }
     
@@ -1314,6 +1356,14 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
     return campaign && tier ? { campaign, tier } : null;
   }, [cartModalCampaignKey, cartModalCampaigns, cartModalQuantity]);
+  const cartModalApplicableCampaignPrice =
+    cartModalProduct && cartModalApplicableCampaign
+      ? formatCampaignTierPrice(
+          cartModalProduct,
+          cartModalApplicableCampaign.tier,
+          cartPricesIncludeVat
+        )
+      : null;
 
   const resetCalculator = useCallback(() => {
     setCalculatorDisplay("0");
@@ -1513,9 +1563,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="admin-catalog-page space-y-4">
-      {campaignProgressQuery.data && campaignProgressQuery.data.campaigns.length > 0 && (
-        <CampaignPanel campaigns={campaignProgressQuery.data} />
-      )}
+      {campaignProgressQuery.data?.data && campaignProgressQuery.data.data.length > 0 ? (
+        <CampaignPanel campaigns={campaignProgressQuery.data.data} />
+      ) : null}
       <Card className="admin-catalog-list dashboard-panel-card min-h-[560px]">
         <CardHeader className="space-y-3 pb-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1849,8 +1899,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
           }
         }}
       >
-        <DialogContent className="z-[60] max-h-[calc(100vh-32px)] max-w-[820px] overflow-hidden rounded-[30px] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(213,205,42,0.1)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_55%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)]">
-	          <DialogHeader className="mb-0 border-b border-white/10 px-6 py-5">
+        <DialogContent className="z-[60] flex max-h-[calc(100dvh-16px)] max-w-[820px] flex-col overflow-hidden rounded-[30px] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(213,205,42,0.1)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_55%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)] sm:max-h-[calc(100dvh-32px)]">
+	          <DialogHeader className="mb-0 shrink-0 border-b border-white/10 px-6 py-5">
 	            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px] md:items-start">
 	              <div className="min-w-0">
 	                <DialogTitle className="flex items-center gap-3 text-3xl font-black text-white">
@@ -1904,7 +1954,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	          </DialogHeader>
 
           {cartModalProduct ? (
-            <div className="px-6 py-5">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">
               <div className={cn("grid gap-3 sm:grid-cols-2", cartModalProduct.special_discounted_price ? "xl:grid-cols-4" : "xl:grid-cols-3")}>
                 <div className="rounded-2xl border border-[#d8cf42]/20 bg-[#d8cf42]/[0.08] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
 	                  <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -1972,7 +2022,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                       </div>
                       {cartModalApplicableCampaign ? (
                         <span className="rounded-full border border-emerald-300/25 bg-emerald-300/12 px-3 py-1 text-xs font-black text-emerald-100">
-                          Aktif: {formatPriceValue(cartModalApplicableCampaign.tier.unit_price, cartModalApplicableCampaign.tier.currency)}
+                          Aktif: {cartModalApplicableCampaign.tier.discount_percent ? `%${cartModalApplicableCampaign.tier.discount_percent} İndirim` : "Kampanya"} · {cartModalApplicableCampaignPrice?.unit ?? "-"} / birim
                         </span>
                       ) : null}
                     </div>
@@ -1999,20 +2049,36 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                               <div>
                                 <p className="font-black text-white">{campaign.name}</p>
                                 <div className="mt-2 flex flex-wrap gap-2">
-                                  {campaign.tiers.map((tier) => (
-                                    <span
-                                      key={`${campaign.key}-${tier.min_quantity}-${tier.unit_price}`}
-                                      className={cn(
-                                        "rounded-full border px-2.5 py-1 text-[11px] font-black",
-                                        applicableTier === tier
-                                          ? "border-amber-200/35 bg-amber-200/15 text-amber-100"
-                                          : "border-white/10 bg-white/[0.04] text-slate-400"
-                                      )}
-                                    >
-                                      {tier.min_quantity > 1 ? `${tier.min_quantity}+ adet` : "Tekli"} ·{" "}
-                                      {formatPriceValue(tier.unit_price, tier.currency)}
-                                    </span>
-                                  ))}
+                                  {campaign.tiers.map((tier) => {
+                                    const tierPrice = formatCampaignTierPrice(
+                                      cartModalProduct,
+                                      tier,
+                                      cartPricesIncludeVat
+                                    );
+
+                                    return (
+                                      <div
+                                        key={`${campaign.key}-${tier.min_quantity}-${tier.unit_price}`}
+                                        className={cn(
+                                          "min-w-[190px] rounded-xl border px-3 py-2 text-[11px] font-black",
+                                          applicableTier === tier
+                                            ? "border-amber-200/35 bg-amber-200/15 text-amber-100"
+                                            : "border-white/10 bg-white/[0.04] text-slate-400"
+                                        )}
+                                      >
+                                        <p>
+                                          {tier.min_quantity > 1 ? `${tier.min_quantity}+ adet` : "Tekli"} ·{" "}
+                                          {tier.discount_percent ? `%${tier.discount_percent} İndirim` : "Kampanya fiyatı"}
+                                        </p>
+                                        <p className="mt-1 text-sm text-emerald-200">
+                                          Birim: {tierPrice.unit}
+                                        </p>
+                                        <p className="mt-0.5 text-[10px] text-slate-400">
+                                          {tier.min_quantity} adet toplam: {tierPrice.total}
+                                        </p>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               </div>
                               <Button
@@ -2155,7 +2221,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
             </div>
           ) : null}
 
-          <DialogFooter className="mt-0 flex-col gap-4 border-t border-white/10 bg-black/12 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <DialogFooter className="mt-0 shrink-0 flex-col gap-4 border-t border-white/10 bg-black/12 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex h-12 items-center gap-2 rounded-full border border-emerald-300/18 bg-emerald-300/10 px-4 text-sm font-black text-emerald-100">
                 Stok <strong className="text-lg text-emerald-300">{cartModalProduct?.available_total.toLocaleString("tr-TR") ?? "-"}</strong>

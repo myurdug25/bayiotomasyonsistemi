@@ -407,7 +407,7 @@ BEGIN
         THROW 51010, 'Logo customer could not be resolved for collection export.', 1;
 
     IF LOWER(COALESCE(@Method, N'')) IN (N'transfer', N'cc')
-       AND JSON_VALUE(@PayloadJson, '$.reference_fields.collection_channel') <> N'factory'
+       AND ISNULL(JSON_VALUE(@PayloadJson, '$.reference_fields.collection_channel'), N'') <> N'factory'
     BEGIN
         BEGIN TRANSACTION;
         EXEC dbo.PowersaB2B_WriteBankCollection

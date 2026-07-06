@@ -240,6 +240,173 @@ class LogoLedgerSyncApiTest extends TestCase
         ]);
     }
 
+    public function test_logo_ledger_sync_reconciles_provisional_shipment_invoice_instead_of_creating_duplicate_debt(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-RECONCILE',
+            'name' => 'Reconcile Dealer',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1672',
+            'code' => '120-00-086',
+            'name' => 'Murat Market',
+            'is_active' => true,
+        ]);
+
+        $provisional = LedgerEntry::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'logo',
+            'source_reference' => 'INVOICE-41',
+            'date' => '2026-07-06',
+            'type' => 'invoice',
+            'debit' => 4519.92,
+            'credit' => 0,
+            'balance_after' => 4519.92,
+            'entry_date' => '2026-07-06',
+            'entry_type' => 'debit',
+            'amount' => 4519.92,
+            'currency' => 'TRY',
+            'reference_no' => 'SHP-20260706134502-ONTS',
+            'description' => 'Logo sevkiyat faturasi SHP-20260706134502-ONTS',
+            'meta' => [
+                'source' => 'logo_shipment_invoice',
+                'shipment_id' => 40,
+                'shipment_no' => 'SHP-20260706134502-ONTS',
+                'order_no' => 'ORD-20260706134456-D36N',
+            ],
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/ledger/sync', [
+                'dealer_id' => $dealer->id,
+                'records' => [[
+                    'customer_external_ref' => $customer->source_reference,
+                    'external_ref' => '159',
+                    'date' => '2026-07-06',
+                    'type' => 'debit',
+                    'debit' => 4519.92,
+                    'credit' => 0,
+                    'currency' => 'TRY',
+                    'reference_no' => 'F0000001269699785',
+                    'description' => 'SHP-20260706134502-ONTS',
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('summary.created', 0)
+            ->assertJsonPath('summary.updated', 1)
+            ->assertJsonPath('summary.duplicates_removed', 0);
+
+        $this->assertSame(1, LedgerEntry::query()->where('customer_id', $customer->id)->count());
+
+        $provisional->refresh();
+        $this->assertSame('159', $provisional->source_reference);
+        $this->assertSame('invoice', $provisional->type);
+        $this->assertSame('F0000001269699785', $provisional->reference_no);
+        $this->assertSame('logo_ledger', data_get($provisional->meta, 'source'));
+        $this->assertSame(40, data_get($provisional->meta, 'shipment_id'));
+        $this->assertNotNull(data_get($provisional->meta, 'provisional_reconciled_at'));
+    }
+
+    public function test_logo_ledger_sync_removes_existing_exact_shipment_invoice_duplicate(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-RECONCILE-OLD',
+            'name' => 'Reconcile Existing Dealer',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1673',
+            'code' => '120-00-087',
+            'name' => 'Existing Duplicate Cari',
+            'is_active' => true,
+        ]);
+
+        $provisional = LedgerEntry::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'logo',
+            'source_reference' => 'INVOICE-42',
+            'date' => '2026-07-06',
+            'type' => 'invoice',
+            'debit' => 7914,
+            'credit' => 0,
+            'balance_after' => 7914,
+            'entry_date' => '2026-07-06',
+            'entry_type' => 'debit',
+            'amount' => 7914,
+            'currency' => 'TRY',
+            'reference_no' => 'SHP-EXISTING-DUPLICATE',
+            'description' => 'Logo sevkiyat faturasi SHP-EXISTING-DUPLICATE',
+            'meta' => [
+                'source' => 'logo_shipment_invoice',
+                'shipment_id' => 42,
+                'shipment_no' => 'SHP-EXISTING-DUPLICATE',
+                'order_no' => 'ORD-EXISTING-DUPLICATE',
+            ],
+        ]);
+
+        $authoritative = LedgerEntry::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'logo',
+            'source_reference' => '160',
+            'date' => '2026-07-06',
+            'type' => 'debit',
+            'debit' => 7914,
+            'credit' => 0,
+            'balance_after' => 15828,
+            'entry_date' => '2026-07-06',
+            'entry_type' => 'debit',
+            'amount' => 7914,
+            'currency' => 'TRY',
+            'reference_no' => 'F0000000000000160',
+            'description' => 'SHP-EXISTING-DUPLICATE',
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'external_ref' => '160',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/ledger/sync', [
+                'dealer_id' => $dealer->id,
+                'records' => [[
+                    'customer_external_ref' => $customer->source_reference,
+                    'external_ref' => '160',
+                    'date' => '2026-07-06',
+                    'type' => 'debit',
+                    'debit' => 7914,
+                    'credit' => 0,
+                    'currency' => 'TRY',
+                    'reference_no' => 'F0000000000000160',
+                    'description' => 'SHP-EXISTING-DUPLICATE',
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('summary.duplicates_removed', 1);
+
+        $this->assertDatabaseMissing('ledger_entries', ['id' => $provisional->id]);
+
+        $authoritative->refresh();
+        $this->assertSame('invoice', $authoritative->type);
+        $this->assertSame('logo_ledger', data_get($authoritative->meta, 'source'));
+        $this->assertSame(42, data_get($authoritative->meta, 'shipment_id'));
+        $this->assertSame('7914.00', $authoritative->balance_after);
+    }
+
     public function test_logo_ledger_sync_links_existing_b2b_collection_instead_of_creating_duplicate_logo_collection(): void
     {
         $dealer = Dealer::query()->create([

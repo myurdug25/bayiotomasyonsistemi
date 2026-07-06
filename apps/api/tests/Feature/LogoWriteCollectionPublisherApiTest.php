@@ -402,6 +402,7 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
                 ->assertCreated()
                 ->assertJsonPath('collection.reference_no', $expectedReference)
                 ->assertJsonPath('collection.note', "{$expectedReference} ABC Ticaret YAPI KREDI")
+                ->assertJsonPath('collection.reference_fields.collection_channel', 'physical_pos')
                 ->assertJsonPath('collection.reference_fields.bank_logo_code', '02')
                 ->assertJsonMissingPath('collection.meta.cashbox_id');
         }

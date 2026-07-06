@@ -13,6 +13,7 @@ import {
   validateLogoConfig,
   validateStepConfig,
 } from "./logo-documents-export.mjs";
+import { triggerTargetedStockSync } from "./logo-targeted-stock-sync.mjs";
 
 const config = buildConfig();
 const host = process.env.LOGO_SHIPMENT_IMMEDIATE_BRIDGE_HOST ?? "127.0.0.1";
@@ -73,6 +74,7 @@ async function handleRequest(request, response, step) {
     await pool.connect();
     const procedureParameters = await loadProcedureParameters(pool, step.procedure, step.label);
     const externalReference = await exportRecord(pool, step, record, procedureParameters);
+    triggerTargetedStockSync([record], "shipment_invoice_immediate");
 
     sendJson(response, 200, {
       status: "synced",

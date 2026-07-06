@@ -751,8 +751,8 @@ export function OrdersPage() {
                             return (
                               <tr key={item.id} className="border-b border-white/10">
                                 <td className="py-2">
-                                  <p className="font-black text-white">{item.name ?? "-"}</p>
-                                  <p className="text-xs font-semibold text-slate-500">{item.sku ?? "-"}</p>
+                                  <p className="text-base font-black text-yellow-100">{item.sku ?? "-"}</p>
+                                  <p className="mt-0.5 text-xs font-semibold text-slate-400">{item.name ?? "-"}</p>
                                 </td>
                                 <td className="py-2 font-semibold text-slate-300">{item.brand ?? "-"}</td>
                                 <td className={`py-2 text-right font-black ${detailIsBalance ? "text-xl text-yellow-100" : "text-slate-100"}`}>

@@ -110,7 +110,9 @@ class CartItemController extends Controller
                 ->find($productId);
 
             if ($product && $product->stockSummary) {
-                $available = max(0, (int) $product->stockSummary->available_total);
+                $physicalStock = max(0, (int) $product->stockSummary->available_total);
+                $reservedStock = max(0, (int) $product->stockSummary->reserved_total);
+                $available = max(0, $physicalStock - $reservedStock);
                 $allowsBackorder = $forceWarehouseTransfer || (bool) $cart->is_warehouse_transfer;
                 if (! $allowsBackorder && $quantity > $available) {
                     throw ValidationException::withMessages([
@@ -129,7 +131,13 @@ class CartItemController extends Controller
                 ? trim((string) $validated['campaign_key'])
                 : null;
             $campaignPrice = $campaignKey !== null && $campaignKey !== ''
-                ? app(ProductCampaignPricing::class)->resolve($productId, $campaignKey, $quantity, $user)
+                ? app(ProductCampaignPricing::class)->resolve(
+                    $productId,
+                    $campaignKey,
+                    $quantity,
+                    $user,
+                    $customerId
+                )
                 : null;
 
             if ($campaignKey !== null && $campaignKey !== '' && $campaignPrice === null) {
@@ -141,7 +149,9 @@ class CartItemController extends Controller
             $unitPrice = (float) ($campaignPrice['unit_price'] ?? $price['net_price']);
             $priceCurrency = (string) ($campaignPrice['currency'] ?? $price['currency']);
             if ($campaignPrice !== null) {
-                $discountRate = 0.0;
+                $discountRate = $campaignPrice['discount_percent'] !== null
+                    ? (float) $campaignPrice['discount_percent']
+                    : 0.0;
             }
             $grossTotal = $unitPrice * $quantity;
             $discountAmount = $grossTotal * ($discountRate / 100);

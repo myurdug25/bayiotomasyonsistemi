@@ -19,7 +19,13 @@ class FinanceDefinitionController extends Controller
 
         $query = FinanceDefinition::query()
             ->when($validated['type'] ?? null, fn ($q, $type) => $q->where('type', $type))
-            ->when(! ($validated['include_inactive'] ?? false), fn ($q) => $q->where('is_active', true))
+            ->when(! ($validated['include_inactive'] ?? false), fn ($q) => $q
+                ->where('is_active', true)
+                ->where(function ($definitionQuery): void {
+                    $definitionQuery
+                        ->where('type', '!=', 'bank')
+                        ->orWhereNotIn('code', ['georgia_bank', 'tbc_bank']);
+                }))
             ->orderBy('type')
             ->orderBy('sort_order')
             ->orderBy('name');

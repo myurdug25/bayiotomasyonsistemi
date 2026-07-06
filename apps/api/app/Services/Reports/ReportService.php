@@ -225,6 +225,8 @@ class ReportService
                 'orders.customer_id',
                 'customers.code as customer_code',
                 'customers.name as customer_title',
+                'customers.salesperson_user_id',
+                'marketers.name as salesperson_name',
                 'orders.currency',
                 'orders.subtotal',
                 'orders.grand_total',
@@ -260,6 +262,10 @@ class ReportService
                         'id' => (int) $row->customer_id,
                         'code' => $row->customer_code,
                         'title' => $row->customer_title,
+                    ],
+                    'salesperson' => [
+                        'id' => $row->salesperson_user_id !== null ? (int) $row->salesperson_user_id : null,
+                        'name' => $row->salesperson_name ?? 'Atanmamış',
                     ],
                     'currency' => $row->currency,
                     'subtotal' => $this->money($row->subtotal),
@@ -394,11 +400,16 @@ class ReportService
     {
         $dealerId = $this->resolveDealerIdOrFail($user, $filters['dealer_id'] ?? null);
         $perPage = min((int) ($filters['per_page'] ?? 25), 100);
+        $top = in_array((int) ($filters['top'] ?? 20), [10, 20, 50], true)
+            ? (int) ($filters['top'] ?? 20)
+            : 20;
         $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
         $collectionDateExpr = "COALESCE(collections.{$dateCol}, collections.collection_date)";
+        $normalizedMethodExpr = $this->normalizedCollectionMethodSql();
 
         $base = CollectionModel::query()
             ->join('customers', 'customers.id', '=', 'collections.customer_id')
+            ->leftJoin('users as collectors', 'collectors.id', '=', 'collections.collected_by_user_id')
             ->when($dealerId !== null, fn (EloquentBuilder $query) => $query->where('collections.dealer_id', $dealerId))
             ->where('customers.source_system', 'logo')
             ->when(
@@ -411,14 +422,30 @@ class ReportService
             )
             ->when(
                 ! empty($filters['method']),
-                fn (EloquentBuilder $q) => $q->where('collections.method', (string) $filters['method'])
+                fn (EloquentBuilder $q) => $q->whereRaw("{$normalizedMethodExpr} = ?", [(string) $filters['method']])
             )
             ->when(
                 ! empty($filters['customer_id']),
                 fn (EloquentBuilder $q) => $q->where('collections.customer_id', (int) $filters['customer_id'])
+            )
+            ->when(
+                ! empty($filters['q']),
+                function (EloquentBuilder $q) use ($filters): void {
+                    $search = trim((string) $filters['q']);
+                    $q->where(function (EloquentBuilder $inner) use ($search): void {
+                        $inner
+                            ->where('customers.code', 'like', "{$search}%")
+                            ->orWhere('customers.name', 'like', "%{$search}%");
+                    });
+                }
             );
 
         $this->customerAccessScope->applyToCustomerOwnedQuery($base, $user, 'collections.customer_id');
+        $collectorOptionsBase = clone $base;
+        $base->when(
+            ! empty($filters['collector_id']),
+            fn (EloquentBuilder $q) => $q->where('collections.collected_by_user_id', (int) $filters['collector_id'])
+        );
 
         $summary = (clone $base)
             ->reorder()
@@ -428,15 +455,15 @@ class ReportService
 
         $methodBreakdown = (clone $base)
             ->reorder()
-            ->select('collections.method')
+            ->selectRaw("{$normalizedMethodExpr} as normalized_method")
             ->selectRaw('COUNT(*) as collection_count')
             ->selectRaw('COALESCE(SUM(collections.amount), 0) as total')
-            ->groupBy('collections.method')
+            ->groupByRaw($normalizedMethodExpr)
             ->orderByDesc('total')
             ->get()
-            ->keyBy('method');
+            ->keyBy('normalized_method');
 
-        $methods = collect(['cash', 'transfer', 'check', 'note', 'cc'])
+        $methods = collect(['cash', 'cc', 'factory_cc', 'transfer', 'check', 'note'])
             ->map(function (string $method) use ($methodBreakdown): array {
                 $row = $methodBreakdown->get($method);
 
@@ -446,6 +473,110 @@ class ReportService
                     'total' => $this->money($row?->total),
                 ];
             })
+            ->values();
+
+        $collectorMetrics = $collectorOptionsBase
+            ->reorder()
+            ->selectRaw('collections.collected_by_user_id as user_id')
+            ->selectRaw("COALESCE(collectors.name, 'Atanmamış') as user_name")
+            ->selectRaw('COUNT(*) as collection_count')
+            ->selectRaw('COUNT(DISTINCT collections.customer_id) as customer_count')
+            ->selectRaw('COALESCE(SUM(collections.amount), 0) as total')
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'cash' THEN collections.amount ELSE 0 END), 0) as cash_total")
+            ->selectRaw('0 as card_total')
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'cc' THEN collections.amount ELSE 0 END), 0) as pos_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'factory_cc' THEN collections.amount ELSE 0 END), 0) as factory_card_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'transfer' THEN collections.amount ELSE 0 END), 0) as transfer_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'check' THEN collections.amount ELSE 0 END), 0) as check_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'note' THEN collections.amount ELSE 0 END), 0) as note_total")
+            ->selectRaw("MAX({$collectionDateExpr}) as last_collection_date")
+            ->groupBy('collections.collected_by_user_id', 'collectors.name')
+            ->orderByDesc('total')
+            ->limit(100)
+            ->get()
+            ->keyBy(fn ($row): int => (int) $row->user_id);
+
+        $collectorOptions = User::query()
+            ->select(['users.id', 'users.name'])
+            ->where('users.is_active', true)
+            ->whereHas('roles', fn (EloquentBuilder $query) => $query->where('slug', 'salesperson'))
+            ->when(
+                $dealerId !== null,
+                fn (EloquentBuilder $query) => $query->where('users.dealer_id', $dealerId)
+            )
+            ->when(
+                $user->hasRole('salesperson') && ! $user->hasRole('admin') && ! $user->hasRole('dealer_admin'),
+                fn (EloquentBuilder $query) => $query->whereKey($user->id)
+            )
+            ->orderBy('users.name')
+            ->get()
+            ->map(fn (User $collector): array => [
+                'id' => (int) $collector->id,
+                'name' => $collector->name,
+            ])
+            ->values();
+
+        $collectorBreakdown = $collectorOptions
+            ->map(function (array $collector) use ($collectorMetrics): array {
+                $row = $collectorMetrics->get($collector['id']);
+                $count = (int) ($row?->collection_count ?? 0);
+                $total = (float) ($row?->total ?? 0);
+
+                return [
+                    'user_id' => $collector['id'],
+                    'user_name' => $collector['name'],
+                    'collection_count' => $count,
+                    'customer_count' => (int) ($row?->customer_count ?? 0),
+                    'total' => $this->money($total),
+                    'cash_total' => $this->money($row?->cash_total),
+                    'card_total' => $this->money($row?->card_total),
+                    'pos_total' => $this->money($row?->pos_total),
+                    'factory_card_total' => $this->money($row?->factory_card_total),
+                    'transfer_total' => $this->money($row?->transfer_total),
+                    'check_total' => $this->money($row?->check_total),
+                    'note_total' => $this->money($row?->note_total),
+                    'average' => $this->money($count > 0 ? $total / $count : 0),
+                    'last_collection_date' => $row?->last_collection_date,
+                ];
+            })
+            ->sortByDesc(fn (array $row): float => (float) $row['total'])
+            ->values();
+
+        $customerBreakdown = (clone $base)
+            ->reorder()
+            ->select([
+                'collections.customer_id',
+                'customers.code as customer_code',
+                'customers.name as customer_title',
+            ])
+            ->selectRaw('COUNT(*) as collection_count')
+            ->selectRaw('COALESCE(SUM(collections.amount), 0) as total')
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'cash' THEN collections.amount ELSE 0 END), 0) as cash_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'cc' THEN collections.amount ELSE 0 END), 0) as card_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'factory_cc' THEN collections.amount ELSE 0 END), 0) as factory_card_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'transfer' THEN collections.amount ELSE 0 END), 0) as transfer_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'check' THEN collections.amount ELSE 0 END), 0) as check_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$normalizedMethodExpr} = 'note' THEN collections.amount ELSE 0 END), 0) as note_total")
+            ->selectRaw("MAX({$collectionDateExpr}) as last_collection_date")
+            ->groupBy('collections.customer_id', 'customers.code', 'customers.name')
+            ->orderByDesc('total')
+            ->limit($top)
+            ->get()
+            ->map(fn ($row) => [
+                'customer_id' => (int) $row->customer_id,
+                'customer_code' => $row->customer_code,
+                'customer_title' => $row->customer_title,
+                'collection_count' => (int) $row->collection_count,
+                'total' => $this->money($row->total),
+                'cash_total' => $this->money($row->cash_total),
+                'card_total' => '0.00',
+                'pos_total' => $this->money($row->card_total),
+                'factory_card_total' => $this->money($row->factory_card_total),
+                'transfer_total' => $this->money($row->transfer_total),
+                'check_total' => $this->money($row->check_total),
+                'note_total' => $this->money($row->note_total),
+                'last_collection_date' => $row->last_collection_date,
+            ])
             ->values();
 
         $dailyBreakdown = (clone $base)
@@ -463,18 +594,41 @@ class ReportService
             ])
             ->values();
 
+        $monthBucketExpr = $this->monthBucketSql($collectionDateExpr);
+        $monthlyBreakdown = (clone $base)
+            ->reorder()
+            ->selectRaw("{$monthBucketExpr} as report_month")
+            ->selectRaw('COUNT(*) as collection_count')
+            ->selectRaw('COALESCE(SUM(collections.amount), 0) as total')
+            ->groupByRaw($monthBucketExpr)
+            ->orderBy('report_month')
+            ->get()
+            ->map(fn ($row) => [
+                'month' => $row->report_month,
+                'collection_count' => (int) $row->collection_count,
+                'total' => $this->money($row->total),
+                'average' => $this->money(
+                    (int) $row->collection_count > 0
+                        ? (float) $row->total / (int) $row->collection_count
+                        : 0
+                ),
+            ])
+            ->values();
+
         $paginator = (clone $base)
             ->select([
                 'collections.id',
                 'collections.customer_id',
+                'collections.collected_by_user_id',
+                'collectors.name as collector_name',
                 'customers.code as customer_code',
                 'customers.name as customer_title',
-                'collections.method',
                 'collections.currency',
                 'collections.amount',
                 'collections.reference_no',
                 'collections.note',
             ])
+            ->selectRaw("{$normalizedMethodExpr} as method")
             ->selectRaw("DATE({$collectionDateExpr}) as collection_date")
             ->orderByRaw("{$collectionDateExpr} DESC")
             ->orderByDesc('collections.id')
@@ -488,6 +642,10 @@ class ReportService
                     'id' => (int) $row->customer_id,
                     'code' => $row->customer_code,
                     'title' => $row->customer_title,
+                ],
+                'collector' => [
+                    'id' => $row->collected_by_user_id !== null ? (int) $row->collected_by_user_id : null,
+                    'name' => $row->collector_name ?? 'Atanmamış',
                 ],
                 'date' => $row->collection_date,
                 'method' => $row->method,
@@ -505,6 +663,9 @@ class ReportService
                 'date_from' => $filters['date_from'] ?? null,
                 'date_to' => $filters['date_to'] ?? null,
                 'method' => $filters['method'] ?? null,
+                'collector_id' => isset($filters['collector_id']) ? (int) $filters['collector_id'] : null,
+                'q' => $filters['q'] ?? null,
+                'top' => $top,
             ],
             'summary' => [
                 'collection_count' => (int) ($summary?->collection_count ?? 0),
@@ -512,6 +673,10 @@ class ReportService
             ],
             'method_breakdown' => $methods,
             'daily_breakdown' => $dailyBreakdown,
+            'collector_breakdown' => $collectorBreakdown,
+            'collector_options' => $collectorOptions,
+            'customer_breakdown' => $customerBreakdown,
+            'monthly_breakdown' => $monthlyBreakdown,
             'data' => $data,
             'meta' => $this->meta($paginator),
         ];
@@ -651,6 +816,7 @@ class ReportService
 
         $query = Order::query()
             ->join('customers', 'customers.id', '=', 'orders.customer_id')
+            ->leftJoin('users as marketers', 'marketers.id', '=', 'customers.salesperson_user_id')
             ->leftJoin('integration_sync_states as logo_order_sync', function ($join): void {
                 $join->on('logo_order_sync.entity_id', '=', 'orders.id')
                     ->where('logo_order_sync.system', 'logo')
@@ -830,6 +996,27 @@ class ReportService
         }
 
         return "DATEDIFF(?, {$dateExpr})";
+    }
+
+    private function normalizedCollectionMethodSql(): string
+    {
+        $driver = DB::connection()->getDriverName();
+        $channel = match ($driver) {
+            'pgsql' => "(collections.reference_fields->>'collection_channel')",
+            'sqlite' => "json_extract(collections.reference_fields, '$.collection_channel')",
+            default => "JSON_UNQUOTE(JSON_EXTRACT(collections.reference_fields, '$.collection_channel'))",
+        };
+
+        return "CASE WHEN collections.method = 'cc' AND {$channel} = 'factory' THEN 'factory_cc' ELSE collections.method END";
+    }
+
+    private function monthBucketSql(string $dateExpr): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'pgsql' => "TO_CHAR({$dateExpr}, 'YYYY-MM')",
+            'sqlite' => "strftime('%Y-%m', {$dateExpr})",
+            default => "DATE_FORMAT({$dateExpr}, '%Y-%m')",
+        };
     }
 
     /**

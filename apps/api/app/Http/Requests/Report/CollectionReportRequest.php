@@ -29,9 +29,12 @@ class CollectionReportRequest extends FormRequest
         return [
             'dealer_id' => ['nullable', 'integer', 'exists:dealers,id'],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'collector_id' => ['nullable', 'integer', 'exists:users,id'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
-            'method' => ['nullable', Rule::in(['cash', 'transfer', 'check', 'note', 'cc'])],
+            'method' => ['nullable', Rule::in(['cash', 'transfer', 'check', 'note', 'cc', 'factory_cc'])],
+            'q' => ['nullable', 'string', 'max:120'],
+            'top' => ['nullable', 'integer', Rule::in([10, 20, 50])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'async' => ['nullable', 'boolean'],
         ];

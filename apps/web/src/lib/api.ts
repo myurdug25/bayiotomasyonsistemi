@@ -461,8 +461,9 @@ export type ProductSearchItem = {
     name: string;
     tiers: Array<{
       min_quantity: number;
-      unit_price: string;
+      unit_price: string | null;
       currency: string;
+      discount_percent?: number | null;
       condition?: string | null;
       starts_at?: string | null;
       ends_at?: string | null;
@@ -1095,6 +1096,13 @@ export type LedgerEntryDto = {
   reference_no: string | null;
   order_id: number | null;
   collection_id: number | null;
+  collection_method?: CollectionMethodFilter | "virtual_pos" | null;
+  collection_method_label?: string | null;
+  transaction_type?: LedgerEntryType | "transfer" | "offset" | "opening";
+  transaction_type_label?: string;
+  document_no?: string | null;
+  document_date?: string | null;
+  source_document?: string | null;
   checkout_summary: {
     mode: "detailed" | "excluded" | "included";
     code: string;
@@ -1567,7 +1575,7 @@ export type WarehouseReadyOrderItem = {
 
 export type FinanceDefinitionDto = {
   id: number;
-  type: "bank" | "factory" | "expense_category";
+  type: "bank" | "pos_device" | "card_type" | "factory" | "expense_category";
   code: string;
   name: string;
   logo_code: string | null;
@@ -2650,9 +2658,13 @@ export async function getReportOrderBalances(params?: {
 export async function getReportCollections(params?: {
   dealer_id?: number;
   customer_id?: number;
-  method?: "cash" | "transfer" | "check" | "note" | "cc";
+  collector_id?: number;
+  method?: "cash" | "transfer" | "check" | "note" | "cc" | "factory_cc";
+  q?: string;
+  top?: 10 | 20 | 50;
   date_from?: string;
   date_to?: string;
+  page?: number;
   per_page?: number;
   async?: boolean;
 }) {

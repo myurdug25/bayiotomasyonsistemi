@@ -362,12 +362,12 @@ const SIDEBAR_ITEMS: NavItem[] = [
   },
   {
     href: "/reports",
-    label: "Raporlar",
+    label: "Raporlama Merkezi",
     permissionKey: "reports",
     icon: FileBarChart2,
     emojiAsset: "/dashboard-icons/fixed/raporlar.webp",
     tileGradient: "from-[#afe8f0] to-[#66c2d6]",
-    allowedRoles: ["admin", "salesperson"],
+    allowedRoles: ["admin", "dealer_admin", "salesperson"],
   },
   {
     href: "/returns",
@@ -1022,7 +1022,7 @@ function getPageMeta(
   }
 
   if (pathname.startsWith("/reports")) {
-    return { title: "Raporlar", subtitle: "Satış, bakiye ve performans raporları" };
+    return { title: "Raporlama Merkezi", subtitle: "Tahsilat, satış, cari ve kullanıcı performans analizleri" };
   }
 
   if (pathname.startsWith("/notes")) {

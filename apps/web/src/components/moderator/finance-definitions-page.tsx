@@ -16,6 +16,8 @@ import {
 
 const TYPES: Array<{ value: FinanceDefinitionDto["type"]; label: string }> = [
   { value: "bank", label: "Bankalar" },
+  { value: "pos_device", label: "POS Cihazları" },
+  { value: "card_type", label: "Kart Tipleri" },
   { value: "factory", label: "Fabrikalar" },
   { value: "expense_category", label: "Gider Kategorileri" },
 ];

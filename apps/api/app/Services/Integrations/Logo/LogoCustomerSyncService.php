@@ -252,6 +252,16 @@ class LogoCustomerSyncService
             if ($byExternalReference) {
                 return $byExternalReference;
             }
+
+            $byLogoMetadataExternalReference = Customer::query()
+                ->where('dealer_id', $dealer->id)
+                ->where('meta->integrations->logo->external_ref', $externalReference)
+                ->lockForUpdate()
+                ->first();
+
+            if ($byLogoMetadataExternalReference) {
+                return $byLogoMetadataExternalReference;
+            }
         }
 
         return null;

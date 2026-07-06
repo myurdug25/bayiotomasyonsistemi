@@ -96,27 +96,33 @@ class LedgerEntry extends Model
         $customerId = $query->qualifyColumn('customer_id');
         $id = $query->qualifyColumn('id');
 
-        return $query->where(function (Builder $query) use ($sourceSystem, $collectionId, $customerId, $id): void {
-            $query
-                ->whereNull($sourceSystem)
-                ->orWhere($sourceSystem, '!=', 'logo')
-                ->orWhereNull($collectionId)
-                ->orWhereNotExists(function ($subquery) use ($collectionId, $customerId, $id): void {
-                    $subquery
-                        ->selectRaw('1')
-                        ->from('ledger_entries as linked_b2b_ledger_entries')
-                        ->join(
-                            'collections as linked_b2b_collections',
-                            'linked_b2b_collections.id',
-                            '=',
-                            'linked_b2b_ledger_entries.collection_id'
-                        )
-                        ->whereColumn('linked_b2b_ledger_entries.collection_id', $collectionId)
-                        ->whereColumn('linked_b2b_ledger_entries.customer_id', $customerId)
-                        ->whereColumn('linked_b2b_ledger_entries.id', '!=', $id)
-                        ->where('linked_b2b_ledger_entries.source_system', 'b2b')
-                        ->where('linked_b2b_collections.source_system', 'b2b');
-                });
-        });
+        return $query
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('meta->source')
+                    ->orWhere('meta->source', '!=', 'order_checkout');
+            })
+            ->where(function (Builder $query) use ($sourceSystem, $collectionId, $customerId, $id): void {
+                $query
+                    ->whereNull($sourceSystem)
+                    ->orWhere($sourceSystem, '!=', 'logo')
+                    ->orWhereNull($collectionId)
+                    ->orWhereNotExists(function ($subquery) use ($collectionId, $customerId, $id): void {
+                        $subquery
+                            ->selectRaw('1')
+                            ->from('ledger_entries as linked_b2b_ledger_entries')
+                            ->join(
+                                'collections as linked_b2b_collections',
+                                'linked_b2b_collections.id',
+                                '=',
+                                'linked_b2b_ledger_entries.collection_id'
+                            )
+                            ->whereColumn('linked_b2b_ledger_entries.collection_id', $collectionId)
+                            ->whereColumn('linked_b2b_ledger_entries.customer_id', $customerId)
+                            ->whereColumn('linked_b2b_ledger_entries.id', '!=', $id)
+                            ->where('linked_b2b_ledger_entries.source_system', 'b2b')
+                            ->where('linked_b2b_collections.source_system', 'b2b');
+                    });
+            });
     }
 }

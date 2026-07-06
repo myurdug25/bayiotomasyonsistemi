@@ -522,6 +522,60 @@ class LogoProductSyncApiTest extends TestCase
         ]);
     }
 
+    public function test_logo_product_sync_accepts_authoritative_zero_from_warehouse_totals(): void
+    {
+        $product = Product::query()->create([
+            'sku' => 'ZERO-AUTH',
+            'name' => 'Authoritative Zero Stock',
+            'unit' => 'adet',
+            'vat_rate' => 20,
+            'is_active' => true,
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'external_ref' => '300',
+                    ],
+                ],
+            ],
+        ]);
+
+        StockSummary::query()->create([
+            'product_id' => $product->id,
+            'available_total' => 12,
+            'reserved_total' => 0,
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'mode' => 'stock_only',
+                'records' => [[
+                    'external_ref' => '300',
+                    'sku' => 'ZERO-AUTH',
+                    'available_total' => 0,
+                    'reserved_total' => 0,
+                    'meta' => [
+                        'logo_stock' => [
+                            'available_total' => 0,
+                            'reserved_total' => 0,
+                            'authoritative' => true,
+                            'source_kind' => 'warehouse_totals',
+                            'source_table' => 'dbo.LG_003_01_GNTOTST',
+                            'warehouses' => [],
+                        ],
+                    ],
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('summary.stock_synced', 1);
+
+        $this->assertDatabaseHas('stock_summary', [
+            'product_id' => $product->id,
+            'available_total' => 0,
+            'reserved_total' => 0,
+        ]);
+    }
+
     public function test_logo_product_sync_uses_warehouse_totals_when_logo_header_stock_is_zero(): void
     {
         $product = Product::query()->create([

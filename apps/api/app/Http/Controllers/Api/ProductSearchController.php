@@ -1056,7 +1056,7 @@ class ProductSearchController extends Controller
         $previousPurchasesByProduct = $this->previousPurchasesByProduct($productIds, $selectedCustomerId, $cache);
         $vehicleFitmentsByProduct = $this->vehicleFitmentsByProduct($productIds, $cache);
         $specialDiscountRate = $this->customerSpecialDiscountRate($selectedCustomerId);
-        $campaignsByProduct = app(ProductCampaignPricing::class)->forProducts($productIds, $user);
+        $campaignsByProduct = app(ProductCampaignPricing::class)->forProducts($productIds, $user, $selectedCustomerId);
 
         return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $campaignsByProduct, $user) {
             $meta = $this->productMeta($item);
@@ -2017,13 +2017,21 @@ class ProductSearchController extends Controller
         if ($fallbackPrice !== null) {
             $key = "price:dealer:{$dealerId}:product:{$productId}";
             $normalized = number_format((float) $fallbackPrice, 2, '.', '');
-            $cache->put($key, $normalized, now()->addMinutes(5));
+            try {
+                $cache->put($key, $normalized, now()->addMinutes(5));
+            } catch (\Throwable) {
+                // Search results must remain available when the optional price cache is unavailable.
+            }
 
             return $normalized;
         }
 
         $key = "price:dealer:{$dealerId}:product:{$productId}";
-        $cachedPrice = $cache->get($key);
+        try {
+            $cachedPrice = $cache->get($key);
+        } catch (\Throwable) {
+            return null;
+        }
 
         if ($cachedPrice !== null) {
             return (string) $cachedPrice;

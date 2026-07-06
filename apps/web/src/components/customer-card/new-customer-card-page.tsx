@@ -79,7 +79,7 @@ function logoECollectionPreview(): string {
 
 export function NewCustomerCardPage() {
   const queryClient = useQueryClient();
-  const { user } = useSession();
+  const { user, selectCustomer } = useSession();
   const roleSlugs = user?.roles.map((role) => role.slug) ?? [];
   const isSalesperson = roleSlugs.includes("salesperson");
   const [form, setForm] = useState<FormState>(() => createInitialForm(user));
@@ -93,9 +93,35 @@ export function NewCustomerCardPage() {
 
   const createMutation = useMutation({
     mutationFn: createCustomerCardRequest,
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       const customerCode = response.customer?.code;
       const logoQueued = response.customer?.logo_queue_status === "queued";
+
+      setForm(createInitialForm(user));
+      await queryClient.invalidateQueries({ queryKey: ["customers"] });
+
+      if (response.customer?.id) {
+        try {
+          await selectCustomer(response.customer.id);
+          toast.success(
+            customerCode
+              ? logoQueued
+                ? `Cari oluşturuldu, seçildi ve Logo kuyruğuna alındı: ${customerCode}`
+                : `Cari oluşturuldu ve seçildi: ${customerCode}`
+              : "Yeni cari oluşturuldu ve seçildi."
+          );
+
+          return;
+        } catch {
+          toast.warning(
+            customerCode
+              ? `Cari oluşturuldu ama otomatik seçilemedi: ${customerCode}`
+              : "Yeni cari oluşturuldu ama otomatik seçilemedi."
+          );
+
+          return;
+        }
+      }
 
       toast.success(
         customerCode
@@ -104,8 +130,6 @@ export function NewCustomerCardPage() {
             : `Cari oluşturuldu: ${customerCode}`
           : "Yeni cari kart kaydedildi."
       );
-      setForm(createInitialForm(user));
-      void queryClient.invalidateQueries({ queryKey: ["customers"] });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Başvuru kaydedilemedi.");

@@ -138,7 +138,7 @@ class CustomerController extends Controller
         }
 
         $customers = $query
-            ->orderByRaw("CASE WHEN customers.source_system = 'logo' THEN 0 ELSE 1 END ASC")
+            ->orderByRaw("CASE WHEN customers.source_system = 'b2b' AND customers.sync_status IS NOT NULL THEN 0 WHEN customers.source_system = 'logo' THEN 1 ELSE 2 END ASC")
             ->orderBy('customers.code')
             ->orderBy('customers.id')
             ->cursorPaginate(

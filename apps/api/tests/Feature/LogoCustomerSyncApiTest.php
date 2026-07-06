@@ -213,6 +213,60 @@ class LogoCustomerSyncApiTest extends TestCase
         $this->assertSame(1, Customer::query()->count());
     }
 
+    public function test_logo_customer_sync_matches_exported_b2b_customer_by_logo_metadata_external_reference(): void
+    {
+        config(['integrations.logo.customer_sync_key' => 'test-sync-key']);
+
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOGO',
+            'name' => 'Logo Dealer',
+            'is_active' => true,
+        ]);
+
+        $existingCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'b2b',
+            'source_reference' => null,
+            'sync_status' => 'synced',
+            'code' => 'CR-B2B-TEMP',
+            'name' => 'B2B Gecici Cari',
+            'is_active' => true,
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'external_ref' => '2002',
+                    ],
+                ],
+            ],
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/customers/sync', [
+                'dealer_id' => $dealer->id,
+                'records' => [
+                    [
+                        'external_ref' => '2002',
+                        'code' => 'CR-LOGO-2002',
+                        'name' => 'Logo Geri Cekilen Cari',
+                    ],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.created', 0)
+            ->assertJsonPath('summary.updated', 1);
+
+        $existingCustomer->refresh();
+
+        $this->assertSame('logo', $existingCustomer->source_system);
+        $this->assertSame('2002', $existingCustomer->source_reference);
+        $this->assertSame('CR-LOGO-2002', $existingCustomer->code);
+        $this->assertSame('Logo Geri Cekilen Cari', $existingCustomer->name);
+        $this->assertSame(1, Customer::query()->count());
+    }
+
     public function test_logo_customer_sync_updates_existing_code_when_external_reference_changes(): void
     {
         config(['integrations.logo.customer_sync_key' => 'test-sync-key']);

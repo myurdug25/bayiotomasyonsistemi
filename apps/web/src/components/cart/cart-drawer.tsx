@@ -86,8 +86,8 @@ export function CartDrawer({ darkMode = false }: { darkMode?: boolean }) {
   const campaignProgressQuery = useQuery({
     queryKey: ["campaignProgress", selectedCustomer?.id],
     queryFn: async () => {
-      if (!selectedCustomer?.id) return { campaigns: [], eligible_campaigns: [] };
-      return fetchCampaignProgress();
+      if (!selectedCustomer?.id) return { data: [] };
+      return fetchCampaignProgress(selectedCustomer.id);
     },
     enabled: Boolean(selectedCustomer?.id) && open,
     staleTime: 60_000,
@@ -175,9 +175,9 @@ export function CartDrawer({ darkMode = false }: { darkMode?: boolean }) {
         <Separator className="my-4" />
 
         <ScrollArea className="flex-1 pr-2">
-          {campaignProgressQuery.data && campaignProgressQuery.data.campaigns.length > 0 && (
+          {campaignProgressQuery.data?.data && campaignProgressQuery.data.data.length > 0 && (
             <div className="mb-4">
-              <CampaignPanel campaigns={campaignProgressQuery.data} />
+              <CampaignPanel campaigns={campaignProgressQuery.data.data} />
             </div>
           )}
 
@@ -216,7 +216,7 @@ export function CartDrawer({ darkMode = false }: { darkMode?: boolean }) {
                 <p className="line-clamp-1 text-sm font-semibold">{item.name}</p>
                 <p className="text-xs text-[var(--muted-foreground)]">{item.sku}</p>
                 {item.campaign_key ? (() => {
-                  const campaign = campaignProgressQuery.data?.campaigns?.find(c => c.code === item.campaign_key);
+                  const campaign = campaignProgressQuery.data?.data?.find((c) => c.code === item.campaign_key);
                   const discountStr = campaign?.discount_percent ? ` (%${campaign.discount_percent})` : '';
                   return (
                     <span className="mt-2 inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300">

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AdminDashboardOverviewController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\CartItemController;
 use App\Http\Controllers\Api\CatalogController;
@@ -11,13 +12,14 @@ use App\Http\Controllers\Api\CustomerCardRequestController;
 use App\Http\Controllers\Api\CustomerCollectionController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerLedgerController;
-use App\Http\Controllers\Api\FinanceDefinitionController;
 use App\Http\Controllers\Api\CustomerUserController;
 use App\Http\Controllers\Api\DealerController;
+use App\Http\Controllers\Api\FinanceDefinitionController;
 use App\Http\Controllers\Api\LogoCollectionExportController;
 use App\Http\Controllers\Api\LogoCustomerExportController;
 use App\Http\Controllers\Api\LogoCustomerSyncController;
 use App\Http\Controllers\Api\LogoDashboardReportController;
+use App\Http\Controllers\Api\LogoFinanceDefinitionSyncController;
 use App\Http\Controllers\Api\LogoLedgerSyncController;
 use App\Http\Controllers\Api\LogoOrderExportController;
 use App\Http\Controllers\Api\LogoPosExpenseExportController;
@@ -41,6 +43,7 @@ use App\Http\Controllers\Api\ProductImageController;
 use App\Http\Controllers\Api\ProductSearchController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PurchaseReceiptController;
+use App\Http\Controllers\Api\RealtimeEventStreamController;
 use App\Http\Controllers\Api\ReportRunController;
 use App\Http\Controllers\Api\ReturnRequestController;
 use App\Http\Controllers\Api\SalesReportController;
@@ -49,7 +52,6 @@ use App\Http\Controllers\Api\UserNoteController;
 use App\Http\Controllers\Api\WarehouseOrderController;
 use App\Http\Controllers\Api\WarehouseShipmentController;
 use App\Http\Controllers\Api\WarehouseShipmentPrintController;
-use App\Http\Controllers\Api\CampaignController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('throttle:logo-integration')->group(function (): void {
@@ -76,6 +78,8 @@ Route::middleware('throttle:logo-integration')->group(function (): void {
     Route::post('/integrations/logo/ledger/sync', [LogoLedgerSyncController::class, 'store']);
     Route::post('/integrations/logo/products/sync', [LogoProductSyncController::class, 'store']);
     Route::post('/integrations/logo/campaigns/sync', [CampaignController::class, 'sync']);
+    Route::get('/integrations/logo/finance-definitions/pending', [LogoFinanceDefinitionSyncController::class, 'pending']);
+    Route::post('/integrations/logo/finance-definitions/sync', [LogoFinanceDefinitionSyncController::class, 'sync']);
 });
 
 Route::middleware('web')->group(function (): void {
@@ -97,6 +101,8 @@ Route::middleware('web')->group(function (): void {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/realtime/events', RealtimeEventStreamController::class)
+        ->middleware('throttle:realtime-stream');
     Route::patch('/profile', [ProfileController::class, 'update']);
     Route::get('/market-rates/tcmb', MarketRateController::class);
     Route::middleware('menu:notes')->group(function (): void {
@@ -233,7 +239,7 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
     Route::prefix('warehouse')
-        ->middleware(['role:warehouse,admin,dealer_admin', 'menu:warehouse', 'throttle:pos'])
+        ->middleware(['role:warehouse,admin,dealer_admin', 'menu:warehouse', 'throttle:warehouse'])
         ->group(function () {
             Route::get('/orders/ready', [WarehouseOrderController::class, 'ready']);
             Route::patch('/orders/{order}/items/{item}', [OrderController::class, 'updateWarehouseItem']);

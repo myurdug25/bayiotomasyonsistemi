@@ -70,8 +70,6 @@ const METHODS = ["cash", "transfer", "check", "cc", "factory_cc"] as const;
 type FormMethodType = (typeof METHODS)[number];
 type MethodType = FormMethodType | "note" | "invoice";
 type FactoryPosType = string;
-type PosPaymentType = "pesin" | "taksitli";
-type BatumTransferBankType = "georgia_bank" | "tbc_bank";
 type PosBankType = string;
 type CheckImageDraft = {
   id: string;
@@ -137,22 +135,12 @@ const COLLECTION_FIELD_LABELS: Record<string, string> = {
   "reference_fields.note_no": "Çek / Senet No",
   "reference_fields.card_holder": "Kart Sahibi",
   "reference_fields.masked_pan": "Kart No (Son 4 Hane)",
-  "reference_fields.installment": "Taksit Sayısı",
   "reference_fields.auth_code": "Onay Kodu",
   "reference_fields.pos_bank": "Pos Seçimi",
+  "reference_fields.pos_device": "POS Cihazı",
+  "reference_fields.card_type": "Kart Tipi",
   "reference_fields.factory_pos_account": "Cari Pos Seçimi",
-  "reference_fields.pos_payment_type": "Peşin / Taksitli",
 };
-
-const POS_BANK_OPTIONS: Array<{ value: PosBankType; label: string }> = [
-  { value: "yapi_kredi", label: "Yapı Kredi" },
-  { value: "ziraat_bankasi", label: "Ziraat Bankası" },
-];
-
-const BATUM_TRANSFER_BANK_OPTIONS: Array<{ value: BatumTransferBankType; label: string }> = [
-  { value: "georgia_bank", label: "Georgia Bank" },
-  { value: "tbc_bank", label: "TBC Bank" },
-];
 
 const STANDARD_VALOR_DAY_LIMIT = 60;
 
@@ -273,41 +261,12 @@ function formatAmount(value: string | number, currency: string): string {
   })}`;
 }
 
-function includesBatum(value?: string | number | null): boolean {
-  return String(value ?? "").trim().toLocaleUpperCase("tr-TR").includes("BATUM");
-}
-
-function getBatumTransferBankLabel(value: BatumTransferBankType): string {
-  return BATUM_TRANSFER_BANK_OPTIONS.find((option) => option.value === value)?.label ?? BATUM_TRANSFER_BANK_OPTIONS[0].label;
-}
-
-function isBatumBankValue(value?: string | number | null): value is BatumTransferBankType {
-  return value === "georgia_bank" || value === "tbc_bank";
-}
-
-function getBatumTransferBankValue(value?: string | number | null): BatumTransferBankType {
-  const normalized = String(value ?? "").trim().toLocaleUpperCase("tr-TR");
-
-  if (normalized.includes("TBC")) {
-    return "tbc_bank";
-  }
-
-  return "georgia_bank";
-}
-
 function getPosBankValue(value?: string | number | null): PosBankType {
-  if (value === "ziraat_bankasi" || value === "georgia_bank" || value === "tbc_bank") {
-    return value;
-  }
-
-  return "yapi_kredi";
+  return String(value ?? "").trim();
 }
 
 function getPosBankLabel(value?: string | number | null): string {
-  const posBankValue = getPosBankValue(value);
-  const options = [...POS_BANK_OPTIONS, ...BATUM_TRANSFER_BANK_OPTIONS];
-
-  return options.find((option) => option.value === posBankValue)?.label ?? String(value ?? "");
+  return String(value ?? "");
 }
 
 function getCollectionClientValidationMessage(input: {
@@ -320,8 +279,6 @@ function getCollectionClientValidationMessage(input: {
   checkValorDays: string;
   posBank: PosBankType;
   factoryPos: FactoryPosType;
-  posPaymentType: PosPaymentType;
-  posInstallmentCount: string;
 }): string | null {
   if (!Number.isFinite(toAmount(input.amount)) || toAmount(input.amount) <= 0) {
     return "Tutar 0'dan büyük olmalı.";
@@ -811,12 +768,11 @@ export function CollectionsPage() {
   const [checkNo, setCheckNo] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [checkValorDays, setCheckValorDays] = useState("");
-  const [batumTransferBank, setBatumTransferBank] = useState<BatumTransferBankType>("georgia_bank");
-  const [posBank, setPosBank] = useState<PosBankType>("yapi_kredi");
+  const [posBank, setPosBank] = useState<PosBankType>("");
+  const [posDevice, setPosDevice] = useState("");
+  const [cardType, setCardType] = useState("");
   const [factoryPos, setFactoryPos] = useState<FactoryPosType>("");
   const [sequence, setSequence] = useState("");
-  const [posPaymentType, setPosPaymentType] = useState<PosPaymentType>("pesin");
-  const [posInstallmentCount, setPosInstallmentCount] = useState("");
   const [checkDraftItems, setCheckDraftItems] = useState<CheckDraftItem[]>([]);
   const [receiptActionsUnlocked, setReceiptActionsUnlocked] = useState(false);
 
@@ -901,67 +857,57 @@ export function CollectionsPage() {
     }
   }, [isPointUser, method]);
 
-  const isBatumBranch = useMemo(() => {
-    const batumScopeValues = [
-      selectedCustomer?.branch_code,
-      selectedCustomer?.branch_name,
-      selectedCustomer?.region_code,
-      selectedCustomer?.region_name,
-      selectedCustomer?.title,
-      user?.branch_code,
-      user?.branch_name,
-      user?.region_code,
-      user?.region_name,
-    ];
+  const bankOptions = useMemo(
+    () => financeDefinitions
+      .filter((item) => item.type === "bank" && item.is_active)
+      .map((item) => ({ value: item.code, label: item.name })),
+    [financeDefinitions]
+  );
+  const posDeviceOptions = useMemo(
+    () => financeDefinitions
+      .filter((item) => item.type === "pos_device" && item.is_active)
+      .map((item) => ({ value: item.code, label: item.name })),
+    [financeDefinitions]
+  );
+  const filteredPosDeviceOptions = useMemo(() => {
+    const bankCode = String(posBank ?? "").trim();
 
-    return batumScopeValues.some(includesBatum) || selectedCustomer?.code?.trim().startsWith("120-00-") === true;
-  }, [
-    selectedCustomer?.branch_code,
-    selectedCustomer?.branch_name,
-    selectedCustomer?.code,
-    selectedCustomer?.region_code,
-    selectedCustomer?.region_name,
-    selectedCustomer?.title,
-    user?.branch_code,
-    user?.branch_name,
-    user?.region_code,
-    user?.region_name,
-  ]);
+    if (!bankCode) {
+      return posDeviceOptions;
+    }
 
-  const bankOptions = financeDefinitions
-    .filter((item) => item.type === "bank" && item.is_active)
-    .map((item) => ({ value: item.code, label: item.name }));
-  const factoryOptions = financeDefinitions
-    .filter((item) => item.type === "factory" && item.is_active)
-    .map((item) => ({ value: item.code, label: item.logo_name || item.name }));
-  const visiblePosBankOptions = bankOptions.length
-    ? bankOptions.filter((option) => isBatumBranch
-      ? option.value === "georgia_bank" || option.value === "tbc_bank"
-      : option.value !== "georgia_bank" && option.value !== "tbc_bank")
-    : (isBatumBranch ? BATUM_TRANSFER_BANK_OPTIONS : POS_BANK_OPTIONS);
+    const bankPrefix = bankCode.padEnd(2, " ");
+    const matches = posDeviceOptions.filter((option) => String(option.value).startsWith(bankPrefix));
+
+    return matches.length > 0 ? matches : posDeviceOptions;
+  }, [posBank, posDeviceOptions]);
+  const cardTypeOptions = useMemo(
+    () => financeDefinitions
+      .filter((item) => item.type === "card_type" && item.is_active)
+      .map((item) => ({ value: item.code, label: item.name })),
+    [financeDefinitions]
+  );
+  const factoryOptions = useMemo(
+    () => financeDefinitions
+      .filter((item) => item.type === "factory" && item.is_active)
+      .map((item) => ({ value: item.code, label: item.logo_name || item.name })),
+    [financeDefinitions]
+  );
 
   useEffect(() => {
-    if (method !== "cc") {
-      return;
+    if (bankOptions.length > 0 && !bankOptions.some((option) => option.value === posBank)) {
+      setPosBank(bankOptions[0].value);
     }
-
-    if (isBatumBranch) {
-      if (!isBatumBankValue(posBank)) {
-        setPosBank("georgia_bank");
-      }
-      if (posPaymentType !== "pesin") {
-        setPosPaymentType("pesin");
-      }
-      if (posInstallmentCount) {
-        setPosInstallmentCount("");
-      }
-      return;
+    if (posDeviceOptions.length > 0 && !posDeviceOptions.some((option) => option.value === posDevice)) {
+      setPosDevice(posDeviceOptions[0].value);
     }
-
-    if (isBatumBankValue(posBank)) {
-      setPosBank("yapi_kredi");
+    if (method === "cc" && filteredPosDeviceOptions.length > 0 && !filteredPosDeviceOptions.some((option) => option.value === posDevice)) {
+      setPosDevice(filteredPosDeviceOptions[0].value);
     }
-  }, [isBatumBranch, method, posBank, posInstallmentCount, posPaymentType]);
+    if (cardTypeOptions.length > 0 && cardType && !cardTypeOptions.some((option) => option.value === cardType)) {
+      setCardType("");
+    }
+  }, [bankOptions, cardType, cardTypeOptions, filteredPosDeviceOptions, method, posBank, posDevice, posDeviceOptions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1005,9 +951,8 @@ export function CollectionsPage() {
     }
 
     if (method === "transfer") {
-      const transferBank = isBatumBranch ? batumTransferBank : posBank;
-      fields.bank_code = transferBank;
-      fields.bank_name = visiblePosBankOptions.find((option) => option.value === transferBank)?.label ?? transferBank;
+      fields.bank_code = posBank;
+      fields.bank_name = bankOptions.find((option) => option.value === posBank)?.label ?? posBank;
     }
 
     if (method === "factory_cc") {
@@ -1017,6 +962,12 @@ export function CollectionsPage() {
 
     if (method === "cc") {
       fields.pos_bank = posBank;
+      if (posDevice) {
+        fields.pos_device = posDevice;
+      }
+      if (cardType) {
+        fields.card_type = cardType;
+      }
     }
 
     return fields;
@@ -1026,11 +977,11 @@ export function CollectionsPage() {
     checkNo,
     dueDate,
     checkValorDays,
-    isBatumBranch,
-    batumTransferBank,
     posBank,
+    posDevice,
+    cardType,
     factoryPos,
-    visiblePosBankOptions,
+    bankOptions,
   ]);
 
   const isListDisabled = listLoading || saving || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
@@ -1167,11 +1118,10 @@ export function CollectionsPage() {
     setCheckNo("");
     setDueDate("");
     setCheckValorDays("");
-    setBatumTransferBank("georgia_bank");
-    setPosBank("yapi_kredi");
-    setFactoryPos(factoryOptions[0]?.value ?? "120-61-031");
-    setPosPaymentType("pesin");
-    setPosInstallmentCount("");
+    setPosBank(bankOptions[0]?.value ?? "");
+    setPosDevice(posDeviceOptions[0]?.value ?? "");
+    setCardType("");
+    setFactoryPos(factoryOptions[0]?.value ?? "");
   };
 
   const cancelCollectionEdit = () => {
@@ -1198,11 +1148,10 @@ export function CollectionsPage() {
     setCheckNo(String(fields.check_no ?? fields.note_no ?? row.reference_no ?? ""));
     setDueDate(String(fields.due_date ?? ""));
     setCheckValorDays(String(fields.valor_days ?? ""));
-    setBatumTransferBank(getBatumTransferBankValue(fields.bank_name));
-    setPosBank(getPosBankValue(String(fields.pos_bank)));
-    setFactoryPos(String(fields.factory_pos_account ?? factoryOptions[0]?.value ?? "120-61-031"));
-    setPosPaymentType(fields.pos_payment_type === "taksitli" ? "taksitli" : "pesin");
-    setPosInstallmentCount(fields.installment ? String(fields.installment) : "");
+    setPosBank(getPosBankValue(String(fields.pos_bank ?? fields.bank_code ?? "")));
+    setPosDevice(String(fields.pos_device ?? ""));
+    setCardType(String(fields.card_type ?? ""));
+    setFactoryPos(String(fields.factory_pos_account ?? factoryOptions[0]?.value ?? ""));
     setCheckDraftItems([]);
   };
 
@@ -1232,8 +1181,6 @@ export function CollectionsPage() {
       checkValorDays,
       posBank,
       factoryPos,
-      posPaymentType,
-      posInstallmentCount,
     });
 
     if (validationMessage) {
@@ -1331,8 +1278,6 @@ export function CollectionsPage() {
       checkValorDays,
       posBank,
       factoryPos,
-      posPaymentType,
-      posInstallmentCount,
     });
 
     if (validationMessage) {
@@ -1662,21 +1607,15 @@ export function CollectionsPage() {
               <div className="space-y-2">
                 <label className={fieldLabelClassName}>Banka</label>
                 <div className="grid grid-cols-2 gap-3">
-                  {visiblePosBankOptions.map((option) => (
+                  {bankOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       disabled={isFormDisabled}
-                      onClick={() => {
-                        if (isBatumBranch) {
-                          setBatumTransferBank(option.value as BatumTransferBankType);
-                        } else {
-                          setPosBank(option.value);
-                        }
-                      }}
+                      onClick={() => setPosBank(option.value)}
                       className={cn(
                         "flex min-h-[62px] items-center justify-center gap-2 rounded-[16px] border px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
-                        (isBatumBranch ? batumTransferBank : posBank) === option.value
+                        posBank === option.value
                           ? "border-sky-300/70 bg-sky-300/14 text-sky-100 shadow-[0_18px_34px_-30px_rgba(56,189,248,0.7)]"
                           : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-sky-300/35 hover:bg-sky-300/8 hover:text-sky-100"
                       )}
@@ -1820,39 +1759,11 @@ export function CollectionsPage() {
                 </>
               ) : null}
 
-              {method === "cc" && isBatumBranch ? (
-                <div className={cn(fieldShellClassName, "md:col-span-2")}>
-                  <label className={cn(fieldLabelClassName, "flex items-center justify-between")}>
-                    <span>Banka</span>
-                    {isAdminUser ? <AddBankModal onAdd={handleRefreshFinanceDefinitions} /> : null}
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {visiblePosBankOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        disabled={isFormDisabled}
-                        onClick={() => setPosBank(option.value as PosBankType)}
-                        className={cn(
-                          "flex min-h-[62px] items-center justify-center gap-2 rounded-[16px] border px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
-                          posBank === option.value
-                            ? "border-rose-300/70 bg-rose-300/14 text-rose-100 shadow-[0_18px_34px_-30px_rgba(251,113,133,0.7)]"
-                            : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-rose-300/35 hover:bg-rose-300/8 hover:text-rose-100"
-                        )}
-                      >
-                        <CreditCard className="h-5 w-5" />
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {(method === "cc" && !isBatumBranch) || method === "factory_cc" ? (
+              {method === "cc" || method === "factory_cc" ? (
                 <>
                   <div className={cn(fieldShellClassName, "md:col-span-2")}>
                     <label className={cn(fieldLabelClassName, "flex items-center justify-between")}>
-                      <span>{method === "factory_cc" ? "Cari Pos Seçimi" : "Pos Seçimi"}</span>
+                      <span>{method === "factory_cc" ? "Cari Pos Seçimi" : "Banka"}</span>
                       {isAdminUser && method === "factory_cc" ? (
                         <AddFactoryPosModal onAdd={handleRefreshFinanceDefinitions} />
                       ) : isAdminUser ? (
@@ -1874,7 +1785,7 @@ export function CollectionsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(method === "factory_cc" ? factoryOptions : visiblePosBankOptions).map((option) => (
+                        {(method === "factory_cc" ? factoryOptions : bankOptions).map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -1882,6 +1793,36 @@ export function CollectionsPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {method === "cc" ? (
+                    <>
+                      <div className={fieldShellClassName}>
+                        <label className={fieldLabelClassName}>POS Cihazı</label>
+                        <Select value={posDevice} onValueChange={setPosDevice} disabled={isFormDisabled || filteredPosDeviceOptions.length === 0}>
+                          <SelectTrigger className={fieldClassName}>
+                            <SelectValue placeholder={filteredPosDeviceOptions.length ? "POS cihazı seç" : "Logo POS tanımı bulunamadı"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredPosDeviceOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className={fieldShellClassName}>
+                        <label className={fieldLabelClassName}>Kart Tipi</label>
+                        <Select value={cardType} onValueChange={setCardType} disabled={isFormDisabled || cardTypeOptions.length === 0}>
+                          <SelectTrigger className={fieldClassName}>
+                            <SelectValue placeholder={cardTypeOptions.length ? "Kart tipi seç" : "Logo kart tipi tanımı yok"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cardTypeOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  ) : null}
                 </>
               ) : null}
 
@@ -1894,9 +1835,9 @@ export function CollectionsPage() {
                     method === "factory_cc"
                       ? `${sequence || "FBC-[OTO]"} ${selectedCustomer?.title ?? ""} ${factoryOptions.find((option) => option.value === factoryPos)?.label ?? factoryPos}`
                       : method === "cc"
-                        ? `${sequence || "FP-[OTO]"} ${selectedCustomer?.title ?? ""} ${visiblePosBankOptions.find((option) => option.value === posBank)?.label ?? posBank}`
+                        ? `${sequence || "FP-[OTO]"} ${selectedCustomer?.title ?? ""} ${bankOptions.find((option) => option.value === posBank)?.label ?? posBank}`
                       : method === "transfer"
-                        ? `${sequence || "HE-[OTO]"} ${selectedCustomer?.title ?? ""} ${visiblePosBankOptions.find((option) => option.value === (isBatumBranch ? batumTransferBank : posBank))?.label ?? (isBatumBranch ? batumTransferBank : posBank)}`
+                        ? `${sequence || "HE-[OTO]"} ${selectedCustomer?.title ?? ""} ${bankOptions.find((option) => option.value === posBank)?.label ?? posBank}`
                         : note
                   )}
                   readOnly
@@ -2091,7 +2032,7 @@ export function CollectionsPage() {
                 </Button>
               </div>
 
-              {selectedCustomer && displayRows.length > 0 && !isBatumBranch ? (
+              {selectedCustomer && displayRows.length > 0 ? (
                 <div className="grid gap-2 rounded-[16px] border border-sky-300/20 bg-sky-300/[0.045] p-2 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)_minmax(0,0.95fr)]">
                   <div className="space-y-1">
                     <Button
@@ -2204,7 +2145,7 @@ export function CollectionsPage() {
                             row.reference_fields?.collection_channel !== "factory" &&
                             row.reference_fields?.pos_bank ? (
                               <p className="mt-1 truncate text-sm font-semibold text-rose-200">
-                                Banka: {getPosBankLabel(row.reference_fields.pos_bank)}
+                                Banka: {bankOptions.find((option) => option.value === row.reference_fields?.pos_bank)?.label ?? getPosBankLabel(row.reference_fields.pos_bank)}
                               </p>
                             ) : null}
                             {row.note ? <p className="mt-1 truncate text-sm text-[var(--muted-foreground)]">{row.note}</p> : null}
@@ -2299,22 +2240,7 @@ export function CollectionsPage() {
               ) : null}
             </div>
 
-            {selectedCustomer && isBatumBranch ? (
-              <div className="rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface)] p-3">
-                <Button
-                  type="button"
-                  className={cn(
-                    "h-14 w-full rounded-[16px] text-base font-black text-slate-950 shadow-[0_18px_28px_-22px_rgba(63,182,113,0.9)]",
-                    checkValorNeedsManagerApproval ? "bg-amber-300 hover:bg-amber-200" : "bg-emerald-400 hover:bg-emerald-300"
-                  )}
-                  disabled={isFormDisabled}
-                  onClick={submitCollection}
-                >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {saving ? "Kaydediliyor..." : editingCollection ? "Tahsilatı Güncelle" : "Kaydet"}
-                </Button>
-              </div>
-            ) : selectedCustomer && displayRows.length > 0 ? (
+            {selectedCustomer && displayRows.length > 0 ? (
               <div
                 className={cn(
                   "grid gap-3 rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface)] p-3",

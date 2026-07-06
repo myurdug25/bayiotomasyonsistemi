@@ -631,6 +631,10 @@ class LogoProductSyncService
      */
     private function looksLikeEmptyLogoStockSnapshot(array $record): bool
     {
+        if ((bool) data_get($record, 'meta.logo_stock.authoritative', false)) {
+            return false;
+        }
+
         if ((int) ($record['available_total'] ?? 0) !== 0 || (int) ($record['reserved_total'] ?? 0) !== 0) {
             return false;
         }

@@ -35,6 +35,7 @@ class LogoLedgerSyncService
             'created' => 0,
             'updated' => 0,
             'skipped' => 0,
+            'duplicates_removed' => 0,
             'balances_recalculated' => 0,
         ];
 
@@ -61,18 +62,24 @@ class LogoLedgerSyncService
                     $index,
                 );
 
+                $debit = $this->normalizeMoney($record['debit'] ?? 0);
+                $credit = $this->normalizeMoney($record['credit'] ?? 0);
                 $linkedB2bCollection = $this->resolveLinkedB2bCollection($customer, $record);
                 $entry = $this->findLedgerEntry(
                     $customer,
                     (string) $record['external_ref'],
                 );
+                $matchedProvisionalShipmentInvoice = false;
 
                 if (! $entry && $linkedB2bCollection) {
                     $entry = $this->findLedgerEntryForLinkedB2bCollection($customer, $linkedB2bCollection);
                 }
 
-                $debit = $this->normalizeMoney($record['debit'] ?? 0);
-                $credit = $this->normalizeMoney($record['credit'] ?? 0);
+                if (! $entry && ! $linkedB2bCollection && $debit > 0) {
+                    $entry = $this->findProvisionalShipmentInvoice($customer, $record, $debit);
+                    $matchedProvisionalShipmentInvoice = $entry instanceof LedgerEntry;
+                }
+
                 $legacyEntryType = $debit > 0 ? 'debit' : 'credit';
                 $legacyAmount = $debit > 0 ? $debit : $credit;
                 $providedBalance = array_key_exists('balance_after', $record) && is_numeric($record['balance_after'])
@@ -90,10 +97,12 @@ class LogoLedgerSyncService
                     'source_system' => 'logo',
                     'source_reference' => (string) $record['external_ref'],
                     'last_synced_at' => now(),
-                    'order_id' => null,
+                    'order_id' => $entry?->order_id,
                     'collection_id' => $linkedB2bCollection?->id,
                     'date' => (string) $record['date'],
-                    'type' => $preserveB2bCollectionLedgerType ? ($entry->type ?: 'payment') : (string) $record['type'],
+                    'type' => $matchedProvisionalShipmentInvoice
+                        ? 'invoice'
+                        : ($preserveB2bCollectionLedgerType ? ($entry->type ?: 'payment') : (string) $record['type']),
                     'debit' => number_format($debit, 2, '.', ''),
                     'credit' => number_format($credit, 2, '.', ''),
                     'balance_after' => $providedBalance !== null
@@ -107,8 +116,8 @@ class LogoLedgerSyncService
                     'description' => $preserveB2bCollectionLedgerType
                         ? ($entry->description ?: $this->nullableString($record['description'] ?? null))
                         : $this->nullableString($record['description'] ?? null),
-                    'created_by_user_id' => $preserveB2bCollectionLedgerType ? $entry->created_by_user_id : null,
-                    'meta' => $this->buildMeta($entry, $record),
+                    'created_by_user_id' => $entry?->created_by_user_id,
+                    'meta' => $this->buildMeta($entry, $record, $matchedProvisionalShipmentInvoice),
                 ];
 
                 if ($entry) {
@@ -136,6 +145,12 @@ class LogoLedgerSyncService
 
                 $this->syncCollectionMirrorForRecord($dealer, $customer, $ledgerEntry, $record);
                 $affectedCustomerIds[$customer->id] = $customer->id;
+            }
+
+            $duplicates = $this->reconcileDuplicateShipmentInvoices();
+            $summary['duplicates_removed'] = $duplicates['removed'];
+            foreach ($duplicates['customer_ids'] as $customerId) {
+                $affectedCustomerIds[$customerId] = $customerId;
             }
 
             $summary['balances_recalculated'] = $this->recalculateBalances(array_values($affectedCustomerIds));
@@ -259,6 +274,104 @@ class LogoLedgerSyncService
             ->orderByRaw("CASE WHEN source_system = 'b2b' THEN 0 ELSE 1 END")
             ->orderBy('id')
             ->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     */
+    private function findProvisionalShipmentInvoice(Customer $customer, array $record, float $debit): ?LedgerEntry
+    {
+        $documentCandidates = collect([
+            $record['description'] ?? null,
+            $record['reference_no'] ?? null,
+            data_get($record, 'meta.raw.LINEEXP'),
+            data_get($record, 'meta.raw.FICHENO'),
+        ])
+            ->map(fn ($value) => $this->nullableString($value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($documentCandidates === []) {
+            return null;
+        }
+
+        return LedgerEntry::query()
+            ->where('customer_id', $customer->id)
+            ->where('source_system', 'logo')
+            ->where('meta->source', 'logo_shipment_invoice')
+            ->whereDate('date', (string) $record['date'])
+            ->where('debit', number_format($debit, 2, '.', ''))
+            ->where(function ($query) use ($documentCandidates): void {
+                $query
+                    ->whereIn('reference_no', $documentCandidates)
+                    ->orWhereIn('description', $documentCandidates);
+            })
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * @return array{removed:int,customer_ids:list<int>}
+     */
+    private function reconcileDuplicateShipmentInvoices(): array
+    {
+        $removed = 0;
+        $customerIds = [];
+
+        LedgerEntry::query()
+            ->where('source_system', 'logo')
+            ->where('meta->source', 'logo_shipment_invoice')
+            ->orderBy('id')
+            ->get()
+            ->each(function (LedgerEntry $provisional) use (&$removed, &$customerIds): void {
+                $shipmentNo = $this->nullableString(data_get($provisional->meta, 'shipment_no'))
+                    ?? $this->nullableString($provisional->reference_no);
+
+                if ($shipmentNo === null) {
+                    return;
+                }
+
+                $authoritative = LedgerEntry::query()
+                    ->where('customer_id', $provisional->customer_id)
+                    ->where('source_system', 'logo')
+                    ->where('id', '!=', $provisional->id)
+                    ->whereDate('date', optional($provisional->date)->toDateString())
+                    ->where('debit', $provisional->debit)
+                    ->where(function ($query) use ($shipmentNo): void {
+                        $query
+                            ->where('description', $shipmentNo)
+                            ->orWhere('reference_no', $shipmentNo);
+                    })
+                    ->orderBy('id')
+                    ->first();
+
+                if (! $authoritative instanceof LedgerEntry) {
+                    return;
+                }
+
+                $provisionalMeta = is_array($provisional->meta) ? $provisional->meta : [];
+                $authoritativeMeta = is_array($authoritative->meta) ? $authoritative->meta : [];
+                $mergedMeta = array_replace_recursive($provisionalMeta, $authoritativeMeta);
+                Arr::set($mergedMeta, 'source', 'logo_ledger');
+                Arr::set($mergedMeta, 'provisional_reconciled_at', now()->toIso8601String());
+
+                $authoritative->forceFill([
+                    'order_id' => $authoritative->order_id ?? $provisional->order_id,
+                    'type' => 'invoice',
+                    'meta' => $mergedMeta,
+                ])->save();
+
+                $customerIds[(int) $provisional->customer_id] = (int) $provisional->customer_id;
+                $provisional->delete();
+                $removed++;
+            });
+
+        return [
+            'removed' => $removed,
+            'customer_ids' => array_values($customerIds),
+        ];
     }
 
     /**
@@ -440,9 +553,17 @@ class LogoLedgerSyncService
      * @param  array<string, mixed>  $record
      * @return array<string, mixed>
      */
-    private function buildMeta(?LedgerEntry $entry, array $record): array
-    {
+    private function buildMeta(
+        ?LedgerEntry $entry,
+        array $record,
+        bool $matchedProvisionalShipmentInvoice = false
+    ): array {
         $meta = is_array($entry?->meta) ? $entry->meta : [];
+
+        if ($matchedProvisionalShipmentInvoice) {
+            Arr::set($meta, 'source', 'logo_ledger');
+            Arr::set($meta, 'provisional_reconciled_at', now()->toIso8601String());
+        }
 
         Arr::set($meta, 'integrations.logo.synced_at', now()->toIso8601String());
         Arr::set($meta, 'integrations.logo.external_ref', (string) $record['external_ref']);

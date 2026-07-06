@@ -231,6 +231,55 @@ class LogoCollectionExportApiTest extends TestCase
             ->assertJsonPath('records.0.meta.cashbox.code', '100.01.007');
     }
 
+    public function test_logo_collection_pending_maps_main_pos_cashbox_to_logo_point_cashbox(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-MAIN-POS',
+            'name' => 'Main POS Dealer',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1001',
+            'code' => 'CR-MAIN-POS',
+            'name' => 'Main POS Cari',
+            'is_active' => true,
+        ]);
+
+        $cashbox = Cashbox::query()->create([
+            'code' => 'MAIN-POS',
+            'name' => 'Ana POS Kasasi',
+            'is_active' => true,
+        ]);
+
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'date' => '2026-07-06',
+            'collection_date' => '2026-07-06',
+            'method' => 'cash',
+            'amount' => 161.68,
+            'currency' => 'TRY',
+            'meta' => [
+                'source' => 'pos_sale',
+                'cashbox_id' => $cashbox->id,
+            ],
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('records.0.cashbox_id', $cashbox->id)
+            ->assertJsonPath('records.0.cashbox_code', '100.01.007')
+            ->assertJsonPath('records.0.cashbox_name', 'ERZURUM POINT KASASI')
+            ->assertJsonPath('records.0.meta.cashbox.code', '100.01.007');
+    }
+
     public function test_logo_collection_ack_updates_sync_status_and_logo_metadata(): void
     {
         $dealer = Dealer::query()->create([

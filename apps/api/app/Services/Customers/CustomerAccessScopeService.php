@@ -326,8 +326,23 @@ class CustomerAccessScopeService
 
         $queryValues = $this->caseVariants($logoSpecode4Values);
 
-        return $query->where(function (Builder $builder) use ($table, $queryValues): void {
-            $this->whereLogoSpecode4In($builder, $table, $queryValues);
+        return $query->where(function (Builder $builder) use ($table, $queryValues, $user): void {
+            $builder
+                ->where(function (Builder $b2bBuilder) use ($table, $user): void {
+                    $b2bBuilder->where("{$table}.source_system", '!=', 'logo');
+
+                    if ($user->hasRole('salesperson')) {
+                        $b2bBuilder->where("{$table}.salesperson_user_id", (int) $user->id);
+                    }
+                })
+                ->orWhere(function (Builder $logoBuilder) use ($table, $queryValues): void {
+                    $this->whereLogoSpecode4In($logoBuilder, $table, $queryValues);
+                })
+                ->orWhere(function (Builder $assignedLogoBuilder) use ($table, $user): void {
+                    $assignedLogoBuilder
+                        ->where("{$table}.source_system", 'logo')
+                        ->where("{$table}.salesperson_user_id", (int) $user->id);
+                });
         });
     }
 
@@ -339,29 +354,29 @@ class CustomerAccessScopeService
         if (DB::connection($query->getModel()->getConnectionName())->getDriverName() === 'mysql') {
             return $query->where(function ($q) use ($table, $queryValues) {
                 $q->whereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode2'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE2'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode3'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE3'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode4'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE4'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode5'))"), $queryValues)
-                  ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE5'))"), $queryValues);
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE'))"), $queryValues)
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode2'))"), $queryValues)
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE2'))"), $queryValues)
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode3'))"), $queryValues)
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE3'))"), $queryValues)
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode4'))"), $queryValues)
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE4'))"), $queryValues)
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.specode5'))"), $queryValues)
+                    ->orWhereIn(DB::raw("JSON_UNQUOTE(JSON_EXTRACT({$table}.meta, '$.integrations.logo.payload.raw.SPECODE5'))"), $queryValues);
             });
         }
 
         return $query->where(function ($q) use ($table, $queryValues) {
             $q->whereIn("{$table}.meta->integrations->logo->payload->specode", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->specode2", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE2", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->specode3", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE3", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->specode4", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE4", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->specode5", $queryValues)
-              ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE5", $queryValues);
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE", $queryValues)
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->specode2", $queryValues)
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE2", $queryValues)
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->specode3", $queryValues)
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE3", $queryValues)
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->specode4", $queryValues)
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE4", $queryValues)
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->specode5", $queryValues)
+                ->orWhereIn("{$table}.meta->integrations->logo->payload->raw->SPECODE5", $queryValues);
         });
     }
 
@@ -373,6 +388,14 @@ class CustomerAccessScopeService
             return true;
         }
 
+        if ($user->hasRole('salesperson') && (int) $customer->salesperson_user_id === (int) $user->id) {
+            return true;
+        }
+
+        if ($customer->source_system !== 'logo') {
+            return ! $user->hasRole('salesperson');
+        }
+
         $meta = is_array($customer->meta) ? $customer->meta : [];
         $customerSpecodes = array_filter([
             $this->normalizeCode(Arr::get($meta, 'integrations.logo.payload.specode') ?? Arr::get($meta, 'integrations.logo.payload.raw.SPECODE')),
@@ -382,7 +405,7 @@ class CustomerAccessScopeService
             $this->normalizeCode(Arr::get($meta, 'integrations.logo.payload.specode5') ?? Arr::get($meta, 'integrations.logo.payload.raw.SPECODE5')),
         ]);
 
-        return !empty(array_intersect($customerSpecodes, $logoSpecode4Values));
+        return ! empty(array_intersect($customerSpecodes, $logoSpecode4Values));
     }
 
     private function hasLogoCustomerFilter(User $user): bool
