@@ -417,8 +417,13 @@ export function ReturnsPage() {
 
     const parsedQuantity = Number.parseInt(quantity, 10);
     const nextQuantity = Number.isFinite(parsedQuantity) ? parsedQuantity : 1;
+    const maxQuantity = Math.max(0, Number(selectedOrderItem.returnable_quantity ?? selectedOrderItem.quantity ?? 0));
 
-    return String(Math.max(1, Math.min(nextQuantity, selectedOrderItem.quantity)));
+    if (maxQuantity <= 0) {
+      return "0";
+    }
+
+    return String(Math.max(1, Math.min(nextQuantity, maxQuantity)));
   }, [quantity, selectedOrderItem]);
   const requestRows = useMemo<ReturnRequestListItem[]>(
     () => returnRequestsQuery.data?.data ?? [],
@@ -444,6 +449,12 @@ export function ReturnsPage() {
 
     if (!selectedOrderItem) {
       toast.error("İade edilecek sipariş kalemini seçin.");
+      return;
+    }
+
+    const returnableQuantity = Number(selectedOrderItem.returnable_quantity ?? selectedOrderItem.quantity ?? 0);
+    if (returnableQuantity <= 0) {
+      toast.error("Bu ürün için iade edilebilir adet kalmadı.");
       return;
     }
 
@@ -572,7 +583,7 @@ export function ReturnsPage() {
                   <SelectContent>
                     {orderItems.map((item) => (
                       <SelectItem key={item.id} value={String(item.id)}>
-                        {item.sku ?? "-"} · {item.name ?? "-"} · {item.quantity} adet
+                        {item.sku ?? "-"} · {item.name ?? "-"} · İade edilebilir: {item.returnable_quantity ?? item.quantity} adet
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -594,14 +605,20 @@ export function ReturnsPage() {
                   <p className="mt-1 text-sm font-semibold text-[var(--muted-foreground)]">{selectedOrderItem.sku ?? "-"}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">Adet</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">Sipariş</p>
                   <p className="mt-1 text-2xl font-extrabold text-[var(--brand-primary-strong)]">{selectedOrderItem.quantity}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">Fiyat</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">İade Edilebilir</p>
                   <p className="mt-1 text-2xl font-extrabold text-[var(--brand-primary-strong)]">
-                    {formatCurrency(selectedOrderItem.unit_net_price, selectedOrderItem.currency)}
+                    {selectedOrderItem.returnable_quantity ?? selectedOrderItem.quantity}
                   </p>
+                </div>
+                <div className="sm:col-span-4 grid gap-3 rounded-2xl bg-[var(--surface-soft)] p-3 text-sm font-semibold text-[var(--muted-foreground)] sm:grid-cols-4">
+                  <span>Sevk: <strong className="text-[var(--brand-primary-strong)]">{selectedOrderItem.shipped_qty ?? "-"}</strong></span>
+                  <span>Önceki iade/ariza: <strong className="text-[var(--brand-primary-strong)]">{selectedOrderItem.returned_quantity ?? 0}</strong></span>
+                  <span>Birim: <strong className="text-[var(--brand-primary-strong)]">{formatCurrency(selectedOrderItem.unit_net_price, selectedOrderItem.currency)}</strong></span>
+                  <span>Logo stok: <strong className="text-[var(--brand-primary-strong)]">{selectedOrderItem.logo_stock?.erzurum_depo_available_total ?? selectedOrderItem.logo_stock?.available_total ?? "-"}</strong></span>
                 </div>
               </div>
             ) : (
@@ -616,10 +633,11 @@ export function ReturnsPage() {
                 <Input
                   className={FIELD_CLASSNAME}
                   type="number"
-                  min={1}
-                  max={selectedOrderItem?.quantity ?? 1}
+                  min={selectedOrderItem && (selectedOrderItem.returnable_quantity ?? selectedOrderItem.quantity) <= 0 ? 0 : 1}
+                  max={selectedOrderItem?.returnable_quantity ?? selectedOrderItem?.quantity ?? 1}
                   value={resolvedQuantity}
                   onChange={(event) => setQuantity(event.target.value)}
+                  disabled={Boolean(selectedOrderItem) && (selectedOrderItem.returnable_quantity ?? selectedOrderItem.quantity) <= 0}
                 />
               </div>
               <div className="space-y-2">
@@ -656,7 +674,11 @@ export function ReturnsPage() {
                 type="button"
                 className="bg-[linear-gradient(135deg,var(--brand-primary)_0%,#d8df72_100%)] px-6 text-[var(--primary-foreground)] hover:opacity-95"
                 onClick={handleSubmit}
-                disabled={requestMutation.isPending}
+                disabled={
+                  requestMutation.isPending ||
+                  !selectedOrderItem ||
+                  (selectedOrderItem.returnable_quantity ?? selectedOrderItem.quantity) <= 0
+                }
               >
                 {requestMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
                 Gönder

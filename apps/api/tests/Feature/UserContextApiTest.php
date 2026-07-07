@@ -76,7 +76,7 @@ class UserContextApiTest extends TestCase
         ]);
     }
 
-    public function test_salesperson_can_select_unassigned_customer_in_own_dealer_scope(): void
+    public function test_salesperson_cannot_select_unassigned_customer_in_own_dealer_scope(): void
     {
         $dealer = $this->createDealer('DLR-CTX-SEL');
         $user = $this->createUserWithRole('salesperson', $dealer);
@@ -86,12 +86,12 @@ class UserContextApiTest extends TestCase
 
         $this->postJson('/api/context/customer', [
             'customer_id' => $customer->id,
-        ])->assertOk()
-            ->assertJsonPath('context.customer.id', $customer->id);
+        ])->assertForbidden();
 
-        $this->getJson("/api/customers/{$customer->id}/ledger")
-            ->assertOk()
-            ->assertJsonPath('customer_id', $customer->id);
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'selected_customer_id' => null,
+        ]);
     }
 
     public function test_salesperson_cannot_select_customer_outside_logo_specode4_filter(): void
@@ -124,7 +124,48 @@ class UserContextApiTest extends TestCase
         ]);
     }
 
-    public function test_salesperson_can_select_assigned_logo_customer_even_when_specode4_differs(): void
+    public function test_salesperson_lists_logo_customer_matching_specode4_even_when_not_assigned(): void
+    {
+        $dealer = $this->createDealer('DLR-CTX-SP4-LIST');
+        $user = $this->createUserWithRole('salesperson', $dealer, [
+            'logo_customer_specode4' => 'A',
+        ]);
+        $this->createCustomer($dealer, 'CTX-CUST-SP4-LIST-HIDDEN', $user, [
+            'source_system' => 'logo',
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode4' => 'B',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $visibleCustomer = $this->createCustomer($dealer, 'CTX-CUST-SP4-LIST-A', null, [
+            'source_system' => 'logo',
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode4' => 'A',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/customers?limit=50&selection_mode=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $visibleCustomer->id)
+            ->assertJsonPath('total_count', 1);
+    }
+
+    public function test_salesperson_cannot_select_assigned_logo_customer_when_specode4_differs(): void
     {
         $dealer = $this->createDealer('DLR-CTX-SP4-ASSIGNED');
         $user = $this->createUserWithRole('salesperson', $dealer, [
@@ -150,12 +191,11 @@ class UserContextApiTest extends TestCase
 
         $this->postJson('/api/context/customer', [
             'customer_id' => $customer->id,
-        ])->assertOk()
-            ->assertJsonPath('context.customer.id', $customer->id);
+        ])->assertForbidden();
 
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
-            'selected_customer_id' => $customer->id,
+            'selected_customer_id' => null,
         ]);
     }
 

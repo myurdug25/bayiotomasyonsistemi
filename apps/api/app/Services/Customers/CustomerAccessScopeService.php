@@ -38,8 +38,17 @@ class CustomerAccessScopeService
         }
 
         $query->where("{$table}.dealer_id", (int) $user->dealer_id);
-        $this->applyLogoCustomerFilters($query, $user, $table);
         $this->excludeBatumCustomers($query, $user, $table);
+
+        if ($user->hasRole('salesperson')) {
+            if ($this->hasLogoCustomerFilter($user)) {
+                return $this->applyLogoCustomerFilters($query, $user, $table);
+            }
+
+            return $query->where("{$table}.salesperson_user_id", (int) $user->id);
+        }
+
+        $this->applyLogoCustomerFilters($query, $user, $table);
 
         if ($this->hasLogoCustomerFilter($user) && ! $this->shouldCombineLogoFilterWithBranchScope($user)) {
             return $query;
@@ -102,16 +111,16 @@ class CustomerAccessScopeService
             return false;
         }
 
-        if (! $this->matchesLogoCustomerFilters($user, $customer)) {
-            return false;
-        }
-
         if ($this->shouldExcludeBatumCustomers($user) && $this->isLogoBatumCustomer($customer)) {
             return false;
         }
 
-        if ($user->hasRole('salesperson') && $this->hasLogoCustomerFilter($user)) {
-            return true;
+        if ($user->hasRole('salesperson')) {
+            return $this->matchesSalespersonCustomerScope($user, $customer);
+        }
+
+        if (! $this->matchesLogoCustomerFilters($user, $customer)) {
+            return false;
         }
 
         if ($this->selectedCustomerId($user) === (int) $customer->id) {
@@ -144,7 +153,8 @@ class CustomerAccessScopeService
         }
 
         if ($user->hasRole('salesperson')) {
-            return $this->matchesLogoCustomerFilters($user, $customer);
+            return $this->matchesSalespersonCustomerScope($user, $customer)
+                && (! $this->shouldExcludeBatumCustomers($user) || ! $this->isLogoBatumCustomer($customer));
         }
 
         return $this->canAccessCustomer($user, $customer);
@@ -338,10 +348,12 @@ class CustomerAccessScopeService
                 ->orWhere(function (Builder $logoBuilder) use ($table, $queryValues): void {
                     $this->whereLogoSpecode4In($logoBuilder, $table, $queryValues);
                 })
-                ->orWhere(function (Builder $assignedLogoBuilder) use ($table, $user): void {
-                    $assignedLogoBuilder
-                        ->where("{$table}.source_system", 'logo')
-                        ->where("{$table}.salesperson_user_id", (int) $user->id);
+                ->when(! $user->hasRole('salesperson'), function (Builder $builder) use ($table, $user): void {
+                    $builder->orWhere(function (Builder $assignedLogoBuilder) use ($table, $user): void {
+                        $assignedLogoBuilder
+                            ->where("{$table}.source_system", 'logo')
+                            ->where("{$table}.salesperson_user_id", (int) $user->id);
+                    });
                 });
         });
     }
@@ -388,10 +400,6 @@ class CustomerAccessScopeService
             return true;
         }
 
-        if ($user->hasRole('salesperson') && (int) $customer->salesperson_user_id === (int) $user->id) {
-            return true;
-        }
-
         if ($customer->source_system !== 'logo') {
             return ! $user->hasRole('salesperson');
         }
@@ -406,6 +414,19 @@ class CustomerAccessScopeService
         ]);
 
         return ! empty(array_intersect($customerSpecodes, $logoSpecode4Values));
+    }
+
+    private function matchesSalespersonCustomerScope(User $user, Customer $customer): bool
+    {
+        if (! $this->hasLogoCustomerFilter($user)) {
+            return (int) $customer->salesperson_user_id === (int) $user->id;
+        }
+
+        if ($customer->source_system === 'logo') {
+            return $this->matchesLogoCustomerFilters($user, $customer);
+        }
+
+        return (int) $customer->salesperson_user_id === (int) $user->id;
     }
 
     private function hasLogoCustomerFilter(User $user): bool

@@ -14,6 +14,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Session\TokenMismatchException;
 use Symfony\Component\HttpFoundation\Response;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -33,7 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(SecurityHeaders::class);
         $middleware->statefulApi();
         $middleware->redirectGuestsTo(function (Request $request): ?string {
-            if ($request->is('api/*')) {
+            if ($request->is('api/*') || $request->is('backend/api/*') || $request->expectsJson()) {
                 return null;
             }
 
@@ -50,12 +51,22 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (AuthenticationException $exception, Request $request) {
-            if (! $request->is('api/*')) {
+            if (! $request->is('api/*') && ! $request->is('backend/api/*') && ! $request->expectsJson()) {
                 return null;
             }
 
             return response()->json([
                 'message' => $exception->getMessage(),
             ], Response::HTTP_UNAUTHORIZED);
+        });
+
+        $exceptions->render(function (TokenMismatchException $exception, Request $request) {
+            if (! $request->is('api/*') && ! $request->is('backend/api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return response()->json([
+                'message' => 'Oturum doğrulaması yenilenmeli. Lütfen tekrar deneyin.',
+            ], Response::HTTP_PAGE_EXPIRED);
         });
     })->create();

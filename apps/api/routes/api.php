@@ -162,6 +162,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/catalog/hot-products', [CatalogController::class, 'hotProducts'])
             ->middleware('menu:catalogs,dashboard');
         Route::get('/cart', [CartController::class, 'show'])->middleware('menu:cart');
+        Route::post('/cart/items/bulk', [CartItemController::class, 'bulk'])->middleware('menu:cart');
         Route::post('/cart/items', [CartItemController::class, 'store'])->middleware('menu:cart');
         Route::delete('/cart/items/{id}', [CartItemController::class, 'destroy'])->middleware('menu:cart');
         Route::get('/orders', [OrderController::class, 'index'])->middleware('menu:orders,dashboard');

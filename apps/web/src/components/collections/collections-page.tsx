@@ -137,8 +137,6 @@ const COLLECTION_FIELD_LABELS: Record<string, string> = {
   "reference_fields.masked_pan": "Kart No (Son 4 Hane)",
   "reference_fields.auth_code": "Onay Kodu",
   "reference_fields.pos_bank": "Pos Seçimi",
-  "reference_fields.pos_device": "POS Cihazı",
-  "reference_fields.card_type": "Kart Tipi",
   "reference_fields.factory_pos_account": "Cari Pos Seçimi",
 };
 
@@ -267,6 +265,43 @@ function getPosBankValue(value?: string | number | null): PosBankType {
 
 function getPosBankLabel(value?: string | number | null): string {
   return String(value ?? "");
+}
+
+function normalizeOptionText(value?: string | number | null): string {
+  return String(value ?? "").trim();
+}
+
+function containsBlockedForeignBankTerm(definition: FinanceDefinitionDto): boolean {
+  const payload = definition.meta?.integrations && typeof definition.meta.integrations === "object"
+    ? (definition.meta.integrations as Record<string, unknown>).logo
+    : null;
+  const logoPayload = payload && typeof payload === "object"
+    ? (payload as Record<string, unknown>).payload
+    : null;
+  const haystack = [
+    definition.code,
+    definition.name,
+    definition.logo_code,
+    definition.logo_name,
+    logoPayload ? JSON.stringify(logoPayload) : "",
+  ]
+    .join(" ")
+    .toLocaleLowerCase("tr-TR");
+
+  return ["batum", "georgia", "gürcistan", "gurcistan", "yurtdışı", "yurtdisi", "tbc"].some((term) =>
+    haystack.includes(term)
+  );
+}
+
+function financeDefinitionLabel(definition: FinanceDefinitionDto): string {
+  const name = normalizeOptionText(definition.logo_name) || normalizeOptionText(definition.name);
+  const code = normalizeOptionText(definition.logo_code) || normalizeOptionText(definition.code);
+
+  if (name && name !== code) {
+    return name;
+  }
+
+  return name || code;
 }
 
 function getCollectionClientValidationMessage(input: {
@@ -769,8 +804,6 @@ export function CollectionsPage() {
   const [dueDate, setDueDate] = useState("");
   const [checkValorDays, setCheckValorDays] = useState("");
   const [posBank, setPosBank] = useState<PosBankType>("");
-  const [posDevice, setPosDevice] = useState("");
-  const [cardType, setCardType] = useState("");
   const [factoryPos, setFactoryPos] = useState<FactoryPosType>("");
   const [sequence, setSequence] = useState("");
   const [checkDraftItems, setCheckDraftItems] = useState<CheckDraftItem[]>([]);
@@ -859,38 +892,15 @@ export function CollectionsPage() {
 
   const bankOptions = useMemo(
     () => financeDefinitions
-      .filter((item) => item.type === "bank" && item.is_active)
-      .map((item) => ({ value: item.code, label: item.name })),
-    [financeDefinitions]
-  );
-  const posDeviceOptions = useMemo(
-    () => financeDefinitions
-      .filter((item) => item.type === "pos_device" && item.is_active)
-      .map((item) => ({ value: item.code, label: item.name })),
-    [financeDefinitions]
-  );
-  const filteredPosDeviceOptions = useMemo(() => {
-    const bankCode = String(posBank ?? "").trim();
-
-    if (!bankCode) {
-      return posDeviceOptions;
-    }
-
-    const bankPrefix = bankCode.padEnd(2, " ");
-    const matches = posDeviceOptions.filter((option) => String(option.value).startsWith(bankPrefix));
-
-    return matches.length > 0 ? matches : posDeviceOptions;
-  }, [posBank, posDeviceOptions]);
-  const cardTypeOptions = useMemo(
-    () => financeDefinitions
-      .filter((item) => item.type === "card_type" && item.is_active)
-      .map((item) => ({ value: item.code, label: item.name })),
+      .filter((item) => item.type === "bank" && item.is_active && !containsBlockedForeignBankTerm(item))
+      .map((item) => ({ value: item.code, label: financeDefinitionLabel(item) })),
     [financeDefinitions]
   );
   const factoryOptions = useMemo(
     () => financeDefinitions
       .filter((item) => item.type === "factory" && item.is_active)
-      .map((item) => ({ value: item.code, label: item.logo_name || item.name })),
+      .map((item) => ({ value: item.code, label: financeDefinitionLabel(item) }))
+      .filter((item) => item.label.trim().length > 0),
     [financeDefinitions]
   );
 
@@ -898,16 +908,7 @@ export function CollectionsPage() {
     if (bankOptions.length > 0 && !bankOptions.some((option) => option.value === posBank)) {
       setPosBank(bankOptions[0].value);
     }
-    if (posDeviceOptions.length > 0 && !posDeviceOptions.some((option) => option.value === posDevice)) {
-      setPosDevice(posDeviceOptions[0].value);
-    }
-    if (method === "cc" && filteredPosDeviceOptions.length > 0 && !filteredPosDeviceOptions.some((option) => option.value === posDevice)) {
-      setPosDevice(filteredPosDeviceOptions[0].value);
-    }
-    if (cardTypeOptions.length > 0 && cardType && !cardTypeOptions.some((option) => option.value === cardType)) {
-      setCardType("");
-    }
-  }, [bankOptions, cardType, cardTypeOptions, filteredPosDeviceOptions, method, posBank, posDevice, posDeviceOptions]);
+  }, [bankOptions, posBank]);
 
   useEffect(() => {
     let cancelled = false;
@@ -962,12 +963,6 @@ export function CollectionsPage() {
 
     if (method === "cc") {
       fields.pos_bank = posBank;
-      if (posDevice) {
-        fields.pos_device = posDevice;
-      }
-      if (cardType) {
-        fields.card_type = cardType;
-      }
     }
 
     return fields;
@@ -978,8 +973,6 @@ export function CollectionsPage() {
     dueDate,
     checkValorDays,
     posBank,
-    posDevice,
-    cardType,
     factoryPos,
     bankOptions,
   ]);
@@ -1119,8 +1112,6 @@ export function CollectionsPage() {
     setDueDate("");
     setCheckValorDays("");
     setPosBank(bankOptions[0]?.value ?? "");
-    setPosDevice(posDeviceOptions[0]?.value ?? "");
-    setCardType("");
     setFactoryPos(factoryOptions[0]?.value ?? "");
   };
 
@@ -1149,8 +1140,6 @@ export function CollectionsPage() {
     setDueDate(String(fields.due_date ?? ""));
     setCheckValorDays(String(fields.valor_days ?? ""));
     setPosBank(getPosBankValue(String(fields.pos_bank ?? fields.bank_code ?? "")));
-    setPosDevice(String(fields.pos_device ?? ""));
-    setCardType(String(fields.card_type ?? ""));
     setFactoryPos(String(fields.factory_pos_account ?? factoryOptions[0]?.value ?? ""));
     setCheckDraftItems([]);
   };
@@ -1794,34 +1783,9 @@ export function CollectionsPage() {
                     </Select>
                   </div>
                   {method === "cc" ? (
-                    <>
-                      <div className={fieldShellClassName}>
-                        <label className={fieldLabelClassName}>POS Cihazı</label>
-                        <Select value={posDevice} onValueChange={setPosDevice} disabled={isFormDisabled || filteredPosDeviceOptions.length === 0}>
-                          <SelectTrigger className={fieldClassName}>
-                            <SelectValue placeholder={filteredPosDeviceOptions.length ? "POS cihazı seç" : "Logo POS tanımı bulunamadı"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {filteredPosDeviceOptions.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className={fieldShellClassName}>
-                        <label className={fieldLabelClassName}>Kart Tipi</label>
-                        <Select value={cardType} onValueChange={setCardType} disabled={isFormDisabled || cardTypeOptions.length === 0}>
-                          <SelectTrigger className={fieldClassName}>
-                            <SelectValue placeholder={cardTypeOptions.length ? "Kart tipi seç" : "Logo kart tipi tanımı yok"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {cardTypeOptions.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </>
+                    <p className="rounded-[14px] border border-rose-300/20 bg-rose-300/[0.06] px-4 py-3 text-xs font-bold text-rose-100">
+                      Fiziksel POS tahsilatında sadece banka seçimi Logo sistemine gönderilir.
+                    </p>
                   ) : null}
                 </>
               ) : null}
@@ -1833,11 +1797,11 @@ export function CollectionsPage() {
                 <Textarea
                   value={editingCollection?.note ?? (
                     method === "factory_cc"
-                      ? `${sequence || "FBC-[OTO]"} ${selectedCustomer?.title ?? ""} ${factoryOptions.find((option) => option.value === factoryPos)?.label ?? factoryPos}`
+                      ? `${sequence || "FBC-[OTO]"} ${selectedCustomer?.title ?? ""}`
                       : method === "cc"
-                        ? `${sequence || "FP-[OTO]"} ${selectedCustomer?.title ?? ""} ${bankOptions.find((option) => option.value === posBank)?.label ?? posBank}`
+                        ? `${sequence || "FP-[OTO]"} ${selectedCustomer?.title ?? ""}`
                       : method === "transfer"
-                        ? `${sequence || "HE-[OTO]"} ${selectedCustomer?.title ?? ""} ${bankOptions.find((option) => option.value === posBank)?.label ?? posBank}`
+                        ? `${sequence || "HE-[OTO]"} ${selectedCustomer?.title ?? ""}`
                         : note
                   )}
                   readOnly

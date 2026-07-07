@@ -14,7 +14,14 @@ const statusPath = path.join(scriptDir, "sync-daemon-status.json");
 const priorityStatusPath = path.join(scriptDir, "sync-daemon-priority-status.json");
 const lockPath = path.join(scriptDir, "sync-daemon.lock");
 const defaultCustomerExportProcedure = "dbo.PowersaB2B_ExportCustomer";
-const defaultPrioritySteps = ["customers-export"];
+const defaultPrioritySteps = [
+  "customers-export",
+  "collections",
+  "pos-sales",
+  "pos-expenses",
+  "documents-export",
+  "product-stocks",
+];
 const defaultFastSteps = [
   "documents-export",
   "product-stocks",

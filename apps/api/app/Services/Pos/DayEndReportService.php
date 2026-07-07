@@ -59,13 +59,22 @@ class DayEndReportService
             $this->applyPointCollectionFilters($manualCollectionsQuery, $user, $filters);
 
             $manualCollectionRows = (clone $manualCollectionsQuery)
-                ->selectRaw('method, COUNT(*) as payment_count, COALESCE(SUM(amount), 0) as total_amount')
-                ->groupBy('method')
-                ->get()
-                ->keyBy('method');
+                ->get(['method', 'amount', 'reference_fields'])
+                ->groupBy(fn (Collection $collection): string => $this->resolveCollectionReportBucket($collection))
+                ->map(fn ($items): object => (object) [
+                    'payment_count' => $items->count(),
+                    'total_amount' => $items->sum(fn (Collection $collection): float => (float) $collection->amount),
+                ]);
 
             $recentPaidSaleModels = (clone $paidSalesQuery)
-                ->with(['customer:id,code,name', 'payments:id,pos_sale_id,method,amount', 'createdBy.roles:id,slug', 'posSession.cashbox:id,code,name'])
+                ->with([
+                    'customer:id,code,name',
+                    'payments:id,pos_sale_id,method,amount',
+                    'createdBy:id,name',
+                    'createdBy.roles:id,slug',
+                    'posSession.cashbox:id,code,name',
+                    'items.product:id,sku,name,meta',
+                ])
                 ->latest('id')
                 ->limit(80)
                 ->get();
@@ -101,6 +110,19 @@ class DayEndReportService
                         'day_end_bucket' => $dayEndBucket,
                         'is_warehouse_sale' => $isWarehouseSale,
                         'grand_total' => number_format((float) $sale->grand_total, 2, '.', ''),
+                        'created_by_name' => $sale->createdBy?->name,
+                        'warehouse_name' => $this->saleWarehouseName($sale),
+                        'items' => $sale->items
+                            ->map(fn ($item): array => [
+                                'product_code' => $item->product?->sku,
+                                'product_name' => $item->product?->name,
+                                'quantity' => number_format((float) $item->qty, 3, '.', ''),
+                                'unit_price' => number_format((float) $item->unit_price, 2, '.', ''),
+                                'line_total' => number_format((float) $item->line_total, 2, '.', ''),
+                                'warehouse_name' => $this->saleWarehouseName($sale),
+                            ])
+                            ->values()
+                            ->all(),
                         'created_at' => $sale->created_at?->toIso8601String(),
                     ];
                 })
@@ -126,23 +148,28 @@ class DayEndReportService
                 ->latest('id')
                 ->limit(80)
                 ->get()
-                ->map(fn (Collection $collection): array => [
-                    'id' => $collection->id,
-                    'reference_no' => $collection->reference_no,
-                    'customer_code' => $collection->customer?->code,
-                    'customer_name' => $collection->customer?->name,
-                    'method' => $collection->method,
-                    'amount' => number_format((float) $collection->amount, 2, '.', ''),
-                    'date' => optional($collection->date ?? $collection->collection_date)->toDateString(),
-                    'created_at' => $collection->created_at?->toIso8601String(),
-                ])
+                ->map(function (Collection $collection): array {
+                    return [
+                        'id' => $collection->id,
+                        'reference_no' => $collection->reference_no,
+                        'customer_code' => $collection->customer?->code,
+                        'customer_name' => $collection->customer?->name,
+                        'method' => $collection->method,
+                        'collection_channel' => data_get($collection->reference_fields, 'collection_channel'),
+                        'day_end_bucket' => $this->resolveCollectionReportBucket($collection),
+                        'amount' => number_format((float) $collection->amount, 2, '.', ''),
+                        'date' => optional($collection->date ?? $collection->collection_date)->toDateString(),
+                        'created_at' => $collection->created_at?->toIso8601String(),
+                    ];
+                })
                 ->values();
 
-            $totalsByMethod = collect(['cash', 'card', 'transfer'])
+            $totalsByMethod = collect(['cash', 'card', 'transfer', 'check', 'note', 'factory_cc'])
                 ->map(function (string $method) use ($paymentsByMethodRows, $manualCollectionRows): array {
-                    $paymentRow = $paymentsByMethodRows->get($method);
-                    $collectionMethod = $method === 'card' ? 'cc' : $method;
-                    $collectionRow = $manualCollectionRows->get($collectionMethod);
+                    $paymentRow = in_array($method, ['cash', 'card', 'transfer'], true)
+                        ? $paymentsByMethodRows->get($method)
+                        : null;
+                    $collectionRow = $manualCollectionRows->get($method);
 
                     return [
                         'method' => $method,
@@ -290,8 +317,12 @@ class DayEndReportService
                     'normal_sales' => $normalSaleRows->all(),
                     'cash_sales' => $cashSaleRows->all(),
                     'card_sales' => $cardSaleRows->all(),
-                    'cash_collections' => $recentCollectionRows->where('method', 'cash')->values()->all(),
-                    'card_collections' => $recentCollectionRows->where('method', 'cc')->values()->all(),
+                    'cash_collections' => $recentCollectionRows->where('day_end_bucket', 'cash')->values()->all(),
+                    'card_collections' => $recentCollectionRows->where('day_end_bucket', 'card')->values()->all(),
+                    'transfer_collections' => $recentCollectionRows->where('day_end_bucket', 'transfer')->values()->all(),
+                    'check_collections' => $recentCollectionRows->where('day_end_bucket', 'check')->values()->all(),
+                    'note_collections' => $recentCollectionRows->where('day_end_bucket', 'note')->values()->all(),
+                    'factory_card_collections' => $recentCollectionRows->where('day_end_bucket', 'factory_cc')->values()->all(),
                 ],
                 'cancelled' => [
                     'count' => $cancelledCount,
@@ -305,6 +336,25 @@ class DayEndReportService
                 'generated_at' => now()->toIso8601String(),
             ];
         }, 2);
+    }
+
+    private function resolveCollectionReportBucket(Collection $collection): string
+    {
+        $method = (string) $collection->method;
+        $channel = (string) data_get($collection->reference_fields, 'collection_channel', '');
+
+        if ($method === 'cc' && $channel === 'factory') {
+            return 'factory_cc';
+        }
+
+        return match ($method) {
+            'cash' => 'cash',
+            'cc' => 'card',
+            'transfer' => 'transfer',
+            'check' => 'check',
+            'note' => 'note',
+            default => 'other',
+        };
     }
 
     /**
@@ -334,6 +384,18 @@ class DayEndReportService
         }
 
         return in_array($paymentMethod, ['cash', 'card'], true) ? $paymentMethod : 'normal';
+    }
+
+    private function saleWarehouseName(PosSale $sale): ?string
+    {
+        $cashboxName = $sale->posSession?->cashbox?->name;
+        if (is_string($cashboxName) && trim($cashboxName) !== '') {
+            return trim($cashboxName);
+        }
+
+        $cashboxCode = $sale->posSession?->cashbox?->code;
+
+        return is_string($cashboxCode) && trim($cashboxCode) !== '' ? trim($cashboxCode) : null;
     }
 
     /**

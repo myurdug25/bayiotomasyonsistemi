@@ -112,6 +112,9 @@ BEGIN
 
     DECLARE @CashboxRef INT;
     DECLARE @AccountRef INT;
+    DECLARE @CashAccountRef INT;
+    DECLARE @ExpenseAccountCode VARCHAR(25);
+    DECLARE @CashAccountCode VARCHAR(25);
     DECLARE @FicheNo VARCHAR(17) = CONVERT(VARCHAR(17), RIGHT(REPLICATE('0', 17) + CONVERT(VARCHAR(128), @ExportKey), 17));
     DECLARE @Docode VARCHAR(33) = CONVERT(VARCHAR(33), LEFT(@ExportKey, 33));
     DECLARE @Specode VARCHAR(11) = CONVERT(VARCHAR(11), LEFT(@ExportKey, 11));
@@ -158,10 +161,49 @@ BEGIN
         FROM dbo.LG_003_EMUHACC WITH (NOLOCK)
         WHERE CODE = CONVERT(VARCHAR(25), @AccountCode)
           AND ISNULL(ACTIVE, 0) = 0;
+
+        IF @AccountRef IS NULL
+        BEGIN
+            SELECT TOP 1 @AccountRef = LOGICALREF
+            FROM dbo.LG_003_EMUHACC WITH (NOLOCK)
+            WHERE REPLACE(CODE, '.', '-') = REPLACE(CONVERT(VARCHAR(25), @AccountCode), '.', '-')
+              AND ISNULL(ACTIVE, 0) = 0;
+        END;
     END;
 
     IF @AccountCode IS NOT NULL AND @AccountRef IS NULL
         THROW 51062, 'Logo expense account could not be resolved.', 1;
+
+    IF @AccountRef IS NOT NULL
+    BEGIN
+        SELECT TOP 1
+            @ExpenseAccountCode = CODE
+        FROM dbo.LG_003_EMUHACC WITH (NOLOCK)
+        WHERE LOGICALREF = @AccountRef;
+
+        IF @CashboxCode IS NOT NULL
+        BEGIN
+            SELECT TOP 1
+                @CashAccountRef = LOGICALREF,
+                @CashAccountCode = CODE
+            FROM dbo.LG_003_EMUHACC WITH (NOLOCK)
+            WHERE CODE = CONVERT(VARCHAR(25), @CashboxCode)
+              AND ISNULL(ACTIVE, 0) = 0;
+
+            IF @CashAccountRef IS NULL
+            BEGIN
+                SELECT TOP 1
+                    @CashAccountRef = LOGICALREF,
+                    @CashAccountCode = CODE
+                FROM dbo.LG_003_EMUHACC WITH (NOLOCK)
+                WHERE REPLACE(CODE, '.', '-') = REPLACE(CONVERT(VARCHAR(25), @CashboxCode), '.', '-')
+                  AND ISNULL(ACTIVE, 0) = 0;
+            END;
+        END;
+
+        IF @CashAccountRef IS NULL
+            THROW 51063, 'Logo cash accounting account could not be resolved for POS expense export.', 1;
+    END;
 
     BEGIN TRANSACTION;
 
@@ -179,6 +221,115 @@ BEGIN
     );
 
     SET @KslinesRef = SCOPE_IDENTITY();
+
+    IF @AccountRef IS NOT NULL AND @CashAccountRef IS NOT NULL
+    BEGIN
+        DECLARE @EmficheRef INT;
+        DECLARE @EmflineDebitRef INT;
+        DECLARE @EmflineCreditRef INT;
+        DECLARE @ExpenseKebirCode VARCHAR(17) = CONVERT(VARCHAR(17), LEFT(COALESCE(@ExpenseAccountCode, ''), 3));
+        DECLARE @CashKebirCode VARCHAR(17) = CONVERT(VARCHAR(17), LEFT(COALESCE(@CashAccountCode, ''), 3));
+
+        IF OBJECTPROPERTY(OBJECT_ID('dbo.LG_003_01_EMFICHE'), 'TableHasIdentity') = 1
+        BEGIN
+            INSERT INTO dbo.LG_003_01_EMFICHE (
+                TRCODE, FICHENO, DATE_, SPECODE, CYPHCODE, DOCODE, BRANCH, DEPARTMENT,
+                MODULENO, SOURCEFREF, GENEXP1, TOTALACTIVE, TOTALPASSIVE, CANCELLED,
+                PRINTCNT, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR,
+                CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC, MODULENR, EMUTOTACTIVE,
+                EMUTOTPASSIVE, REPTOTACTIVE, REPTOTPASSIVE, STATUS, DOCDATE
+            )
+            VALUES (
+                3, @FicheNo, @ExpenseDate, @Specode, @CyphCode, @Docode, 0, 0,
+                10, @KslinesRef, @LineExp, CONVERT(FLOAT, @Amount), CONVERT(FLOAT, @Amount), 0,
+                0, 1, @Now, @Hour,
+                @Minute, @Second, 10, CONVERT(FLOAT, @Amount),
+                CONVERT(FLOAT, @Amount), CONVERT(FLOAT, @Amount), CONVERT(FLOAT, @Amount), 0, @ExpenseDate
+            );
+
+            SET @EmficheRef = SCOPE_IDENTITY();
+        END
+        ELSE
+        BEGIN
+            SELECT @EmficheRef = ISNULL(MAX(LOGICALREF), 0) + 1 FROM dbo.LG_003_01_EMFICHE WITH (UPDLOCK, TABLOCKX);
+            INSERT INTO dbo.LG_003_01_EMFICHE (
+                LOGICALREF, TRCODE, FICHENO, DATE_, SPECODE, CYPHCODE, DOCODE, BRANCH, DEPARTMENT,
+                MODULENO, SOURCEFREF, GENEXP1, TOTALACTIVE, TOTALPASSIVE, CANCELLED,
+                PRINTCNT, CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR,
+                CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC, MODULENR, EMUTOTACTIVE,
+                EMUTOTPASSIVE, REPTOTACTIVE, REPTOTPASSIVE, STATUS, DOCDATE
+            )
+            VALUES (
+                @EmficheRef, 3, @FicheNo, @ExpenseDate, @Specode, @CyphCode, @Docode, 0, 0,
+                10, @KslinesRef, @LineExp, CONVERT(FLOAT, @Amount), CONVERT(FLOAT, @Amount), 0,
+                0, 1, @Now, @Hour,
+                @Minute, @Second, 10, CONVERT(FLOAT, @Amount),
+                CONVERT(FLOAT, @Amount), CONVERT(FLOAT, @Amount), CONVERT(FLOAT, @Amount), 0, @ExpenseDate
+            );
+        END;
+
+        IF OBJECTPROPERTY(OBJECT_ID('dbo.LG_003_01_EMFLINE'), 'TableHasIdentity') = 1
+        BEGIN
+            INSERT INTO dbo.LG_003_01_EMFLINE (
+                DATE_, SIGN, ACCOUNTREF, ACCFICHEREF, TRCODE, BRANCH, KEBIRCODE,
+                ACCOUNTCODE, SPECODE, DEBIT, CREDIT, LINENO_, LINEEXP, CANCELLED,
+                TRCURR, REPORTRATE, REPORTNET, TRRATE, TRNET, AMNT, EMUDEBIT,
+                EMUCREDIT, MONTH_, YEAR_, SOURCEFREF, CASHLINE
+            )
+            VALUES (
+                @ExpenseDate, 0, @AccountRef, @EmficheRef, 3, 0, @ExpenseKebirCode,
+                @ExpenseAccountCode, @Specode, CONVERT(FLOAT, @Amount), 0, 1, @LineExp, 0,
+                0, 1, CONVERT(FLOAT, @Amount), 1, CONVERT(FLOAT, @Amount), 0, CONVERT(FLOAT, @Amount),
+                0, MONTH(@ExpenseDate), YEAR(@ExpenseDate), @KslinesRef, 1
+            );
+            SET @EmflineDebitRef = SCOPE_IDENTITY();
+
+            INSERT INTO dbo.LG_003_01_EMFLINE (
+                DATE_, SIGN, ACCOUNTREF, ACCFICHEREF, TRCODE, BRANCH, KEBIRCODE,
+                ACCOUNTCODE, SPECODE, DEBIT, CREDIT, LINENO_, LINEEXP, CANCELLED,
+                TRCURR, REPORTRATE, REPORTNET, TRRATE, TRNET, AMNT, EMUDEBIT,
+                EMUCREDIT, MONTH_, YEAR_, SOURCEFREF, CASHLINE
+            )
+            VALUES (
+                @ExpenseDate, 1, @CashAccountRef, @EmficheRef, 3, 0, @CashKebirCode,
+                @CashAccountCode, @Specode, 0, CONVERT(FLOAT, @Amount), 2, @LineExp, 0,
+                0, 1, CONVERT(FLOAT, @Amount), 1, CONVERT(FLOAT, @Amount), 0, 0,
+                CONVERT(FLOAT, @Amount), MONTH(@ExpenseDate), YEAR(@ExpenseDate), @KslinesRef, 1
+            );
+            SET @EmflineCreditRef = SCOPE_IDENTITY();
+        END
+        ELSE
+        BEGIN
+            SELECT @EmflineDebitRef = ISNULL(MAX(LOGICALREF), 0) + 1 FROM dbo.LG_003_01_EMFLINE WITH (UPDLOCK, TABLOCKX);
+            INSERT INTO dbo.LG_003_01_EMFLINE (
+                LOGICALREF, DATE_, SIGN, ACCOUNTREF, ACCFICHEREF, TRCODE, BRANCH, KEBIRCODE,
+                ACCOUNTCODE, SPECODE, DEBIT, CREDIT, LINENO_, LINEEXP, CANCELLED,
+                TRCURR, REPORTRATE, REPORTNET, TRRATE, TRNET, AMNT, EMUDEBIT,
+                EMUCREDIT, MONTH_, YEAR_, SOURCEFREF, CASHLINE
+            )
+            VALUES (
+                @EmflineDebitRef, @ExpenseDate, 0, @AccountRef, @EmficheRef, 3, 0, @ExpenseKebirCode,
+                @ExpenseAccountCode, @Specode, CONVERT(FLOAT, @Amount), 0, 1, @LineExp, 0,
+                0, 1, CONVERT(FLOAT, @Amount), 1, CONVERT(FLOAT, @Amount), 0, CONVERT(FLOAT, @Amount),
+                0, MONTH(@ExpenseDate), YEAR(@ExpenseDate), @KslinesRef, 1
+            );
+
+            SET @EmflineCreditRef = @EmflineDebitRef + 1;
+            INSERT INTO dbo.LG_003_01_EMFLINE (
+                LOGICALREF, DATE_, SIGN, ACCOUNTREF, ACCFICHEREF, TRCODE, BRANCH, KEBIRCODE,
+                ACCOUNTCODE, SPECODE, DEBIT, CREDIT, LINENO_, LINEEXP, CANCELLED,
+                TRCURR, REPORTRATE, REPORTNET, TRRATE, TRNET, AMNT, EMUDEBIT,
+                EMUCREDIT, MONTH_, YEAR_, SOURCEFREF, CASHLINE
+            )
+            VALUES (
+                @EmflineCreditRef, @ExpenseDate, 1, @CashAccountRef, @EmficheRef, 3, 0, @CashKebirCode,
+                @CashAccountCode, @Specode, 0, CONVERT(FLOAT, @Amount), 2, @LineExp, 0,
+                0, 1, CONVERT(FLOAT, @Amount), 1, CONVERT(FLOAT, @Amount), 0, 0,
+                CONVERT(FLOAT, @Amount), MONTH(@ExpenseDate), YEAR(@ExpenseDate), @KslinesRef, 1
+            );
+        END;
+    END;
+
     SET @ExternalRef = CONCAT(N'KSLINES-', @KslinesRef);
     EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;
 

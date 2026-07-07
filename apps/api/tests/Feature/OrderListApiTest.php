@@ -298,14 +298,15 @@ class OrderListApiTest extends TestCase
             ->assertJsonFragment(['order_no' => 'ORD-CTX-002']);
     }
 
-    public function test_salesperson_order_list_honors_logo_specode4_filter(): void
+    public function test_salesperson_order_list_uses_logo_specode4_filter_over_assigned_scope(): void
     {
         $dealer = $this->createDealer('DLR-ORD-SP4');
         $sales = $this->createUserWithRole('salesperson', $dealer, [
             'logo_customer_specode4' => 'A',
         ]);
+        $otherSales = $this->createUserWithRole('salesperson', $dealer);
 
-        $this->createOrder($dealer, $sales, [
+        $this->createOrder($dealer, $otherSales, [
             'order_no' => 'ORD-SP4-001',
             'customer_name' => 'Specode A Cari',
             'customer_meta' => [

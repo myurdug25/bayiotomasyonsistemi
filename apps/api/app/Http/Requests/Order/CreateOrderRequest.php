@@ -22,6 +22,8 @@ class CreateOrderRequest extends FormRequest
             'dealer_id' => ['nullable', 'integer', 'exists:dealers,id'],
             'note' => ['nullable', 'string', 'max:2000'],
             'checkout_summary_mode' => ['nullable', 'string', 'in:detailed,excluded,included'],
+            'payment_method' => ['nullable', 'string', 'max:64'],
+            'sales_price_type' => ['nullable', 'string', 'max:64'],
         ];
     }
 }

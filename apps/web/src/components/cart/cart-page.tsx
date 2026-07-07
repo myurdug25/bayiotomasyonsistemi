@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Banknote,
   Bus,
   CheckCircle2,
   CreditCard,
+  Download,
+  FileSpreadsheet,
   Landmark,
   Loader2,
   Minus,
@@ -17,9 +19,11 @@ import {
   ShoppingCart,
   Trash2,
   Truck,
+  Upload,
   Warehouse,
   WalletCards,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { useSession } from "@/components/auth/session-provider";
 import { useCart } from "@/components/cart/cart-provider";
@@ -29,7 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { CartWarehouseOption } from "@/lib/api";
+import { bulkUpsertCartItems, type CartWarehouseOption } from "@/lib/api";
 
 const PAYMENT_METHODS = [
   {
@@ -99,6 +103,10 @@ const BANK_TRANSFER_ACCOUNT = {
 type PaymentMethodKey = (typeof PAYMENT_METHODS)[number]["key"];
 type CombinedPaymentKey = (typeof COMBINED_PAYMENT_OPTIONS)[number]["key"];
 type VatSummaryMode = "included" | "excluded" | "detailed";
+type BulkCartUploadRow = {
+  product_code: string;
+  quantity: number;
+};
 
 const CHECKOUT_SUMMARY_MODES: Record<VatSummaryMode, { code: string; label: string }> = {
   detailed: { code: "1-F", label: "1 - F" },
@@ -150,6 +158,95 @@ function formatCartDateTime(value?: string | null): string {
   });
 }
 
+function downloadBulkCartTemplate() {
+  const rows = [
+    ["Ürün Kodu", "Miktar"],
+    ["3A826/1", "10"],
+    ["3A1313/S", "5"],
+    ["EH6655", "20"],
+  ];
+  const html = `<!doctype html><html><head><meta charset="utf-8"></head><body><table>${rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`)
+    .join("")}</table></body></html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "powersa-toplu-sepet-ornek.xls";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<\s*\/\s*(td|th)\s*>/gi, "\t")
+    .replace(/<\s*\/\s*tr\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function parseDelimitedLine(line: string): string[] {
+  const delimiter = line.includes("\t") ? "\t" : line.includes(";") ? ";" : ",";
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+
+    if (char === delimiter && !quoted) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseBulkCartText(content: string): BulkCartUploadRow[] {
+  const text = stripHtml(content).replace(/^\uFEFF/, "");
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines
+    .map(parseDelimitedLine)
+    .filter((cells) => cells.length >= 2)
+    .filter((cells, index) => {
+      if (index > 0) return true;
+      const first = cells[0]?.toLocaleLowerCase("tr-TR") ?? "";
+      const second = cells[1]?.toLocaleLowerCase("tr-TR") ?? "";
+      return !(first.includes("ürün") || first.includes("urun") || second.includes("miktar"));
+    })
+    .map((cells) => ({
+      product_code: String(cells[0] ?? "").trim(),
+      quantity: Math.max(0, Math.floor(Number(String(cells[1] ?? "").replace(",", ".")))),
+    }))
+    .filter((row) => row.product_code !== "" && row.quantity > 0);
+}
+
 function includesBatum(value?: string | number | null): boolean {
   return String(value ?? "").trim().toLocaleUpperCase("tr-TR").includes("BATUM");
 }
@@ -175,18 +272,23 @@ export function CartPage() {
   const [selectedWarehouseKey, setSelectedWarehouseKey] = useState("");
   const [quantityDrafts, setQuantityDrafts] = useState<Record<number, string>>({});
   const [vatSummaryMode, setVatSummaryMode] = useState<VatSummaryMode>("detailed");
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkUploadResults, setBulkUploadResults] = useState<Array<{ product_code: string; quantity: number; status: string; message: string }>>([]);
+  const bulkUploadInputRef = useRef<HTMLInputElement | null>(null);
   const {
     cartData,
     loading,
     mutating,
     error,
     shippingMethod,
+    effectiveWarehouseTransfer,
     orderNote,
     setShippingMethod,
     setOrderNote,
     upsertQuantity,
     removeItemByProduct,
     createOrderFromCart,
+    refresh: refreshCart,
   } = useCart();
 
   useEffect(() => {
@@ -304,6 +406,57 @@ export function CartPage() {
   const featurePermissionSet = useMemo(() => new Set(user?.feature_permissions ?? []), [user?.feature_permissions]);
   const canCheckout = !isCustomerUser || featurePermissionSet.has("cart.checkout");
   const isCheckoutDisabled = mutating || loading || items.length === 0 || !selectedCustomer || !canCheckout;
+  const handleBulkCartFileChange = useCallback(
+    async (file: File | null) => {
+      if (!file) {
+        return;
+      }
+
+      if (!selectedCustomer) {
+        toast.error("Toplu sepet yüklemek için önce müşteri seçmelisiniz.");
+        return;
+      }
+
+      setBulkUploading(true);
+      setBulkUploadResults([]);
+
+      try {
+        const content = await file.text();
+        const bulkItems = parseBulkCartText(content);
+
+        if (bulkItems.length === 0) {
+          toast.error("Dosyada okunabilir ürün kodu ve miktar satırı bulunamadı.");
+          return;
+        }
+
+        const response = await bulkUpsertCartItems({
+          items: bulkItems,
+          customer_id: selectedCustomer.id,
+          shipping_method: shippingMethod || undefined,
+          warehouse_transfer: effectiveWarehouseTransfer,
+          order_note: orderNote || undefined,
+        });
+
+        setBulkUploadResults(response.results);
+        await refreshCart();
+
+        if (response.summary.failed > 0) {
+          toast.warning(`${response.summary.added} ürün eklendi, ${response.summary.failed} satır eklenemedi.`);
+        } else {
+          toast.success(`${response.summary.added} ürün sepete eklendi.`);
+        }
+      } catch (uploadError) {
+        const message = uploadError instanceof Error ? uploadError.message : "Excel yükleme başarısız oldu.";
+        toast.error(message);
+      } finally {
+        setBulkUploading(false);
+        if (bulkUploadInputRef.current) {
+          bulkUploadInputRef.current.value = "";
+        }
+      }
+    },
+    [effectiveWarehouseTransfer, orderNote, refreshCart, selectedCustomer, shippingMethod]
+  );
   const checkoutNote = useMemo(() => {
     const cleanNote = orderNote.trim();
     const paymentNoteParts = isBatumBranch
@@ -353,6 +506,70 @@ export function CartPage() {
           </Button>
         </div>
       ) : null}
+
+      <Card className="dashboard-panel-card order-1 overflow-hidden">
+        <CardContent className="space-y-3 p-3 2xl:p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <StepTitle step={1} title="Excel ile Sepete Ekle" icon={FileSpreadsheet} />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Button
+                type="button"
+                variant="outline"
+                className="admin-dashboard-ghost h-11 rounded-xl px-4 text-sm font-black"
+                onClick={downloadBulkCartTemplate}
+              >
+                <Download className="h-4 w-4" />
+                Örnek Excel İndir
+              </Button>
+              <input
+                ref={bulkUploadInputRef}
+                type="file"
+                accept=".xls,.csv,.tsv,.txt,text/csv,text/tab-separated-values,application/vnd.ms-excel"
+                className="hidden"
+                onChange={(event) => void handleBulkCartFileChange(event.target.files?.[0] ?? null)}
+              />
+              <Button
+                type="button"
+                className="admin-primary-action h-11 rounded-xl px-4 text-sm font-black"
+                disabled={bulkUploading || !selectedCustomer}
+                onClick={() => bulkUploadInputRef.current?.click()}
+              >
+                {bulkUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Excel Yükle
+              </Button>
+            </div>
+          </div>
+          <p className="text-sm font-semibold text-[var(--muted-foreground)]">
+            Excel formatı: <span className="font-black text-[var(--foreground)]">Ürün Kodu</span> ve{" "}
+            <span className="font-black text-[var(--foreground)]">Miktar</span>. Yüklenen ürünler doğrudan seçili carinin sepetine eklenir.
+          </p>
+          {bulkUploadResults.length > 0 ? (
+            <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
+              <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+                <FileSpreadsheet className="h-4 w-4 text-[var(--brand-primary)]" />
+                Toplu sepet sonucu
+              </div>
+              <div className="grid max-h-40 gap-1 overflow-auto text-sm font-semibold sm:grid-cols-2 lg:grid-cols-3">
+                {bulkUploadResults.map((result, index) => (
+                  <div
+                    key={`${result.product_code}-${index}`}
+                    className={cn(
+                      "rounded-lg border px-3 py-2",
+                      result.status === "added"
+                        ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-100"
+                        : "border-rose-400/35 bg-rose-400/10 text-rose-100"
+                    )}
+                  >
+                    <span className="font-black">{result.product_code}</span>
+                    <span className="text-[var(--muted-foreground)]"> · {result.quantity} adet</span>
+                    <div className="text-xs">{result.message}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {!isBatumBranch ? (
         <Card className="dashboard-panel-card order-2 overflow-hidden">
@@ -823,6 +1040,13 @@ export function CartPage() {
 	                    </div>
 	                  </>
 	                ) : null}
+                {!isBatumBranch && effectiveVatSummaryMode === "excluded" ? (
+                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
+                    <span className="text-[var(--muted-foreground)]">KDV</span>
+                    <span className="h-px bg-[var(--brand-border)]" />
+                    <strong>KDV Yok</strong>
+                  </div>
+                ) : null}
                 {shippingFeeAmount > 0 ? (
                   <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
                     <span className="text-amber-100">Ulaşım / Nakliye</span>
@@ -918,6 +1142,8 @@ export function CartPage() {
                   onClick={() => void createOrderFromCart({
                     note: checkoutNote,
                     checkoutSummaryMode: isBatumBranch ? undefined : effectiveVatSummaryMode,
+                    paymentMethod: isCombinedPayment ? selectedCombinedPayment.key : selectedPayment.key,
+                    salesPriceType: selectedPaymentTitle,
                   })}
                 >
                   {mutating ? <Loader2 className="h-9 w-9 animate-spin" /> : <PackageCheck className="h-9 w-9" />}

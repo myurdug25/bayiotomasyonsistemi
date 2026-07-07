@@ -862,7 +862,7 @@ class CustomerCollectionController extends Controller
             return [
                 $referenceFields,
                 $referenceNo,
-                trim(implode(' ', array_filter([$referenceNo, $customerName, mb_strtoupper($factory->name)]))),
+                trim(implode(' ', array_filter([$referenceNo, $customerName]))),
             ];
         }
 
@@ -876,21 +876,12 @@ class CustomerCollectionController extends Controller
             $referenceFields['bank_logo_code'] = $bank->logo_code;
             $referenceFields['finance_definition_id'] = $bank->id;
 
-            $posDeviceCode = trim((string) data_get($referenceFields, 'pos_device', ''));
-            if ($posDeviceCode !== '') {
-                $posDevice = $this->activeFinanceDefinition('pos_device', $posDeviceCode, 'reference_fields.pos_device');
-                $referenceFields['pos_device'] = $posDevice->code;
-                $referenceFields['pos_device_name'] = $posDevice->name;
-                $referenceFields['pos_device_logo_code'] = $posDevice->logo_code;
-            }
-
-            $cardTypeCode = trim((string) data_get($referenceFields, 'card_type', ''));
-            if ($cardTypeCode !== '') {
-                $cardType = $this->activeFinanceDefinition('card_type', $cardTypeCode, 'reference_fields.card_type');
-                $referenceFields['card_type'] = $cardType->code;
-                $referenceFields['card_type_name'] = $cardType->name;
-            }
             unset(
+                $referenceFields['pos_device'],
+                $referenceFields['pos_device_name'],
+                $referenceFields['pos_device_logo_code'],
+                $referenceFields['card_type'],
+                $referenceFields['card_type_name'],
                 $referenceFields['pos_payment_type'],
                 $referenceFields['installment'],
                 $referenceFields['commission_rate']
@@ -899,7 +890,7 @@ class CustomerCollectionController extends Controller
             return [
                 $referenceFields,
                 $referenceNo,
-                trim(implode(' ', array_filter([$referenceNo, $customerName, mb_strtoupper($bank->name)]))),
+                trim(implode(' ', array_filter([$referenceNo, $customerName]))),
             ];
         }
 
@@ -915,7 +906,7 @@ class CustomerCollectionController extends Controller
             return [
                 $referenceFields,
                 $referenceNo,
-                trim(implode(' ', array_filter([$referenceNo, $customerName, mb_strtoupper($bank->name)]))),
+                trim(implode(' ', array_filter([$referenceNo, $customerName]))),
             ];
         }
 
@@ -935,7 +926,7 @@ class CustomerCollectionController extends Controller
             ->where('is_active', true)
             ->when(
                 $type === 'bank',
-                fn ($query) => $query->whereNotIn('code', ['georgia_bank', 'tbc_bank'])
+                fn ($query) => $this->applyTurkeyBankScope($query)
             )
             ->where(function ($query) use ($code): void {
                 $query->where('code', $code)->orWhere('name', $code);
@@ -947,6 +938,30 @@ class CustomerCollectionController extends Controller
         }
 
         return $definition;
+    }
+
+    private function applyTurkeyBankScope($query): void
+    {
+        $blockedTerms = [
+            'batum',
+            'georgia',
+            'gürcistan',
+            'gurcistan',
+            'yurtdışı',
+            'yurtdisi',
+            'tbc',
+        ];
+
+        $query->whereNotIn('code', ['georgia_bank', 'tbc_bank']);
+
+        foreach ($blockedTerms as $term) {
+            $like = '%'.$term.'%';
+            $query
+                ->whereRaw('LOWER(COALESCE(code, \'\')) NOT LIKE ?', [$like])
+                ->whereRaw('LOWER(COALESCE(name, \'\')) NOT LIKE ?', [$like])
+                ->whereRaw('LOWER(COALESCE(logo_code, \'\')) NOT LIKE ?', [$like])
+                ->whereRaw('LOWER(COALESCE(logo_name, \'\')) NOT LIKE ?', [$like]);
+        }
     }
 
     private function nextPhysicalPosReference(): string

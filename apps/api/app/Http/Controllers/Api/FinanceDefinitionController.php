@@ -22,9 +22,8 @@ class FinanceDefinitionController extends Controller
             ->when(! ($validated['include_inactive'] ?? false), fn ($q) => $q
                 ->where('is_active', true)
                 ->where(function ($definitionQuery): void {
-                    $definitionQuery
-                        ->where('type', '!=', 'bank')
-                        ->orWhereNotIn('code', ['georgia_bank', 'tbc_bank']);
+                    $definitionQuery->where('type', '!=', 'bank')
+                        ->orWhere(fn ($bankQuery) => $this->applyTurkeyBankScope($bankQuery));
                 }))
             ->orderBy('type')
             ->orderBy('sort_order')
@@ -66,5 +65,29 @@ class FinanceDefinitionController extends Controller
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['required', 'boolean'],
         ]);
+    }
+
+    private function applyTurkeyBankScope($query): void
+    {
+        $blockedTerms = [
+            'batum',
+            'georgia',
+            'gürcistan',
+            'gurcistan',
+            'yurtdışı',
+            'yurtdisi',
+            'tbc',
+        ];
+
+        $query->whereNotIn('code', ['georgia_bank', 'tbc_bank']);
+
+        foreach ($blockedTerms as $term) {
+            $like = '%'.$term.'%';
+            $query
+                ->whereRaw('LOWER(COALESCE(code, \'\')) NOT LIKE ?', [$like])
+                ->whereRaw('LOWER(COALESCE(name, \'\')) NOT LIKE ?', [$like])
+                ->whereRaw('LOWER(COALESCE(logo_code, \'\')) NOT LIKE ?', [$like])
+                ->whereRaw('LOWER(COALESCE(logo_name, \'\')) NOT LIKE ?', [$like]);
+        }
     }
 }

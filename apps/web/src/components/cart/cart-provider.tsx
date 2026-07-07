@@ -40,7 +40,12 @@ type CartContextType = {
   upsertQuantity: (productId: number, quantity: number, campaignKey?: string | null) => Promise<void>;
   removeItemByProduct: (productId: number) => Promise<void>;
   saveCheckoutMeta: () => Promise<void>;
-  createOrderFromCart: (options?: { note?: string; checkoutSummaryMode?: "detailed" | "excluded" | "included" }) => Promise<void>;
+  createOrderFromCart: (options?: {
+    note?: string;
+    checkoutSummaryMode?: "detailed" | "excluded" | "included";
+    paymentMethod?: string;
+    salesPriceType?: string;
+  }) => Promise<void>;
   getProductQty: (productId: number) => number;
 };
 
@@ -315,7 +320,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [cartData?.items, effectiveWarehouseTransfer, isBatumBranch, orderNote, selectedCustomer, shippingMethod]);
 
-  const createOrderFromCart = useCallback(async (options?: { note?: string; checkoutSummaryMode?: "detailed" | "excluded" | "included" }) => {
+  const createOrderFromCart = useCallback(async (options?: {
+    note?: string;
+    checkoutSummaryMode?: "detailed" | "excluded" | "included";
+    paymentMethod?: string;
+    salesPriceType?: string;
+  }) => {
     if (!selectedCustomer) {
       setError("Önce müşteri seçmelisiniz");
       return;
@@ -350,6 +360,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         customer_id: selectedCustomer.id,
         note: checkoutNote,
         checkout_summary_mode: options?.checkoutSummaryMode,
+        payment_method: options?.paymentMethod,
+        sales_price_type: options?.salesPriceType,
       });
 
       clearLocalCart();

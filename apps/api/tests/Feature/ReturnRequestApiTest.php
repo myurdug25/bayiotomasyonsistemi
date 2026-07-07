@@ -103,6 +103,76 @@ class ReturnRequestApiTest extends TestCase
             ->assertJsonValidationErrors(['quantity']);
     }
 
+    public function test_return_request_quantity_cannot_exceed_remaining_returnable_quantity(): void
+    {
+        [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+
+        $this->actingAs($user);
+
+        $this
+            ->postJson('/api/returns', [
+                'order_id' => $order->id,
+                'order_item_id' => $orderItem->id,
+                'request_type' => 'return',
+                'reason_code' => 'wrong_product_sent',
+                'quantity' => 1,
+            ])
+            ->assertCreated();
+
+        $this
+            ->getJson("/api/orders/{$order->id}")
+            ->assertOk()
+            ->assertJsonPath('order.items.0.returned_quantity', 1)
+            ->assertJsonPath('order.items.0.returnable_quantity', 1);
+
+        $this
+            ->postJson('/api/returns', [
+                'order_id' => $order->id,
+                'order_item_id' => $orderItem->id,
+                'request_type' => 'faulty',
+                'reason_code' => 'defective_on_arrival',
+                'quantity' => 2,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['quantity']);
+    }
+
+    public function test_rejected_return_request_does_not_reduce_returnable_quantity(): void
+    {
+        [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+
+        $this->actingAs($user);
+
+        $createResponse = $this
+            ->postJson('/api/returns', [
+                'order_id' => $order->id,
+                'order_item_id' => $orderItem->id,
+                'request_type' => 'return',
+                'reason_code' => 'wrong_product_sent',
+                'quantity' => 2,
+            ])
+            ->assertCreated();
+
+        $requestId = (int) $createResponse->json('data.id');
+
+        $this
+            ->patchJson("/api/returns/{$requestId}/status", [
+                'status' => 'rejected',
+                'resolution_note' => 'Yanlış talep.',
+            ])
+            ->assertOk();
+
+        $this
+            ->postJson('/api/returns', [
+                'order_id' => $order->id,
+                'order_item_id' => $orderItem->id,
+                'request_type' => 'faulty',
+                'reason_code' => 'defective_on_arrival',
+                'quantity' => 2,
+            ])
+            ->assertCreated();
+    }
+
     public function test_salesperson_can_move_return_request_through_review_flow(): void
     {
         [$user, $order, $orderItem] = $this->createOrderContext('salesperson');

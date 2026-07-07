@@ -144,6 +144,7 @@ class LogoOrderExportService
     {
         $customer = $order->customer;
         $customerMeta = is_array($customer?->meta) ? $customer->meta : [];
+        $stateMeta = is_array($state->meta) ? $state->meta : [];
 
         return [
             'order_id' => $order->id,
@@ -164,6 +165,9 @@ class LogoOrderExportService
             'grand_total' => $this->money($order->grand_total),
             'note' => $order->note,
             'shipping_method' => $order->cart?->shipping_method,
+            'checkout_summary_mode' => $this->nullableString(data_get($stateMeta, 'checkout_summary_mode')),
+            'payment_method' => $this->nullableString(data_get($stateMeta, 'payment_method')),
+            'sales_price_type' => $this->nullableString(data_get($stateMeta, 'sales_price_type')),
             'created_by_user_id' => $order->user_id,
             'created_by_name' => $order->user?->name,
             'sync_status' => $state->status,

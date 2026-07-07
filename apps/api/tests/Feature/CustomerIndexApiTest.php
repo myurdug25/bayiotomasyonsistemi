@@ -280,7 +280,7 @@ class CustomerIndexApiTest extends TestCase
         $this->actingAs($user)
             ->getJson('/api/customers?limit=10')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
+            ->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.id', $pendingCustomer->id)
             ->assertJsonPath('data.0.source_system', 'b2b');
 
@@ -564,7 +564,7 @@ class CustomerIndexApiTest extends TestCase
             ->assertJsonPath('data.0.code', 'LOGO-001');
     }
 
-    public function test_salesperson_selection_mode_honors_logo_specode4_filter(): void
+    public function test_salesperson_selection_mode_uses_logo_specode4_filter_over_assigned_scope(): void
     {
         $dealer = Dealer::query()->create([
             'code' => 'DLR-SEL-SP4',
@@ -625,7 +625,7 @@ class CustomerIndexApiTest extends TestCase
 
         Customer::query()->create([
             'dealer_id' => $dealer->id,
-            'salesperson_user_id' => null,
+            'salesperson_user_id' => $user->id,
             'source_system' => 'logo',
             'code' => 'LOGO-B',
             'name' => 'Logo Cari B',
@@ -651,7 +651,7 @@ class CustomerIndexApiTest extends TestCase
             ->assertJsonPath('data.1.code', 'LOGO-A-LOWER');
     }
 
-    public function test_salesperson_normal_index_uses_logo_specode4_filter_as_visibility_scope(): void
+    public function test_salesperson_normal_index_uses_logo_specode4_filter_over_assigned_scope(): void
     {
         $dealer = Dealer::query()->create([
             'code' => 'DLR-IDX-SP4',
@@ -712,10 +712,10 @@ class CustomerIndexApiTest extends TestCase
 
         $this->getJson('/api/customers?limit=50')
             ->assertOk()
-            ->assertJsonPath('total_count', 2)
-            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('total_count', 1)
+            ->assertJsonCount(1, 'data')
             ->assertJsonFragment(['code' => 'LOGO-A-NORMAL'])
-            ->assertJsonFragment(['code' => 'LOGO-B-ASSIGNED']);
+            ->assertJsonMissing(['code' => 'LOGO-B-ASSIGNED']);
     }
 
     public function test_point_user_uses_logo_specode4_filter_before_branch_scope(): void

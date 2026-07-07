@@ -1932,13 +1932,13 @@ class PointPosAccessApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('collection.method', 'transfer')
             ->assertJsonPath('collection.amount', '125.50')
-            ->assertJsonPath('collection.note', 'Edit Collection Customer YAPI KREDI');
+            ->assertJsonPath('collection.note', 'Edit Collection Customer');
 
         $this->assertDatabaseHas('collections', [
             'id' => $collection->id,
             'method' => 'transfer',
             'amount' => '125.50',
-            'note' => 'Edit Collection Customer YAPI KREDI',
+            'note' => 'Edit Collection Customer',
         ]);
 
         $this->deleteJson("/api/customers/{$customer->id}/collections/{$collection->id}")
@@ -2137,7 +2137,7 @@ class PointPosAccessApiTest extends TestCase
             ->assertJsonPath('collection.amount', '10.00');
     }
 
-    public function test_batum_branch_point_user_can_select_georgian_bank_for_physical_pos_collection(): void
+    public function test_batum_or_georgian_bank_cannot_be_selected_for_physical_pos_collection(): void
     {
         $dealer = Dealer::query()->create([
             'code' => 'DLR-BATUM-POS-'.Str::upper(Str::random(4)),
@@ -2174,9 +2174,8 @@ class PointPosAccessApiTest extends TestCase
                 'pos_payment_type' => 'pesin',
             ],
         ])
-            ->assertCreated()
-            ->assertJsonPath('collection.method', 'cc')
-            ->assertJsonPath('collection.reference_fields.pos_bank', 'tbc_bank');
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['reference_fields.pos_bank']);
     }
 
     private function createUserWithRole(string $roleSlug, ?Dealer $dealer = null): User

@@ -8,7 +8,6 @@ import { Loader2 } from "lucide-react";
 import {
   getCurrentPosSession,
   getPosDayEndReport,
-  type PosSaleType,
 } from "@/lib/api";
 
 function formatMoney(value: string | number) {
@@ -20,7 +19,7 @@ function formatMoney(value: string | number) {
   }).format(Number.isFinite(amount) ? amount : 0);
 }
 
-function methodLabel(method: PosSaleType) {
+function methodLabel(method: string) {
   if (method === "cash") {
     return "Nakit";
   }
@@ -29,7 +28,19 @@ function methodLabel(method: PosSaleType) {
     return "Kredi Kartı";
   }
 
-  return "Havale";
+  if (method === "factory_cc") {
+    return "Fabrika Kart Çekimi";
+  }
+
+  if (method === "check") {
+    return "Çek";
+  }
+
+  if (method === "note") {
+    return "Senet";
+  }
+
+  return "Havale / EFT";
 }
 
 function parseNumber(value: string | null): number | undefined {

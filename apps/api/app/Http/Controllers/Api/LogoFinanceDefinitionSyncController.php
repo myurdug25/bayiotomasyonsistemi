@@ -11,6 +11,23 @@ use Illuminate\Support\Facades\DB;
 
 class LogoFinanceDefinitionSyncController extends Controller
 {
+    /**
+     * @var array<string, string>
+     */
+    private array $approvedFactoryNames = [
+        '120-61-031' => 'SIRAÇ MADENİ YAĞLAR PAZ. TİC. LTD. ŞTİ.',
+        '320-54-002' => 'DİNAMİK OTOMOTİV GID.TEKS.İTH.İHR.SANAYİ VE TİC.LTD.ŞTİ',
+        '320-34-006' => 'DELTA OTO AKSAMI SAN.TİC.A.Ş',
+        '320-34-008' => 'ŞAMPİYON FİLTRE PAZ.TİC.VE SAN.A.Ş.',
+        '320-34-010' => 'ŞAMPİYON FİLTRE PROTESTO HESABI',
+        '320-34-026' => 'ATILGAN OTOMOTİV SANAYİ SERVİS HİZ.İÇ VE DIŞ TİC.A.Ş',
+        '320-34-020' => 'ÖZAŞ OTOMOTİV SAN. VE TİC. LTD. ŞTİ.',
+        '320-34-001' => 'WUNDER FİLTRE ANONİM ŞİRKETİ',
+        '320-25-005' => 'YAĞSAN İNŞAAT MAĞDENİ YAĞLAR A.Ş.',
+        '320-35-004' => 'GARANTİ FİLTRE SANAYİ VE TİCARET ANONİM ŞİRKETİ(FİLTRECİM)',
+        '320-34-014' => 'BAYER OTOMOTİV SANAYİ VE TİCARET A.Ş',
+    ];
+
     public function pending(ListLogoFinanceDefinitionsRequest $request): JsonResponse
     {
         $records = FinanceDefinition::query()
@@ -76,10 +93,17 @@ class LogoFinanceDefinitionSyncController extends Controller
                 data_set($meta, 'integrations.logo.synced_at', now()->toIso8601String());
                 data_set($meta, 'integrations.logo.payload', $record['meta'] ?? []);
 
+                $name = $record['name'];
+                if ($record['type'] === 'factory') {
+                    $name = $this->approvedFactoryNames[$record['code']]
+                        ?? $this->approvedFactoryNames[$record['logo_code'] ?? '']
+                        ?? $name;
+                }
+
                 $attributes = [
-                    'name' => $record['name'],
+                    'name' => $name,
                     'logo_code' => $record['logo_code'] ?? $record['code'],
-                    'logo_name' => $record['name'],
+                    'logo_name' => $name,
                     'is_active' => (bool) ($record['is_active'] ?? true),
                     'meta' => $meta,
                 ];

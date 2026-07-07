@@ -14,6 +14,7 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderStatusHistory;
+use App\Models\ReturnRequest;
 use App\Models\StockSummary;
 use App\Models\User;
 use App\Services\Customers\CustomerAccessScopeService;
@@ -302,6 +303,12 @@ class OrderController extends Controller
             $subtotalCents = 0;
             $discountTotalCents = 0;
             $taxTotalCents = 0;
+            $checkoutSummaryMode = $this->normalizeCheckoutSummaryMode($validated['checkout_summary_mode'] ?? null);
+            $paymentMethod = $this->nullableString($validated['payment_method'] ?? null);
+            $salesPriceType = $this->nullableString($validated['sales_price_type'] ?? null);
+            $taxAsSeparateLine = $checkoutSummaryMode === 'detailed';
+            $pricesIncludeTax = $checkoutSummaryMode === 'included';
+            $orderItemRows = [];
 
             foreach ($items as $item) {
                 /** @var StockSummary $stock */
@@ -326,14 +333,33 @@ class OrderController extends Controller
                     }
                 }
 
+                $quantity = (int) $item->quantity;
                 $lineCents = $this->toCents($item->line_total);
-                $grossCents = $this->toCents((float) $item->unit_net_price * $item->quantity);
-                $taxRate = (float) ($item->vat_rate ?? $item->product?->vat_rate ?? 0);
-                $taxCents = (int) round($grossCents * ($taxRate / 100));
+                $grossCents = $this->toCents((float) $item->unit_net_price * $quantity);
+                $sourceTaxRate = (float) ($item->vat_rate ?? $item->product?->vat_rate ?? 0);
+                $lineTaxCents = (int) round($lineCents * ($sourceTaxRate / 100));
+                $grossTaxCents = (int) round($grossCents * ($sourceTaxRate / 100));
+                $orderLineCents = $pricesIncludeTax ? $lineCents + $lineTaxCents : $lineCents;
+                $orderGrossCents = $pricesIncludeTax ? $grossCents + $grossTaxCents : $grossCents;
+                $orderUnitCents = $quantity > 0
+                    ? (int) round($orderGrossCents / $quantity)
+                    : $this->toCents($item->unit_net_price);
+                $orderTaxRate = $taxAsSeparateLine ? $sourceTaxRate : 0.0;
+                $orderTaxCents = $taxAsSeparateLine ? $lineTaxCents : 0;
 
-                $subtotalCents += $lineCents;
-                $discountTotalCents += max(0, $grossCents - $lineCents);
-                $taxTotalCents += $taxCents;
+                $subtotalCents += $orderLineCents;
+                $discountTotalCents += max(0, $orderGrossCents - $orderLineCents);
+                $taxTotalCents += $orderTaxCents;
+                $orderItemRows[] = [
+                    'product_id' => $item->product_id,
+                    'quantity' => $quantity,
+                    'unit_net_price' => $this->fromCents($orderUnitCents),
+                    'discount_rate' => $item->discount_rate,
+                    'tax_rate' => $orderTaxRate,
+                    'line_total' => $this->fromCents($orderLineCents),
+                    'currency' => $item->currency,
+                    'campaign_key' => $item->campaign_key,
+                ];
 
             }
 
@@ -363,18 +389,18 @@ class OrderController extends Controller
                 'note' => $orderNote,
             ]);
 
-            foreach ($items as $item) {
+            foreach ($orderItemRows as $itemRow) {
                 OrderItem::create([
                     'order_id' => $order->id,
-                    'product_id' => $item->product_id,
+                    'product_id' => $itemRow['product_id'],
                     'vehicle_id' => null,
-                    'quantity' => $item->quantity,
-                    'unit_net_price' => $item->unit_net_price,
-                    'discount_rate' => $item->discount_rate,
-                    'tax_rate' => $item->vat_rate ?? $item->product?->vat_rate ?? 0,
-                    'line_total' => $item->line_total,
-                    'currency' => $item->currency,
-                    'campaign_key' => $item->campaign_key,
+                    'quantity' => $itemRow['quantity'],
+                    'unit_net_price' => $itemRow['unit_net_price'],
+                    'discount_rate' => $itemRow['discount_rate'],
+                    'tax_rate' => $itemRow['tax_rate'],
+                    'line_total' => $itemRow['line_total'],
+                    'currency' => $itemRow['currency'],
+                    'campaign_key' => $itemRow['campaign_key'],
                 ]);
             }
 
@@ -405,11 +431,17 @@ class OrderController extends Controller
                     'order_no' => $order->order_no,
                     'status' => $order->status,
                     'source_panel' => $sourcePanel,
+                    'checkout_summary_mode' => $checkoutSummaryMode,
+                    'payment_method' => $paymentMethod,
+                    'sales_price_type' => $salesPriceType,
                 ],
                 payload: [
                     'order_id' => $order->id,
                     'order_no' => $order->order_no,
                     'grand_total' => $order->grand_total,
+                    'checkout_summary_mode' => $checkoutSummaryMode,
+                    'payment_method' => $paymentMethod,
+                    'sales_price_type' => $salesPriceType,
                 ],
             );
 
@@ -580,29 +612,36 @@ class OrderController extends Controller
                     'tax_office' => $order->customer?->tax_office,
                     'tax_number' => $order->customer?->tax_number,
                 ],
-                'items' => $order->items->map(fn ($item) => [
-                    'id' => $item->id,
-                    'product_id' => $item->product_id,
-                    'sku' => $item->product?->sku,
-                    'name' => $item->product?->name,
-                    'brand' => $item->product?->brand?->name,
-                    'quantity' => $item->quantity,
-                    'shipped_qty' => $item->shipped_qty,
-                    'remaining_quantity' => max(0, (int) $item->quantity - (int) $item->shipped_qty),
-                    'unit_net_price' => $item->unit_net_price,
-                    'tax_rate' => $item->tax_rate,
-                    'line_total' => $item->line_total,
-                    'currency' => $item->currency,
-                    'barcode' => $this->resolveProductBarcode($item),
-                    'shelf_address' => $this->resolveProductLogoWarehouseShelfAddress($item, '1')
-                        ?? $this->resolveProductShelfAddress($item->product?->meta),
-                    'logo_stock' => [
-                        'available_total' => $this->resolveProductLogoStockTotal($item),
-                        'erzurum_depo_available_total' => $this->resolveProductLogoWarehouseStockTotal($item, '1'),
-                        'reserved_total' => $this->resolveProductReservedStockTotal($item),
-                        'updated_at' => $this->resolveProductLogoStockUpdatedAt($item),
-                    ],
-                ])->values(),
+                'items' => $order->items->map(function ($item) {
+                    $returnedQuantity = $this->resolveReturnedQuantity($item);
+                    $returnableQuantity = $this->resolveReturnableQuantity($item, $returnedQuantity);
+
+                    return [
+                        'id' => $item->id,
+                        'product_id' => $item->product_id,
+                        'sku' => $item->product?->sku,
+                        'name' => $item->product?->name,
+                        'brand' => $item->product?->brand?->name,
+                        'quantity' => $item->quantity,
+                        'shipped_qty' => $item->shipped_qty,
+                        'remaining_quantity' => max(0, (int) $item->quantity - (int) $item->shipped_qty),
+                        'returned_quantity' => $returnedQuantity,
+                        'returnable_quantity' => $returnableQuantity,
+                        'unit_net_price' => $item->unit_net_price,
+                        'tax_rate' => $item->tax_rate,
+                        'line_total' => $item->line_total,
+                        'currency' => $item->currency,
+                        'barcode' => $this->resolveProductBarcode($item),
+                        'shelf_address' => $this->resolveProductLogoWarehouseShelfAddress($item, '1')
+                            ?? $this->resolveProductShelfAddress($item->product?->meta),
+                        'logo_stock' => [
+                            'available_total' => $this->resolveProductLogoStockTotal($item),
+                            'erzurum_depo_available_total' => $this->resolveProductLogoWarehouseStockTotal($item, '1'),
+                            'reserved_total' => $this->resolveProductReservedStockTotal($item),
+                            'updated_at' => $this->resolveProductLogoStockUpdatedAt($item),
+                        ],
+                    ];
+                })->values(),
             ],
             'status_timeline' => $order->statusHistory->map(fn ($entry) => [
                 'id' => $entry->id,
@@ -632,6 +671,33 @@ class OrderController extends Controller
         }
 
         return null;
+    }
+
+    private function normalizeCheckoutSummaryMode(mixed $value): string
+    {
+        return match ((string) $value) {
+            'excluded', 'included' => (string) $value,
+            default => 'detailed',
+        };
+    }
+
+    private function resolveReturnedQuantity(OrderItem $item): int
+    {
+        return (int) ReturnRequest::query()
+            ->where('order_item_id', (int) $item->id)
+            ->where('status', '!=', ReturnRequest::STATUS_REJECTED)
+            ->sum('quantity');
+    }
+
+    private function resolveReturnableQuantity(OrderItem $item, int $returnedQuantity): int
+    {
+        $baseQuantity = (int) $item->shipped_qty;
+
+        if ($baseQuantity <= 0) {
+            $baseQuantity = (int) $item->quantity;
+        }
+
+        return max(0, $baseQuantity - $returnedQuantity);
     }
 
     private function resolveProductBarcode($item): ?string

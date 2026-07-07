@@ -267,9 +267,8 @@ class LogoProductSyncService
     {
         $records = (array) ($payload['records'] ?? []);
         $productLookup = $this->buildProductLookup($records);
-        $indexedProductIds = [];
 
-        DB::transaction(function () use ($records, $productLookup, &$summary, &$indexedProductIds): void {
+        DB::transaction(function () use ($records, $productLookup, &$summary): void {
             foreach ($records as $record) {
                 if (! is_array($record)) {
                     $summary['skipped']++;
@@ -307,7 +306,6 @@ class LogoProductSyncService
                 });
 
                 $summary['updated']++;
-                $indexedProductIds[(int) $product->id] = true;
 
                 $this->syncState->record(
                     system: 'logo',
@@ -325,8 +323,6 @@ class LogoProductSyncService
                 );
             }
         });
-
-        $this->reindexProducts(array_keys($indexedProductIds));
 
         return $summary;
     }

@@ -789,6 +789,10 @@ export type OrderDetailResponse = {
       name: string | null;
       brand: string | null;
       quantity: number;
+      shipped_qty?: number;
+      remaining_quantity?: number;
+      returned_quantity?: number;
+      returnable_quantity?: number;
       unit_net_price: string;
       tax_rate: string;
       line_total: string;
@@ -1416,7 +1420,7 @@ export type PosDayEndReport = {
     net_total: string;
   };
   totals_by_method: Array<{
-    method: PosSaleType;
+    method: PosSaleType | "check" | "note" | "factory_cc";
     payment_count: number;
     total_amount: string;
   }>;
@@ -1441,6 +1445,16 @@ export type PosDayEndReport = {
       payment_method: PosSaleType;
       is_warehouse_sale?: boolean;
       grand_total: string;
+      created_by_name?: string | null;
+      warehouse_name?: string | null;
+      items?: Array<{
+        product_code: string | null;
+        product_name: string | null;
+        quantity: string;
+        unit_price: string;
+        line_total: string;
+        warehouse_name?: string | null;
+      }>;
       created_at: string | null;
     }>;
     cash_sales: Array<{
@@ -1453,6 +1467,16 @@ export type PosDayEndReport = {
       payment_method: PosSaleType;
       is_warehouse_sale?: boolean;
       grand_total: string;
+      created_by_name?: string | null;
+      warehouse_name?: string | null;
+      items?: Array<{
+        product_code: string | null;
+        product_name: string | null;
+        quantity: string;
+        unit_price: string;
+        line_total: string;
+        warehouse_name?: string | null;
+      }>;
       created_at: string | null;
     }>;
     card_sales: Array<{
@@ -1465,6 +1489,16 @@ export type PosDayEndReport = {
       payment_method: PosSaleType;
       is_warehouse_sale?: boolean;
       grand_total: string;
+      created_by_name?: string | null;
+      warehouse_name?: string | null;
+      items?: Array<{
+        product_code: string | null;
+        product_name: string | null;
+        quantity: string;
+        unit_price: string;
+        line_total: string;
+        warehouse_name?: string | null;
+      }>;
       created_at: string | null;
     }>;
     cash_collections: Array<{
@@ -1473,6 +1507,8 @@ export type PosDayEndReport = {
       customer_code: string | null;
       customer_name: string | null;
       method: string;
+      collection_channel?: string | null;
+      day_end_bucket?: string;
       amount: string;
       date: string | null;
       created_at: string | null;
@@ -1483,6 +1519,56 @@ export type PosDayEndReport = {
       customer_code: string | null;
       customer_name: string | null;
       method: string;
+      collection_channel?: string | null;
+      day_end_bucket?: string;
+      amount: string;
+      date: string | null;
+      created_at: string | null;
+    }>;
+    transfer_collections?: Array<{
+      id: number;
+      reference_no: string | null;
+      customer_code: string | null;
+      customer_name: string | null;
+      method: string;
+      collection_channel?: string | null;
+      day_end_bucket?: string;
+      amount: string;
+      date: string | null;
+      created_at: string | null;
+    }>;
+    check_collections?: Array<{
+      id: number;
+      reference_no: string | null;
+      customer_code: string | null;
+      customer_name: string | null;
+      method: string;
+      collection_channel?: string | null;
+      day_end_bucket?: string;
+      amount: string;
+      date: string | null;
+      created_at: string | null;
+    }>;
+    note_collections?: Array<{
+      id: number;
+      reference_no: string | null;
+      customer_code: string | null;
+      customer_name: string | null;
+      method: string;
+      collection_channel?: string | null;
+      day_end_bucket?: string;
+      amount: string;
+      date: string | null;
+      created_at: string | null;
+    }>;
+    factory_card_collections?: Array<{
+      id: number;
+      reference_no: string | null;
+      customer_code: string | null;
+      customer_name: string | null;
+      method: string;
+      collection_channel?: string | null;
+      day_end_bucket?: string;
       amount: string;
       date: string | null;
       created_at: string | null;
@@ -1712,6 +1798,10 @@ const LOGIN_PATH = "/login";
 const LOGIN_VERSION = "20260605-login-fast";
 const API_REQUEST_TIMEOUT_MS = 20_000;
 
+function stripTrailingApiSegment(base: string): string {
+  return base.replace(/\/api\/?$/i, "").replace(/\/$/, "");
+}
+
 function buildLoginUrl(next?: string | null): string {
   const search = new URLSearchParams();
   search.set("v", LOGIN_VERSION);
@@ -1734,7 +1824,7 @@ function getApiBase(): string {
     const url = new URL(CONFIGURED_API_BASE);
 
     if (typeof window === "undefined") {
-      return url.toString().replace(/\/$/, "");
+      return stripTrailingApiSegment(url.toString());
     }
 
     const appHost = window.location.hostname;
@@ -1746,7 +1836,7 @@ function getApiBase(): string {
 
       if (url.hostname !== appHost) {
         url.hostname = appHost;
-        return url.toString().replace(/\/$/, "");
+        return stripTrailingApiSegment(url.toString());
       }
     }
 
@@ -1754,13 +1844,13 @@ function getApiBase(): string {
       return `${window.location.origin}/backend`;
     }
 
-    return url.toString().replace(/\/$/, "");
+    return stripTrailingApiSegment(url.toString());
   } catch {
     if (typeof window !== "undefined" && !isLoopbackHost(window.location.hostname)) {
       return `${window.location.origin}/backend`;
     }
 
-    return CONFIGURED_API_BASE;
+    return stripTrailingApiSegment(CONFIGURED_API_BASE);
   }
 }
 
@@ -1781,6 +1871,14 @@ function handleUnauthorizedRedirect() {
   unauthorizedRedirectInFlight = true;
   const next = `${window.location.pathname}${window.location.search}`;
   window.location.assign(buildLoginUrl(next));
+}
+
+function isHtmlResponse(contentType: string): boolean {
+  return contentType.toLowerCase().includes("text/html");
+}
+
+async function readResponsePreview(response: Response): Promise<string> {
+  return (await response.clone().text().catch(() => "")).slice(0, 240).trim();
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -1856,6 +1954,15 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!isJsonResponse) {
+    if (isHtmlResponse(contentType)) {
+      const preview = await readResponsePreview(response);
+
+      if (response.url.includes(LOGIN_PATH) || preview.toLowerCase().includes("<!doctype html")) {
+        handleUnauthorizedRedirect();
+        throw new ApiClientError("Oturum sayfasına yönlendirildi. Lütfen tekrar giriş yapın.", 401);
+      }
+    }
+
     throw new ApiClientError(
       `API JSON yerine ${contentType || "bilinmeyen"} döndürdü.`,
       response.status || 500
@@ -1894,11 +2001,20 @@ function toSearch(params: Record<string, unknown>): string {
 
 export async function ensureCsrfCookie(): Promise<void> {
   const apiBase = getApiBase();
-  await fetch(`${apiBase}/sanctum/csrf-cookie`, {
+  const response = await fetch(`${apiBase}/sanctum/csrf-cookie`, {
     credentials: "include",
     headers: getSanctumCsrfHeaders(),
     cache: "no-store",
   });
+
+  if (!response.ok) {
+    throw new ApiClientError("Oturum doğrulaması başlatılamadı. Lütfen tekrar deneyin.", response.status || 500);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (isHtmlResponse(contentType)) {
+    throw new ApiClientError("Oturum doğrulaması API yerine HTML döndürdü. Lütfen sayfayı yenileyin.", 500);
+  }
 }
 
 export async function login(payload: {
@@ -2110,6 +2226,40 @@ export async function upsertCartItem(payload: {
   });
 }
 
+export type BulkCartItemResult = {
+  row: number;
+  product_code: string;
+  resolved_code?: string | null;
+  product_id?: number;
+  quantity: number;
+  status: "added" | "not_found" | "failed";
+  message: string;
+};
+
+export type BulkCartItemsResponse = {
+  summary: {
+    received: number;
+    added: number;
+    failed: number;
+  };
+  results: BulkCartItemResult[];
+  cart: CartResponse | null;
+};
+
+export async function bulkUpsertCartItems(payload: {
+  items: Array<{ product_code: string; quantity: number }>;
+  customer_id?: number;
+  dealer_id?: number;
+  shipping_method?: string;
+  warehouse_transfer?: boolean;
+  order_note?: string;
+}) {
+  return apiFetch<BulkCartItemsResponse>("/api/cart/items/bulk", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function deleteCartItem(itemId: number) {
   return apiFetch<void>(`/api/cart/items/${itemId}`, {
     method: "DELETE",
@@ -2122,6 +2272,8 @@ export async function createOrder(payload?: {
   dealer_id?: number;
   note?: string;
   checkout_summary_mode?: "detailed" | "excluded" | "included";
+  payment_method?: string;
+  sales_price_type?: string;
 }) {
   return apiFetch<OrderCreateResponse>("/api/orders", {
     method: "POST",

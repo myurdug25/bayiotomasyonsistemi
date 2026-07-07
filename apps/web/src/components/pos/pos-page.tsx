@@ -1496,6 +1496,19 @@ export function PosPage() {
     posForm.setValue("customer_id", defaultCustomerId, { shouldDirty: true, shouldValidate: true });
   }, [defaultCustomerBySaleType, isPointRole, manualCustomerOverride, posForm, saleType, selectedCustomerId]);
 
+  useEffect(() => {
+    if (selectedCustomerId) {
+      const customer = customersById[selectedCustomerId] ?? null;
+      if (customer && !isAnonymousPointCustomer(customer)) {
+        posForm.setValue("document_type", "delivery", { shouldDirty: true, shouldValidate: true });
+      } else {
+        posForm.setValue("document_type", "invoice", { shouldDirty: true, shouldValidate: true });
+      }
+    } else {
+      posForm.setValue("document_type", "invoice", { shouldDirty: true, shouldValidate: true });
+    }
+  }, [selectedCustomerId, posForm, customersById]);
+
   const selectedCustomer = selectedCustomerId ? customersById[selectedCustomerId] ?? null : null;
   const selectedCustomerIsAnonymous = isPointRole && isAnonymousPointCustomer(selectedCustomer);
   const isBatumPointFlow = isPointRole && (

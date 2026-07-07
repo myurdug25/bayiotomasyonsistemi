@@ -2,9 +2,9 @@
 
 namespace App\Services\Pos;
 
+use App\Models\FinanceDefinition;
 use App\Models\PosExpense;
 use App\Models\PosSession;
-use App\Models\FinanceDefinition;
 use App\Models\User;
 use App\Services\Integrations\IntegrationSyncStateService;
 use App\Support\MenuPermissions;
@@ -15,6 +15,7 @@ use Illuminate\Validation\ValidationException;
 class PosExpenseService
 {
     private const POINT_CURRENCY = 'TRY';
+
     private const BATUM_POINT_CURRENCY = 'GEL';
 
     public function __construct(
@@ -84,12 +85,12 @@ class PosExpenseService
             throw ValidationException::withMessages(['category' => ['Aktif gider kategorisi bulunamadı.']]);
         }
 
-        $expenseAccountCode = $user->logo_expense_account_code ?: $definition->logo_code;
-        $expenseAccountName = $user->logo_expense_account_name ?: $definition->logo_name;
+        $expenseAccountCode = $definition->logo_code ?: $user->logo_expense_account_code;
+        $expenseAccountName = $definition->logo_name ?: $user->logo_expense_account_name;
 
         if (! filled($expenseAccountCode)) {
             throw ValidationException::withMessages([
-                'expense_account' => ['Bu plasiyer için Logo gider cari kodu tanımlı değil.'],
+                'expense_account' => ['Bu gider kategorisi için Logo gider hesabı tanımlı değil.'],
             ]);
         }
 

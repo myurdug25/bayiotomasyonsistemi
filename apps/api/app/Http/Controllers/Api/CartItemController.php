@@ -13,6 +13,7 @@ use App\Services\Pricing\ProductCampaignPricing;
 use App\Support\Cart\CartLogoIntegrationSummary;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
+use App\Support\Products\ProductCodeNormalizer;
 use App\Support\Warehouse\CartWarehouseOptions;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Http\JsonResponse;
@@ -30,7 +31,104 @@ class CartItemController extends Controller
         $user = $request->user();
         $this->ensureOrderRole($user);
 
-        $validated = $request->validated();
+        $cart = $this->upsertValidatedCartItem($user, $request->validated());
+
+        return response()->json($this->cartPayload($cart));
+    }
+
+    public function bulk(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $this->ensureOrderRole($user);
+
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1', 'max:300'],
+            'items.*.product_code' => ['required', 'string', 'max:191'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999999'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'dealer_id' => ['nullable', 'integer', 'exists:dealers,id'],
+            'shipping_method' => ['nullable', 'string', 'max:120'],
+            'warehouse_transfer' => ['nullable', 'boolean'],
+            'order_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $results = [];
+        $cart = null;
+        $added = 0;
+        $failed = 0;
+
+        foreach ($validated['items'] as $index => $row) {
+            $code = trim((string) $row['product_code']);
+            $quantity = (int) $row['quantity'];
+            $product = $this->resolveProductByCode($code);
+
+            if (! $product instanceof Product) {
+                $failed++;
+                $results[] = [
+                    'row' => $index + 1,
+                    'product_code' => $code,
+                    'quantity' => $quantity,
+                    'status' => 'not_found',
+                    'message' => 'Ürün bulunamadı.',
+                ];
+                continue;
+            }
+
+            try {
+                $cart = $this->upsertValidatedCartItem($user, [
+                    'product_id' => (int) $product->id,
+                    'quantity' => $quantity,
+                    'customer_id' => $validated['customer_id'] ?? null,
+                    'dealer_id' => $validated['dealer_id'] ?? null,
+                    'shipping_method' => $validated['shipping_method'] ?? null,
+                    'warehouse_transfer' => $validated['warehouse_transfer'] ?? null,
+                    'order_note' => $validated['order_note'] ?? null,
+                ]);
+
+                $added++;
+                $results[] = [
+                    'row' => $index + 1,
+                    'product_code' => $code,
+                    'resolved_code' => $product->sku,
+                    'product_id' => (int) $product->id,
+                    'quantity' => $quantity,
+                    'status' => 'added',
+                    'message' => 'Eklendi.',
+                ];
+            } catch (ValidationException $exception) {
+                $failed++;
+                $results[] = [
+                    'row' => $index + 1,
+                    'product_code' => $code,
+                    'resolved_code' => $product->sku,
+                    'product_id' => (int) $product->id,
+                    'quantity' => $quantity,
+                    'status' => 'failed',
+                    'message' => collect($exception->errors())->flatten()->first() ?? 'Eklenemedi.',
+                ];
+            }
+        }
+
+        if (! $cart instanceof Cart) {
+            $cart = $this->currentDraftCartForUser($user, $validated);
+        }
+
+        return response()->json([
+            'summary' => [
+                'received' => count($validated['items']),
+                'added' => $added,
+                'failed' => $failed,
+            ],
+            'results' => $results,
+            'cart' => $cart instanceof Cart ? $this->cartPayload($cart) : null,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function upsertValidatedCartItem(User $user, array $validated): Cart
+    {
         $customerId = isset($validated['customer_id'])
             ? (int) $validated['customer_id']
             : ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
@@ -54,7 +152,7 @@ class CartItemController extends Controller
 
         $forceWarehouseTransfer = $user->hasRole('salesperson');
 
-        $cart = DB::transaction(function () use ($validated, $dealerId, $user, $forceWarehouseTransfer) {
+        return DB::transaction(function () use ($validated, $dealerId, $user, $forceWarehouseTransfer) {
             $productId = (int) $validated['product_id'];
             $quantity = (int) $validated['quantity'];
             $customerId = isset($validated['customer_id'])
@@ -185,8 +283,6 @@ class CartItemController extends Controller
 
             return $cart->fresh(['items.product.brand', 'items.product.stockSummary', 'customer']);
         });
-
-        return response()->json($this->cartPayload($cart));
     }
 
     public function destroy(Request $request, int $id): Response
@@ -214,6 +310,64 @@ class CartItemController extends Controller
         $item->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function currentDraftCartForUser(User $user, array $validated): ?Cart
+    {
+        $customerId = isset($validated['customer_id'])
+            ? (int) $validated['customer_id']
+            : ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
+
+        if ($customerId === null) {
+            return null;
+        }
+
+        $dealerId = $this->resolveDealerId(
+            user: $user,
+            requestedDealerId: $validated['dealer_id'] ?? null,
+            customerId: $customerId
+        );
+
+        if ($dealerId === null) {
+            return null;
+        }
+
+        return Cart::query()
+            ->where('status', 'draft')
+            ->where('dealer_id', $dealerId)
+            ->where('user_id', $user->id)
+            ->where('customer_id', $customerId)
+            ->latest('id')
+            ->with(['items.product.brand', 'items.product.stockSummary', 'customer'])
+            ->first();
+    }
+
+    private function resolveProductByCode(string $code): ?Product
+    {
+        $trimmed = trim($code);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        $normalized = ProductCodeNormalizer::normalize($trimmed);
+
+        return Product::query()
+            ->where('is_active', true)
+            ->where(function ($query) use ($trimmed, $normalized): void {
+                $query->where('sku', $trimmed)
+                    ->orWhere('oem_code', $trimmed);
+
+                if ($normalized !== null && $normalized !== '') {
+                    $query->orWhereRaw("regexp_replace(upper(products.sku), '[^A-Z0-9]+', '', 'g') = ?", [$normalized])
+                        ->orWhereRaw("regexp_replace(upper(products.oem_code), '[^A-Z0-9]+', '', 'g') = ?", [$normalized])
+                        ->orWhereHas('codeAliases', fn ($aliasQuery) => $aliasQuery->where('normalized_code', $normalized));
+                }
+            })
+            ->orderByRaw('sku = ? DESC', [$trimmed])
+            ->first();
     }
 
     private function assertCustomerBelongsToDealer(User $user, int $customerId, int $dealerId): void

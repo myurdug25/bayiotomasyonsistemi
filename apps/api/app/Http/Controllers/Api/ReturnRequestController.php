@@ -17,6 +17,7 @@ use App\Services\Integrations\IntegrationSyncStateService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -137,55 +138,66 @@ class ReturnRequestController extends Controller
             ->findOrFail((int) $validated['order_id']);
         $this->ensureCanAccessOrder($user, $order);
 
-        $orderItem = OrderItem::query()
-            ->with(['product.brand'])
-            ->where('order_id', $order->id)
-            ->whereKey((int) $validated['order_item_id'])
-            ->first();
+        $returnRequest = DB::transaction(function () use ($order, $user, $validated): ReturnRequest {
+            $orderItem = OrderItem::query()
+                ->with(['product.brand'])
+                ->where('order_id', $order->id)
+                ->whereKey((int) $validated['order_item_id'])
+                ->lockForUpdate()
+                ->first();
 
-        if (! $orderItem instanceof OrderItem) {
-            throw ValidationException::withMessages([
-                'order_item_id' => ['Seçilen sipariş kalemi bu siparişe ait değil.'],
+            if (! $orderItem instanceof OrderItem) {
+                throw ValidationException::withMessages([
+                    'order_item_id' => ['Seçilen sipariş kalemi bu siparişe ait değil.'],
+                ]);
+            }
+
+            $quantity = (int) $validated['quantity'];
+            $returnableQuantity = $this->returnableQuantityForOrderItem($orderItem);
+
+            if ($returnableQuantity <= 0) {
+                throw ValidationException::withMessages([
+                    'quantity' => ['Bu sipariş kalemi için iade edilebilir adet kalmadı.'],
+                ]);
+            }
+
+            if ($quantity > $returnableQuantity) {
+                throw ValidationException::withMessages([
+                    'quantity' => ["İade miktarı kalan iade edilebilir adetten büyük olamaz. Kalan: {$returnableQuantity}"],
+                ]);
+            }
+
+            return ReturnRequest::create([
+                'dealer_id' => (int) $order->dealer_id,
+                'customer_id' => (int) $order->customer_id,
+                'order_id' => (int) $order->id,
+                'order_item_id' => (int) $orderItem->id,
+                'requested_by_user_id' => (int) $user->id,
+                'reviewed_by_user_id' => null,
+                'request_no' => $this->generateRequestNo(),
+                'request_type' => (string) $validated['request_type'],
+                'status' => ReturnRequest::STATUS_SUBMITTED,
+                'reason_code' => (string) $validated['reason_code'],
+                'reason_note' => $validated['reason_note'] ?? null,
+                'quantity' => $quantity,
+                'unit_price' => $orderItem->unit_net_price,
+                'currency' => $orderItem->currency,
+                'product_snapshot' => [
+                    'product_id' => $orderItem->product_id,
+                    'sku' => $orderItem->product?->sku,
+                    'name' => $orderItem->product?->name,
+                    'brand' => $orderItem->product?->brand?->name,
+                ],
+                'order_snapshot' => [
+                    'order_no' => $order->order_no,
+                    'ordered_at' => $order->ordered_at?->toJSON(),
+                    'customer_code' => $order->customer?->code,
+                    'customer_name' => $order->customer?->name,
+                ],
+                'resolution_note' => null,
+                'reviewed_at' => null,
             ]);
-        }
-
-        $quantity = (int) $validated['quantity'];
-        if ($quantity > (int) $orderItem->quantity) {
-            throw ValidationException::withMessages([
-                'quantity' => ['İade miktarı sipariş edilen miktardan büyük olamaz.'],
-            ]);
-        }
-
-        $returnRequest = ReturnRequest::create([
-            'dealer_id' => (int) $order->dealer_id,
-            'customer_id' => (int) $order->customer_id,
-            'order_id' => (int) $order->id,
-            'order_item_id' => (int) $orderItem->id,
-            'requested_by_user_id' => (int) $user->id,
-            'reviewed_by_user_id' => null,
-            'request_no' => $this->generateRequestNo(),
-            'request_type' => (string) $validated['request_type'],
-            'status' => ReturnRequest::STATUS_SUBMITTED,
-            'reason_code' => (string) $validated['reason_code'],
-            'reason_note' => $validated['reason_note'] ?? null,
-            'quantity' => $quantity,
-            'unit_price' => $orderItem->unit_net_price,
-            'currency' => $orderItem->currency,
-            'product_snapshot' => [
-                'product_id' => $orderItem->product_id,
-                'sku' => $orderItem->product?->sku,
-                'name' => $orderItem->product?->name,
-                'brand' => $orderItem->product?->brand?->name,
-            ],
-            'order_snapshot' => [
-                'order_no' => $order->order_no,
-                'ordered_at' => $order->ordered_at?->toJSON(),
-                'customer_code' => $order->customer?->code,
-                'customer_name' => $order->customer?->name,
-            ],
-            'resolution_note' => null,
-            'reviewed_at' => null,
-        ]);
+        });
 
         $returnRequest->loadMissing([
             'customer:id,code,name',
@@ -342,6 +354,26 @@ class ReturnRequestController extends Controller
         if (! $user->canAccessCustomer($customer)) {
             abort(Response::HTTP_FORBIDDEN, 'You can only access return flow for customers in your scope.');
         }
+    }
+
+    private function returnableQuantityForOrderItem(OrderItem $orderItem, ?int $excludeReturnRequestId = null): int
+    {
+        $alreadyRequestedQuantity = (int) ReturnRequest::query()
+            ->where('order_item_id', (int) $orderItem->id)
+            ->where('status', '!=', ReturnRequest::STATUS_REJECTED)
+            ->when(
+                $excludeReturnRequestId !== null,
+                fn (Builder $query) => $query->whereKeyNot($excludeReturnRequestId)
+            )
+            ->sum('quantity');
+
+        $baseQuantity = (int) $orderItem->shipped_qty;
+
+        if ($baseQuantity <= 0) {
+            $baseQuantity = (int) $orderItem->quantity;
+        }
+
+        return max(0, $baseQuantity - $alreadyRequestedQuantity);
     }
 
     private function ensureCanReviewReturnRequest(User $user, ReturnRequest $returnRequest): void

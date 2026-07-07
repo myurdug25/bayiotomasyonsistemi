@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 import sql from "mssql";
 
 async function run() {
-  const file = await readFile("c:/Users/MURAT/Desktop/NFSSOFT/powersa/tools/logo-sync/sql/powersa-b2b-customer-write-procedure.sql", "utf-8");
+  const file = await readFile("tools/logo-sync/sql/powersa-b2b-customer-write-procedure.sql", "utf-8");
   
   const pool = await sql.connect({
     server: "GUCSASRV\\LOGO",

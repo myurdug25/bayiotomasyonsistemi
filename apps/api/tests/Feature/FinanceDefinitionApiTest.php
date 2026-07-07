@@ -46,8 +46,8 @@ class FinanceDefinitionApiTest extends TestCase
             ->where('code', '320-54-002')
             ->firstOrFail();
 
-        $this->assertSame('FABRİKA POS HESABI', $definition->name);
-        $this->assertSame('FABRİKA POS HESABI', $definition->logo_name);
+        $this->assertSame('DİNAMİK OTOMOTİV GID.TEKS.İTH.İHR.SANAYİ VE TİC.LTD.ŞTİ', $definition->name);
+        $this->assertSame('DİNAMİK OTOMOTİV GID.TEKS.İTH.İHR.SANAYİ VE TİC.LTD.ŞTİ', $definition->logo_name);
         $this->assertSame(
             'dbo.LG_003_CLCARD',
             data_get($definition->meta, 'integrations.logo.source_table'),
@@ -135,6 +135,8 @@ class FinanceDefinitionApiTest extends TestCase
             'name' => 'Ahmet Araç',
             'logo_cashbox_code' => '100.01.002',
             'logo_cashbox_name' => 'AHMET ARAÇ KASASI',
+            'logo_expense_account_code' => '760.25.000',
+            'logo_expense_account_name' => 'PLASİYER GENEL GİDER HESABI',
             'is_active' => true,
         ]);
         $salesperson->roles()->sync([
@@ -160,6 +162,7 @@ class FinanceDefinitionApiTest extends TestCase
         $expense = PosExpense::query()->firstOrFail();
         $this->assertSame($salesperson->id, $expense->created_by_user_id);
         $this->assertSame('760.25.027', data_get($expense->meta, 'logo_expense_account_code'));
+        $this->assertSame('34LV0224 FORD CUSTOM YAKIT GİDERİ', data_get($expense->meta, 'logo_expense_account_name'));
         $this->assertDatabaseHas('integration_sync_states', [
             'domain' => 'pos-expenses',
             'entity_type' => PosExpense::class,
@@ -170,5 +173,13 @@ class FinanceDefinitionApiTest extends TestCase
         $this->getJson('/api/pos/expenses')
             ->assertOk()
             ->assertJsonCount(1, 'data');
+
+        config(['integrations.logo.pos_expense_sync_key' => 'test-pos-expense-key']);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-pos-expense-key')
+            ->getJson('/api/integrations/logo/pos-expenses/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('records.0.logo.account_code', '760.25.027');
     }
 }

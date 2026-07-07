@@ -14,6 +14,8 @@ class ProductSearchService
 {
     private const SEARCH_UNAVAILABLE_CACHE_KEY = 'meilisearch:products:search-unavailable';
 
+    private bool $indexEnsured = false;
+
     public function isEnabled(): bool
     {
         return (bool) config('meilisearch.enabled', true)
@@ -152,6 +154,10 @@ class ProductSearchService
 
     public function ensureIndex(): void
     {
+        if ($this->indexEnsured) {
+            return;
+        }
+
         $uid = (string) config('meilisearch.products_index', 'products');
 
         $check = $this->client()->get('/indexes/'.urlencode($uid));
@@ -179,6 +185,8 @@ class ProductSearchService
         if (! $settings->successful()) {
             throw new RuntimeException('Meilisearch settings update failed: '.$settings->body());
         }
+
+        $this->indexEnsured = true;
     }
 
     private function client(): PendingRequest
@@ -189,9 +197,7 @@ class ProductSearchService
 
         $key = (string) config('meilisearch.key', '');
         if ($key !== '') {
-            $request = $request->withHeaders([
-                'X-Meili-API-Key' => $key,
-            ]);
+            $request = $request->withToken($key);
         }
 
         return $request;

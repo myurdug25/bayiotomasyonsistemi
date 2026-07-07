@@ -305,7 +305,7 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
             ->assertJsonPath('collection.reference_fields.factory_pos_account', '120-61-031')
             ->assertJsonPath('collection.reference_fields.factory_customer_code', '120-61-031')
             ->assertJsonPath('collection.reference_no', 'FBC0001')
-            ->assertJsonPath('collection.note', 'FBC0001 Fabrika Kart Cari 120-61-031')
+            ->assertJsonPath('collection.note', 'FBC0001 Fabrika Kart Cari')
             ->assertJsonMissingPath('collection.meta.cashbox_id');
     }
 
@@ -401,7 +401,7 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
             ])
                 ->assertCreated()
                 ->assertJsonPath('collection.reference_no', $expectedReference)
-                ->assertJsonPath('collection.note', "{$expectedReference} ABC Ticaret YAPI KREDI")
+                ->assertJsonPath('collection.note', "{$expectedReference} ABC Ticaret")
                 ->assertJsonPath('collection.reference_fields.collection_channel', 'physical_pos')
                 ->assertJsonPath('collection.reference_fields.bank_logo_code', '02')
                 ->assertJsonMissingPath('collection.meta.cashbox_id');
@@ -442,7 +442,7 @@ class LogoWriteCollectionPublisherApiTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('collection.reference_no', 'HE0001')
-            ->assertJsonPath('collection.note', 'HE0001 Havale Cari ZIRAAT BANKASI')
+            ->assertJsonPath('collection.note', 'HE0001 Havale Cari')
             ->assertJsonMissingPath('collection.meta.cashbox_id');
 
         $this->getJson('/api/collections/next-sequence?type=transfer')

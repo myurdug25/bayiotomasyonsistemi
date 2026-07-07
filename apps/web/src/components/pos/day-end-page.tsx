@@ -2,12 +2,14 @@
 
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  Eye,
   Loader2,
   RefreshCcw,
   ShoppingCart,
@@ -56,7 +58,7 @@ function toMoney(value: string | number | null | undefined): number {
 type ReportTables = NonNullable<PosDayEndReport["report_tables"]>;
 type SaleReportRow = ReportTables["normal_sales"][number];
 type CollectionReportRow = ReportTables["cash_collections"][number];
-type PanelTone = "emerald" | "slate" | "amber" | "rose" | "blue" | "indigo" | "violet";
+type PanelTone = "emerald";
 
 const emptyReportTables: ReportTables = {
   normal_sales: [],
@@ -64,6 +66,10 @@ const emptyReportTables: ReportTables = {
   card_sales: [],
   cash_collections: [],
   card_collections: [],
+  transfer_collections: [],
+  check_collections: [],
+  note_collections: [],
+  factory_card_collections: [],
 };
 
 function compactMoney(value: string | number | null | undefined, currencyLabel = "TL"): string {
@@ -125,7 +131,7 @@ function PanelFrame({
   currencyLabel,
   children,
   className,
-  tone = "slate",
+  tone = "emerald",
 }: {
   title: string;
   total: string | number;
@@ -165,15 +171,30 @@ function EmptyRows({ label = "Kayıt yok", tone = "emerald" }: { label?: string;
   );
 }
 
-function SalePanel({ title, rows, className, tone, currencyLabel }: { title: string; rows: SaleReportRow[]; className?: string; tone: PanelTone; currencyLabel: string }) {
+function SalePanel({
+  title,
+  rows,
+  className,
+  tone,
+  currencyLabel,
+  onDetail,
+}: {
+  title: string;
+  rows: SaleReportRow[];
+  className?: string;
+  tone: PanelTone;
+  currencyLabel: string;
+  onDetail: (row: SaleReportRow) => void;
+}) {
   const toneClasses = panelToneClassNames[tone];
 
   return (
     <PanelFrame title={title} total={reportTableTotal(rows)} currencyLabel={currencyLabel} className={className} tone={tone}>
-      <div className={cn("grid grid-cols-[104px_minmax(0,1fr)_118px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
-        <span className="px-4 py-3">Belge No</span>
-        <span className="px-4 py-3">Firma İsmi</span>
-        <span className="px-4 py-3 text-right">Tutar</span>
+      <div className={cn("grid grid-cols-[104px_minmax(0,1fr)_118px_86px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
+        <span className="truncate px-4 py-3">Belge No</span>
+        <span className="truncate px-4 py-3">Firma İsmi</span>
+        <span className="truncate px-4 py-3 text-right">Tutar</span>
+        <span className="truncate px-4 py-3 text-center">Detay</span>
       </div>
       {rows.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -181,13 +202,27 @@ function SalePanel({ title, rows, className, tone, currencyLabel }: { title: str
             <div
               key={`${title}-${row.id}`}
               className={cn(
-                "grid grid-cols-[104px_minmax(0,1fr)_118px] border-b border-white/10 text-[13px] font-extrabold",
+                "grid grid-cols-[104px_minmax(0,1fr)_118px_86px] border-b border-white/10 text-[13px] font-extrabold",
                 panelRowClassName(index, tone)
               )}
             >
               <span className="truncate px-4 py-3">{saleDocumentNo(row)}</span>
-              <span className="truncate px-4 py-3">{customerLabel(row)}</span>
+              <span className="truncate px-4 py-3 leading-snug" title={customerLabel(row)}>
+                {customerLabel(row)}
+              </span>
               <span className="truncate px-4 py-3 text-right tabular-nums">{compactMoney(row.grand_total, currencyLabel)}</span>
+              <span className="flex items-center justify-center px-2 py-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-lg border-white/25 bg-white/10 px-2 text-[11px] font-black text-inherit hover:bg-white/20"
+                  onClick={() => onDetail(row)}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  Detay
+                </Button>
+              </span>
             </div>
           ))}
         </div>
@@ -204,8 +239,8 @@ function CollectionPanel({ title, rows, tone, currencyLabel }: { title: string; 
   return (
     <PanelFrame title={title} total={reportTableTotal(rows)} currencyLabel={currencyLabel} className="min-h-[320px]" tone={tone}>
       <div className={cn("grid grid-cols-[minmax(0,1fr)_118px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
-        <span className="px-4 py-3">Cari İsim</span>
-        <span className="px-4 py-3 text-right">Tutar</span>
+        <span className="truncate px-4 py-3">Cari İsim</span>
+        <span className="truncate px-4 py-3 text-right">Tutar</span>
       </div>
       {rows.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -217,7 +252,7 @@ function CollectionPanel({ title, rows, tone, currencyLabel }: { title: string; 
                 panelRowClassName(index, tone)
               )}
             >
-              <span className="truncate px-4 py-3" title={collectionDocumentNo(row)}>
+              <span className="truncate px-4 py-3 leading-snug" title={`${customerLabel(row)} · ${collectionDocumentNo(row)}`}>
                 {customerLabel(row)}
               </span>
               <span className="truncate px-4 py-3 text-right tabular-nums">{compactMoney(row.amount, currencyLabel)}</span>
@@ -440,12 +475,14 @@ function DayEndSaveAction({
 }
 
 export function PosDayEndPage() {
+  const router = useRouter();
   const { user } = useSession();
   const queryClient = useQueryClient();
   const [sentDialogOpen, setSentDialogOpen] = useState(false);
   const [savingDayEnd, setSavingDayEnd] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [selectedReportDate, setSelectedReportDate] = useState(() => formatLocalDateInputValue());
+  const [selectedSaleDetail, setSelectedSaleDetail] = useState<SaleReportRow | null>(null);
   const todayReportDate = formatLocalDateInputValue();
   const isSelectedReportToday = selectedReportDate === todayReportDate;
   const previousReportDate = addDaysToDateInputValue(selectedReportDate, -1);
@@ -578,6 +615,10 @@ export function PosDayEndPage() {
   const normalSaleTotal = useMemo(() => reportTableTotal(reportTables.normal_sales), [reportTables.normal_sales]);
   const cardSaleTotal = useMemo(() => reportTableTotal(reportTables.card_sales), [reportTables.card_sales]);
   const cardCollectionTotal = useMemo(() => reportTableTotal(reportTables.card_collections), [reportTables.card_collections]);
+  const transferCollectionTotal = useMemo(() => reportTableTotal(reportTables.transfer_collections ?? []), [reportTables.transfer_collections]);
+  const checkCollectionTotal = useMemo(() => reportTableTotal(reportTables.check_collections ?? []), [reportTables.check_collections]);
+  const noteCollectionTotal = useMemo(() => reportTableTotal(reportTables.note_collections ?? []), [reportTables.note_collections]);
+  const factoryCardCollectionTotal = useMemo(() => reportTableTotal(reportTables.factory_card_collections ?? []), [reportTables.factory_card_collections]);
   const cashSaleTotal = useMemo(() => reportTableTotal(reportTables.cash_sales), [reportTables.cash_sales]);
   const cashCollectionTotal = useMemo(() => reportTableTotal(reportTables.cash_collections), [reportTables.cash_collections]);
   const previousCashSaleTotal = useMemo(() => reportTableTotal(previousReportTables.cash_sales), [previousReportTables.cash_sales]);
@@ -617,6 +658,15 @@ export function PosDayEndPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-14 rounded-[16px] !border-[#3c5d48] !bg-[#13251b] px-4 text-sm font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+            onClick={() => router.back()}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Geri
+          </Button>
           {canSelectSession ? (
             <Select value={effectiveSelectedSessionId} onValueChange={setSelectedSessionId} disabled={busy || selectableSessions.length === 0}>
               <SelectTrigger className="h-14 min-w-[280px] rounded-[16px] border-[#3c5d48] bg-[#112219] px-4 text-left text-base font-black text-white shadow-[0_16px_28px_-24px_rgba(0,0,0,0.9)]">
@@ -747,16 +797,16 @@ export function PosDayEndPage() {
                   tone="red"
                 />
                 <DayEndStatCard label="Satış Toplamı" value={compactMoney(salesTotal, currencyLabel)} detail="Cari + nakit + kart" />
-                <DayEndStatCard label="Tahsilat" value={compactMoney(collectionTotal, currencyLabel)} detail="Nakit + kredi kartı" />
+                <DayEndStatCard label="Tahsilat" value={compactMoney(collectionTotal, currencyLabel)} detail="Nakit + kart" />
                 <DayEndStatCard label="Masraf" value={compactMoney(expenseTotal, currencyLabel)} detail="Seçili tarih" />
                 <DayEndStatCard label="Dünden Devreden" value={compactMoney(previousCarryTotal, currencyLabel)} detail={previousReportDateDisplay} tone="green" />
                 <DayEndStatCard label="Genel" value={compactMoney(selectedDateOperationalTotal, currencyLabel)} detail="Satış + kasa" tone="green" />
               </section>
 
-              <section className="grid min-h-[calc(100vh-242px)] gap-3 xl:grid-cols-[1.05fr_1.15fr_1.15fr_0.9fr] xl:grid-rows-2">
-                <SalePanel title="Cari Satış" rows={reportTables.normal_sales} tone="emerald" currencyLabel={currencyLabel} className="xl:row-span-2 xl:min-h-full" />
-                <SalePanel title={cashSalePanelTitle} rows={reportTables.cash_sales} tone="emerald" currencyLabel={currencyLabel} />
-                <SalePanel title={cardSalePanelTitle} rows={reportTables.card_sales} tone="emerald" currencyLabel={currencyLabel} />
+              <section className="grid min-h-[calc(100vh-242px)] gap-3 xl:grid-cols-[1.05fr_1.15fr_1.15fr_0.9fr]">
+                <SalePanel title="Cari Satış" rows={reportTables.normal_sales} tone="emerald" currencyLabel={currencyLabel} className="xl:row-span-2 xl:min-h-full" onDetail={setSelectedSaleDetail} />
+                <SalePanel title={cashSalePanelTitle} rows={reportTables.cash_sales} tone="emerald" currencyLabel={currencyLabel} onDetail={setSelectedSaleDetail} />
+                <SalePanel title={cardSalePanelTitle} rows={reportTables.card_sales} tone="emerald" currencyLabel={currencyLabel} onDetail={setSelectedSaleDetail} />
 
                 <form
                   className="flex min-h-[420px] flex-col rounded-[14px] border border-[#34463a] bg-[linear-gradient(180deg,rgba(24,38,30,0.98)_0%,rgba(11,24,17,0.99)_100%)] p-4 shadow-[0_18px_42px_-36px_rgba(0,0,0,0.82)] xl:row-span-2 xl:min-h-full"
@@ -824,6 +874,64 @@ export function PosDayEndPage() {
           )}
         </>
       ) : null}
+      <Dialog open={selectedSaleDetail !== null} onOpenChange={(open) => !open && setSelectedSaleDetail(null)}>
+        <DialogContent className="max-h-[88vh] max-w-[920px] overflow-hidden rounded-[24px] border border-[#55dd82]/45 bg-[linear-gradient(180deg,#102719_0%,#07130d_100%)] text-white shadow-[0_30px_90px_-48px_rgba(0,0,0,0.95)]">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black tracking-tight text-white">
+              Satış Detayı · {selectedSaleDetail ? saleDocumentNo(selectedSaleDetail) : ""}
+            </DialogTitle>
+            <DialogDescription className="text-sm font-bold text-[#c7dccd]">
+              Hangi ürün, kime, kaç adet ve hangi depodan satıldı bilgisi.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSaleDetail ? (
+            <div className="min-h-0 space-y-4 overflow-auto pr-1">
+              <div className="grid gap-3 md:grid-cols-4">
+                {[
+                  ["Cari", customerLabel(selectedSaleDetail)],
+                  ["Belge No", saleDocumentNo(selectedSaleDetail)],
+                  ["Satışı Yapan", selectedSaleDetail.created_by_name ?? "-"],
+                  ["Tarih", selectedSaleDetail.created_at ? new Date(selectedSaleDetail.created_at).toLocaleString("tr-TR") : "-"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-2xl border border-white/10 bg-white/7 p-3">
+                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#9fb6a7]">{label}</p>
+                    <p className="mt-1 text-sm font-black text-white">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="overflow-hidden rounded-2xl border border-white/10">
+                <div className="grid grid-cols-[130px_minmax(220px,1fr)_92px_118px_118px_150px] bg-[#173824] text-[11px] font-black uppercase tracking-[0.08em] text-[#dfffe6]">
+                  <span className="px-3 py-3">Ürün Kodu</span>
+                  <span className="px-3 py-3">Ürün Adı</span>
+                  <span className="px-3 py-3 text-right">Miktar</span>
+                  <span className="px-3 py-3 text-right">Birim Fiyat</span>
+                  <span className="px-3 py-3 text-right">Toplam</span>
+                  <span className="px-3 py-3">Depo</span>
+                </div>
+                <div className="max-h-[420px] overflow-auto">
+                  {(selectedSaleDetail.items ?? []).length > 0 ? (
+                    (selectedSaleDetail.items ?? []).map((item, index) => (
+                      <div
+                        key={`${item.product_code ?? "urun"}-${index}`}
+                        className="grid grid-cols-[130px_minmax(220px,1fr)_92px_118px_118px_150px] border-t border-white/10 bg-[#0d2418] text-sm font-bold text-[#f1fff5]"
+                      >
+                        <span className="px-3 py-3 font-black">{item.product_code ?? "-"}</span>
+                        <span className="px-3 py-3">{item.product_name ?? "-"}</span>
+                        <span className="px-3 py-3 text-right tabular-nums">{Number(item.quantity).toLocaleString("tr-TR")}</span>
+                        <span className="px-3 py-3 text-right tabular-nums">{compactMoney(item.unit_price, currencyLabel)}</span>
+                        <span className="px-3 py-3 text-right tabular-nums">{compactMoney(item.line_total, currencyLabel)}</span>
+                        <span className="px-3 py-3">{item.warehouse_name ?? selectedSaleDetail.warehouse_name ?? "-"}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="px-4 py-6 text-center text-sm font-black text-[#c7dccd]">Kalem bilgisi bulunamadı.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
       <Dialog open={sentDialogOpen} onOpenChange={setSentDialogOpen}>
         <DialogContent className="max-w-[420px] rounded-[26px] border border-[#55dd82]/45 bg-[linear-gradient(180deg,#102719_0%,#07130d_100%)] text-white shadow-[0_30px_90px_-48px_rgba(0,0,0,0.95)]">
           <DialogHeader className="items-center text-center">

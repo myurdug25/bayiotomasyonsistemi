@@ -18,7 +18,6 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import { useCart } from "@/components/cart/cart-provider";
-import { CampaignPanel } from "@/components/campaigns/campaign-progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -43,7 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const PAGE_LIMIT = 12;
-const SEARCH_DEBOUNCE_MS = 500;
+const SEARCH_DEBOUNCE_MS = 180;
 const MIN_SEARCH_LENGTH = 2;
 const PRODUCT_PREVIEW_IMAGE_WIDTH = 960;
 const ALL_FILTER_VALUE = "__all";
@@ -351,20 +350,6 @@ function normalizePreviousPurchase(value: ProductSearchItem["previous_purchase"]
   }
 
   return Array.isArray(value) ? (value[0] ?? null) : value;
-}
-
-function formatPreviousPurchase(value: ProductSearchItem["previous_purchase"]): string {
-  const purchase = normalizePreviousPurchase(value);
-  if (!purchase) {
-    return "-";
-  }
-
-  const quantity = Number.isFinite(purchase.quantity) ? purchase.quantity.toLocaleString("tr-TR") : "-";
-  const date = purchase.ordered_at
-    ? new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(purchase.ordered_at))
-    : null;
-
-  return date ? `${quantity} adet / ${date}` : `${quantity} adet`;
 }
 
 function productStockLocations(product: ProductSearchItem): Array<{
@@ -994,7 +979,11 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   }, [resetFiltersAfterReload, searchParamsKey]);
 
   const { selectedCustomer, user } = useAuth();
-  const { cartData, upsertQuantity, mutating } = useCart();
+  const {
+    cartData,
+    upsertQuantity,
+    mutating,
+  } = useCart();
   const roleSlugs = useMemo(() => user?.roles.map((role) => role.slug) ?? [], [user?.roles]);
   const isPointPanel = useMemo(() => roleSlugs.includes("point"), [roleSlugs]);
   const isCustomerUser = useMemo(() => roleSlugs.includes("customer"), [roleSlugs]);
@@ -1563,9 +1552,6 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="admin-catalog-page space-y-4">
-      {campaignProgressQuery.data?.data && campaignProgressQuery.data.data.length > 0 ? (
-        <CampaignPanel campaigns={campaignProgressQuery.data.data} />
-      ) : null}
       <Card className="admin-catalog-list dashboard-panel-card min-h-[560px]">
         <CardHeader className="space-y-3 pb-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

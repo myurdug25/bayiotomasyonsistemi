@@ -452,7 +452,6 @@ class PosQuickProductSearchController extends Controller
         $warehouseKeys = match ($this->normalizeScopeText($user->username)) {
             'ERZURUM.HIZLISATIS' => [
                 'search.stock.warehouse.erzurum_point',
-                'search.stock.warehouse.erzurum_depo',
             ],
             'AHMET.ARAC',
             'HUSEYIN.OZGUNEY',
