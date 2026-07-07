@@ -602,7 +602,36 @@ BEGIN
     END;
 
     DECLARE @CustomerRef INT = TRY_CONVERT(INT, NULLIF(LTRIM(RTRIM(@CustomerExternalRef)), N''));
-    DECLARE @SourceIndex SMALLINT = COALESCE(TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.meta.warehouse_code')), TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.warehouse_code')), 0);
+    DECLARE @SourceIndex SMALLINT = 0;
+    DECLARE @Branch SMALLINT = 0;
+    DECLARE @Department SMALLINT = 0;
+
+    IF @CashboxCode = '100.01.002'
+    BEGIN
+        SET @SourceIndex = 4;
+        SET @Branch = 4;
+    END;
+    ELSE IF @CashboxCode = '100.01.007'
+    BEGIN
+        SET @SourceIndex = 0;
+        SET @Branch = 0;
+    END;
+    ELSE
+    BEGIN
+        SET @SourceIndex = COALESCE(
+            TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.source_index')),
+            TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.warehouse_no')),
+            0
+        );
+        SET @Branch = COALESCE(
+            TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.branch')),
+            0
+        );
+        SET @Department = COALESCE(
+            TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.department')),
+            0
+        );
+    END;
     DECLARE @Docode VARCHAR(33) = CONVERT(VARCHAR(33), LEFT(COALESCE(NULLIF(@ReceiptNo, N''), @ExportKey), 33));
     DECLARE @FicheNo VARCHAR(17) = CONVERT(VARCHAR(17), 'F' + RIGHT(REPLICATE('0', 16) + CONVERT(VARCHAR(32), ABS(CHECKSUM(@ExportKey))), 16));
     DECLARE @Specode VARCHAR(11) = CONVERT(VARCHAR(11), LEFT(@ExportKey, 11));
@@ -725,7 +754,7 @@ BEGIN
             CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@CustomerCode, N''), N''), 51)),
             CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@CashboxCode, N''), N''), 51)),
             CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@DocumentType, N''), N''), 51)),
-            0, 1, 1, CONVERT(FLOAT, @GrandTotal), 0, 0, 0,
+            0, 1, 1, CONVERT(FLOAT, @GrandTotal), 0, @Branch, @Department,
             1, @Now, @Hour, @Minute, @Second, 1
         );
 
@@ -743,7 +772,7 @@ BEGIN
     )
     VALUES (
         2, 8, 4, @FicheNo, @SaleDate, 0, @Docode, @Specode, @CyphCode,
-        @CustomerRef, 0, @SourceIndex, @SourceIndex, 0, 0,
+        @CustomerRef, 0, @SourceIndex, @SourceIndex, @Branch, @Department,
         0, @IsInvoice, 0, 0, 0, 0,
         CASE WHEN @IsInvoice = 1 THEN @InvoiceRef ELSE 0 END,
         CONVERT(FLOAT, @DiscountTotal), CONVERT(FLOAT, @Subtotal), 0, 0,
@@ -763,7 +792,7 @@ BEGIN
         CLIENTREF, SPECODE, AMOUNT,
         PRICE, TOTAL, PRCURR, PRPRICE, TRCURR, TRRATE, REPORTRATE, LINEEXP,
         UOMREF, USREF, UINFO1, UINFO2, VATINC, VAT, VATAMNT, VATMATRAH,
-        BILLEDITEM, BILLED, CANCELLED, LINENET, MONTH_, YEAR_, STATUS
+        BILLEDITEM, BILLED, CANCELLED, LINENET, MONTH_, YEAR_, STATUS, BRANCH, DEPARTMENT
     )
     SELECT
         src.StockRef, 0, 8, @SaleDate, 0, 0, 0,
@@ -775,7 +804,7 @@ BEGIN
         CONVERT(FLOAT, src.Price), CONVERT(FLOAT, src.LineTotal), 0, CONVERT(FLOAT, src.Price), 0, 1, 1,
         CONVERT(VARCHAR(251), src.LineExp), COALESCE(src.UomRef, 0), COALESCE(src.UsRef, 0), 1, 1,
         0, CONVERT(FLOAT, src.VatRate), CONVERT(FLOAT, src.VatAmount), CONVERT(FLOAT, src.LineTotal),
-        0, @IsInvoice, 0, CONVERT(FLOAT, src.LineTotal), MONTH(@SaleDate), YEAR(@SaleDate), 1
+        0, @IsInvoice, 0, CONVERT(FLOAT, src.LineTotal), MONTH(@SaleDate), YEAR(@SaleDate), 1, @Branch, @Department
     FROM @Lines AS src
     ORDER BY src.RowNo;
 
