@@ -715,7 +715,7 @@ BEGIN
             TOTALDISCOUNTED, TOTALVAT, GROSSTOTAL, NETTOTAL, GENEXP1, GENEXP2, GENEXP3, GENEXP4,
             TRCURR, TRRATE, REPORTRATE, REPORTNET, PAYDEFREF, BRANCH, DEPARTMENT,
             CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR,
-            CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC
+            CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC, STATUS
         )
         VALUES (
             2, 8, @FicheNo, @SaleDate, @Docode, @Specode, @CyphCode, @CustomerRef,
@@ -726,7 +726,7 @@ BEGIN
             CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@CashboxCode, N''), N''), 51)),
             CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@DocumentType, N''), N''), 51)),
             0, 1, 1, CONVERT(FLOAT, @GrandTotal), 0, 0, 0,
-            1, @Now, @Hour, @Minute, @Second
+            1, @Now, @Hour, @Minute, @Second, 1
         );
 
         SET @InvoiceRef = SCOPE_IDENTITY();
@@ -739,7 +739,7 @@ BEGIN
         INVOICEREF, TOTALDISCOUNTS, TOTALDISCOUNTED, ADDEXPENSES, TOTALEXPENSES,
         TOTALVAT, GROSSTOTAL, NETTOTAL, REPORTRATE, REPORTNET, GENEXP1, GENEXP2,
         CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR,
-        CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC
+        CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC, STATUS
     )
     VALUES (
         2, 8, 4, @FicheNo, @SaleDate, 0, @Docode, @Specode, @CyphCode,
@@ -751,7 +751,7 @@ BEGIN
         1, CONVERT(FLOAT, @GrandTotal),
         CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@ReceiptNo, N''), @ExportKey), 51)),
         CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@CustomerCode, N''), N''), 51)),
-        1, @Now, @Hour, @Minute, @Second
+        1, @Now, @Hour, @Minute, @Second, 1
     );
 
     SET @StockFicheRef = SCOPE_IDENTITY();
@@ -763,7 +763,7 @@ BEGIN
         CLIENTREF, SPECODE, AMOUNT,
         PRICE, TOTAL, PRCURR, PRPRICE, TRCURR, TRRATE, REPORTRATE, LINEEXP,
         UOMREF, USREF, UINFO1, UINFO2, VATINC, VAT, VATAMNT, VATMATRAH,
-        BILLEDITEM, BILLED, CANCELLED, LINENET, MONTH_, YEAR_
+        BILLEDITEM, BILLED, CANCELLED, LINENET, MONTH_, YEAR_, STATUS
     )
     SELECT
         src.StockRef, 0, 8, @SaleDate, 0, 0, 0,
@@ -775,7 +775,7 @@ BEGIN
         CONVERT(FLOAT, src.Price), CONVERT(FLOAT, src.LineTotal), 0, CONVERT(FLOAT, src.Price), 0, 1, 1,
         CONVERT(VARCHAR(251), src.LineExp), COALESCE(src.UomRef, 0), COALESCE(src.UsRef, 0), 1, 1,
         0, CONVERT(FLOAT, src.VatRate), CONVERT(FLOAT, src.VatAmount), CONVERT(FLOAT, src.LineTotal),
-        0, @IsInvoice, 0, CONVERT(FLOAT, src.LineTotal), MONTH(@SaleDate), YEAR(@SaleDate)
+        0, @IsInvoice, 0, CONVERT(FLOAT, src.LineTotal), MONTH(@SaleDate), YEAR(@SaleDate), 1
     FROM @Lines AS src
     ORDER BY src.RowNo;
 
