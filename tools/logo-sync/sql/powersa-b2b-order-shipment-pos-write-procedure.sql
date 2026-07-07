@@ -792,7 +792,7 @@ BEGIN
         CLIENTREF, SPECODE, AMOUNT,
         PRICE, TOTAL, PRCURR, PRPRICE, TRCURR, TRRATE, REPORTRATE, LINEEXP,
         UOMREF, USREF, UINFO1, UINFO2, VATINC, VAT, VATAMNT, VATMATRAH,
-        BILLEDITEM, BILLED, CANCELLED, LINENET, MONTH_, YEAR_, STATUS, BRANCH, DEPARTMENT
+        BILLEDITEM, BILLED, CANCELLED, LINENET, MONTH_, YEAR_, STATUS
     )
     SELECT
         src.StockRef, 0, 8, @SaleDate, 0, 0, 0,
@@ -804,7 +804,7 @@ BEGIN
         CONVERT(FLOAT, src.Price), CONVERT(FLOAT, src.LineTotal), 0, CONVERT(FLOAT, src.Price), 0, 1, 1,
         CONVERT(VARCHAR(251), src.LineExp), COALESCE(src.UomRef, 0), COALESCE(src.UsRef, 0), 1, 1,
         0, CONVERT(FLOAT, src.VatRate), CONVERT(FLOAT, src.VatAmount), CONVERT(FLOAT, src.LineTotal),
-        0, @IsInvoice, 0, CONVERT(FLOAT, src.LineTotal), MONTH(@SaleDate), YEAR(@SaleDate), 1, @Branch, @Department
+        0, @IsInvoice, 0, CONVERT(FLOAT, src.LineTotal), MONTH(@SaleDate), YEAR(@SaleDate), 1
     FROM @Lines AS src
     ORDER BY src.RowNo;
 
