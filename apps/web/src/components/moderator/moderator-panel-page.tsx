@@ -1313,8 +1313,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
               disabled={
                 createUserMutation.isPending ||
                 updateUserMutation.isPending ||
-                resetUserPasswordMutation.isPending ||
-                !canSubmitUserModal
+                resetUserPasswordMutation.isPending
               }
             >
               {createUserMutation.isPending || updateUserMutation.isPending || resetUserPasswordMutation.isPending ? (
@@ -1684,7 +1683,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                   is_active: userForm.is_active,
                 });
               }}
-              disabled={createUserMutation.isPending || !canCreateUser}
+              disabled={createUserMutation.isPending}
             >
               {createUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Kullanıcıyı Kaydet
