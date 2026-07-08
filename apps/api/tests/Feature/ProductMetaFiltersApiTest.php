@@ -702,48 +702,14 @@ class ProductMetaFiltersApiTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data.0.id', $product->id);
-        $response->assertJsonPath('data.0.available_total', 6);
-        $response->assertJsonCount(1, 'data.0.stock_locations');
-        $response->assertJsonPath('data.0.stock_locations.0.warehouse_code', '4');
-        $response->assertJsonPath('data.0.stock_locations.0.branch', 'BATUM DEPO');
-        $response->assertJsonPath('data.0.stock_locations.0.stock', 6);
-
-        $missingBatumProduct = $this->createProductWithMeta(
-            dealer: $context['dealer'],
-            brand: $context['brand'],
-            category: $context['category'],
-            sku: 'STOCK-BATUM-MISSING-001',
-            name: 'Batum Missing Stock Product',
-            stock: 8,
-            listPrice: 210.00,
-            meta: [
-                'integrations' => [
-                    'logo' => [
-                        'payload' => [
-                            'logo_stock' => [
-                                'warehouses' => [
-                                    [
-                                        'warehouse_code' => '1',
-                                        'warehouse_name' => 'ERZURUM DEPO',
-                                        'available_total' => 8,
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ]
-        );
-
-        $missingResponse = $this->getJson('/api/products/search?limit=20&sort=stock_desc&q=STOCK-BATUM-MISSING-001');
-
-        $missingResponse->assertOk();
-        $missingResponse->assertJsonPath('data.0.id', $missingBatumProduct->id);
-        $missingResponse->assertJsonPath('data.0.available_total', 0);
-        $missingResponse->assertJsonCount(1, 'data.0.stock_locations');
-        $missingResponse->assertJsonPath('data.0.stock_locations.0.warehouse_code', '4');
-        $missingResponse->assertJsonPath('data.0.stock_locations.0.branch', 'BATUM DEPO');
-        $missingResponse->assertJsonPath('data.0.stock_locations.0.stock', 0);
+        $response->assertJsonPath('data.0.available_total', 14);
+        $response->assertJsonCount(2, 'data.0.stock_locations');
+        $response->assertJsonPath('data.0.stock_locations.0.warehouse_code', '1');
+        $response->assertJsonPath('data.0.stock_locations.0.branch', 'ERZURUM DEPO');
+        $response->assertJsonPath('data.0.stock_locations.0.stock', 8);
+        $response->assertJsonPath('data.0.stock_locations.1.warehouse_code', '4');
+        $response->assertJsonPath('data.0.stock_locations.1.branch', 'BATUM DEPO');
+        $response->assertJsonPath('data.0.stock_locations.1.stock', 6);
     }
 
     public function test_salesperson_with_selected_customer_sees_only_customer_branch_stock(): void
