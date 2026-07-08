@@ -182,9 +182,13 @@ function toAmount(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function toApiAmount(value: string | number): number {
+function toApiAmount(value: unknown): number {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value !== "string") {
+    return 0;
   }
 
   const direct = Number(value);

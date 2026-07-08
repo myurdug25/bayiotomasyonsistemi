@@ -760,17 +760,17 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
 
   return (
     <div
-      className="point-sale-screen warehouse-shipment-clean space-y-4 rounded-[24px] border border-[var(--point-border)] bg-[#071018] p-3 text-[#eef8ef] shadow-[0_30px_90px_-54px_rgba(0,0,0,0.95)]"
+      className="point-sale-screen warehouse-shipment-clean space-y-2.5 rounded-[20px] border border-[var(--point-border)] bg-[#071018] p-2 text-[#eef8ef] shadow-[0_24px_70px_-54px_rgba(0,0,0,0.95)]"
       data-point-theme="dark"
       onClick={() => setContextMenu(null)}
     >
-      <section className="point-panel point-product-panel rounded-[20px] border p-3">
-        <div className="mb-2 flex justify-start">
+      <section className="point-panel point-product-panel rounded-[16px] border p-2">
+        <div className="mb-1 flex justify-start">
           <Button
             type="button"
             variant="ghost"
             asChild
-            className="h-10 rounded-[12px] px-3 text-sm font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+            className="h-8 rounded-[10px] px-2.5 text-xs font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
           >
             <Link href="/warehouse">
               <ArrowLeft className="h-4 w-4" /> Geri
@@ -778,20 +778,20 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
           </Button>
         </div>
 
-        <div className="mb-3 grid gap-2">
-          <div className="warehouse-summary-card min-w-0 rounded-[18px] border border-emerald-300/35 bg-[linear-gradient(135deg,#1f6b45_0%,#2f7650_55%,#416650_100%)] p-3 shadow-[0_20px_48px_-36px_rgba(31,107,69,0.65),inset_0_1px_0_rgba(255,255,255,0.10)]">
-            <div className="grid min-h-[64px] gap-2 xl:grid-cols-[38px_120px_minmax(240px,0.95fr)_minmax(460px,1.45fr)] xl:items-center">
-              <span className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-white/30 bg-white/15 text-sm font-black text-white shadow-[0_10px_30px_-16px_rgba(255,255,255,0.65)]">
-                <PackageCheck className="h-5 w-5" />
+        <div className="mb-2 grid gap-2">
+          <div className="warehouse-summary-card min-w-0 rounded-[14px] border border-emerald-300/35 bg-[linear-gradient(135deg,#1f6b45_0%,#2f7650_55%,#416650_100%)] p-2.5 shadow-[0_16px_36px_-32px_rgba(31,107,69,0.65),inset_0_1px_0_rgba(255,255,255,0.10)]">
+            <div className="grid min-h-[44px] gap-2 xl:grid-cols-[32px_116px_minmax(260px,0.95fr)_minmax(460px,1.45fr)] xl:items-center">
+              <span className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-white/25 bg-white/12 text-sm font-black text-white shadow-[0_8px_24px_-16px_rgba(255,255,255,0.55)]">
+                <PackageCheck className="h-4 w-4" />
               </span>
 
               <span className="min-w-0">
                 <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-white/75">Cari Kod</span>
-                <span className="mt-0.5 block truncate text-lg font-black text-[#e6f3e9]">{displayText(customer.code)}</span>
+                <span className="mt-0.5 block truncate text-base font-black text-[#e6f3e9]">{displayText(customer.code)}</span>
               </span>
 
               <span className="min-w-0">
-                <span className="block truncate text-xl font-black leading-tight text-white xl:text-2xl">
+                <span className="block truncate text-lg font-black leading-tight text-white xl:text-xl">
                   {displayText(customer.title)}
                 </span>
                 <span className="mt-0.5 block truncate text-xs font-bold text-[#cfe1d2]">
@@ -799,20 +799,20 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                 </span>
               </span>
 
-              <span className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4">
-                <span className="min-w-0 rounded-lg border border-[#72bf82]/45 bg-[#1f6b45]/45 px-2 py-1 text-xs font-black text-[#d9ffe1]">
+              <span className="grid min-w-0 grid-cols-2 gap-1.5 lg:grid-cols-4">
+                <span className="min-w-0 rounded-lg border border-[#72bf82]/45 bg-[#1f6b45]/45 px-2 py-0.5 text-[11px] font-black text-[#d9ffe1]">
                   <span className="block text-[9px] uppercase tracking-[0.12em] opacity-80">İl / İlçe</span>
                   <span className="block truncate">{displayText(customerLocation)}</span>
                 </span>
-                <span className="min-w-0 rounded-lg border border-[#65b7ff]/35 bg-[#0d3b52]/55 px-2 py-1 text-xs font-black text-[#d6f0ff]">
+                <span className="min-w-0 rounded-lg border border-[#65b7ff]/35 bg-[#0d3b52]/55 px-2 py-0.5 text-[11px] font-black text-[#d6f0ff]">
                   <span className="block text-[9px] uppercase tracking-[0.12em] opacity-80">Adres</span>
                   <span className="block truncate">{displayText(customer.address)}</span>
                 </span>
-                <span className="min-w-0 rounded-lg border border-[#d78cff]/35 bg-[#3a2050]/45 px-2 py-1 text-xs font-black text-[#f4ddff]">
+                <span className="min-w-0 rounded-lg border border-[#d78cff]/35 bg-[#3a2050]/45 px-2 py-0.5 text-[11px] font-black text-[#f4ddff]">
                   <span className="block text-[9px] uppercase tracking-[0.12em] opacity-80">Telefon</span>
                   <span className="block truncate">{displayText(customer.phone)}</span>
                 </span>
-                <span className="min-w-0 rounded-lg border border-[#faee56]/35 bg-[#4d4310]/45 px-2 py-1 text-xs font-black text-[#fff8a8]">
+                <span className="min-w-0 rounded-lg border border-[#faee56]/35 bg-[#4d4310]/45 px-2 py-0.5 text-[11px] font-black text-[#fff8a8]">
                   <span className="block text-[9px] uppercase tracking-[0.12em] opacity-80">Sipariş No</span>
                   <span className="block truncate">{displayText(shipment.order.order_no)}</span>
                 </span>
@@ -822,10 +822,10 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
 
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(460px,0.95fr)_minmax(460px,1.05fr)] xl:items-end">
+        <div className="grid gap-2.5 xl:grid-cols-[minmax(420px,0.95fr)_minmax(460px,1.05fr)] xl:items-end">
           <label className="block">
-            <span className="mb-2 flex h-5 items-center text-sm font-semibold text-[var(--point-muted-strong)]">Barkod / Stok Kodu Oku</span>
-            <div className="grid h-20 grid-cols-[minmax(0,1fr)_74px] overflow-hidden rounded-[16px] border border-[var(--point-border)] bg-[var(--point-control)]">
+            <span className="mb-1 flex h-4 items-center text-xs font-semibold text-[var(--point-muted-strong)]">Barkod / Stok Kodu Oku</span>
+            <div className="grid h-14 grid-cols-[minmax(0,1fr)_58px] overflow-hidden rounded-[14px] border border-[var(--point-border)] bg-[var(--point-control)]">
               <Input
                 ref={inputRef}
                 value={barcode}
@@ -838,13 +838,13 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                     handleScanSubmit();
                   }
                 }}
-                className="h-20 rounded-none border-0 bg-transparent text-xl font-black text-white shadow-none placeholder:text-[var(--point-muted)] focus-visible:ring-0"
+                className="h-14 rounded-none border-0 bg-transparent text-lg font-black text-white shadow-none placeholder:text-[var(--point-muted)] focus-visible:ring-0"
 	                placeholder="Barkod / stok kodu okut"
               />
               <Button
                 type="button"
                 variant="ghost"
-                className="h-20 rounded-none border-l border-[var(--point-border)]"
+                className="h-14 rounded-none border-l border-[var(--point-border)]"
                 onClick={() => handleScanSubmit()}
                 disabled={scanMutation.isPending || isReadOnly || !barcode.trim()}
                 title="Barkodu işle"
@@ -854,7 +854,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
             </div>
           </label>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="grid grid-cols-3 gap-2">
               <label className="block">
                 <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.08em] text-[var(--point-muted-strong)]">
@@ -865,7 +865,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                   min={1}
                   value={packageNo}
                   onChange={(event) => setPackageNo(event.target.value)}
-                  className="h-10 text-sm font-bold"
+                  className="h-9 text-sm font-bold"
                 />
               </label>
               <label className="block">
@@ -877,7 +877,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                   min={1}
                   value={packageTotal}
                   onChange={(event) => setPackageTotal(event.target.value)}
-                  className="h-10 text-sm font-bold"
+                  className="h-9 text-sm font-bold"
                 />
               </label>
               <label className="block">
@@ -889,34 +889,34 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                   min={1}
                   value={packageDesi}
                   onChange={(event) => setPackageDesi(event.target.value)}
-                  className="h-10 text-sm font-bold"
+                  className="h-9 text-sm font-bold"
                 />
               </label>
             </div>
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-[0.62fr_1fr_1fr_1fr]">
-              <div className="flex h-20 w-full flex-col items-center justify-center gap-1.5 rounded-[16px] border border-[#faee56]/35 bg-[#4d4310]/45 px-2 text-center text-[10px] font-black text-[#fff8a8]">
+              <div className="flex h-14 w-full flex-col items-center justify-center gap-1 rounded-[14px] border border-[#faee56]/35 bg-[#4d4310]/45 px-2 text-center text-[9px] font-black text-[#fff8a8]">
                 <span className="uppercase leading-tight tracking-[0.08em]">Sipariş Tutarı</span>
                 <span className="text-sm leading-none text-white">{toPlainMoney(orderTotal)}</span>
               </div>
               <Button
                 type="button"
                 variant="outline"
-                className="point-secondary-button h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black"
+                className="point-secondary-button h-14 w-full flex-col gap-1 rounded-[14px] text-center text-[10px] font-black"
                 onClick={() => printPageInPlace(printUrls.packingSlip)}
               >
-                <Printer className="h-5 w-5" /> Depo Transfer
+                <Printer className="h-4 w-4" /> Depo Transfer
               </Button>
               <Button
                 type="button"
-                className="point-primary-button h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black"
+                className="point-primary-button h-14 w-full flex-col gap-1 rounded-[14px] text-center text-[10px] font-black"
                 onClick={() => printPageInPlace(printUrls.label)}
               >
-                <Printer className="h-5 w-5" /> Kargo Etiketi
+                <Printer className="h-4 w-4" /> Kargo Etiketi
               </Button>
               <Button
                 type="button"
-                className={`${SHIPMENT_INVOICE_ACTION_CLASSNAME} h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black`}
+                className={`${SHIPMENT_INVOICE_ACTION_CLASSNAME} h-14 w-full flex-col gap-1 rounded-[14px] text-center text-[10px] font-black`}
                 onClick={handleFinalizeInvoice}
                 disabled={finalizeMutation.isPending || shipmentState.totals.shipped_qty_total <= 0}
               >
