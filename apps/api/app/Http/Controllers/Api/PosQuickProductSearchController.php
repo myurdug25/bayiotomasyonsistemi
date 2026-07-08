@@ -579,6 +579,10 @@ class PosQuickProductSearchController extends Controller
             }
         }
 
+        if ($stockScope !== null) {
+            $locations = $this->appendMissingScopedStockLocations($locations, $stockScope, $generalShelfAddress);
+        }
+
         if ($locations === [] && $stockScope === null) {
             $locations[] = [
                 'branch' => 'Genel',
@@ -586,6 +590,57 @@ class PosQuickProductSearchController extends Controller
                 'stock' => $availableTotal,
                 'shelf_address' => $generalShelfAddress,
             ];
+        }
+
+        return $locations;
+    }
+
+    /**
+     * @param  list<array{branch:string,warehouse_code:?string,stock:int,shelf_address:?string}>  $locations
+     * @return list<array{branch:string,warehouse_code:?string,stock:int,shelf_address:?string}>
+     */
+    private function appendMissingScopedStockLocations(array $locations, array $stockScope, ?string $generalShelfAddress): array
+    {
+        $seenCodes = array_values(array_filter(array_map(
+            fn (array $location): ?string => $this->normalizeScopeText($location['warehouse_code'] ?? null),
+            $locations
+        )));
+        $seenNames = array_values(array_filter(array_map(
+            fn (array $location): ?string => $this->normalizeScopeText($location['branch'] ?? null),
+            $locations
+        )));
+
+        foreach (CustomerFeaturePermissions::stockWarehouseDefinitions() as $warehouse) {
+            $code = $warehouse['codes'][0] ?? null;
+            $label = mb_strtoupper($warehouse['label'], 'UTF-8');
+
+            if (! $this->stockLocationVisible($label, $code, $stockScope)) {
+                continue;
+            }
+
+            $warehouseCodes = array_values(array_filter(array_map(
+                fn (string $value): ?string => $this->normalizeScopeText($value),
+                $warehouse['codes']
+            )));
+            $warehouseNames = array_values(array_filter(array_map(
+                fn (string $value): ?string => $this->normalizeScopeText($value),
+                [$warehouse['label'], ...$warehouse['names']]
+            )));
+
+            if (array_intersect($seenCodes, $warehouseCodes) !== [] || array_intersect($seenNames, $warehouseNames) !== []) {
+                continue;
+            }
+
+            $locations[] = [
+                'branch' => $label,
+                'warehouse_code' => $code,
+                'stock' => 0,
+                'shelf_address' => $generalShelfAddress,
+            ];
+            if ($code !== null) {
+                $seenCodes[] = $this->normalizeScopeText($code);
+            }
+            $seenNames[] = $this->normalizeScopeText($label);
         }
 
         return $locations;
