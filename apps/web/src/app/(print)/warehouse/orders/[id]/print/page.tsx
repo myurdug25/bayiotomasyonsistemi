@@ -139,37 +139,44 @@ function HeaderInfo({
 
   return (
     <header className="print-block">
-      <div className="grid grid-cols-[1fr_76mm] items-start gap-[8mm]">
-        <div className="rounded-[2mm] border border-[#d9d9d9] bg-[#fafafa] p-[5mm] text-[14.5px] font-bold leading-[1.45]">
-          <InfoLine label="Kodu" value={upperText(order.customer?.code)} />
-          <InfoLine label="Ünvanı" value={upperText(order.customer?.title)} />
-          <InfoLine label="Adres" value={upperText(addressLine)} />
-          <InfoLine label="Telefon" value={phoneLine} />
-          <InfoLine label="İl - İlçe" value={upperText(customerLocation)} />
+      <div className="grid grid-cols-[1fr_52mm] items-start gap-[5mm]">
+        <div className="rounded-[1.5mm] border border-[#d9d9d9] bg-[#fafafa] p-[3mm] text-[11px] font-bold leading-[1.22]">
+          <div className="mb-[2mm] flex items-end justify-between gap-[4mm] border-b border-[#e1e1e1] pb-[1.8mm]">
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#174f36]">Depo Hazırlık</p>
+              <h1 className="mt-[0.5mm] text-[25px] font-black leading-none tracking-[0.01em] text-[#303030]">
+                SİPARİŞ FORMU
+              </h1>
+            </div>
+            <p className="shrink-0 text-right text-[10px] font-black text-[#174f36]">
+              #{printOrderNo}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-[4mm] gap-y-[0.8mm]">
+            <InfoLine label="Kodu" value={upperText(order.customer?.code)} />
+            <InfoLine label="Telefon" value={phoneLine} />
+            <InfoLine label="Ünvanı" value={upperText(order.customer?.title)} wide />
+            <InfoLine label="İl - İlçe" value={upperText(customerLocation)} />
+            <InfoLine label="Adres" value={upperText(addressLine)} wide />
+          </div>
         </div>
 
-        <div className="flex flex-col items-center rounded-[2mm] border border-[#cfd8d2] bg-[#fbfffc] px-[5mm] py-[4mm] text-[13.5px] font-bold leading-tight">
-          <span className="mb-[1.8mm] rounded-full bg-[#174f36] px-[4mm] py-[1.3mm] text-[12px] font-black uppercase tracking-[0.08em] text-white">
+        <div className="flex flex-col items-center rounded-[1.5mm] border border-[#cfd8d2] bg-[#fbfffc] px-[3mm] py-[2.5mm] text-[10px] font-bold leading-tight">
+          <span className="mb-[1mm] rounded-full bg-[#174f36] px-[3mm] py-[0.9mm] text-[8.8px] font-black uppercase tracking-[0.08em] text-white">
             Sipariş Barkodu
           </span>
-          <img className="barcode-image h-[22mm] w-[73mm]" src={barcodeDataUri} alt="Sipariş numarası barkodu" />
-          <span className="mt-[1.5mm] text-[18px] font-black tracking-[0.06em] text-[#174f36]">
+          <img className="barcode-image h-[15mm] w-[45mm]" src={barcodeDataUri} alt="Sipariş numarası barkodu" />
+          <span className="mt-[0.8mm] text-[14px] font-black tracking-[0.06em] text-[#174f36]">
             {barcodeValue}
           </span>
-          <span className="mt-[0.6mm] text-[11px] font-black uppercase tracking-[0.08em] text-[#6b6b6b]">
+          <span className="mt-[0.4mm] text-[8.5px] font-black uppercase tracking-[0.08em] text-[#6b6b6b]">
             Depo ekranında okut
           </span>
         </div>
       </div>
 
-      <div className="mt-[4mm] grid grid-cols-[1fr_68mm] items-start gap-[8mm]">
-        <div>
-          <p className="text-[13px] font-black uppercase tracking-[0.16em] text-[#174f36]">Depo Hazırlık</p>
-          <h1 className="mt-[1mm] text-[42px] font-black tracking-[0.02em] text-[#303030]">
-            SİPARİŞ FORMU
-          </h1>
-        </div>
-        <div className="text-[14px] font-bold leading-[1.4]">
+      <div className="mt-[2.5mm] rounded-[1.5mm] border border-[#d9d9d9] bg-[#fbfbfb] p-[2.4mm] text-[10.5px] font-bold leading-[1.25]">
+        <div className="grid grid-cols-3 gap-x-[5mm] gap-y-[0.9mm]">
           <InfoLine label="Sipariş No" value={printOrderNo} />
           <InfoLine label="Referans" value={order.order_no} />
           <InfoLine label="Sipariş Tarihi" value={formatDateTime(order.ordered_at)} />
@@ -179,16 +186,16 @@ function HeaderInfo({
         </div>
       </div>
 
-      <div className="mt-[3mm] border-b border-[#ca6e6e]" />
+      <div className="mt-[2.5mm] border-b border-[#ca6e6e]" />
     </header>
   );
 }
 
-function InfoLine({ label, value }: { label: string; value: string }) {
+function InfoLine({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
   return (
-    <p className="grid grid-cols-[25mm_1fr] gap-[2mm]">
-      <span>{label}</span>
-      <span>{value}</span>
+    <p className={`grid grid-cols-[18mm_1fr] gap-[1.5mm] ${wide ? "col-span-2" : ""}`}>
+      <span className="font-black">{label}</span>
+      <span className="truncate">{value}</span>
     </p>
   );
 }
@@ -243,18 +250,18 @@ function erzurumDepoStock(item: PrintOrderItem): number | null {
 
 function PrintableTable({ items, totalQuantity }: { items: PrintOrderItem[]; totalQuantity: number }) {
   return (
-    <section className="mt-[5mm]">
-      <table className="order-table w-full border-collapse text-[14.5px] leading-[1.25]">
+    <section className="mt-[3mm]">
+      <table className="order-table w-full border-collapse text-[11px] leading-[1.14]">
         <thead>
           <tr>
             <th className="w-[8mm] text-center">Sr</th>
-            <th className="w-[37mm] text-left">Ürün Kodu</th>
+            <th className="w-[33mm] text-left">Ürün Kodu</th>
             <th className="text-left">Ürün Adı</th>
-            <th className="w-[25mm] text-center">Üretici</th>
-            <th className="w-[30mm] text-center">Raf Adresi</th>
-            <th className="w-[18mm] text-center">Miktar</th>
+            <th className="w-[22mm] text-center">Üretici</th>
+            <th className="w-[26mm] text-center">Raf Adresi</th>
+            <th className="w-[15mm] text-center">Miktar</th>
             <th className="w-[9mm] text-center">&nbsp;</th>
-            <th className="w-[21mm] text-center">Erz. Stok</th>
+            <th className="w-[18mm] text-center">Erz. Stok</th>
           </tr>
         </thead>
         <tbody>
@@ -405,7 +412,7 @@ export default function WarehouseOrderPrintPage() {
         .order-table th,
         .order-table td {
           border: 1px solid #535353;
-          padding: 2.6mm 2.2mm;
+          padding: 1.5mm 1.6mm;
           vertical-align: middle;
         }
 
@@ -417,9 +424,9 @@ export default function WarehouseOrderPrintPage() {
           background: #f4f4f4;
           color: #222222;
           font-weight: 900;
-          font-size: 14.5px;
-          padding-top: 2.8mm;
-          padding-bottom: 2.8mm;
+          font-size: 11px;
+          padding-top: 1.8mm;
+          padding-bottom: 1.8mm;
         }
 
         .order-table tbody tr:nth-child(even):not(.total-row) {
