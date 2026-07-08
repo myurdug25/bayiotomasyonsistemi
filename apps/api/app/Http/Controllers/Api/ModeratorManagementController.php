@@ -722,7 +722,7 @@ class ModeratorManagementController extends Controller
     {
         $availableRoleSlugs = $this->availableRoles($actor)->pluck('slug');
 
-        if ($roleSlugs->isEmpty() || $roleSlugs->diff($availableRoleSlugs)->isNotEmpty()) {
+        if ($roleSlugs->diff($availableRoleSlugs)->isNotEmpty()) {
             throw ValidationException::withMessages([
                 'role_slugs' => ['Seçilen kullanıcı tipi bu kullanıcı için uygun değil.'],
             ]);
@@ -740,7 +740,7 @@ class ModeratorManagementController extends Controller
             $availablePermissions = $availablePermissions->reject(fn (string $key) => $key === 'moderator');
         }
 
-        if ($menuPermissions->isEmpty() || $menuPermissions->diff($availablePermissions)->isNotEmpty()) {
+        if ($menuPermissions->diff($availablePermissions)->isNotEmpty()) {
             throw ValidationException::withMessages([
                 'menu_permissions' => ['Seçilen menü yetkileri bu kullanıcı için uygun değil.'],
             ]);
