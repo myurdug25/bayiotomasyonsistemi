@@ -787,15 +787,11 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     userForm.name.trim() !== "" &&
     userForm.username.trim() !== "" &&
     userForm.password.length >= 6 &&
-    userForm.role_slugs.length > 0 &&
-    userForm.menu_permissions.length > 0 &&
     (!userMenuRequiresDealer || userForm.dealer_id !== "");
   const isEditingUser = editingUser !== null;
   const canSubmitUserModal =
     userForm.name.trim() !== "" &&
     userForm.username.trim() !== "" &&
-    userForm.role_slugs.length > 0 &&
-    userForm.menu_permissions.length > 0 &&
     (!userMenuRequiresDealer || userForm.dealer_id !== "") &&
     (isEditingUser ? userForm.password.trim() === "" || userForm.password.trim().length >= 6 : userForm.password.length >= 6);
   const applyPermissionTemplate = (template: PermissionTemplate) => {
@@ -838,8 +834,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     if (!canSubmitUserModal) {
       toast.error(
         isEditingUser
-          ? "Ad, kullanıcı adı, menü seçimi ve gerekiyorsa bayi alanını doldurun."
-          : "Ad, kullanıcı adı, şifre, kullanıcı tipi, menü seçimi ve gerekiyorsa bayi alanını doldurun."
+          ? "Ad ve kullanıcı adı zorunludur. Bayi gerektiren menü seçildiyse bayi alanını da doldurun."
+          : "Ad, kullanıcı adı ve şifre (en az 6 karakter) zorunludur. Bayi gerektiren menü seçildiyse bayi alanını da doldurun."
       );
       return;
     }
