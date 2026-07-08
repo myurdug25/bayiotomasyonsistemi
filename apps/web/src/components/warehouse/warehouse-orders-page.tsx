@@ -86,6 +86,15 @@ type WarehouseStaffChoice = {
   phone?: string | null;
 };
 
+type WarehouseDepotGroup = {
+  warehouse_id?: number;
+  warehouse_code: string;
+  warehouse_name: string;
+  available_total?: number;
+  missing_quantity?: number;
+  staff: WarehouseStaffChoice[];
+};
+
 function toNumberOrUndefined(value: string): number | undefined {
   if (!value.trim()) {
     return undefined;
@@ -295,31 +304,43 @@ function resolveOrderRegion(order: WarehouseReadyOrderItem): string {
   return name && !normalizeWarehouseIdentity(name).startsWith("LOGOAMBAR") ? name : "Bölge yok";
 }
 
-function resolveShipmentWarehouseChoice(
-  order: WarehouseReadyOrderItem | null,
-  staffUser: WarehouseStaffChoice | null
-): ShipmentWarehouseChoice {
-  const staffWarehouse = preferredWarehouseForStaff(staffUser);
+function resolveCleanWarehouseName(code: string | null | undefined, name: string | null | undefined): string {
+  const normalizedCode = String(code ?? "").trim();
+  const normalizedName = normalizeWarehouseIdentity(name ?? "");
 
-  if (order && isCargoOrder(order)) {
-    const warehouseOption = order.logo_warehouse_options?.find((warehouse) => warehouse.warehouse_code === "1");
-
-    return {
-      ...(warehouseOption?.warehouse_id ? { warehouse_id: warehouseOption.warehouse_id } : {}),
-      warehouse_code: "1",
-      warehouse_name: warehouseOption?.warehouse_name ?? "ERZURUM DEPO",
-    };
+  if (normalizedCode === "0" || normalizedName.includes("ERZURUMPOINT")) {
+    return "ERZURUM POINT";
   }
 
-  if (staffWarehouse?.warehouse_code) {
-    const warehouseOption = order?.logo_warehouse_options?.find(
-      (warehouse) => warehouse.warehouse_code === staffWarehouse.warehouse_code
-    );
+  if (normalizedCode === "1" || normalizedName.includes("ERZURUMDEPO")) {
+    return "ERZURUM DEPO";
+  }
 
+  if (normalizedCode === "2" || normalizedName.includes("TRABZON")) {
+    return "TRABZON DEPO";
+  }
+
+  if (normalizedCode === "3" || normalizedName.includes("SAMSUN")) {
+    return "SAMSUN DEPO";
+  }
+
+  if (normalizedCode === "4" || normalizedName.includes("BATUM")) {
+    return "BATUM DEPO";
+  }
+
+  const fallback = toDisplayText(name, "");
+  return fallback && !normalizeWarehouseIdentity(fallback).startsWith("LOGOAMBAR") ? fallback : "DEPO";
+}
+
+function resolveShipmentWarehouseChoice(
+  order: WarehouseReadyOrderItem | null,
+  warehouseGroup: WarehouseDepotGroup | null
+): ShipmentWarehouseChoice {
+  if (warehouseGroup) {
     return {
-      ...(warehouseOption?.warehouse_id ? { warehouse_id: warehouseOption.warehouse_id } : {}),
-      warehouse_code: staffWarehouse.warehouse_code,
-      warehouse_name: staffWarehouse.warehouse_name,
+      ...(warehouseGroup.warehouse_id ? { warehouse_id: warehouseGroup.warehouse_id } : {}),
+      warehouse_code: warehouseGroup.warehouse_code,
+      warehouse_name: warehouseGroup.warehouse_name,
     };
   }
 
@@ -344,22 +365,13 @@ function resolveShipmentWarehouseChoice(
   return { warehouse_code: DEFAULT_WAREHOUSE_CODE, warehouse_name: DEFAULT_WAREHOUSE_NAME };
 }
 
-function preferredStaffIdForOrder(order: WarehouseReadyOrderItem, staff: WarehouseStaffChoice[]): string {
-  const targetWarehouseCode = isCargoOrder(order)
+function preferredWarehouseCodeForOrder(order: WarehouseReadyOrderItem): string {
+  return isCargoOrder(order)
     ? "1"
     : (order.preferred_warehouse_code
       ?? order.logo_warehouse_options?.find((warehouse) => warehouse.missing_quantity === 0)?.warehouse_code
       ?? order.logo_warehouse_options?.[0]?.warehouse_code
-      ?? null);
-
-  if (targetWarehouseCode) {
-    const matched = staff.find((staffUser) => preferredWarehouseForStaff(staffUser)?.warehouse_code === targetWarehouseCode);
-    if (matched) {
-      return String(matched.id);
-    }
-  }
-
-  return staff[0] ? String(staff[0].id) : "";
+      ?? DEFAULT_WAREHOUSE_CODE);
 }
 
 function buildPaginationKey(params: {
@@ -382,6 +394,7 @@ export function WarehouseOrdersPage() {
   const [detailOrderPreview, setDetailOrderPreview] = useState<WarehouseReadyOrderItem | null>(null);
   const [detailQuantityDrafts, setDetailQuantityDrafts] = useState<Record<number, string>>({});
   const [shipmentOrder, setShipmentOrder] = useState<WarehouseReadyOrderItem | null>(null);
+  const [selectedShipmentWarehouseCode, setSelectedShipmentWarehouseCode] = useState("");
   const [selectedWarehouseStaffId, setSelectedWarehouseStaffId] = useState("");
   const [paginationByKey, setPaginationByKey] = useState<
     Record<string, { cursor?: string; history: string[] }>
@@ -483,28 +496,60 @@ export function WarehouseOrdersPage() {
     () => warehouseStaff.find((staffUser) => String(staffUser.id) === effectiveSelectedWarehouseStaffId) ?? null,
     [effectiveSelectedWarehouseStaffId, warehouseStaff]
   );
-  const warehouseStaffGroups = useMemo(() => {
-    const groups = new Map<string, { title: string; staff: WarehouseStaffChoice[] }>();
+  const shipmentWarehouseGroups = useMemo<WarehouseDepotGroup[]>(() => {
+    if (!shipmentOrder) {
+      return [];
+    }
 
-    warehouseStaff.forEach((staffUser) => {
-      const warehouse = preferredWarehouseForStaff(staffUser);
-      const key = warehouse?.warehouse_code ?? "general";
-      const title = warehouse?.warehouse_name ?? "GENEL DEPO";
-      const current = groups.get(key);
+    const groups = new Map<string, WarehouseDepotGroup>();
+    const sourceWarehouses = shipmentOrder.logo_warehouse_options?.filter((warehouse) => warehouse.warehouse_code) ?? [];
 
-      if (current) {
-        current.staff.push(staffUser);
+    sourceWarehouses.forEach((warehouse) => {
+      const code = String(warehouse.warehouse_code ?? "").trim();
+      if (!code) {
         return;
       }
 
-      groups.set(key, { title, staff: [staffUser] });
+      groups.set(code, {
+        ...(warehouse.warehouse_id ? { warehouse_id: warehouse.warehouse_id } : {}),
+        warehouse_code: code,
+        warehouse_name: resolveCleanWarehouseName(code, warehouse.warehouse_name),
+        available_total: warehouse.available_total,
+        missing_quantity: warehouse.missing_quantity,
+        staff: [],
+      });
     });
 
-    return Array.from(groups.values()).sort((first, second) => first.title.localeCompare(second.title, "tr"));
-  }, [warehouseStaff]);
+    if (groups.size === 0) {
+      [
+        { warehouse_code: "1", warehouse_name: "ERZURUM DEPO" },
+        { warehouse_code: "2", warehouse_name: "TRABZON DEPO" },
+        { warehouse_code: "3", warehouse_name: "SAMSUN DEPO" },
+        { warehouse_code: "4", warehouse_name: "BATUM DEPO" },
+      ].forEach((warehouse) => groups.set(warehouse.warehouse_code, { ...warehouse, staff: [] }));
+    }
+
+    warehouseStaff.forEach((staffUser) => {
+      const warehouse = preferredWarehouseForStaff(staffUser);
+      if (!warehouse?.warehouse_code) {
+        return;
+      }
+
+      const group = groups.get(warehouse.warehouse_code);
+      if (group) {
+        group.staff.push(staffUser);
+      }
+    });
+
+    return Array.from(groups.values()).sort((first, second) => Number(first.warehouse_code) - Number(second.warehouse_code));
+  }, [shipmentOrder, warehouseStaff]);
+  const selectedShipmentWarehouseGroup = useMemo(
+    () => shipmentWarehouseGroups.find((group) => group.warehouse_code === selectedShipmentWarehouseCode) ?? shipmentWarehouseGroups[0] ?? null,
+    [selectedShipmentWarehouseCode, shipmentWarehouseGroups]
+  );
   const shipmentWarehouseChoice = useMemo(
-    () => resolveShipmentWarehouseChoice(shipmentOrder, selectedWarehouseStaff),
-    [selectedWarehouseStaff, shipmentOrder]
+    () => resolveShipmentWarehouseChoice(shipmentOrder, selectedShipmentWarehouseGroup),
+    [selectedShipmentWarehouseGroup, shipmentOrder]
   );
   const salespersonSourceRows = useMemo(
     () => [...(salespersonOptionsQuery.data?.data ?? []), ...rows],
@@ -715,7 +760,12 @@ export function WarehouseOrdersPage() {
     }
 
     setShipmentOrder(order);
-    setSelectedWarehouseStaffId(preferredStaffIdForOrder(order, warehouseStaff));
+    const preferredWarehouseCode = preferredWarehouseCodeForOrder(order);
+    const matchedStaff = warehouseStaff.find(
+      (staffUser) => preferredWarehouseForStaff(staffUser)?.warehouse_code === preferredWarehouseCode
+    );
+    setSelectedShipmentWarehouseCode(preferredWarehouseCode);
+    setSelectedWarehouseStaffId(matchedStaff ? String(matchedStaff.id) : "");
   };
 
   return (
@@ -1215,6 +1265,7 @@ export function WarehouseOrdersPage() {
       <Dialog open={shipmentOrder !== null} onOpenChange={(open) => {
         if (!open && !createShipmentMutation.isPending) {
           setShipmentOrder(null);
+          setSelectedShipmentWarehouseCode("");
           setSelectedWarehouseStaffId("");
         }
       }}>
@@ -1256,28 +1307,70 @@ export function WarehouseOrdersPage() {
                         <Skeleton key={`warehouse-staff-skeleton-${index}`} className="h-16 rounded-xl" />
                       ))}
                     </div>
-                  ) : warehouseStaff.length > 0 ? (
+                  ) : shipmentWarehouseGroups.length > 0 ? (
                     <div className="space-y-3">
-                      {warehouseStaffGroups.map((group) => (
-                        <section key={group.title} className="rounded-[16px] border border-emerald-900/65 bg-[#07120f] p-3">
+                      {shipmentWarehouseGroups.map((group) => {
+                        const groupActive = selectedShipmentWarehouseGroup?.warehouse_code === group.warehouse_code;
+
+                        return (
+                        <section
+                          key={group.warehouse_code}
+                          className={cn(
+                            "rounded-[16px] border bg-[#07120f] p-3 transition",
+                            groupActive
+                              ? "border-[#72bf82]/80 shadow-[inset_0_0_0_1px_rgba(114,191,130,0.20),0_18px_38px_-32px_rgba(114,191,130,0.85)]"
+                              : "border-emerald-900/65"
+                          )}
+                        >
                           <div className="mb-2 flex items-center justify-between gap-2">
-                            <p className="truncate text-xs font-black uppercase tracking-[0.14em] text-[#b8f7b5]">
-                              {group.title}
-                            </p>
+                            <button
+                              type="button"
+                              disabled={createShipmentMutation.isPending}
+                              onClick={() => {
+                                setSelectedShipmentWarehouseCode(group.warehouse_code);
+                                const currentStaffInGroup = group.staff.some((staffUser) => String(staffUser.id) === effectiveSelectedWarehouseStaffId);
+                                setSelectedWarehouseStaffId(currentStaffInGroup ? effectiveSelectedWarehouseStaffId : (group.staff[0] ? String(group.staff[0].id) : ""));
+                              }}
+                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                            >
+                              <span
+                                className={cn(
+                                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border",
+                                  groupActive ? "border-[#b8f7b5] bg-[#b8f7b5] text-[#07140d]" : "border-emerald-900/75 bg-[#071018] text-transparent"
+                                )}
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-xs font-black uppercase tracking-[0.14em] text-[#b8f7b5]">
+                                  {group.warehouse_name}
+                                </span>
+                                <span className="mt-0.5 block truncate text-[10px] font-bold text-[#9fb2a7]">
+                                  Logo ambar kodu: {group.warehouse_code}
+                                  {typeof group.available_total === "number" ? ` · Stok: ${group.available_total}` : ""}
+                                  {typeof group.missing_quantity === "number" && group.missing_quantity > 0 ? ` · Eksik: ${group.missing_quantity}` : ""}
+                                  {isCargoOrder(shipmentOrder) && group.warehouse_code === "1" ? " · KARGO HAVUZU" : ""}
+                                </span>
+                              </span>
+                            </button>
                             <span className="rounded-full border border-[#72bf82]/35 bg-[#1f6b45]/25 px-2 py-0.5 text-[10px] font-black text-[#d9ffe1]">
-                              {group.staff.length} kişi
+                              {group.staff.length} depocu
                             </span>
                           </div>
-                          <div className="grid gap-2 md:grid-cols-2">
+                          {group.staff.length > 0 ? (
+                            <div className="grid gap-2 md:grid-cols-2">
                             {group.staff.map((staffUser) => {
-                              const active = effectiveSelectedWarehouseStaffId === String(staffUser.id);
+                              const active = groupActive && effectiveSelectedWarehouseStaffId === String(staffUser.id);
 
                               return (
                                 <button
                                   key={staffUser.id}
                                   type="button"
                                   disabled={createShipmentMutation.isPending}
-                                  onClick={() => setSelectedWarehouseStaffId(String(staffUser.id))}
+                                  onClick={() => {
+                                    setSelectedShipmentWarehouseCode(group.warehouse_code);
+                                    setSelectedWarehouseStaffId(String(staffUser.id));
+                                  }}
                                   className={cn(
                                     "flex min-h-14 items-center justify-between gap-3 rounded-[14px] border px-3 py-2 text-left transition",
                                     active
@@ -1302,9 +1395,23 @@ export function WarehouseOrdersPage() {
                                 </button>
                               );
                             })}
-                          </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={createShipmentMutation.isPending}
+                              onClick={() => {
+                                setSelectedShipmentWarehouseCode(group.warehouse_code);
+                                setSelectedWarehouseStaffId("");
+                              }}
+                              className="w-full rounded-[12px] border border-dashed border-amber-300/35 bg-amber-950/15 px-3 py-2 text-left text-xs font-bold text-amber-100"
+                            >
+                              Bu depoya bağlı aktif depocu yok; yine de depo seçimi bu ambar koduyla yapılır.
+                            </button>
+                          )}
                         </section>
-                      ))}
+                      );
+                      })}
                     </div>
                   ) : (
                     <div className="rounded-[16px] border border-amber-400/35 bg-amber-950/25 p-3 text-sm font-semibold text-amber-100">
@@ -1322,6 +1429,7 @@ export function WarehouseOrdersPage() {
                   disabled={createShipmentMutation.isPending}
                   onClick={() => {
                     setShipmentOrder(null);
+                    setSelectedShipmentWarehouseCode("");
                     setSelectedWarehouseStaffId("");
                   }}
                 >
@@ -1332,8 +1440,7 @@ export function WarehouseOrdersPage() {
                   className={cn("h-11 rounded-xl px-5 text-sm font-black", WAREHOUSE_PRIMARY_ACTION_CLASSNAME)}
                   disabled={
                     createShipmentMutation.isPending ||
-                    warehouseStaff.length === 0 ||
-                    !effectiveSelectedWarehouseStaffId
+                    !selectedShipmentWarehouseGroup
                   }
                   onClick={() => createShipmentMutation.mutate()}
                 >

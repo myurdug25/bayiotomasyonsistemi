@@ -49,6 +49,7 @@ class ReadyOrderResource extends JsonResource
 
         $invoice = $this->invoiceLedgerEntry();
         $invoiceMeta = is_array($invoice?->meta) ? $invoice->meta : [];
+        $checkoutSummary = $this->checkoutSummaryFromMeta($invoiceMeta);
         $createdBy = $this->user;
         $createdByRoleSlugs = $this->userRoleSlugs($createdBy);
         $sourcePanel = $this->nullableString(data_get($invoiceMeta, 'source_panel'))
@@ -89,9 +90,7 @@ class ReadyOrderResource extends JsonResource
                 'panel_label' => $this->nullableString(data_get($invoiceMeta, 'source_panel_label'))
                     ?? $this->sourcePanelLabel($sourcePanel),
                 'warehouse_dispatch' => (bool) (data_get($invoiceMeta, 'warehouse_dispatch') ?? true),
-                'checkout_summary' => is_array(data_get($invoiceMeta, 'checkout_summary'))
-                    ? data_get($invoiceMeta, 'checkout_summary')
-                    : null,
+                'checkout_summary' => $checkoutSummary,
                 'shipping_method' => $this->cart?->shipping_method,
                 'note' => $this->note ?? $this->cart?->order_note ?? $this->cart?->note,
             ],
@@ -133,6 +132,38 @@ class ReadyOrderResource extends JsonResource
         }
 
         return trim((string) ($matches[1] ?? '')) ?: null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return array{mode: string, code: string, label: string}|null
+     */
+    private function checkoutSummaryFromMeta(array $meta): ?array
+    {
+        $summary = data_get($meta, 'checkout_summary');
+
+        if (is_array($summary)) {
+            $mode = trim((string) ($summary['mode'] ?? ''));
+            $code = trim((string) ($summary['code'] ?? ''));
+            $label = trim((string) ($summary['label'] ?? ''));
+
+            if ($mode !== '' && $code !== '') {
+                return [
+                    'mode' => $mode,
+                    'code' => $code,
+                    'label' => $label !== '' ? $label : $code,
+                ];
+            }
+        }
+
+        $mode = trim((string) data_get($meta, 'checkout_summary_mode', ''));
+
+        return match ($mode) {
+            'excluded' => ['mode' => 'excluded', 'code' => '2-0', 'label' => '2 - 0'],
+            'included' => ['mode' => 'included', 'code' => '3-B', 'label' => '3 - B'],
+            'detailed' => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1 - F'],
+            default => null,
+        };
     }
 
     /**
