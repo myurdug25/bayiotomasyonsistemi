@@ -1154,6 +1154,44 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
 
               <div className={cn("space-y-3 rounded-2xl border p-3 md:col-span-2", userModalSoftClassName)}>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span className={cn("text-sm font-semibold", isDarkMode ? "text-[#dce9df]" : "text-[var(--brand-primary-strong)]")}>Kullanıcı Rolleri</span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {roleOptions.map((role) => {
+                    const checked = userForm.role_slugs.includes(role.slug);
+
+                    return (
+                      <label
+                        key={`edit-user-role-${role.slug}`}
+                        className={userModalPermissionClassName(checked)}
+                      >
+                        <input
+                          className={isDarkMode ? "accent-[#7fac8b]" : "accent-[var(--brand-primary)]"}
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setUserForm((prev) => {
+                              const nextRoleSlugs = toggleRoleSlug(prev.role_slugs, role.slug);
+                              const nextCustomerScope = normalizeScopeForRoles(nextRoleSlugs, prev.menu_permissions, prev.customer_scope);
+
+                              return {
+                                ...prev,
+                                role_slugs: nextRoleSlugs,
+                                dealer_id: nextRoleSlugs.includes("admin") || nextRoleSlugs.every((roleSlug) => roleSlug === "moderator") ? "" : prev.dealer_id,
+                                customer_scope: nextCustomerScope,
+                              };
+                            })
+                          }
+                        />
+                        {role.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className={cn("space-y-3 rounded-2xl border p-3 md:col-span-2", userModalSoftClassName)}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className={cn("text-sm font-semibold", isDarkMode ? "text-[#dce9df]" : "text-[var(--brand-primary-strong)]")}>Erişeceği Menüler</span>
                   <div className="flex flex-wrap gap-2">
                     <Button
