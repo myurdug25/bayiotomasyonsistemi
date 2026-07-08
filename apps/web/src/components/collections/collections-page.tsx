@@ -4,7 +4,6 @@ import Link from "next/link";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Banknote,
-  ChevronDown,
   CreditCard,
   Factory,
   FileText,
@@ -56,7 +55,6 @@ import {
   listCustomerCollections,
   listFinanceDefinitions,
   createFinanceDefinition,
-  fetchNextCollectionSequence,
   sendCustomerCollections,
   updateCustomerCollection,
   listCustomers,
@@ -77,6 +75,15 @@ type CheckImageDraft = {
   type: string;
   data: string;
 };
+type CollectionImagePreview = {
+  id: string;
+  name: string;
+  type: string;
+  data: string;
+  checkNo?: string;
+};
+
+type CollectionReferenceFields = NonNullable<CollectionRecord["reference_fields"]>;
 type CheckDraftItem = {
   id: string;
   amount: string;
@@ -228,24 +235,6 @@ function formatLedgerDate(value: string): string {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  });
-}
-
-function formatCollectionDateTime(value?: string | null): string {
-  if (!value) {
-    return "henüz yok";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("tr-TR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -489,6 +478,77 @@ function buildCombinedCheckReferenceFields(items: CheckDraftItem[]): Record<stri
   return fields;
 }
 
+function getCollectionImagePreviews(row: CollectionRecord): CollectionImagePreview[] {
+  const fields = getCollectionReferenceFields(row);
+  const imagesJson = typeof fields.images_json === "string" ? fields.images_json : "";
+  const previews: CollectionImagePreview[] = [];
+
+  if (imagesJson.trim()) {
+    try {
+      const parsed = JSON.parse(imagesJson) as unknown;
+      const imageList = Array.isArray(parsed) ? parsed : [];
+
+      imageList.forEach((image, index) => {
+        if (!image || typeof image !== "object") {
+          return;
+        }
+
+        const typedImage = image as Partial<CollectionImagePreview> & { check_no?: string };
+        if (typeof typedImage.data !== "string" || !typedImage.data) {
+          return;
+        }
+
+        previews.push({
+          id: `${row.id}-${index}-${typedImage.name ?? "image"}`,
+          name: typeof typedImage.name === "string" && typedImage.name ? typedImage.name : `Çek / senet resmi ${index + 1}`,
+          type: typeof typedImage.type === "string" && typedImage.type ? typedImage.type : "image/*",
+          data: typedImage.data,
+          checkNo: typeof typedImage.check_no === "string" ? typedImage.check_no : undefined,
+        });
+      });
+    } catch {
+      // Broken legacy JSON should not break the collections screen.
+    }
+  }
+
+  if (previews.length === 0 && typeof fields.image_data === "string" && fields.image_data) {
+    previews.push({
+      id: `${row.id}-single-image`,
+      name: typeof fields.image_name === "string" && fields.image_name ? fields.image_name : "Çek / senet resmi",
+      type: typeof fields.image_type === "string" && fields.image_type ? fields.image_type : "image/*",
+      data: fields.image_data,
+      checkNo: typeof fields.check_no === "string" ? fields.check_no : undefined,
+    });
+  }
+
+  return previews;
+}
+
+function getCollectionReferenceFields(row: CollectionRecord): CollectionReferenceFields {
+  const fields = row.reference_fields;
+
+  if (!fields || typeof fields !== "object" || Array.isArray(fields)) {
+    return {};
+  }
+
+  return fields;
+}
+
+function getCollectionDisplayNote(row: CollectionRecord): string {
+  const note = (row.note ?? "").trim();
+  const referenceNo = (row.reference_no ?? "").trim();
+
+  if (!note) {
+    return "";
+  }
+
+  if (referenceNo && note.startsWith(referenceNo)) {
+    return note.slice(referenceNo.length).replace(/^[\s·:-]+/, "").trim();
+  }
+
+  return note;
+}
+
 function MethodIcon({ method }: { method: MethodType }) {
   if (method === "cash") {
     return <Banknote className="h-6 w-6" />;
@@ -524,15 +584,19 @@ function getCollectionMethodLabel(row: CollectionRecord): string {
     return "Fatura";
   }
 
-  if (row.method === "cc" && row.reference_fields?.collection_channel === "factory") {
+  const fields = getCollectionReferenceFields(row);
+
+  if (row.method === "cc" && fields.collection_channel === "factory") {
     return "Fabrika Kart Çekimi";
   }
 
-  return METHOD_LABELS[row.method];
+  return METHOD_LABELS[row.method] ?? "Tahsilat";
 }
 
 function getFormMethodFromCollection(row: CollectionRecord): FormMethodType {
-  if (row.method === "cc" && row.reference_fields?.collection_channel === "factory") {
+  const fields = getCollectionReferenceFields(row);
+
+  if (row.method === "cc" && fields.collection_channel === "factory") {
     return "factory_cc";
   }
 
@@ -566,7 +630,9 @@ function isEditableCollection(row: CollectionRecord): boolean {
 function cleanReferenceFields(fields: CollectionRecord["reference_fields"] | undefined) {
   const cleaned: Record<string, string | number | boolean> = {};
 
-  Object.entries(fields ?? {}).forEach(([key, value]) => {
+  const safeFields = fields && typeof fields === "object" && !Array.isArray(fields) ? fields : {};
+
+  Object.entries(safeFields).forEach(([key, value]) => {
     if (value !== null && value !== undefined) {
       cleaned[key] = value;
     }
@@ -805,8 +871,8 @@ export function CollectionsPage() {
   const [checkValorDays, setCheckValorDays] = useState("");
   const [posBank, setPosBank] = useState<PosBankType>("");
   const [factoryPos, setFactoryPos] = useState<FactoryPosType>("");
-  const [sequence, setSequence] = useState("");
   const [checkDraftItems, setCheckDraftItems] = useState<CheckDraftItem[]>([]);
+  const [previewImage, setPreviewImage] = useState<CollectionImagePreview | null>(null);
   const [receiptActionsUnlocked, setReceiptActionsUnlocked] = useState(false);
 
   const fetchList = (targetPage = page, silent = false) => {
@@ -852,24 +918,6 @@ export function CollectionsPage() {
       .then((response) => setFinanceDefinitions(response.data))
       .catch((err) => setError(err instanceof Error ? err.message : "Finans tanımları alınamadı"));
   };
-
-  useEffect(() => {
-    if (editingCollection || !["factory_cc", "cc", "transfer"].includes(method)) {
-      setSequence("");
-      return;
-    }
-    
-    let cancelled = false;
-    void fetchNextCollectionSequence(method)
-      .then((res) => {
-        if (!cancelled) setSequence(res.next_sequence);
-      })
-      .catch(() => {
-        if (!cancelled) setSequence("");
-      });
-      
-    return () => { cancelled = true; };
-  }, [method, editingCollection]);
 
   useEffect(() => {
     const hasPendingLogoWrite = payload?.data.some(
@@ -979,7 +1027,11 @@ export function CollectionsPage() {
 
   const isListDisabled = listLoading || saving || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
   const isFormDisabled = saving || listLoading || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
-  const displayRows = useMemo(() => payload?.data ?? [], [payload?.data]);
+  const rawRows = useMemo(() => payload?.data ?? [], [payload?.data]);
+  const displayRows = useMemo(
+    () => rawRows.filter((row) => row.sync_status !== "synced"),
+    [rawRows]
+  );
   const sendableRows = useMemo(() => displayRows.filter(canSendCollection), [displayRows]);
   const collectionReceiptTotal = useMemo(
     () => displayRows.reduce((total, row) => total + toApiAmount(row.amount), 0),
@@ -992,24 +1044,21 @@ export function CollectionsPage() {
         .reduce((total, tab) => total + toApiAmount(tab.total_amount), 0),
     [payload?.tabs]
   );
-  const sendableCollectionTotal = useMemo(
-    () => sendableRows.reduce((total, row) => total + toApiAmount(row.amount), 0),
-    [sendableRows]
-  );
   const collectionReceiptText = useMemo(() => {
     if (!selectedCustomer || displayRows.length === 0) {
       return "";
     }
 
     const rows = displayRows.map((row, index) => {
+      const fields = getCollectionReferenceFields(row);
       const referenceText = row.reference_no ? ` - Ref: ${row.reference_no}` : "";
       const transferBankText =
-        row.method === "transfer" && row.reference_fields?.bank_name
-          ? ` - Banka: ${row.reference_fields.bank_name}`
+        row.method === "transfer" && fields.bank_name
+          ? ` - Banka: ${fields.bank_name}`
           : "";
       const physicalPosBankText =
-        row.method === "cc" && row.reference_fields?.collection_channel !== "factory" && row.reference_fields?.pos_bank
-          ? ` - Banka: ${getPosBankLabel(row.reference_fields.pos_bank)}`
+        row.method === "cc" && fields.collection_channel !== "factory" && fields.pos_bank
+          ? ` - Banka: ${getPosBankLabel(String(fields.pos_bank))}`
           : "";
       const noteText = row.note ? ` - ${row.note}` : "";
 
@@ -1046,18 +1095,8 @@ export function CollectionsPage() {
   const customerDebtAmount = toApiAmount(customerDebtBalance);
   const customerDebtStatus =
     customerDebtAmount > 0 ? "Borçlu" : customerDebtAmount < 0 ? "Alacaklı" : "Dengede";
-  const customerDebtStatusClassName =
-    customerDebtAmount > 0
-      ? "border-red-300/35 bg-red-500/10 text-red-200"
-      : customerDebtAmount < 0
-        ? "border-sky-300/35 bg-sky-500/10 text-sky-200"
-        : "border-emerald-300/35 bg-emerald-500/10 text-emerald-200";
   const collectionSummaryCurrency = displayRows[0]?.currency ?? customerDebtCurrency;
   const balanceSourceLabel = selectedCustomer?.balance_source === "logo" ? "Logo bakiyesi" : "B2B bakiyesi";
-  const logoSyncSummary = payload?.logo_sync;
-  const logoSyncStatusText = logoSyncSummary
-    ? `${logoSyncSummary.pending} kuyrukta · ${logoSyncSummary.synced} gönderildi · son sync ${formatCollectionDateTime(logoSyncSummary.latest_synced_at)}`
-    : "Logo durumu yükleniyor";
   const canUseReceiptActions = displayRows.length > 0 && (receiptActionsUnlocked || sendableRows.length === 0);
   const hasQueuedCollectionRows = displayRows.some((row) => row.source_system === "b2b" && row.sync_status === "pending");
   const sendActionLabel = sendingCollections
@@ -1067,12 +1106,6 @@ export function CollectionsPage() {
       : hasQueuedCollectionRows
         ? "İşleniyor"
         : "Gönder";
-  const sendActionHelpText =
-    sendableRows.length > 0
-      ? `${sendableRows.length} kayıt Logo gönderimine hazır.`
-      : hasQueuedCollectionRows
-        ? "Logo işlemi tamamlanıyor; sonuç otomatik yenilenecek."
-        : "Gönderilecek uygun tahsilat yok.";
 
   const shellCardClassName =
     "dashboard-panel-card overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(15,29,38,0.78)_0%,rgba(9,19,28,0.86)_100%)] shadow-[0_18px_34px_-28px_rgba(0,0,0,0.48)]";
@@ -1127,7 +1160,7 @@ export function CollectionsPage() {
     }
 
     const nextMethod = getFormMethodFromCollection(row);
-    const fields = row.reference_fields ?? {};
+    const fields = getCollectionReferenceFields(row);
 
     setError(null);
     setEditingCollection(row);
@@ -1234,6 +1267,16 @@ export function CollectionsPage() {
         current.map((item) => (item.id === id ? { ...item, images: [...item.images, ...images] } : item))
       );
     });
+  };
+
+  const addImagesToLatestCheckDraftItem = (fileList: FileList | null) => {
+    const latestItem = checkDraftItems.at(-1);
+    if (!latestItem) {
+      setError("Önce çek / senet satırını tamamlayın, ardından resim ekleyin.");
+      return;
+    }
+
+    addImagesToCheckDraftItem(latestItem.id, fileList);
   };
 
   const handleCheckEntryKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -1516,38 +1559,11 @@ export function CollectionsPage() {
   };
 
   return (
+    <>
     <div className="admin-collections-page">
       <div className="grid gap-4 xl:grid-cols-[minmax(520px,0.92fr)_minmax(520px,1fr)] xl:items-start">
         <Card className={cn(shellCardClassName, "xl:sticky xl:top-[116px]")}>
           <CardContent className="space-y-5 p-5 lg:p-6">
-            <div className="space-y-2">
-              <label className={fieldLabelClassName}>Müşteri</label>
-              <Button
-                asChild
-                variant="outline"
-                className="h-[70px] w-full justify-between rounded-[18px] border-[var(--brand-border)] bg-[var(--surface)] px-4 text-left hover:bg-[var(--surface-soft)]"
-              >
-                <Link href="/customers">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--brand-primary)]/30 bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
-                      <UserRound className="h-5 w-5" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-base font-black text-[var(--foreground)]">
-                        {selectedCustomer ? selectedCustomer.title : "Müşteri seçin"}
-                      </span>
-                      {selectedCustomer ? (
-                        <span className="mt-0.5 block truncate text-xs font-bold text-[var(--muted-foreground)]">
-                          {selectedCustomer.code}
-                        </span>
-                      ) : null}
-                    </span>
-                  </span>
-                  <ChevronDown className="h-5 w-5 shrink-0 text-[var(--muted-foreground)]" />
-                </Link>
-              </Button>
-            </div>
-
             {editingCollection ? (
               <div className="flex items-center justify-between gap-3 rounded-[14px] border border-amber-300/30 bg-amber-300/10 px-4 py-3">
                 <div className="min-w-0">
@@ -1614,32 +1630,6 @@ export function CollectionsPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-            ) : null}
-
-            {method === "check" ? (
-              <div className="rounded-[18px] border border-red-300/40 bg-red-500/12 p-4 shadow-[0_18px_34px_-30px_rgba(248,113,113,0.9)]">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-red-200">
-                      Cari Borç Bakiyesi
-                    </p>
-                    <p className="mt-1 text-3xl font-black leading-tight text-red-100">
-                      {formatAmount(customerDebtBalance, customerDebtCurrency)}
-                    </p>
-                  </div>
-                  <div className="sm:text-right">
-                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-red-200">
-                      Önerilen Borç Vade Süresi
-                    </p>
-                    <p className="mt-1 text-3xl font-black leading-tight text-red-100">
-                      {STANDARD_VALOR_DAY_LIMIT} Gün
-                    </p>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm font-bold text-red-100/90">
-                  {STANDARD_VALOR_DAY_LIMIT} günü aşan çek/senetler müdür onayına gönderilir.
-                </p>
               </div>
             ) : null}
 
@@ -1790,50 +1780,73 @@ export function CollectionsPage() {
                 </>
               ) : null}
 
-              <div className={cn(fieldShellClassName, "md:col-span-2")}>
-                <label className={fieldLabelClassName}>
-                  Açıklama (Otomatik)
-                </label>
-                <Textarea
-                  value={editingCollection?.note ?? (
-                    method === "factory_cc"
-                      ? `${sequence || "FBC-[OTO]"} ${selectedCustomer?.title ?? ""}`
-                      : method === "cc"
-                        ? `${sequence || "FP-[OTO]"} ${selectedCustomer?.title ?? ""}`
-                      : method === "transfer"
-                        ? `${sequence || "HE-[OTO]"} ${selectedCustomer?.title ?? ""}`
-                        : note
-                  )}
-                  readOnly
-                  disabled
-                  placeholder=""
-                  className={cn(fieldClassName, "h-auto min-h-[86px] py-3")}
-                />
-              </div>
+              {method === "cash" ? (
+                <div className={cn(fieldShellClassName, "md:col-span-2")}>
+                  <label className={fieldLabelClassName}>
+                    Açıklama
+                  </label>
+                  <Textarea
+                    value={editingCollection?.note ?? note}
+                    onChange={(event) => setNote(event.target.value)}
+                    disabled={isFormDisabled}
+                    placeholder="Nakit tahsilat açıklaması"
+                    className={cn(fieldClassName, "h-auto min-h-[58px] py-2")}
+                  />
+                </div>
+              ) : null}
             </div>
 
             {method === "check" ? (
-              <div className="space-y-3 rounded-[16px] border border-amber-300/20 bg-amber-300/[0.04] p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-black text-amber-100">Tamamlanan Çek / Senetler</p>
-                  <p className="text-sm font-black text-amber-100">{formatAmount(checkDraftTotal, customerDebtCurrency)}</p>
+              <div className="space-y-2 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.035] p-2.5">
+                <div className="flex items-center justify-between gap-3 px-0.5">
+                  <p className="text-[13px] font-black text-amber-100">Tamamlanan Çek / Senetler</p>
+                  <p className="whitespace-nowrap text-[13px] font-black text-amber-100">{formatAmount(checkDraftTotal, customerDebtCurrency)}</p>
                 </div>
+                <label
+                  className={cn(
+                    "flex min-h-[42px] cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-dashed px-3 py-2 text-xs font-black transition",
+                    checkDraftItems.length > 0 && !isFormDisabled
+                      ? "border-red-300/35 bg-red-400/10 text-red-100 hover:border-red-200/60 hover:bg-red-400/15"
+                      : "cursor-not-allowed border-white/10 bg-white/[0.025] text-slate-500"
+                  )}
+                >
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <ImagePlus className="h-3.5 w-3.5 shrink-0" />
+                    <span className="whitespace-nowrap">
+                      {checkDraftItems.length > 0 ? "Resim yükle" : "Resim alanı hazır"}
+                    </span>
+                  </span>
+                  <span className="whitespace-nowrap text-[11px] text-[var(--muted-foreground)]">
+                    {checkDraftItems.length > 0 ? "Son satıra" : "Önce satır ekleyin"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={isFormDisabled || checkDraftItems.length === 0}
+                    onChange={(event) => {
+                      addImagesToLatestCheckDraftItem(event.target.files);
+                      event.target.value = "";
+                    }}
+                    className="sr-only"
+                  />
+                </label>
                 {checkDraftItems.length === 0 ? (
-                  <p className="rounded-[12px] border border-dashed border-amber-300/20 px-3 py-4 text-center text-sm font-semibold text-[var(--muted-foreground)]">
+                  <p className="rounded-[12px] border border-dashed border-amber-300/20 px-3 py-3 text-center text-xs font-semibold text-[var(--muted-foreground)]">
                     Henüz tamamlanan çek / senet yok.
                   </p>
                 ) : (
                   <div className="overflow-x-auto rounded-[12px] border border-white/10">
-                    <table className="min-w-[760px] w-full border-collapse text-left text-sm">
-                      <thead className="bg-white/[0.055] text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                    <table className="min-w-[640px] w-full border-collapse text-left text-xs">
+                      <thead className="bg-white/[0.055] text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
                         <tr>
-                          <th className="px-3 py-3">Vade Tarihi</th>
-                          <th className="px-3 py-3">Çek / Senet No</th>
-                          <th className="px-3 py-3">Banka</th>
-                          <th className="px-3 py-3 text-right">Tutar</th>
-                          <th className="px-3 py-3">Valör</th>
-                          <th className="px-3 py-3">Resim Ekle</th>
-                          <th className="px-3 py-3 text-right">İşlem</th>
+                          <th className="px-2.5 py-2">Vade</th>
+                          <th className="px-2.5 py-2">No</th>
+                          <th className="px-2.5 py-2">Banka</th>
+                          <th className="px-2.5 py-2 text-right">Tutar</th>
+                          <th className="px-2.5 py-2">Valör</th>
+                          <th className="px-2.5 py-2">Resim</th>
+                          <th className="px-2.5 py-2 text-right">İşlem</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/10">
@@ -1849,24 +1862,24 @@ export function CollectionsPage() {
                                 missingImage && "bg-red-500/[0.055] ring-1 ring-inset ring-red-300/15"
                               )}
                             >
-                              <td className="whitespace-nowrap px-3 py-3 font-bold">{formatLedgerDate(item.dueDate)}</td>
-                              <td className="whitespace-nowrap px-3 py-3 font-bold">{item.checkNo}</td>
-                              <td className="whitespace-nowrap px-3 py-3 text-slate-300">{item.bankName}</td>
-                              <td className="whitespace-nowrap px-3 py-3 text-right font-black text-slate-100">
+                              <td className="whitespace-nowrap px-2.5 py-2 font-bold">{formatLedgerDate(item.dueDate)}</td>
+                              <td className="whitespace-nowrap px-2.5 py-2 font-bold">{item.checkNo}</td>
+                              <td className="whitespace-nowrap px-2.5 py-2 text-slate-300">{item.bankName}</td>
+                              <td className="whitespace-nowrap px-2.5 py-2 text-right font-black text-slate-100">
                                 {formatAmount(item.amount, customerDebtCurrency)}
                               </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-slate-300">{item.valorDays} gün</td>
-                              <td className="whitespace-nowrap px-3 py-3">
+                              <td className="whitespace-nowrap px-2.5 py-2 text-slate-300">{item.valorDays} gün</td>
+                              <td className="whitespace-nowrap px-2.5 py-2">
                                 <label
                                   className={cn(
-                                    "inline-flex h-11 cursor-pointer items-center gap-2 rounded-[12px] border px-4 text-xs font-black shadow-lg transition hover:-translate-y-0.5",
+                                    "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border px-2.5 text-[11px] font-black shadow-lg transition hover:-translate-y-0.5",
                                     missingImage
                                       ? "border-red-200/70 bg-red-300 text-red-950 shadow-red-950/25 hover:bg-red-200"
                                       : "border-emerald-200/50 bg-emerald-300 text-emerald-950 shadow-emerald-950/20 hover:bg-emerald-200"
                                   )}
                                 >
-                                  <ImagePlus className="h-4 w-4" />
-                                  Resim Ekle
+                                  <ImagePlus className="h-3.5 w-3.5" />
+                                  Resim
                                   <input
                                     type="file"
                                     accept="image/*"
@@ -1881,23 +1894,23 @@ export function CollectionsPage() {
                                 </label>
                                 <span
                                   className={cn(
-                                    "ml-2 text-xs font-bold",
+                                    "ml-1.5 text-[11px] font-bold",
                                     missingImage ? "text-red-200" : "text-slate-400"
                                   )}
                                 >
-                                  {item.images.length > 0 ? `${item.images.length} resim` : "Zorunlu"}
+                                  {item.images.length > 0 ? `${item.images.length}` : "Zorunlu"}
                                 </span>
                                 {needsApproval ? (
-                                  <span className="ml-2 rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-amber-200">
-                                    Müdür Onayı
+                                  <span className="ml-1.5 rounded-full border border-amber-300/40 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.06em] text-amber-200">
+                                    Onay
                                   </span>
                                 ) : null}
                               </td>
-                              <td className="whitespace-nowrap px-3 py-2 text-right">
+                              <td className="whitespace-nowrap px-2.5 py-1.5 text-right">
                                 <Button
                                   type="button"
                                   variant="ghost"
-                                  className="h-9 rounded-[10px] text-xs font-black text-red-200 hover:bg-red-300/10 hover:text-red-100"
+                                  className="h-8 rounded-[9px] px-2 text-[11px] font-black text-red-200 hover:bg-red-300/10 hover:text-red-100"
                                   disabled={isFormDisabled}
                                   onClick={() => removeCheckDraftItem(item.id)}
                                 >
@@ -1910,16 +1923,16 @@ export function CollectionsPage() {
                       </tbody>
                       <tfoot className="border-t border-white/10 bg-white/[0.045]">
                         <tr>
-                          <td className="px-3 py-3 text-xs font-black uppercase tracking-[0.1em] text-slate-400" colSpan={3}>
+                          <td className="px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400" colSpan={3}>
                             Toplam
                           </td>
-                          <td className="px-3 py-3 text-right font-black text-amber-100">
+                          <td className="whitespace-nowrap px-2.5 py-2 text-right font-black text-amber-100">
                             {formatAmount(checkDraftTotal, customerDebtCurrency)}
                           </td>
-                          <td className="px-3 py-3 text-center font-black text-amber-100">
+                          <td className="whitespace-nowrap px-2.5 py-2 text-center font-black text-amber-100">
                             {checkDraftValorTotal} gün
                           </td>
-                          <td className="px-3 py-3" colSpan={2} />
+                          <td className="px-2.5 py-2" colSpan={2} />
                         </tr>
                       </tfoot>
                     </table>
@@ -1930,14 +1943,6 @@ export function CollectionsPage() {
                     Resim eklenmeyen çek / senet satırı gönderilemez.
                   </p>
                 ) : null}
-                <Button
-                  className="h-12 w-full rounded-[14px] bg-emerald-400 text-sm font-black text-slate-950 hover:bg-emerald-300"
-                  disabled={isFormDisabled || checkDraftItems.length === 0 || checkDraftMissingImages}
-                  onClick={submitCheckDraftItems}
-                >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {saving ? "Kaydediliyor..." : "Çek / Senetleri Kaydet"}
-                </Button>
               </div>
             ) : null}
 
@@ -1949,11 +1954,11 @@ export function CollectionsPage() {
 
             <Button
               className={cn(
-                "h-14 w-full rounded-[16px] text-base font-black text-slate-950 shadow-[0_18px_28px_-22px_rgba(63,182,113,0.9)]",
-                checkValorNeedsManagerApproval ? "bg-amber-300 hover:bg-amber-200" : "bg-emerald-400 hover:bg-emerald-300"
+                "admin-danger-action h-12 w-full rounded-[14px] text-sm font-black",
+                checkValorNeedsManagerApproval && "from-amber-300 to-amber-600"
               )}
               disabled={isFormDisabled}
-              onClick={submitCollection}
+              onClick={method === "check" && checkDraftItems.length > 0 ? submitCheckDraftItems : submitCollection}
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving
@@ -1961,7 +1966,9 @@ export function CollectionsPage() {
                 : editingCollection
                   ? "Tahsilatı Güncelle"
                   : method === "check"
-                    ? "Çek / Senet Ekle"
+                    ? checkDraftItems.length > 0
+                      ? "Çek / Senetleri Gönder"
+                      : "Çek / Senet Ekle"
                     : checkValorNeedsManagerApproval
                       ? "Müdüre Onaya Gönder"
                       : "Tahsilatı Kaydet"}
@@ -1996,44 +2003,6 @@ export function CollectionsPage() {
                 </Button>
               </div>
 
-              {selectedCustomer && displayRows.length > 0 ? (
-                <div className="grid gap-2 rounded-[16px] border border-sky-300/20 bg-sky-300/[0.045] p-2 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,0.9fr)_minmax(0,0.95fr)]">
-                  <div className="space-y-1">
-                    <Button
-                      type="button"
-                      disabled={isListDisabled || sendableRows.length === 0}
-                      onClick={sendCollections}
-                      className="h-12 w-full rounded-[12px] bg-sky-300 text-sm font-black text-slate-950 hover:bg-sky-200 disabled:border disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
-                    >
-                      {sendingCollections ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      {sendActionLabel}
-                    </Button>
-                    <p className="px-1 text-[11px] font-bold text-[var(--muted-foreground)]">{sendActionHelpText}</p>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={listLoading || !canUseReceiptActions}
-                    onClick={printCollections}
-                    className="h-12 rounded-[12px] text-sm font-black"
-                  >
-                    <Printer className="h-4 w-4" />
-                    Yazdır
-                  </Button>
-
-                  <Button
-                    type="button"
-                    disabled={listLoading || sharingReceiptScreenshot || !canUseReceiptActions}
-                    onClick={sendCollectionReceiptWhatsapp}
-                    className="h-12 rounded-[12px] bg-emerald-300 text-sm font-black text-slate-950 hover:bg-emerald-200"
-                  >
-                    {sharingReceiptScreenshot ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
-                    {sharingReceiptScreenshot ? "Görsel Hazırlanıyor..." : "WhatsApp"}
-                  </Button>
-                </div>
-              ) : null}
-
               {listLoading && !payload ? (
                 <div className="space-y-3">
                   {Array.from({ length: 5 }).map((_, index) => (
@@ -2057,6 +2026,10 @@ export function CollectionsPage() {
                   {displayRows.map((row) => {
                     const editable = isEditableCollection(row);
                     const isDeleting = deletingCollectionId === row.id;
+                    const referenceFields = getCollectionReferenceFields(row);
+                    const imagePreviews = getCollectionImagePreviews(row);
+                    const primaryImage = imagePreviews[0] ?? null;
+                    const displayNote = getCollectionDisplayNote(row);
 
                     return (
                       <div
@@ -2064,13 +2037,33 @@ export function CollectionsPage() {
                         className="flex flex-col gap-3 rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface)] p-3 shadow-[0_14px_28px_-26px_rgba(0,0,0,0.2)] transition-colors hover:border-[var(--brand-primary)]/50 hover:bg-[color-mix(in_oklab,var(--brand-primary)_7%,var(--surface))] sm:flex-row sm:items-center"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-4">
-                          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[var(--brand-border)] bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
-                            {row.method === "cc" && row.reference_fields?.collection_channel === "factory" ? (
-                              <Factory className="h-6 w-6" />
-                            ) : (
-                              <MethodIcon method={row.method} />
-                            )}
-                          </span>
+                          {primaryImage ? (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewImage(primaryImage)}
+                              className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-[14px] border border-amber-200/35 bg-white/[0.04] shadow-[0_12px_26px_-20px_rgba(0,0,0,0.85)] transition hover:-translate-y-0.5 hover:border-amber-100/80"
+                              title={primaryImage.checkNo ? `${primaryImage.checkNo} · ${primaryImage.name}` : primaryImage.name}
+                            >
+                              <img
+                                src={primaryImage.data}
+                                alt={primaryImage.name}
+                                className="h-full w-full object-cover transition group-hover:scale-105"
+                              />
+                              {imagePreviews.length > 1 ? (
+                                <span className="absolute bottom-1 right-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] font-black text-white">
+                                  +{imagePreviews.length - 1}
+                                </span>
+                              ) : null}
+                            </button>
+                          ) : (
+                            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[var(--brand-border)] bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
+                              {row.method === "cc" && referenceFields.collection_channel === "factory" ? (
+                                <Factory className="h-6 w-6" />
+                              ) : (
+                                <MethodIcon method={row.method} />
+                              )}
+                            </span>
+                          )}
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-base font-black text-[var(--brand-primary-strong)]">{getCollectionMethodLabel(row)}</p>
@@ -2095,24 +2088,28 @@ export function CollectionsPage() {
                               {formatLedgerDate(row.date)}
                               {row.reference_no ? ` · ${row.reference_no}` : ""}
                             </p>
-                            {row.method === "cc" && row.reference_fields?.collection_channel === "factory" ? (
+                            {row.method === "cc" && referenceFields.collection_channel === "factory" ? (
                               <p className="mt-1 truncate text-sm font-semibold text-orange-200">
                                 Fabrika kart çekimi
                               </p>
                             ) : null}
-                            {row.method === "transfer" && row.reference_fields?.bank_name ? (
+                            {row.method === "transfer" && referenceFields.bank_name ? (
                               <p className="mt-1 truncate text-sm font-semibold text-sky-200">
-                                Banka: {row.reference_fields.bank_name}
+                                Banka: {String(referenceFields.bank_name)}
                               </p>
                             ) : null}
                             {row.method === "cc" &&
-                            row.reference_fields?.collection_channel !== "factory" &&
-                            row.reference_fields?.pos_bank ? (
+                            referenceFields.collection_channel !== "factory" &&
+                            referenceFields.pos_bank ? (
                               <p className="mt-1 truncate text-sm font-semibold text-rose-200">
-                                Banka: {bankOptions.find((option) => option.value === row.reference_fields?.pos_bank)?.label ?? getPosBankLabel(row.reference_fields.pos_bank)}
+                                Banka: {bankOptions.find((option) => option.value === referenceFields.pos_bank)?.label ?? getPosBankLabel(String(referenceFields.pos_bank))}
                               </p>
                             ) : null}
-                            {row.note ? <p className="mt-1 truncate text-sm text-[var(--muted-foreground)]">{row.note}</p> : null}
+                            {displayNote ? (
+                              <p className="mt-1 max-w-[42rem] text-sm leading-snug text-[var(--muted-foreground)]">
+                                {displayNote}
+                              </p>
+                            ) : null}
                             {row.sync_status === "failed" && row.sync_error ? (
                               <p className="mt-1 line-clamp-2 text-xs font-semibold text-red-300">{row.sync_error}</p>
                             ) : null}
@@ -2152,54 +2149,21 @@ export function CollectionsPage() {
               )}
 
               {selectedCustomer && payload ? (
-                <div className="grid gap-3 rounded-[18px] border border-[var(--brand-border)] bg-[linear-gradient(180deg,rgba(13,27,36,0.92)_0%,rgba(8,18,27,0.96)_100%)] p-3 shadow-[0_18px_34px_-30px_rgba(0,0,0,0.55)] sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-[14px] border border-white/10 bg-white/[0.035] p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Cari Bakiye</p>
-                      <span
-                        className={cn(
-                          "rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em]",
-                          customerDebtStatusClassName
-                        )}
-                      >
-                        {customerDebtStatus}
-                      </span>
+                <div className="grid gap-2 rounded-[16px] border border-[var(--brand-border)] bg-[linear-gradient(180deg,rgba(13,27,36,0.92)_0%,rgba(8,18,27,0.96)_100%)] p-2 shadow-[0_18px_34px_-30px_rgba(0,0,0,0.55)] md:grid-cols-3">
+                  {[
+                    { label: "Cari Bakiye", value: formatAmount(customerDebtAmount, customerDebtCurrency), tone: "text-[var(--brand-primary-strong)]", sub: customerDebtStatus },
+                    { label: "İşlem Toplamı", value: formatAmount(collectionGrandTotal, collectionSummaryCurrency), tone: "text-emerald-100", sub: `${displayRows.length} kayıt` },
+                    { label: "Güncel Bakiye", value: formatAmount(currentDebtAfterCollections, customerDebtCurrency), tone: "text-amber-100", sub: balanceSourceLabel },
+                  ].map((card) => (
+                    <div
+                      key={card.label}
+                      className="grid min-h-[58px] grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-3 gap-y-1 rounded-[12px] border border-white/10 bg-white/[0.035] px-3 py-2"
+                    >
+                      <span className="whitespace-nowrap text-[9px] font-black uppercase tracking-[0.06em] text-slate-500">{card.label}</span>
+                      <strong className={cn("justify-self-end whitespace-nowrap text-xl font-black leading-none", card.tone)}>{card.value}</strong>
+                      <span className="col-span-2 whitespace-nowrap text-[10px] font-black uppercase tracking-[0.05em] text-[var(--muted-foreground)]">{card.sub}</span>
                     </div>
-                    <p className="mt-2 text-xl font-black text-[var(--brand-primary-strong)]">
-                      {formatAmount(customerDebtAmount, customerDebtCurrency)}
-                    </p>
-                    <p className="mt-1 text-xs font-bold text-[var(--muted-foreground)]">{balanceSourceLabel}</p>
-                  </div>
-
-                  <div className="rounded-[14px] border border-white/10 bg-white/[0.035] p-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Toplam Tahsilat</p>
-                    <p className="mt-2 text-xl font-black text-emerald-100">
-                      {formatAmount(collectionGrandTotal, collectionSummaryCurrency)}
-                    </p>
-                    <p className="mt-1 text-xs font-bold text-[var(--muted-foreground)]">
-                      {payload.meta.total} kayıt toplamı
-                    </p>
-                  </div>
-
-                  <div className="rounded-[14px] border border-white/10 bg-white/[0.035] p-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Logo Durumu</p>
-                    <p className="mt-2 text-xl font-black text-sky-100">
-                      {formatAmount(sendableCollectionTotal, collectionSummaryCurrency)}
-                    </p>
-                    <p className="mt-1 text-xs font-bold text-[var(--muted-foreground)]">
-                      {sendableRows.length} hazır · {logoSyncStatusText}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[14px] border border-white/10 bg-white/[0.035] p-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Bu Liste</p>
-                    <p className="mt-2 text-xl font-black text-amber-100">
-                      {formatAmount(collectionReceiptTotal, collectionSummaryCurrency)}
-                    </p>
-                    <p className="mt-1 text-xs font-bold text-[var(--muted-foreground)]">
-                      WhatsApp makbuzundaki satırlar
-                    </p>
-                  </div>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -2207,77 +2171,75 @@ export function CollectionsPage() {
             {selectedCustomer && displayRows.length > 0 ? (
               <div
                 className={cn(
-                  "grid gap-3 rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface)] p-3",
-                  "sm:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,1fr)]"
+                  "grid gap-2 rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface)] p-3",
+                  "sm:grid-cols-[minmax(0,0.9fr)_minmax(0,0.75fr)_minmax(0,1.05fr)]"
                 )}
               >
-                <div className="space-y-1.5">
-                  <Button
-                    type="button"
-                    disabled={isListDisabled || sendableRows.length === 0}
-                    onClick={sendCollections}
-                    className="h-12 w-full rounded-[12px] bg-sky-300 text-sm font-black text-slate-950 hover:bg-sky-200 disabled:border disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
-                  >
-                    {sendingCollections ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {sendActionLabel}
-                  </Button>
-                  <p className="px-1 text-[11px] font-bold text-[var(--muted-foreground)]">{sendActionHelpText}</p>
-                </div>
-
+                <Button
+                  type="button"
+                  disabled={isListDisabled || displayRows.length === 0 || sharingReceiptScreenshot || !canUseReceiptActions}
+                  onClick={sendCollectionReceiptWhatsapp}
+                  className="h-11 rounded-[12px] bg-emerald-500 text-sm font-black text-white hover:bg-emerald-400 disabled:border disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
+                >
+                  {sharingReceiptScreenshot ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                  {sharingReceiptScreenshot ? "Görsel Hazırlanıyor..." : "WhatsApp"}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
                   disabled={listLoading || !canUseReceiptActions}
                   onClick={printCollections}
-                  className="h-12 rounded-[12px]"
+                  className="h-11 rounded-[12px]"
                 >
                   <Printer className="h-4 w-4" />
                   Yazdır
                 </Button>
                 <Button
                   type="button"
-                  disabled={isListDisabled || displayRows.length === 0 || sharingReceiptScreenshot || !canUseReceiptActions}
-                  onClick={sendCollectionReceiptWhatsapp}
-                  className="h-12 rounded-[12px] bg-emerald-500 text-sm font-black text-white hover:bg-emerald-400 disabled:border disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
+                  disabled={isListDisabled || sendableRows.length === 0}
+                  onClick={sendCollections}
+                  className="admin-danger-action h-11 w-full rounded-[12px] text-sm font-black disabled:border disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
                 >
-                  {sharingReceiptScreenshot ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <MessageCircle className="h-4 w-4" />
-                  )}
-                  {sharingReceiptScreenshot ? "Görsel Hazırlanıyor..." : "WhatsApp"}
+                  {sendingCollections ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {sendActionLabel}
                 </Button>
-              </div>
-            ) : null}
-
-            {payload?.meta ? (
-              <div className="flex items-center justify-between rounded-xl bg-[var(--surface)] px-4 py-3">
-                <p className="text-xs font-semibold text-[var(--muted-foreground)]">
-                  Sayfa {payload.meta.current_page}/{payload.meta.last_page}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={listLoading || payload.meta.current_page <= 1}
-                    onClick={() => fetchList(payload.meta.current_page - 1)}
-                  >
-                    Önceki
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={listLoading || payload.meta.current_page >= payload.meta.last_page}
-                    onClick={() => fetchList(payload.meta.current_page + 1)}
-                  >
-                    Sonraki
-                  </Button>
-                </div>
               </div>
             ) : null}
           </CardContent>
         </Card>
       </div>
     </div>
+    <Dialog open={previewImage !== null} onOpenChange={(open) => !open && setPreviewImage(null)}>
+      <DialogContent className="max-w-4xl border-white/10 bg-[rgba(9,18,27,0.98)] p-0 text-slate-100">
+        <DialogHeader className="flex flex-row items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+          <div className="min-w-0">
+            <DialogTitle className="truncate text-base font-black text-amber-100">
+              {previewImage?.checkNo ? `Çek / Senet Resmi · ${previewImage.checkNo}` : "Çek / Senet Resmi"}
+            </DialogTitle>
+            {previewImage?.name ? (
+              <p className="mt-1 truncate text-xs font-semibold text-slate-400">{previewImage.name}</p>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-9 w-9 rounded-full p-0 text-slate-300 hover:bg-white/10 hover:text-white"
+            onClick={() => setPreviewImage(null)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+        <div className="max-h-[78vh] overflow-auto p-3">
+          {previewImage ? (
+            <img
+              src={previewImage.data}
+              alt={previewImage.name}
+              className="mx-auto max-h-[74vh] w-auto max-w-full rounded-[14px] border border-white/10 object-contain shadow-[0_24px_60px_-34px_rgba(0,0,0,0.9)]"
+            />
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

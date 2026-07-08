@@ -769,7 +769,11 @@ const ProductRow = memo(function ProductRow({
       className="admin-product-row w-full"
     >
       <div
-        className={cn("admin-product-row-grid group min-h-[50px] border-b border-l-4 border-[var(--brand-border)] border-l-transparent bg-[var(--surface)] transition-[background-color,border-color,box-shadow] duration-150 hover:border-l-[#8bd19f] hover:bg-[#1d3024] hover:shadow-[inset_0_0_0_9999px_rgba(139,209,159,0.08)]", PRODUCT_TABLE_GRID)}
+        className={cn(
+          "admin-product-row-grid group min-h-[44px] border-b border-l-4 border-[var(--brand-border)] border-l-transparent bg-[var(--surface)] transition-[background-color,border-color,box-shadow] duration-150 hover:border-l-[#8bd19f] hover:bg-[#1d3024] hover:shadow-[inset_0_0_0_9999px_rgba(139,209,159,0.08)]",
+          campaignNames && campaignNames.length > 0 && "border-l-amber-300 bg-[linear-gradient(90deg,rgba(245,158,11,0.18)_0%,rgba(245,158,11,0.09)_38%,rgba(14,24,20,0.96)_100%)] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.08)] hover:border-l-amber-200 hover:bg-[linear-gradient(90deg,rgba(245,158,11,0.24)_0%,rgba(245,158,11,0.12)_42%,rgba(29,48,36,0.96)_100%)]",
+          PRODUCT_TABLE_GRID
+        )}
         style={tableGridStyle}
       >
         <div role="cell" className="flex items-center justify-center px-1.5 py-1">
@@ -797,19 +801,6 @@ const ProductRow = memo(function ProductRow({
           <p className="line-clamp-2 text-[12px] font-semibold leading-[14px] text-[var(--foreground)]">
             {product.name}
           </p>
-          {campaignNames && campaignNames.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {campaignNames.map((cname) => (
-                <span
-                  key={cname}
-                  className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-300 border border-amber-500/30"
-                  title={cname}
-                >
-                  🏆 {cname}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
 
         <div role="cell" className="flex min-w-0 items-center border-l border-[var(--brand-border)] px-1.5 py-1">
@@ -1410,7 +1401,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     );
     setCartModalProduct(null);
     setCartCalculatorOpen(false);
-  }, [cartModalCampaignKey, cartModalHasPrice, cartModalProduct, cartModalQuantity, handleSetQuantity, selectedCustomer]);
+    setSearch("");
+    setSubmittedSearch("");
+  }, [cartModalCampaignKey, cartModalHasPrice, cartModalProduct, cartModalQuantity, handleSetQuantity, selectedCustomer, setSearch, setSubmittedSearch]);
 
   const handleCalculatorDigit = useCallback((digit: string) => {
     setCalculatorDisplay((current) => {
@@ -1554,12 +1547,6 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     <div className="admin-catalog-page space-y-4">
       <Card className="admin-catalog-list dashboard-panel-card min-h-[560px]">
         <CardHeader className="space-y-3 pb-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <p className="inline-flex items-center gap-1.5 text-base font-extrabold text-[var(--foreground)]">
-              <PackageSearch className="h-4 w-4 text-[var(--brand-primary)]" />
-              Ürün Listesi
-            </p>
-          </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(300px,1fr)_150px_138px_190px]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-[var(--muted-foreground)]" />

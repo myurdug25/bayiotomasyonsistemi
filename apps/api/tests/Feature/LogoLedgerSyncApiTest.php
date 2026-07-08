@@ -197,6 +197,70 @@ class LogoLedgerSyncApiTest extends TestCase
         ]);
     }
 
+    public function test_logo_ledger_sync_skips_unmatched_customers_without_blocking_valid_records(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOGO',
+            'name' => 'Logo Dealer',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1001',
+            'code' => 'CR-1001',
+            'name' => 'Test Cari',
+            'is_active' => true,
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/ledger/sync', [
+                'dealer_id' => $dealer->id,
+                'records' => [
+                    [
+                        'customer_code' => $customer->code,
+                        'external_ref' => 'LEDGER-VALID-1001',
+                        'date' => '2026-07-08',
+                        'type' => 'invoice',
+                        'debit' => 500,
+                        'currency' => 'TRY',
+                        'reference_no' => 'FAT-VALID',
+                        'description' => 'Gecerli fatura',
+                    ],
+                    [
+                        'customer_code' => 'CR-MISSING',
+                        'external_ref' => 'LEDGER-MISSING-1001',
+                        'date' => '2026-07-08',
+                        'type' => 'invoice',
+                        'debit' => 750,
+                        'currency' => 'TRY',
+                        'reference_no' => 'FAT-MISSING',
+                        'description' => 'B2B carisi olmayan fatura',
+                    ],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.received', 2)
+            ->assertJsonPath('summary.created', 1)
+            ->assertJsonPath('summary.failed', 1)
+            ->assertJsonPath('summary.balances_recalculated', 1);
+
+        $this->assertDatabaseHas('ledger_entries', [
+            'customer_id' => $customer->id,
+            'source_system' => 'logo',
+            'source_reference' => 'LEDGER-VALID-1001',
+            'debit' => '500.00',
+        ]);
+
+        $this->assertDatabaseMissing('ledger_entries', [
+            'source_reference' => 'LEDGER-MISSING-1001',
+        ]);
+    }
+
     public function test_logo_ledger_sync_does_not_create_collection_for_non_payment_entries(): void
     {
         $dealer = Dealer::query()->create([

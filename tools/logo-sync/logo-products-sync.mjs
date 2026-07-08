@@ -1856,7 +1856,6 @@ async function fetchStockSnapshotFromSummarySchema(pool, currentConfig, schema, 
           FROM ${schema.qualifiedName}
           WHERE ${referenceColumn} IN (${refsSql})
             AND CAST(${dateColumn} AS date) >= CONVERT(date, '19190519', 112)
-            AND CAST(${dateColumn} AS date) <= CAST(GETDATE() AS date)
           GROUP BY
             ${referenceColumn}${warehouseGroupSql}
         )

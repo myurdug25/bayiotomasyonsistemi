@@ -216,7 +216,7 @@ class ModeratorManagementController extends Controller
             'feature_permissions.*' => ['string', Rule::in(CustomerFeaturePermissions::keys())],
         ], [
             'username.unique' => 'Bu kullanıcı adı zaten başka bir hesap tarafından kullanılıyor.',
-            'username.regex' => 'Kullanıcı adı sadece harf, rakam, nokta, tire ve alt çizgi içerebilir.',
+            'username.regex' => 'Kullanıcı adı boşluk veya Türkçe karakter içeremez. Sadece küçük harf, rakam ve _, -, . kullanabilirsiniz.',
             'email.unique' => 'Bu e-posta adresi zaten kullanılıyor.',
         ]);
 
@@ -310,7 +310,7 @@ class ModeratorManagementController extends Controller
             'feature_permissions.*' => ['string', Rule::in(CustomerFeaturePermissions::keys())],
         ], [
             'username.unique' => 'Bu kullanıcı adı zaten başka bir hesap tarafından kullanılıyor.',
-            'username.regex' => 'Kullanıcı adı sadece harf, rakam, nokta, tire ve alt çizgi içerebilir.',
+            'username.regex' => 'Kullanıcı adı boşluk veya Türkçe karakter içeremez. Sadece küçük harf, rakam ve _, -, . kullanabilirsiniz.',
             'email.unique' => 'Bu e-posta adresi zaten kullanılıyor.',
         ]);
 
@@ -782,33 +782,15 @@ class ModeratorManagementController extends Controller
             ->values();
     }
 
-    /**
-     * @param  array<string, mixed>  $validated
-     * @param  Collection<int, string>  $roleSlugs
-     */
     private function validatedDealerId(array $validated, Collection $roleSlugs, ?int $fallbackDealerId = null): ?int
     {
         if ($roleSlugs->contains('admin')) {
             return null;
         }
 
-        $dealerId = array_key_exists('dealer_id', $validated)
+        return array_key_exists('dealer_id', $validated)
             ? ($validated['dealer_id'] !== null ? (int) $validated['dealer_id'] : null)
             : $fallbackDealerId;
-
-        $requiresDealer = $roleSlugs->contains(fn (string $slug) => $slug !== 'moderator');
-
-        if ($requiresDealer && $dealerId === null) {
-            throw ValidationException::withMessages([
-                'dealer_id' => ['dealer_id is required for the selected role set.'],
-            ]);
-        }
-
-        if (! $requiresDealer) {
-            return null;
-        }
-
-        return $dealerId;
     }
 
     /**

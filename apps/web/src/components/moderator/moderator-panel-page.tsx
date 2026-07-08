@@ -977,7 +977,10 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       </Dialog>
 
       <Dialog open={userModalOpen} onOpenChange={closeUserModal}>
-        <DialogContent className={cn("max-h-[90vh] max-w-[980px] overflow-hidden rounded-[20px] p-0", userModalToneClassName)}>
+        <DialogContent 
+          className={cn("max-h-[90vh] max-w-[980px] overflow-hidden rounded-[20px] p-0", userModalToneClassName)}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader className={cn("mb-0 border-b px-5 py-4 sm:px-6", userModalHeaderClassName)}>
             <div className="flex items-center gap-3 pr-10">
               <span

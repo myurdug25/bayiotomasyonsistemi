@@ -35,6 +35,7 @@ class LogoLedgerSyncService
             'created' => 0,
             'updated' => 0,
             'skipped' => 0,
+            'failed' => 0,
             'duplicates_removed' => 0,
             'balances_recalculated' => 0,
         ];
@@ -50,17 +51,23 @@ class LogoLedgerSyncService
                 );
 
                 if (! $dealer) {
-                    throw ValidationException::withMessages([
-                        "records.$index.dealer_id" => ['Cari hareket icin eslesen bayi bulunamadi.'],
-                    ]);
+                    $summary['failed']++;
+
+                    continue;
                 }
 
-                $customer = $this->resolveCustomer(
-                    $dealer,
-                    $record['customer_code'] ?? null,
-                    $record['customer_external_ref'] ?? null,
-                    $index,
-                );
+                try {
+                    $customer = $this->resolveCustomer(
+                        $dealer,
+                        $record['customer_code'] ?? null,
+                        $record['customer_external_ref'] ?? null,
+                        $index,
+                    );
+                } catch (ValidationException) {
+                    $summary['failed']++;
+
+                    continue;
+                }
 
                 $debit = $this->normalizeMoney($record['debit'] ?? 0);
                 $credit = $this->normalizeMoney($record['credit'] ?? 0);
