@@ -81,6 +81,8 @@ type ShipmentWarehouseChoice = {
 
 type WarehouseStaffChoice = {
   id: number;
+  assigned_user_id?: number;
+  choice_key?: string;
   name: string;
   username?: string | null;
   email?: string | null;
@@ -97,6 +99,43 @@ type WarehouseDepotGroup = {
   missing_quantity?: number;
   staff: WarehouseStaffChoice[];
 };
+
+const DEPOT_DISPLAY_STAFF: Record<string, string[]> = {
+  "1": ["İrfan Karagözlü", "Ali Budak", "İbrahim Sayar"],
+  "2": ["Mustafa Özmen"],
+  "3": ["İlker Aygünoğlu"],
+};
+
+function warehouseStaffChoiceKey(staffUser: WarehouseStaffChoice): string {
+  return staffUser.choice_key ?? String(staffUser.id);
+}
+
+function expandDepotDisplayStaff(group: WarehouseDepotGroup): WarehouseDepotGroup {
+  const displayNames = DEPOT_DISPLAY_STAFF[group.warehouse_code];
+  if (!displayNames || displayNames.length === 0) {
+    return group;
+  }
+
+  const anchor =
+    group.staff.find((staffUser) => normalizeWarehouseIdentity(staffUser.name).includes("DEPO"))
+    ?? group.staff[0];
+
+  if (!anchor) {
+    return group;
+  }
+
+  return {
+    ...group,
+    staff: displayNames.map((name, index) => ({
+      ...anchor,
+      assigned_user_id: anchor.assigned_user_id ?? anchor.id,
+      choice_key: `${group.warehouse_code}:${anchor.id}:${index}`,
+      name,
+      phone: index === 0 ? anchor.phone : null,
+      email: anchor.email,
+    })),
+  };
+}
 
 function toNumberOrUndefined(value: string): number | undefined {
   if (!value.trim()) {
@@ -547,17 +586,19 @@ export function WarehouseOrdersPage() {
       }
     });
 
-    return Array.from(groups.values()).sort((first, second) => Number(first.warehouse_code) - Number(second.warehouse_code));
+    return Array.from(groups.values())
+      .map(expandDepotDisplayStaff)
+      .sort((first, second) => Number(first.warehouse_code) - Number(second.warehouse_code));
   }, [shipmentOrder, warehouseStaff]);
   const selectedShipmentWarehouseGroup = useMemo(
     () => shipmentWarehouseGroups.find((group) => group.warehouse_code === selectedShipmentWarehouseCode) ?? shipmentWarehouseGroups[0] ?? null,
     [selectedShipmentWarehouseCode, shipmentWarehouseGroups]
   );
   const effectiveSelectedWarehouseStaffId =
-    selectedWarehouseStaffId || (selectedShipmentWarehouseGroup?.staff[0] ? String(selectedShipmentWarehouseGroup.staff[0].id) : "");
+    selectedWarehouseStaffId || (selectedShipmentWarehouseGroup?.staff[0] ? warehouseStaffChoiceKey(selectedShipmentWarehouseGroup.staff[0]) : "");
   const selectedWarehouseStaff = useMemo(
-    () => warehouseStaff.find((staffUser) => String(staffUser.id) === effectiveSelectedWarehouseStaffId) ?? null,
-    [effectiveSelectedWarehouseStaffId, warehouseStaff]
+    () => selectedShipmentWarehouseGroup?.staff.find((staffUser) => warehouseStaffChoiceKey(staffUser) === effectiveSelectedWarehouseStaffId) ?? null,
+    [effectiveSelectedWarehouseStaffId, selectedShipmentWarehouseGroup]
   );
   const shipmentWarehouseChoice = useMemo(
     () => resolveShipmentWarehouseChoice(shipmentOrder, selectedShipmentWarehouseGroup),
@@ -707,7 +748,7 @@ export function WarehouseOrdersPage() {
         throw new Error("Sevkiyat başlatılacak sipariş seçilmedi.");
       }
 
-      const assignedUserId = Number(effectiveSelectedWarehouseStaffId);
+      const assignedUserId = Number(selectedWarehouseStaff?.assigned_user_id ?? selectedWarehouseStaff?.id);
       if (!Number.isFinite(assignedUserId) || assignedUserId <= 0) {
         throw new Error("Depocu seçimi zorunlu.");
       }
@@ -773,11 +814,8 @@ export function WarehouseOrdersPage() {
 
     setShipmentOrder(order);
     const preferredWarehouseCode = preferredWarehouseCodeForOrder(order);
-    const matchedStaff = warehouseStaff.find(
-      (staffUser) => preferredWarehouseForStaff(staffUser)?.warehouse_code === preferredWarehouseCode
-    );
     setSelectedShipmentWarehouseCode(preferredWarehouseCode);
-    setSelectedWarehouseStaffId(matchedStaff ? String(matchedStaff.id) : "");
+    setSelectedWarehouseStaffId("");
   };
 
   return (
@@ -1340,8 +1378,8 @@ export function WarehouseOrdersPage() {
                               disabled={createShipmentMutation.isPending}
                               onClick={() => {
                                 setSelectedShipmentWarehouseCode(group.warehouse_code);
-                                const currentStaffInGroup = group.staff.some((staffUser) => String(staffUser.id) === effectiveSelectedWarehouseStaffId);
-                                setSelectedWarehouseStaffId(currentStaffInGroup ? effectiveSelectedWarehouseStaffId : (group.staff[0] ? String(group.staff[0].id) : ""));
+                                const currentStaffInGroup = group.staff.some((staffUser) => warehouseStaffChoiceKey(staffUser) === effectiveSelectedWarehouseStaffId);
+                                setSelectedWarehouseStaffId(currentStaffInGroup ? effectiveSelectedWarehouseStaffId : (group.staff[0] ? warehouseStaffChoiceKey(group.staff[0]) : ""));
                               }}
                               className="flex min-w-0 flex-1 items-center gap-2 text-left"
                             >
@@ -1372,16 +1410,17 @@ export function WarehouseOrdersPage() {
                           {group.staff.length > 0 ? (
                             <div className="grid gap-2 md:grid-cols-2">
                             {group.staff.map((staffUser) => {
-                              const active = groupActive && effectiveSelectedWarehouseStaffId === String(staffUser.id);
+                              const choiceKey = warehouseStaffChoiceKey(staffUser);
+                              const active = groupActive && effectiveSelectedWarehouseStaffId === choiceKey;
 
                               return (
                                 <button
-                                  key={staffUser.id}
+                                  key={choiceKey}
                                   type="button"
                                   disabled={createShipmentMutation.isPending}
                                   onClick={() => {
                                     setSelectedShipmentWarehouseCode(group.warehouse_code);
-                                    setSelectedWarehouseStaffId(String(staffUser.id));
+                                    setSelectedWarehouseStaffId(choiceKey);
                                   }}
                                   className={cn(
                                     "flex min-h-14 items-center justify-between gap-3 rounded-[14px] border px-3 py-2 text-left transition",

@@ -226,9 +226,10 @@ function getDayDifference(startDateValue: string, endDateValue: string): number 
 }
 
 function formatLedgerDate(value: string): string {
-  const parsed = new Date(value);
+  const normalizedValue = typeof value === "string" ? value : "";
+  const parsed = new Date(normalizedValue);
   if (Number.isNaN(parsed.getTime())) {
-    return value;
+    return normalizedValue || "-";
   }
 
   return parsed.toLocaleDateString("tr-TR", {
@@ -240,8 +241,9 @@ function formatLedgerDate(value: string): string {
 
 function formatAmount(value: string | number, currency: string): string {
   const amount = toApiAmount(value);
-  const normalizedCurrency = currency.toUpperCase();
-  const label = normalizedCurrency === "TRY" ? "₺" : normalizedCurrency === "GEL" ? "GEL" : currency;
+  const safeCurrency = typeof currency === "string" && currency.trim() ? currency.trim() : "TRY";
+  const normalizedCurrency = safeCurrency.toUpperCase();
+  const label = normalizedCurrency === "TRY" ? "₺" : normalizedCurrency === "GEL" ? "GEL" : safeCurrency;
   return `${label} ${amount.toLocaleString("tr-TR", {
     minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
@@ -349,7 +351,7 @@ function getCollectionApiErrorMessage(error: unknown): string {
   }
 
   const validationEntry = error.payload?.errors
-    ? Object.entries(error.payload.errors).find(([, messages]) => messages.length > 0)
+    ? Object.entries(error.payload.errors).find(([, messages]) => Array.isArray(messages) && messages.length > 0)
     : null;
 
   if (!validationEntry) {
@@ -358,7 +360,7 @@ function getCollectionApiErrorMessage(error: unknown): string {
 
   const [field, messages] = validationEntry;
   const label = COLLECTION_FIELD_LABELS[field] ?? field;
-  const rawMessage = messages[0] ?? error.message;
+  const rawMessage = Array.isArray(messages) ? messages[0] ?? error.message : error.message;
 
   if (rawMessage === "validation.required") {
     return `${label} zorunlu.`;
@@ -385,14 +387,14 @@ function getCollectionSendErrorMessage(error: unknown): string {
   }
 
   const validationEntry = error.payload?.errors
-    ? Object.entries(error.payload.errors).find(([, messages]) => messages.length > 0)
+    ? Object.entries(error.payload.errors).find(([, messages]) => Array.isArray(messages) && messages.length > 0)
     : null;
 
   if (!validationEntry) {
     return error.message || "Tahsilat gönderilemedi";
   }
 
-  return validationEntry[1][0] ?? error.message ?? "Tahsilat gönderilemedi";
+  return Array.isArray(validationEntry[1]) ? validationEntry[1][0] ?? error.message ?? "Tahsilat gönderilemedi" : error.message ?? "Tahsilat gönderilemedi";
 }
 
 function canSendCollection(row: CollectionRecord): boolean {

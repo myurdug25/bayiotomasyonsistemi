@@ -44,7 +44,12 @@ class WarehouseShipmentController extends Controller
         $staffQuery = User::query()
             ->select(['id', 'dealer_id', 'name', 'username', 'email', 'phone', 'branch_code', 'branch_name', 'is_active'])
             ->where('is_active', true)
-            ->whereHas('roles', fn ($roleQuery) => $roleQuery->where('slug', 'warehouse'))
+            ->where(function ($query): void {
+                $query
+                    ->whereHas('roles', fn ($roleQuery) => $roleQuery->where('slug', 'warehouse'))
+                    ->orWhereIn('username', ['erz.depo', 'trabzon.merkez', 'samsun.merkez', 'batum'])
+                    ->orWhereIn('name', ['ERZURUM DEPO', 'TRABZON DEPO', 'SAMSUN DEPO', 'BATUM DEPO']);
+            })
             ->with(['roles:id,name,slug'])
             ->orderBy('name');
 

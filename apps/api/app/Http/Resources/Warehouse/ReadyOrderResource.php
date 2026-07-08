@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Warehouse;
 
 use App\Models\LedgerEntry;
+use App\Models\IntegrationSyncState;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
@@ -49,7 +50,9 @@ class ReadyOrderResource extends JsonResource
 
         $invoice = $this->invoiceLedgerEntry();
         $invoiceMeta = is_array($invoice?->meta) ? $invoice->meta : [];
-        $checkoutSummary = $this->checkoutSummaryFromMeta($invoiceMeta);
+        $orderSyncMeta = $this->orderLogoSyncMeta();
+        $checkoutSummary = $this->checkoutSummaryFromMeta($invoiceMeta)
+            ?? $this->checkoutSummaryFromMeta($orderSyncMeta);
         $createdBy = $this->user;
         $createdByRoleSlugs = $this->userRoleSlugs($createdBy);
         $sourcePanel = $this->nullableString(data_get($invoiceMeta, 'source_panel'))
@@ -162,8 +165,24 @@ class ReadyOrderResource extends JsonResource
             'excluded' => ['mode' => 'excluded', 'code' => '2-0', 'label' => '2 - 0'],
             'included' => ['mode' => 'included', 'code' => '3-B', 'label' => '3 - B'],
             'detailed' => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1 - F'],
-            default => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1 - F'],
+            default => null,
         };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function orderLogoSyncMeta(): array
+    {
+        $state = IntegrationSyncState::query()
+            ->where('system', 'logo')
+            ->where('domain', 'orders')
+            ->where('direction', 'outbound')
+            ->where('entity_type', $this->resource::class)
+            ->where('entity_id', (int) $this->id)
+            ->first();
+
+        return is_array($state?->meta) ? $state->meta : [];
     }
 
     /**
