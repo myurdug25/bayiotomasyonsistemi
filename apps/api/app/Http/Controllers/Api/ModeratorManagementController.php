@@ -186,6 +186,10 @@ class ModeratorManagementController extends Controller
         $actor = $request->user();
         $this->ensureModeratorRole($actor);
 
+        if (is_string($request->input('username'))) {
+            $request->merge(['username' => $this->normalizeUsername($request->input('username'))]);
+        }
+
         $validated = $request->validate([
             'dealer_id' => ['nullable', 'integer', 'exists:dealers,id'],
             'customer_scope' => ['nullable', 'string', Rule::in(['dealer', 'region', 'branch', 'assigned'])],
@@ -271,6 +275,10 @@ class ModeratorManagementController extends Controller
         $actor = $request->user();
         $this->ensureModeratorRole($actor);
         $this->ensureCanManageUser($actor, $user);
+
+        if (is_string($request->input('username'))) {
+            $request->merge(['username' => $this->normalizeUsername($request->input('username'))]);
+        }
 
         $validated = $request->validate([
             'dealer_id' => ['nullable', 'integer', 'exists:dealers,id'],
