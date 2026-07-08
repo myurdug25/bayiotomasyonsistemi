@@ -1680,7 +1680,7 @@ function ProfileEditDialog({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { status, user, selectedCustomer, logout, refresh, clearCustomer } = useSession();
+  const { status, user, selectedCustomer, logout, refresh } = useSession();
   const { cartData } = useCart();
   const [uiTheme, setUiTheme] = useState<UiTheme>("dark");
   const [uiAccent, setUiAccent] = useState<string>(DEFAULT_UI_ACCENT);
@@ -2474,7 +2474,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ) : null}
                 {showCustomerContext && !isDashboardRoute ? (
                   <div className={cn("header-selected-customer flex items-center gap-3", selectedCustomer && "header-selected-customer-active")}>
-                    <UserRound className="h-5 w-5 shrink-0 text-emerald-100/90" />
+                    <Users className="h-5 w-5 shrink-0 text-emerald-100/90" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/75">
                         Seçili Cari
@@ -2484,20 +2484,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </p>
                       {selectedCustomer ? <span className="header-selected-customer-code">{dashboardCustomerCode}</span> : null}
                     </span>
-                    {selectedCustomer && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          void clearCustomer();
-                        }}
-                        className="ml-2 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-red-500/20 px-2.5 text-xs font-bold text-red-200 transition-colors hover:bg-red-500/40"
-                        title="Müşteriden Çık"
+                    <span className="header-customer-action-group">
+                      <Link
+                        href="/customers"
+                        className="header-customer-select-button"
+                        title="Cari seç"
                       >
-                        <LogOut className="h-3.5 w-3.5" />
-                        <span>Çıkış</span>
-                      </button>
-                    )}
+                        <Users className="h-4 w-4" />
+                        <span>Cari Seç</span>
+                      </Link>
+                      <Link
+                        href="/cart"
+                        className="header-cart-shortcut-button"
+                        title="Sepete git"
+                        aria-label="Sepete git"
+                      >
+                        <ShoppingCart className="h-4 w-4" />
+                        {cartLineCount > 0 ? <span>{cartLineCount}</span> : null}
+                      </Link>
+                    </span>
                   </div>
                 ) : null}
               </div>

@@ -33,6 +33,16 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(SecurityHeaders::class);
         $middleware->statefulApi();
+        $middleware->validateCsrfTokens(except: [
+            'api/login',
+            'api/auth/login',
+            'api/logout',
+            'api/auth/logout',
+            'backend/api/login',
+            'backend/api/auth/login',
+            'backend/api/logout',
+            'backend/api/auth/logout',
+        ]);
         $middleware->redirectGuestsTo(function (Request $request): ?string {
             if ($request->is('api/*') || $request->is('backend/api/*') || $request->expectsJson()) {
                 return null;

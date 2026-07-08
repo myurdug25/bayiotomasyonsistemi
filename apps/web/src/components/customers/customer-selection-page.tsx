@@ -281,10 +281,10 @@ export function CustomerSelectionPage() {
           isDarkMode && "border-[var(--brand-border)]/70 bg-[var(--surface)] shadow-[0_22px_46px_-38px_rgba(0,0,0,0.6)]"
         )}
       >
-        <CardContent className="space-y-5 pt-5">
+        <CardContent className="space-y-3 pt-3">
           <div
             className={cn(
-              "admin-customer-filter rounded-[22px] px-5 py-4 shadow-[0_18px_40px_-36px_rgba(10,32,20,0.34)]",
+              "admin-customer-filter rounded-[18px] px-3 py-3 shadow-[0_14px_28px_-30px_rgba(10,32,20,0.34)] sm:px-4",
               isDarkMode
                 ? "bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[0_20px_34px_-30px_rgba(0,0,0,0.65)]"
                 : "bg-[linear-gradient(180deg,#fbfdfb_0%,#f5f9f5_100%)]"
@@ -292,15 +292,15 @@ export function CustomerSelectionPage() {
           >
             <div
               className={cn(
-                "grid gap-3 lg:items-end",
+                "grid gap-2 lg:items-center",
                 isSalesperson
-                  ? "lg:grid-cols-[minmax(220px,1fr)_112px_104px_172px_172px_140px]"
-                  : "lg:grid-cols-[minmax(340px,1fr)_112px_104px_172px_172px]"
+                  ? "lg:grid-cols-[minmax(260px,1fr)_96px_92px_150px_150px_120px]"
+                  : "lg:grid-cols-[minmax(300px,1fr)_96px_92px_150px_150px]"
               )}
             >
               <div>
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-4 top-4 h-5 w-5 text-[var(--brand-primary)]" />
+                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-[var(--brand-primary)]" />
                   <Input
                     value={queryInput}
                     disabled={filtersDisabled}
@@ -312,39 +312,39 @@ export function CustomerSelectionPage() {
                       }
                     }}
                     placeholder="Cari kodu veya ünvanı ara..."
-                    className="admin-dashboard-input h-16 rounded-[16px] pl-12 text-[17px] font-semibold"
+                    className="admin-dashboard-input h-12 rounded-[13px] pl-10 text-[15px] font-semibold"
                   />
                 </div>
               </div>
 
               <Button
                 type="button"
-                className="h-16 min-w-0 rounded-[16px] border border-[#3f8f54] bg-[#2f7f56] px-4 text-[15px] font-black text-white shadow-[0_16px_28px_-22px_rgba(47,127,86,0.9)] hover:bg-[#276d49] hover:text-white"
+                className="h-12 min-w-0 rounded-[13px] border border-[#3f8f54] bg-[#2f7f56] px-3 text-[14px] font-black text-white shadow-[0_12px_22px_-20px_rgba(47,127,86,0.9)] hover:bg-[#276d49] hover:text-white"
                 disabled={filtersDisabled}
                 onClick={submitSearch}
               >
-                <Search className="h-5 w-5" />
+                <Search className="h-4 w-4" />
                 Ara
               </Button>
 
               <Button
                 type="button"
                 variant="outline"
-                className="h-16 min-w-0 rounded-[16px] border-[#ef4444] bg-[#dc2626] px-4 text-[15px] font-black text-white shadow-[0_16px_30px_-20px_rgba(220,38,38,0.95)] hover:border-[#dc2626] hover:bg-[#b91c1c] hover:text-white disabled:border-[#dc2626] disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-70"
+                className="h-12 min-w-0 rounded-[13px] border-[#ef4444] bg-[#dc2626] px-3 text-[14px] font-black text-white shadow-[0_12px_22px_-20px_rgba(220,38,38,0.95)] hover:border-[#dc2626] hover:bg-[#b91c1c] hover:text-white disabled:border-[#dc2626] disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-70"
                 disabled={filtersDisabled || (!queryInput && !submittedQuery)}
                 onClick={clearSearch}
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
                 Sil
               </Button>
 
-              <div className="col-span-full mt-3 flex flex-row items-stretch justify-center gap-2 px-2 sm:gap-3 sm:px-4 lg:contents">
+              <div className="col-span-full flex flex-row items-stretch justify-center gap-2 lg:contents">
               <Toggle
                 pressed={hasCart}
                 onPressedChange={setHasCart}
                 aria-label="Has cart filter"
                 className={cn(
-                  "h-16 flex-1 justify-center gap-2 rounded-[16px] border px-2 sm:px-4 text-[13px] sm:text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(20,54,34,0.7)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(20,54,34,0.85)]",
+                  "h-12 flex-1 justify-center gap-2 rounded-[13px] border px-2 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(20,54,34,0.7)] transition-all hover:scale-[1.01] hover:shadow-[0_14px_24px_-22px_rgba(20,54,34,0.85)] sm:px-3 sm:text-[13px]",
                   hasCart
                     ? "border-[#3f8f54] bg-[#2f7f56] text-white hover:bg-[#276d49]"
                     : isDarkMode
@@ -353,7 +353,7 @@ export function CustomerSelectionPage() {
                 )}
                 disabled={filtersDisabled}
               >
-                <ShoppingBasket className="h-5 w-5" />
+                <ShoppingBasket className="h-4 w-4" />
                 Sepette Olanlar
               </Toggle>
 
@@ -362,7 +362,7 @@ export function CustomerSelectionPage() {
                 onPressedChange={setHasOrderBalance}
                 aria-label="Has order balance filter"
                 className={cn(
-                  "h-16 flex-1 justify-center gap-2 rounded-[16px] border px-2 sm:px-4 text-[13px] sm:text-[15px] font-black shadow-[0_14px_26px_-22px_rgba(145,40,38,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_30px_-24px_rgba(145,40,38,0.9)]",
+                  "h-12 flex-1 justify-center gap-2 rounded-[13px] border px-2 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(145,40,38,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_14px_24px_-22px_rgba(145,40,38,0.9)] sm:px-3 sm:text-[13px]",
                   hasOrderBalance
                     ? "border-[#c3403c] bg-[#b83232] text-white hover:bg-[#9f292b]"
                     : isDarkMode
@@ -371,17 +371,17 @@ export function CustomerSelectionPage() {
                 )}
                 disabled={filtersDisabled}
               >
-                <Wallet className="h-5 w-5" />
+                <Wallet className="h-4 w-4" />
                 Bakiye Siparişi
               </Toggle>
 
               {isSalesperson ? (
                 <Button
-                  className="h-16 flex-1 rounded-[16px] bg-amber-500 px-2 sm:px-4 text-[13px] sm:text-[15px] font-black text-slate-950 hover:bg-amber-400"
+                  className="h-12 flex-1 rounded-[13px] bg-amber-500 px-2 text-[12px] font-black text-slate-950 hover:bg-amber-400 sm:px-3 sm:text-[13px]"
                   asChild
                 >
                   <Link href="/pos/expenses">
-                    <ReceiptText className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" />
+                    <ReceiptText className="mr-1 h-4 w-4" />
                     Giderler
                   </Link>
                 </Button>
@@ -463,28 +463,28 @@ export function CustomerSelectionPage() {
                   </colgroup>
                   <TableHeader className="bg-[linear-gradient(135deg,rgba(22,128,55,0.96)_0%,rgba(18,90,45,0.98)_52%,rgba(11,64,35,1)_100%)]">
                     <TableRow className="border-b border-emerald-300/35 hover:bg-transparent">
-                      <TableHead className="h-11 px-3 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                      <TableHead className="h-9 px-2 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Kod
                       </TableHead>
-                      <TableHead className="h-11 pr-4 text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                      <TableHead className="h-9 pr-3 text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Ünvan
                       </TableHead>
-                      <TableHead className="h-11 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                      <TableHead className="h-9 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         İl/İlçe
                       </TableHead>
-                      <TableHead className="h-11 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                      <TableHead className="h-9 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Telefon
                       </TableHead>
-                      <TableHead className="h-11 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                      <TableHead className="h-9 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Cari Borç
                       </TableHead>
-                      <TableHead className="h-11 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                      <TableHead className="h-9 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Sepet Sipariş
                       </TableHead>
-                      <TableHead className="h-11 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                      <TableHead className="h-9 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Bakiye Siparişi
                       </TableHead>
-                      <TableHead className="h-11 px-3 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                      <TableHead className="h-9 px-2 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Aksiyon
                       </TableHead>
                     </TableRow>
@@ -563,22 +563,22 @@ export function CustomerSelectionPage() {
                                   : "bg-white"
                             )}
                           >
-                            <TableCell className="px-3 py-3 text-center align-middle">
+                            <TableCell className="px-2 py-1.5 text-center align-middle">
                               <div className="flex justify-center">
                                 <p
                                   title={customer.code}
-                                  className="max-w-full truncate whitespace-nowrap text-center text-[12px] font-bold leading-4 tracking-[0.01em] text-[var(--muted-foreground)]"
+                                  className="max-w-full truncate whitespace-nowrap text-center text-[11px] font-bold leading-4 tracking-[0.01em] text-[var(--muted-foreground)]"
                                 >
                                   {customer.code}
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-3 align-middle">
-                              <div className="min-w-0 pr-4">
+                            <TableCell className="py-1.5 align-middle">
+                              <div className="min-w-0 pr-3">
                                 <p
                                   title={customer.title}
                                   className={cn(
-                                    "block max-w-full truncate whitespace-nowrap text-[14px] font-extrabold leading-5 tracking-[0.005em]",
+                                    "block max-w-full truncate whitespace-nowrap text-[13px] font-extrabold leading-5 tracking-[0.005em]",
                                     isDarkMode ? "text-[var(--foreground)]" : "text-[#183522]"
                                   )}
                                 >
@@ -586,7 +586,7 @@ export function CustomerSelectionPage() {
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-3 text-center align-middle">
+                            <TableCell className="py-1.5 text-center align-middle">
                               <div className="flex min-w-0 justify-center pr-1">
                                 <p
                                   title={formatCustomerLocation(customer)}
@@ -599,12 +599,12 @@ export function CustomerSelectionPage() {
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-3 text-center align-middle">
+                            <TableCell className="py-1.5 text-center align-middle">
                               <div className="flex justify-center pr-1">
                                 <p
                                   title={phoneLabel}
                                   className={cn(
-                                    "max-w-full whitespace-normal break-words text-center text-[12px] font-medium leading-4",
+                                    "max-w-full truncate whitespace-nowrap text-center text-[12px] font-medium leading-4",
                                     isDarkMode ? "text-[var(--muted-foreground)]" : "text-[#48604f]"
                                   )}
                                 >
@@ -612,10 +612,10 @@ export function CustomerSelectionPage() {
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-3 text-center align-middle">
+                            <TableCell className="py-1.5 text-center align-middle">
                               <div
                                 className={cn(
-                                  "mx-auto inline-flex min-w-[100px] justify-center rounded-lg border px-2 py-2 text-center",
+                                  "mx-auto inline-flex min-w-[92px] justify-center rounded-lg border px-2 py-1.5 text-center",
                                   getAmountTone(customer.balance_summary.total_due, isDarkMode)
                                 )}
                               >
@@ -627,10 +627,10 @@ export function CustomerSelectionPage() {
                                 </span>
                               </div>
                             </TableCell>
-                            <TableCell className="py-3 text-center align-middle">
+                            <TableCell className="py-1.5 text-center align-middle">
                               <span
                                 className={cn(
-                                  "inline-flex min-w-[74px] items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[11px] font-black uppercase tracking-[0.06em]",
+                                  "inline-flex min-w-[66px] items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.06em]",
                                   customer.has_cart
                                     ? isDarkMode
                                       ? "border-[#456e91] bg-[#132436] text-[#a9d8ff]"
@@ -643,10 +643,10 @@ export function CustomerSelectionPage() {
                                 {customer.has_cart ? "Var" : "Yok"}
                               </span>
                             </TableCell>
-                            <TableCell className="py-3 text-center align-middle">
+                            <TableCell className="py-1.5 text-center align-middle">
                               <div
                                 className={cn(
-                                  "mx-auto inline-flex min-w-[110px] justify-center rounded-lg border px-2 py-2 text-center",
+                                  "mx-auto inline-flex min-w-[98px] justify-center rounded-lg border px-2 py-1.5 text-center",
                                   getAmountTone(customer.balance_summary.order_due, isDarkMode)
                                 )}
                               >
@@ -658,12 +658,12 @@ export function CustomerSelectionPage() {
                                 </span>
                               </div>
                             </TableCell>
-                            <TableCell className="px-3 py-3 text-center align-middle">
+                            <TableCell className="px-2 py-1.5 text-center align-middle">
                               <Button
                                 size="default"
                                 variant={isSelected ? "secondary" : "default"}
                                 className={cn(
-                                  "h-9 min-w-[72px] rounded-xl px-3 text-sm font-semibold",
+                                  "h-8 min-w-[66px] rounded-lg px-2.5 text-xs font-semibold",
                                   isSelected &&
                                     "border border-[#2f7f56] bg-[#2f7f56] text-white shadow-[0_10px_20px_-16px_rgba(47,127,86,0.85)] hover:bg-[#276d49] hover:text-white"
                                 )}

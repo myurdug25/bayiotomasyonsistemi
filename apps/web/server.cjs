@@ -109,6 +109,37 @@ function proxyBackendRequest(req, res) {
   req.pipe(proxy);
 }
 
+function serveMutableCssChunk(req, res) {
+  const pathname = new URL(req.url || "/", "http://localhost").pathname;
+
+  if (!pathname.startsWith("/_next/static/chunks/") || !pathname.endsWith(".css")) {
+    return false;
+  }
+
+  const diskPath = path.join(nextStaticDir, pathname.replace("/_next/static/", ""));
+
+  if (!fs.existsSync(diskPath)) {
+    return false;
+  }
+
+  const body = fs.readFileSync(diskPath);
+
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/css; charset=utf-8");
+  res.setHeader("Content-Length", body.byteLength);
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+
+  if (req.method === "HEAD") {
+    res.end();
+    return true;
+  }
+
+  res.end(body);
+  return true;
+}
+
 function serveCompatibilityAsset(req, res) {
   const pathname = new URL(req.url || "/", "http://localhost").pathname;
   const referer = req.headers.referer;
@@ -198,6 +229,10 @@ app
           applySecurityHeaders(res);
           return writeHead(...args);
         };
+
+        if (serveMutableCssChunk(req, res)) {
+          return;
+        }
 
         if (serveCompatibilityAsset(req, res)) {
           return;

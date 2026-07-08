@@ -84,7 +84,7 @@ Route::middleware('throttle:logo-integration')->group(function (): void {
 
 Route::middleware('web')->group(function (): void {
     Route::prefix('auth')->group(function (): void {
-        Route::post('/login', [AuthController::class, 'login'])->middleware(['guest', 'throttle:login']);
+        Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
         Route::middleware('auth:sanctum')->group(function (): void {
             Route::post('/logout', [AuthController::class, 'logout']);
@@ -93,7 +93,7 @@ Route::middleware('web')->group(function (): void {
     });
 
     // Legacy aliases kept for backward compatibility with existing clients.
-    Route::post('/login', [AuthController::class, 'login'])->middleware(['guest', 'throttle:login']);
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/me', [AuthController::class, 'me']);
