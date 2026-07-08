@@ -2386,19 +2386,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <div className="app-content-region relative z-10 flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className={cn("page-shell-header sticky top-0 z-[70] px-4 pt-4 lg:px-6 xl:px-8", hidePointPosPageHeader && "hidden")}>
+          <header className={cn("page-shell-header sticky top-0 z-[70] px-3 pt-2 lg:px-4 xl:px-5", hidePointPosPageHeader && "hidden")}>
             <div
               className={cn(
-                "dashboard-top-header-card grid grid-cols-1 gap-3 rounded-[18px] px-4 py-3 xl:grid-cols-[minmax(220px,1fr)_minmax(0,auto)_minmax(0,max-content)] xl:items-center xl:gap-4 xl:px-5",
+                "dashboard-top-header-card grid grid-cols-1 gap-2 rounded-[16px] px-3 py-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,max-content)] xl:items-center xl:gap-3 xl:px-4",
                 isCustomerRoute && "customers-header-card",
-                isDashboardRoute && !isAdminDashboardRoute && "py-2.5 xl:px-4",
+                isDashboardRoute && !isAdminDashboardRoute && "py-2 xl:px-4",
                 isSearchRoute && "customers-header-card"
               )}
             >
               <div
                 className={cn(
                   "header-title-area flex min-w-0 items-center gap-3 px-0 py-0",
-                  !showPageTitle && !isDashboardRoute && "hidden"
+                  (!showPageTitle || !isDashboardRoute) && "hidden"
                 )}
               >
                 {showPageTitle ? (
@@ -2455,7 +2455,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="dashboard-header-center">
                 {!showCustomerContext || isDashboardRoute ? (
                   <>
-                    <HeaderMarketRates payload={marketRatesQuery.data} loading={marketRatesQuery.isLoading} />
                     {isDashboardRoute ? (
                       <div className="header-date-pill">
                         <span className="system-online-dot h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(74,222,128,0.58)]" />
@@ -2508,6 +2507,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
 
               <div className="dashboard-header-actions">
+                <HeaderMarketRates payload={marketRatesQuery.data} loading={marketRatesQuery.isLoading} />
                 {showPointBranchHeaderProfile ? (
                   <div className="dashboard-header-profile">
                     <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--brand-primary)_0%,var(--brand-accent)_100%)] text-[12px] font-black text-white">
@@ -2572,22 +2572,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <span className="sr-only">Profil Düzenle</span>
                   </Button>
                 ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label="Oturumu kapat"
-                  title="Oturumu kapat"
-                  className={cn(
-                    "header-logout-button h-10 shrink-0 gap-2 rounded-[14px] px-3 text-[var(--brand-primary-strong)] hover:text-[var(--brand-primary-strong)]",
-                    isDashboardRoute && "lg:h-10 lg:rounded-[14px]"
-                  )}
-                  onClick={() => {
-                    void logout().then(() => router.replace("/login?v=20260605-login-fast"));
-                  }}
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span className="text-[13px] font-extrabold">Çıkış Yap</span>
-                </Button>
               </div>
             </div>
 

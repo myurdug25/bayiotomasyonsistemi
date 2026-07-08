@@ -239,11 +239,18 @@ function checkoutSummaryBadge(order: WarehouseReadyOrderItem): { code: string; l
   const code = typeof summary?.code === "string" ? summary.code.trim() : "";
   const label = typeof summary?.label === "string" ? summary.label.trim() : "";
 
-  if (!code) {
+  if (code) {
+    return { code, label: label || code };
+  }
+
+  const note = String(order.origin?.note ?? "").toLocaleUpperCase("tr-TR");
+  const matched = note.match(/\b(1-F|2-0|2-O|3-B)\b/u)?.[1]?.replace("2-O", "2-0");
+
+  if (!matched) {
     return null;
   }
 
-  return { code, label: label || code };
+  return { code: matched, label: matched };
 }
 
 function isCargoOrder(order: WarehouseReadyOrderItem): boolean {
@@ -261,7 +268,31 @@ function resolveOrderRegion(order: WarehouseReadyOrderItem): string {
     ?? order.logo_warehouse_options?.find((warehouse) => warehouse.missing_quantity === 0)
     ?? order.logo_warehouse_options?.[0];
 
-  return toDisplayText(preferred?.warehouse_name ?? order.origin?.panel_label, "Bölge yok");
+  const code = String(preferred?.warehouse_code ?? "").trim();
+  const name = toDisplayText(preferred?.warehouse_name ?? order.origin?.panel_label, "");
+  const normalized = normalizeWarehouseIdentity(`${code} ${name}`);
+
+  if (code === "0" || normalized.includes("ERZURUMPOINT")) {
+    return "ERZURUM POINT";
+  }
+
+  if (code === "1" || normalized.includes("ERZURUMDEPO")) {
+    return "ERZURUM";
+  }
+
+  if (code === "2" || normalized.includes("TRABZON")) {
+    return "TRABZON";
+  }
+
+  if (code === "3" || normalized.includes("SAMSUN")) {
+    return "SAMSUN";
+  }
+
+  if (code === "4" || normalized.includes("BATUM")) {
+    return "BATUM";
+  }
+
+  return name && !normalizeWarehouseIdentity(name).startsWith("LOGOAMBAR") ? name : "Bölge yok";
 }
 
 function resolveShipmentWarehouseChoice(
@@ -269,6 +300,16 @@ function resolveShipmentWarehouseChoice(
   staffUser: WarehouseStaffChoice | null
 ): ShipmentWarehouseChoice {
   const staffWarehouse = preferredWarehouseForStaff(staffUser);
+
+  if (order && isCargoOrder(order)) {
+    const warehouseOption = order.logo_warehouse_options?.find((warehouse) => warehouse.warehouse_code === "1");
+
+    return {
+      ...(warehouseOption?.warehouse_id ? { warehouse_id: warehouseOption.warehouse_id } : {}),
+      warehouse_code: "1",
+      warehouse_name: warehouseOption?.warehouse_name ?? "ERZURUM DEPO",
+    };
+  }
 
   if (staffWarehouse?.warehouse_code) {
     const warehouseOption = order?.logo_warehouse_options?.find(
@@ -301,6 +342,24 @@ function resolveShipmentWarehouseChoice(
   }
 
   return { warehouse_code: DEFAULT_WAREHOUSE_CODE, warehouse_name: DEFAULT_WAREHOUSE_NAME };
+}
+
+function preferredStaffIdForOrder(order: WarehouseReadyOrderItem, staff: WarehouseStaffChoice[]): string {
+  const targetWarehouseCode = isCargoOrder(order)
+    ? "1"
+    : (order.preferred_warehouse_code
+      ?? order.logo_warehouse_options?.find((warehouse) => warehouse.missing_quantity === 0)?.warehouse_code
+      ?? order.logo_warehouse_options?.[0]?.warehouse_code
+      ?? null);
+
+  if (targetWarehouseCode) {
+    const matched = staff.find((staffUser) => preferredWarehouseForStaff(staffUser)?.warehouse_code === targetWarehouseCode);
+    if (matched) {
+      return String(matched.id);
+    }
+  }
+
+  return staff[0] ? String(staff[0].id) : "";
 }
 
 function buildPaginationKey(params: {
@@ -656,7 +715,7 @@ export function WarehouseOrdersPage() {
     }
 
     setShipmentOrder(order);
-    setSelectedWarehouseStaffId(warehouseStaff[0] ? String(warehouseStaff[0].id) : "");
+    setSelectedWarehouseStaffId(preferredStaffIdForOrder(order, warehouseStaff));
   };
 
   return (
