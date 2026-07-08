@@ -786,13 +786,11 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const canCreateUser =
     userForm.name.trim() !== "" &&
     userForm.username.trim() !== "" &&
-    userForm.password.length >= 6 &&
-    (!userMenuRequiresDealer || userForm.dealer_id !== "");
+    userForm.password.length >= 6;
   const isEditingUser = editingUser !== null;
   const canSubmitUserModal =
     userForm.name.trim() !== "" &&
     userForm.username.trim() !== "" &&
-    (!userMenuRequiresDealer || userForm.dealer_id !== "") &&
     (isEditingUser ? userForm.password.trim() === "" || userForm.password.trim().length >= 6 : userForm.password.length >= 6);
   const applyPermissionTemplate = (template: PermissionTemplate) => {
     setUserForm((prev) => ({
@@ -834,8 +832,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     if (!canSubmitUserModal) {
       toast.error(
         isEditingUser
-          ? "Ad ve kullanıcı adı zorunludur. Bayi gerektiren menü seçildiyse bayi alanını da doldurun."
-          : "Ad, kullanıcı adı ve şifre (en az 6 karakter) zorunludur. Bayi gerektiren menü seçildiyse bayi alanını da doldurun."
+          ? "Ad ve kullanıcı adı zorunludur."
+          : "Ad, kullanıcı adı ve şifre (en az 6 karakter) zorunludur."
       );
       return;
     }
