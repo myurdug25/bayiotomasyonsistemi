@@ -872,7 +872,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
         updatePayload.password = password;
       }
 
-      await updateUserMutation.mutateAsync({
+      updateUserMutation.mutate({
         userId: editingUser.id,
         payload: updatePayload,
       });
@@ -880,7 +880,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       return;
     }
 
-    await createUserMutation.mutateAsync({
+    createUserMutation.mutate({
       ...payload,
       phone: userForm.phone.trim() || undefined,
       password: userForm.password,
@@ -1650,7 +1650,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                   return;
                 }
 
-                void createUserMutation.mutateAsync({
+                createUserMutation.mutate({
                   dealer_id: userMenuRequiresDealer && userForm.dealer_id !== "" ? Number(userForm.dealer_id) : null,
                   customer_scope: normalizeScopeForRoles(userForm.role_slugs, userForm.menu_permissions, userForm.customer_scope),
                   region_code: userForm.region_code.trim() || null,
@@ -2006,7 +2006,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
           <div className="mt-5 flex justify-end">
             <Button
               onClick={() => {
-                void createCustomerMutation.mutateAsync({
+                createCustomerMutation.mutate({
                   dealer_id: Number(customerForm.dealer_id),
                   salesperson_user_id:
                     customerForm.salesperson_user_id !== ""
@@ -2296,7 +2296,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                                   return;
                                 }
 
-                                void deleteUserMutation.mutateAsync(user.id);
+                                deleteUserMutation.mutate(user.id);
                               }}
                               disabled={deleteUserMutation.isPending}
                               aria-label={`${user.name} kullanıcısını sil`}
@@ -2580,7 +2580,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                       <Button
                         size="sm"
                         onClick={() => {
-                          void updateCustomerMutation.mutateAsync({
+                          updateCustomerMutation.mutate({
                             customerId: customer.id,
                             payload: {
                               dealer_id: Number(draft.dealer_id),
