@@ -1844,43 +1844,21 @@ async function fetchStockSnapshotFromSummarySchema(pool, currentConfig, schema, 
   const warehouseGroupSql = warehouseColumn
     ? `, COALESCE(${warehouseColumn}, -1)`
     : "";
+  const dateFilterSql = dateColumn
+    ? ` AND CAST(${dateColumn} AS date) >= CONVERT(date, '19190519', 112)`
+    : "";
 
   const result = await pool.request().query(
-    dateColumn
-      ? `
-        WITH LatestStockDate AS (
-          SELECT
-            ${referenceColumn} AS product_ref,
-            ${warehouseColumn ? "COALESCE(" + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
-            MAX(CAST(${dateColumn} AS date)) AS latest_date
-          FROM ${schema.qualifiedName}
-          WHERE ${referenceColumn} IN (${refsSql})
-            AND CAST(${dateColumn} AS date) >= CONVERT(date, '19190519', 112)
-          GROUP BY
-            ${referenceColumn}${warehouseGroupSql}
-        )
-        SELECT
-          s.${referenceColumn} AS product_ref,
-          ${warehouseColumn ? "COALESCE(s." + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
-          SUM(COALESCE(s.${availableColumn}, 0)) AS available_total,
-          ${reservedColumn ? `SUM(COALESCE(s.${reservedColumn}, 0))` : "0"} AS reserved_total
-        FROM ${schema.qualifiedName} AS s
-        INNER JOIN LatestStockDate AS latest
-          ON latest.product_ref = s.${referenceColumn}
-         AND latest.warehouse_no = ${warehouseColumn ? "COALESCE(s." + warehouseColumn + ", -1)" : "-1"}
-         AND latest.latest_date = CAST(s.${dateColumn} AS date)
-        GROUP BY s.${referenceColumn}${warehouseColumn ? ", COALESCE(s." + warehouseColumn + ", -1)" : ""}
-      `
-      : `
-        SELECT
-          ${referenceColumn} AS product_ref,
-          ${warehouseColumn ? "COALESCE(" + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
-          SUM(COALESCE(${availableColumn}, 0)) AS available_total,
-          ${reservedSql} AS reserved_total
-        FROM ${schema.qualifiedName}
-        WHERE ${referenceColumn} IN (${refsSql})
-        GROUP BY ${referenceColumn}${warehouseGroupSql}
-      `
+    `
+      SELECT
+        ${referenceColumn} AS product_ref,
+        ${warehouseColumn ? "COALESCE(" + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
+        SUM(COALESCE(${availableColumn}, 0)) AS available_total,
+        ${reservedSql} AS reserved_total
+      FROM ${schema.qualifiedName}
+      WHERE ${referenceColumn} IN (${refsSql})${dateFilterSql}
+      GROUP BY ${referenceColumn}${warehouseGroupSql}
+    `
   );
 
   const snapshot = new Map();
