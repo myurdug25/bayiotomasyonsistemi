@@ -6,6 +6,7 @@ use App\Models\Cashbox;
 use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\Dealer;
+use App\Models\FinanceDefinition;
 use App\Models\IntegrationSyncState;
 use App\Models\LedgerEntry;
 use App\Models\PosExpense;
@@ -464,15 +465,20 @@ class PointPosAccessApiTest extends TestCase
         ])->assertCreated();
 
         $sessionId = (int) $openResponse->json('data.id');
+        $categoryId = FinanceDefinition::query()
+            ->where('type', 'expense_category')
+            ->where('code', 'fuel')
+            ->value('id');
 
         $this->postJson('/api/pos/expenses', [
             'pos_session_id' => $sessionId,
+            'finance_definition_id' => $categoryId,
             'amount' => 125.50,
-            'category' => 'Kargo',
+            'category' => 'fuel',
             'note' => 'Acil sevkiyat',
         ])
             ->assertCreated()
-            ->assertJsonPath('data.category', 'Kargo')
+            ->assertJsonPath('data.category', 'Yakıt')
             ->assertJsonPath('data.amount', '125.50')
             ->assertJsonPath('data.currency', 'TRY');
 
@@ -481,7 +487,7 @@ class PointPosAccessApiTest extends TestCase
             ->assertJsonPath('data.summary.expense_count', 1)
             ->assertJsonPath('data.summary.expense_total', '125.50')
             ->assertJsonPath('data.summary.expected_cash', '374.50')
-            ->assertJsonPath('data.expenses.by_category.0.category', 'Kargo');
+            ->assertJsonPath('data.expenses.by_category.0.category', 'Yakıt');
 
         $expense = PosExpense::query()->latest('id')->firstOrFail();
 
@@ -499,10 +505,11 @@ class PointPosAccessApiTest extends TestCase
             ->getJson('/api/integrations/logo/pos-expenses/pending?limit=10')
             ->assertOk()
             ->assertJsonPath('records.0.pos_expense_id', $expense->id)
-            ->assertJsonPath('records.0.category', 'Kargo')
+            ->assertJsonPath('records.0.category', 'Yakıt')
             ->assertJsonPath('records.0.amount', '125.50')
             ->assertJsonPath('records.0.currency', 'TRY')
-            ->assertJsonPath('records.0.cashbox_code', $cashbox->code);
+            ->assertJsonPath('records.0.cashbox_code', $cashbox->code)
+            ->assertJsonPath('records.0.logo.account_code', '760.25.027');
     }
 
     public function test_batum_point_user_records_pos_expense_in_gel(): void
@@ -534,11 +541,16 @@ class PointPosAccessApiTest extends TestCase
         ])->assertCreated();
 
         $sessionId = (int) $openResponse->json('data.id');
+        $categoryId = FinanceDefinition::query()
+            ->where('type', 'expense_category')
+            ->where('code', 'marketing')
+            ->value('id');
 
         $this->postJson('/api/pos/expenses', [
             'pos_session_id' => $sessionId,
+            'finance_definition_id' => $categoryId,
             'amount' => 25,
-            'category' => 'Masraf',
+            'category' => 'marketing',
             'note' => 'Batum masraf',
         ])
             ->assertCreated()
@@ -647,15 +659,20 @@ class PointPosAccessApiTest extends TestCase
         ])->assertCreated();
 
         $sessionId = (int) $openResponse->json('data.id');
+        $categoryId = FinanceDefinition::query()
+            ->where('type', 'expense_category')
+            ->where('code', 'marketing')
+            ->value('id');
 
         $this->postJson('/api/pos/expenses', [
             'pos_session_id' => $sessionId,
+            'finance_definition_id' => $categoryId,
             'amount' => 45,
-            'category' => 'Depo',
+            'category' => 'marketing',
             'note' => 'Depo masrafı',
         ])
             ->assertCreated()
-            ->assertJsonPath('data.category', 'Depo')
+            ->assertJsonPath('data.category', 'Pazarlama')
             ->assertJsonPath('data.amount', '45.00');
 
         $this->getJson('/api/pos/reports/day-end?pos_session_id='.$sessionId)

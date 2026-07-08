@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Dealer;
 use App\Models\FinanceDefinition;
+use App\Models\IntegrationSyncState;
 use App\Models\PosExpense;
 use App\Models\Role;
 use App\Models\User;
@@ -180,6 +181,41 @@ class FinanceDefinitionApiTest extends TestCase
             ->withHeader('X-Integration-Key', 'test-pos-expense-key')
             ->getJson('/api/integrations/logo/pos-expenses/pending?limit=10')
             ->assertOk()
+            ->assertJsonPath('received', 1)
             ->assertJsonPath('records.0.logo.account_code', '760.25.027');
+
+        $failedExpense = PosExpense::query()->create([
+            'dealer_id' => $dealer->id,
+            'expense_date' => now()->toDateString(),
+            'category' => 'Yakıt',
+            'amount' => '100.00',
+            'currency' => 'TRY',
+            'created_by_user_id' => $salesperson->id,
+            'meta' => [
+                'logo_expense_account_code' => '760.25.027',
+            ],
+        ]);
+        IntegrationSyncState::query()->create([
+            'system' => 'logo',
+            'domain' => 'pos-expenses',
+            'direction' => 'outbound',
+            'entity_type' => PosExpense::class,
+            'entity_id' => $failedExpense->id,
+            'status' => 'failed',
+            'last_error' => 'Logo expense account could not be resolved.',
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-pos-expense-key')
+            ->getJson('/api/integrations/logo/pos-expenses/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('received', 1);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-pos-expense-key')
+            ->getJson('/api/integrations/logo/pos-expenses/pending?limit=10&statuses[]=failed')
+            ->assertOk()
+            ->assertJsonPath('received', 1)
+            ->assertJsonPath('records.0.pos_expense_id', $failedExpense->id);
     }
 }

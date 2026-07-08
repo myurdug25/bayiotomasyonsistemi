@@ -36,7 +36,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-const DEFAULT_POINT_EXPENSE_CATEGORY = "Masraf";
 const BATUM_CURRENCY_LABEL = "GEL";
 const DEFAULT_CURRENCY_LABEL = "TL";
 
@@ -197,7 +196,6 @@ export function PointExpensesPage() {
   const definitionsQuery = useQuery({
     queryKey: ["finance-definitions", "expense_category"],
     queryFn: () => listFinanceDefinitions("expense_category"),
-    enabled: isSalesperson,
   });
   const expenseCategories = useMemo<FinanceDefinitionDto[]>(
     () => definitionsQuery.data?.data ?? [],
@@ -242,10 +240,10 @@ export function PointExpensesPage() {
   }, [currentSession, currentSessionQuery.isFetching, isSalesperson, openSessionMutation]);
 
   useEffect(() => {
-    if (isSalesperson && !selectedCategoryId && expenseCategories[0]) {
+    if (!selectedCategoryId && expenseCategories[0]) {
       form.setValue("categoryId", expenseCategories[0].id);
     }
-  }, [expenseCategories, form, isSalesperson, selectedCategoryId]);
+  }, [expenseCategories, form, selectedCategoryId]);
 
   const expensesQuery = useQuery({
     queryKey: ["pos", "expenses", currentSession?.id ?? null, currentCashbox?.id ?? null],
@@ -284,13 +282,17 @@ export function PointExpensesPage() {
       return;
     }
 
+    const selectedCategory = expenseCategories.find((item) => item.id === values.categoryId);
+    if (!selectedCategory) {
+      toast.error("Lütfen Logo gider hesabı tanımlı bir gider türü seçin.");
+      return;
+    }
+
     await createExpenseMutation.mutateAsync({
       pos_session_id: currentSession?.id,
-      finance_definition_id: isSalesperson ? values.categoryId : undefined,
+      finance_definition_id: selectedCategory.id,
       amount: values.amount,
-      category: isSalesperson
-        ? expenseCategories.find((item) => item.id === values.categoryId)?.code ?? ""
-        : DEFAULT_POINT_EXPENSE_CATEGORY,
+      category: selectedCategory.code,
       note: values.note?.trim() || undefined,
       meta: {
         scope: expenseScope.scopeKey,
@@ -347,7 +349,7 @@ export function PointExpensesPage() {
                 <div>
                   <label className="mb-3 block text-sm font-bold text-foreground">Gider Türü Seçiniz</label>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-                    {isSalesperson ? (
+                    {expenseCategories.length > 0 ? (
                       expenseCategories.map((category) => (
                         <button
                           key={category.id}
@@ -365,10 +367,11 @@ export function PointExpensesPage() {
                     ) : (
                       <button
                         type="button"
-                        className="flex h-24 flex-col items-center justify-center gap-2 rounded-[16px] border-2 border-primary bg-primary/5 p-2 text-primary shadow-sm ring-1 ring-primary/20 transition-all"
+                        className="flex h-24 flex-col items-center justify-center gap-2 rounded-[16px] border-2 border-dashed border-muted-foreground/30 bg-muted/40 p-2 text-muted-foreground transition-all"
+                        disabled
                       >
                         <FileText className="h-6 w-6" />
-                        <span className="text-center text-xs font-bold leading-tight">{DEFAULT_POINT_EXPENSE_CATEGORY}</span>
+                        <span className="text-center text-xs font-bold leading-tight">Aktif gider türü bulunamadı</span>
                       </button>
                     )}
                   </div>

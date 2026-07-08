@@ -45,17 +45,34 @@ class PosExpenseService
 
             $this->assertCanOperateSession($user, $session);
             $pointCurrency = $this->pointCurrency($session, $user);
+            $definition = $this->resolveExpenseDefinition($payload);
+            $expenseAccountCode = $definition->logo_code;
+
+            if (! filled($expenseAccountCode)) {
+                throw ValidationException::withMessages([
+                    'expense_account' => ['Bu gider kategorisi için Logo gider hesabı tanımlı değil.'],
+                ]);
+            }
 
             $expense = PosExpense::query()->create([
                 'pos_session_id' => $session->id,
                 'dealer_id' => (int) ($session->openedBy?->dealer_id ?? $user->dealer_id),
                 'expense_date' => $payload['expense_date'] ?? now()->toDateString(),
-                'category' => trim((string) $payload['category']),
+                'category' => $definition->name,
                 'amount' => number_format((float) $payload['amount'], 2, '.', ''),
                 'currency' => $pointCurrency,
                 'note' => filled($payload['note'] ?? null) ? trim((string) $payload['note']) : null,
                 'created_by_user_id' => $user->id,
-                'meta' => $payload['meta'] ?? null,
+                'meta' => array_merge(is_array($payload['meta'] ?? null) ? $payload['meta'] : [], [
+                    'scope' => data_get($payload, 'meta.scope'),
+                    'finance_definition_id' => $definition->id,
+                    'expense_category_code' => $definition->code,
+                    'logo_expense_account_code' => $expenseAccountCode,
+                    'logo_expense_account_name' => $definition->logo_name,
+                    'logo_category_code' => $definition->logo_code,
+                    'cashbox_code' => $session->cashbox?->code,
+                    'cashbox_name' => $session->cashbox?->name,
+                ]),
             ]);
 
             $this->queueExpenseForLogoExport($expense);
@@ -69,21 +86,7 @@ class PosExpenseService
      */
     private function createSalespersonExpense(User $user, array $payload): PosExpense
     {
-        $definition = FinanceDefinition::query()
-            ->where('type', 'expense_category')
-            ->where('is_active', true)
-            ->where(function (Builder $query) use ($payload): void {
-                if (! empty($payload['finance_definition_id'])) {
-                    $query->whereKey((int) $payload['finance_definition_id']);
-                } else {
-                    $query->where('code', (string) $payload['category']);
-                }
-            })
-            ->first();
-
-        if (! $definition instanceof FinanceDefinition) {
-            throw ValidationException::withMessages(['category' => ['Aktif gider kategorisi bulunamadı.']]);
-        }
+        $definition = $this->resolveExpenseDefinition($payload);
 
         $expenseAccountCode = $definition->logo_code ?: $user->logo_expense_account_code;
         $expenseAccountName = $definition->logo_name ?: $user->logo_expense_account_name;
@@ -128,6 +131,36 @@ class PosExpenseService
         $this->queueExpenseForLogoExport($expense);
 
         return $expense->fresh(['createdBy']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveExpenseDefinition(array $payload): FinanceDefinition
+    {
+        $category = trim((string) ($payload['category'] ?? ''));
+
+        $definition = FinanceDefinition::query()
+            ->where('type', 'expense_category')
+            ->where('is_active', true)
+            ->where(function (Builder $query) use ($payload, $category): void {
+                if (! empty($payload['finance_definition_id'])) {
+                    $query->whereKey((int) $payload['finance_definition_id']);
+
+                    return;
+                }
+
+                $query
+                    ->where('code', $category)
+                    ->orWhere('name', $category);
+            })
+            ->first();
+
+        if (! $definition instanceof FinanceDefinition) {
+            throw ValidationException::withMessages(['category' => ['Aktif gider kategorisi bulunamadı.']]);
+        }
+
+        return $definition;
     }
 
     /**

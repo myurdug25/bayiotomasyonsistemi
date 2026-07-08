@@ -25,13 +25,13 @@ class LogoPosExpenseExportService
             $filters['dealer_code'] ?? null,
         );
 
-        $statuses = collect((array) ($filters['statuses'] ?? ['queued', 'failed']))
+        $statuses = collect((array) ($filters['statuses'] ?? ['queued']))
             ->filter(fn ($status) => in_array($status, ['queued', 'failed'], true))
             ->values()
             ->all();
 
         if ($statuses === []) {
-            $statuses = ['queued', 'failed'];
+            $statuses = ['queued'];
         }
 
         $limit = min((int) ($filters['limit'] ?? 100), 500);
