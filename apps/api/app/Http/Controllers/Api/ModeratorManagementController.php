@@ -214,6 +214,10 @@ class ModeratorManagementController extends Controller
             'menu_permissions.*' => ['string', Rule::in(MenuPermissions::keys())],
             'feature_permissions' => ['nullable', 'array'],
             'feature_permissions.*' => ['string', Rule::in(CustomerFeaturePermissions::keys())],
+        ], [
+            'username.unique' => 'Bu kullanıcı adı zaten başka bir hesap tarafından kullanılıyor.',
+            'username.regex' => 'Kullanıcı adı sadece harf, rakam, nokta, tire ve alt çizgi içerebilir.',
+            'email.unique' => 'Bu e-posta adresi zaten kullanılıyor.',
         ]);
 
         $menuPermissions = collect(MenuPermissions::normalize($validated['menu_permissions'] ?? []));
@@ -304,6 +308,10 @@ class ModeratorManagementController extends Controller
             'menu_permissions.*' => ['string', Rule::in(MenuPermissions::keys())],
             'feature_permissions' => ['nullable', 'array'],
             'feature_permissions.*' => ['string', Rule::in(CustomerFeaturePermissions::keys())],
+        ], [
+            'username.unique' => 'Bu kullanıcı adı zaten başka bir hesap tarafından kullanılıyor.',
+            'username.regex' => 'Kullanıcı adı sadece harf, rakam, nokta, tire ve alt çizgi içerebilir.',
+            'email.unique' => 'Bu e-posta adresi zaten kullanılıyor.',
         ]);
 
         $updatedUser = DB::transaction(function () use ($actor, $user, $validated) {
