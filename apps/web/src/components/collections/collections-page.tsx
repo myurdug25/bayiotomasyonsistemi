@@ -1110,6 +1110,7 @@ export function CollectionsPage() {
     customerDebtAmount > 0 ? "Borçlu" : customerDebtAmount < 0 ? "Alacaklı" : "Dengede";
   const collectionSummaryCurrency = displayRows[0]?.currency ?? customerDebtCurrency;
   const balanceSourceLabel = selectedCustomer?.balance_source === "logo" ? "Logo bakiyesi" : "B2B bakiyesi";
+  const currentDebtAfterCollections = customerDebtAmount - collectionGrandTotal;
   const canUseReceiptActions = displayRows.length > 0 && (receiptActionsUnlocked || sendableRows.length === 0);
   const hasQueuedCollectionRows = displayRows.some((row) => row.source_system === "b2b" && row.sync_status === "pending");
   const sendActionLabel = sendingCollections

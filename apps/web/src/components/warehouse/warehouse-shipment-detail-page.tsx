@@ -483,6 +483,12 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
     onSuccess: (response) => {
       setWarning(null);
       queryClient.setQueryData(queryKey, response);
+      if (response.data.shipment.status.toLowerCase() === "cancelled") {
+        toast.success("Son ürün silindi, sevkiyat iptal edildi");
+        router.replace("/warehouse");
+        return;
+      }
+
       toast.success("Ürün listeden silindi");
     },
     onSettled: () => {
