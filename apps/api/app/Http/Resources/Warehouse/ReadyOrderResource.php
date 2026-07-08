@@ -89,6 +89,9 @@ class ReadyOrderResource extends JsonResource
                 'panel_label' => $this->nullableString(data_get($invoiceMeta, 'source_panel_label'))
                     ?? $this->sourcePanelLabel($sourcePanel),
                 'warehouse_dispatch' => (bool) (data_get($invoiceMeta, 'warehouse_dispatch') ?? true),
+                'checkout_summary' => is_array(data_get($invoiceMeta, 'checkout_summary'))
+                    ? data_get($invoiceMeta, 'checkout_summary')
+                    : null,
                 'shipping_method' => $this->cart?->shipping_method,
                 'note' => $this->note ?? $this->cart?->order_note ?? $this->cart?->note,
             ],

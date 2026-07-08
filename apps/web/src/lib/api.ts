@@ -1616,6 +1616,11 @@ export type WarehouseReadyOrderItem = {
     panel: string | null;
     panel_label: string | null;
     warehouse_dispatch: boolean;
+    checkout_summary: {
+      mode: "detailed" | "excluded" | "included";
+      code: string;
+      label: string;
+    } | null;
     shipping_method: string | null;
     note: string | null;
   };

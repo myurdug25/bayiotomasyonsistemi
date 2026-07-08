@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -12,7 +13,6 @@ import {
   PackagePlus,
   PackageCheck,
   Printer,
-  RefreshCcw,
   Send,
   Trash2,
 } from "lucide-react";
@@ -23,7 +23,6 @@ import {
   deleteWarehouseShipmentItem,
   finalizeWarehouseShipment,
   getWarehouseShipment,
-  returnAllWarehouseShipmentItems,
   returnWarehouseShipmentItem,
   scanWarehouseShipment,
   searchProducts,
@@ -94,6 +93,9 @@ function displayText(value: string | number | null | undefined): string {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : "-";
 }
+
+const SHIPMENT_INVOICE_ACTION_CLASSNAME =
+  "border-rose-200/50 bg-[linear-gradient(135deg,#ff6b6b_0%,#ef4444_48%,#991b1b_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.30),0_22px_46px_-30px_rgba(239,68,68,0.95)] hover:-translate-y-0.5 hover:border-rose-100/80 hover:brightness-110";
 
 function parseOptionalNumber(value: string | number | null | undefined): number | null {
   if (typeof value === "number") {
@@ -316,6 +318,7 @@ function optimisticDeleteItem(
 }
 
 export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string }) {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [barcode, setBarcode] = useState("");
   const [warning, setWarning] = useState<string | null>(null);
@@ -332,6 +335,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
   const [addProductQuantity, setAddProductQuantity] = useState("1");
   const [quantityDialogItem, setQuantityDialogItem] = useState<WarehouseShipmentItemDto | null>(null);
   const [quantityValue, setQuantityValue] = useState("1");
+  const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
 
   const queryClient = useQueryClient();
   const queryKey = useMemo(() => ["warehouse", "shipment", shipmentId] as const, [shipmentId]);
@@ -452,24 +456,6 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
     },
   });
 
-  const returnAllItemsMutation = useMutation({
-    mutationFn: () => returnAllWarehouseShipmentItems(shipmentId),
-    onError: (error) => {
-      const message = maybeApiMessage(error);
-      setWarning(message);
-      toast.error(message);
-    },
-    onSuccess: (response) => {
-      setWarning(null);
-      queryClient.setQueryData(queryKey, response);
-      toast.success("Tüm sevk satırları geri alındı");
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
-      inputRef.current?.focus();
-    },
-  });
-
   const deleteItemMutation = useMutation({
     mutationFn: (itemId: number) => deleteWarehouseShipmentItem(shipmentId, itemId),
     onMutate: async (itemId) => {
@@ -561,7 +547,9 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
     onSuccess: (response) => {
       setWarning(null);
       queryClient.setQueryData(queryKey, response);
+      setFinalizeConfirmOpen(false);
       toast.success(response.data.message ?? "Fatura Logo'ya aktarıldı");
+      router.replace("/warehouse");
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey });
@@ -570,7 +558,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
   });
 
   const handleFinalizeInvoice = () => {
-    finalizeMutation.mutate();
+    setFinalizeConfirmOpen(true);
   };
 
   const handleScanSubmit = (event?: FormEvent) => {
@@ -650,20 +638,6 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
     }
     inputRef.current?.focus();
     scanMutation.mutate({ barcode: code, qty: safeQty });
-  };
-
-  const returnAllShippedItems = () => {
-    if (
-      isReadOnly ||
-      returnAllItemsMutation.isPending ||
-      !shipmentState ||
-      shipmentState.shipped_items.length === 0
-    ) {
-      return;
-    }
-
-    setWarning(null);
-    returnAllItemsMutation.mutate();
   };
 
   const returnFullShippedItem = (item: WarehouseShipmentItemDto) => {
@@ -778,8 +752,6 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
 
   const shipment = shipmentState.shipment;
   const orderTotal = shipment.order.grand_total ?? shipmentState.totals.gonderilen_tutar;
-  const hasShippedRows = shipmentState.shipped_items.length > 0;
-  const canReturnAll = !isReadOnly && hasShippedRows && !returnAllItemsMutation.isPending;
   const customer = shipment.order.customer;
   const customerLocation = [customer.city, customer.district]
     .map((value) => String(value ?? "").trim())
@@ -792,8 +764,8 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
       data-point-theme="dark"
       onClick={() => setContextMenu(null)}
     >
-      <section className="point-panel point-product-panel rounded-[22px] border p-4">
-        <div className="mb-3 flex justify-start">
+      <section className="point-panel point-product-panel rounded-[20px] border p-3">
+        <div className="mb-2 flex justify-start">
           <Button
             type="button"
             variant="ghost"
@@ -806,23 +778,23 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
           </Button>
         </div>
 
-        <div className="mb-4 grid gap-3">
+        <div className="mb-3 grid gap-2">
           <div className="warehouse-summary-card min-w-0 rounded-[18px] border border-emerald-300/35 bg-[linear-gradient(135deg,#1f6b45_0%,#2f7650_55%,#416650_100%)] p-3 shadow-[0_20px_48px_-36px_rgba(31,107,69,0.65),inset_0_1px_0_rgba(255,255,255,0.10)]">
-            <div className="grid min-h-[86px] gap-3 xl:grid-cols-[46px_140px_minmax(280px,0.95fr)_minmax(520px,1.55fr)] xl:items-center">
-              <span className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-white/30 bg-white/15 text-sm font-black text-white shadow-[0_10px_30px_-16px_rgba(255,255,255,0.65)]">
+            <div className="grid min-h-[64px] gap-2 xl:grid-cols-[38px_120px_minmax(240px,0.95fr)_minmax(460px,1.45fr)] xl:items-center">
+              <span className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-white/30 bg-white/15 text-sm font-black text-white shadow-[0_10px_30px_-16px_rgba(255,255,255,0.65)]">
                 <PackageCheck className="h-5 w-5" />
               </span>
 
               <span className="min-w-0">
                 <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-white/75">Cari Kod</span>
-                <span className="mt-1 block truncate text-xl font-black text-[#e6f3e9]">{displayText(customer.code)}</span>
+                <span className="mt-0.5 block truncate text-lg font-black text-[#e6f3e9]">{displayText(customer.code)}</span>
               </span>
 
               <span className="min-w-0">
-                <span className="mt-1 block truncate text-2xl font-black leading-tight text-white xl:text-3xl">
+                <span className="block truncate text-xl font-black leading-tight text-white xl:text-2xl">
                   {displayText(customer.title)}
                 </span>
-                <span className="mt-1 block truncate text-xs font-bold text-[#cfe1d2]">
+                <span className="mt-0.5 block truncate text-xs font-bold text-[#cfe1d2]">
                   {shipment.shipment_no} · {formatDateTime(shipment.created_at)}
                 </span>
               </span>
@@ -922,7 +894,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
               </label>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-[0.52fr_1fr_1fr_1fr_1fr]">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-[0.62fr_1fr_1fr_1fr]">
               <div className="flex h-20 w-full flex-col items-center justify-center gap-1.5 rounded-[16px] border border-[#faee56]/35 bg-[#4d4310]/45 px-2 text-center text-[10px] font-black text-[#fff8a8]">
                 <span className="uppercase leading-tight tracking-[0.08em]">Sipariş Tutarı</span>
                 <span className="text-sm leading-none text-white">{toPlainMoney(orderTotal)}</span>
@@ -944,18 +916,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
               </Button>
               <Button
                 type="button"
-                variant="outline"
-                className="point-secondary-button h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black"
-                onClick={returnAllShippedItems}
-                disabled={!canReturnAll}
-                title="Sevk edilen ürünleri tekrar sipariş listesine al"
-              >
-                {returnAllItemsMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCcw className="h-5 w-5" />}
-                Sipariş Düzelt
-              </Button>
-              <Button
-                type="button"
-                className="point-yellow-action-button h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black"
+                className={`${SHIPMENT_INVOICE_ACTION_CLASSNAME} h-20 w-full flex-col gap-1.5 rounded-[16px] text-center text-[11px] font-black`}
                 onClick={handleFinalizeInvoice}
                 disabled={finalizeMutation.isPending || shipmentState.totals.shipped_qty_total <= 0}
               >
@@ -1249,6 +1210,51 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
             >
               {updateQuantityMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Edit3 className="h-4 w-4" />}
               Kaydet
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={finalizeConfirmOpen} onOpenChange={(open) => {
+        if (!finalizeMutation.isPending) {
+          setFinalizeConfirmOpen(open);
+        }
+      }}>
+        <DialogContent className="max-w-md rounded-[24px] border border-rose-400/30 bg-[#071018] p-0 text-[#eef8ef] shadow-[0_34px_110px_-42px_rgba(0,0,0,0.92)]">
+          <DialogHeader className="border-b border-rose-500/20 bg-[linear-gradient(135deg,#261016_0%,#071018_58%,#13080b_100%)] px-6 py-5 pr-12 text-left">
+            <DialogTitle className="text-xl font-black text-white">
+              Faturaya Aktarılsın mı?
+            </DialogTitle>
+            <DialogDescription className="text-sm font-semibold text-[#d7b8bd]">
+              Bu siparişi faturaya aktarmak istediğinize emin misiniz?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 px-6 py-5 text-sm font-bold text-[#dcebe0]">
+            <p>
+              İşlem tamamlanınca sevkiyat Logo satış faturası olarak aktarılır ve depo listesine dönülür.
+            </p>
+            <p className="rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+              Sipariş: {displayText(shipment.order.order_no)} · Gönderilen adet: {shipmentState.totals.shipped_qty_total}
+            </p>
+          </div>
+          <DialogFooter className="mt-0 border-t border-rose-500/20 px-6 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 rounded-xl border-emerald-900/80 bg-[#07120f] px-5 font-black text-[#e6f3e9] hover:border-[#72bf82]/55 hover:bg-[#102019] hover:text-white"
+              disabled={finalizeMutation.isPending}
+              onClick={() => setFinalizeConfirmOpen(false)}
+            >
+              Hayır
+            </Button>
+            <Button
+              type="button"
+              className={`${SHIPMENT_INVOICE_ACTION_CLASSNAME} h-11 rounded-xl px-5 font-black`}
+              disabled={finalizeMutation.isPending}
+              onClick={() => finalizeMutation.mutate()}
+            >
+              {finalizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+              Evet
             </Button>
           </DialogFooter>
         </DialogContent>

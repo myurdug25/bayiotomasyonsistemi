@@ -64,6 +64,8 @@ const WAREHOUSE_PRINT_ACTION_CLASSNAME =
   "border-sky-200/45 [background:linear-gradient(135deg,#e8f7ff_0%,#8dd3f7_48%,#2376ac_100%)] text-[#041725] shadow-[inset_0_1px_0_rgba(255,255,255,0.48),0_22px_42px_-28px_rgba(35,118,172,0.9)] hover:-translate-y-0.5 hover:border-sky-100/75 hover:brightness-105";
 const WAREHOUSE_PRIMARY_ACTION_CLASSNAME =
   "border-emerald-200/40 [background:linear-gradient(135deg,#f3f7df_0%,#b9d2bd_42%,#7faa8c_100%)] text-[#07140d] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_24px_46px_-28px_rgba(139,194,150,0.85)] hover:-translate-y-0.5 hover:border-emerald-100/70 hover:brightness-105";
+const WAREHOUSE_TAG_CLASSNAME =
+  "inline-flex h-6 max-w-full items-center justify-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.04em]";
 
 type SalespersonFilterOption = {
   id: string;
@@ -232,6 +234,36 @@ function preferredWarehouseForStaff(staffUser: WarehouseStaffChoice | null): Shi
   return choices.find((choice) => choice.needles.some((needle) => identity.includes(needle))) ?? null;
 }
 
+function checkoutSummaryBadge(order: WarehouseReadyOrderItem): { code: string; label: string } | null {
+  const summary = order.origin?.checkout_summary;
+  const code = typeof summary?.code === "string" ? summary.code.trim() : "";
+  const label = typeof summary?.label === "string" ? summary.label.trim() : "";
+
+  if (!code) {
+    return null;
+  }
+
+  return { code, label: label || code };
+}
+
+function isCargoOrder(order: WarehouseReadyOrderItem): boolean {
+  const source = [order.origin?.shipping_method, order.origin?.note]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleUpperCase("tr-TR");
+
+  return source.includes("KARGO") || source.includes("CARGO");
+}
+
+function resolveOrderRegion(order: WarehouseReadyOrderItem): string {
+  const preferred =
+    order.logo_warehouse_options?.find((warehouse) => warehouse.warehouse_code === order.preferred_warehouse_code)
+    ?? order.logo_warehouse_options?.find((warehouse) => warehouse.missing_quantity === 0)
+    ?? order.logo_warehouse_options?.[0];
+
+  return toDisplayText(preferred?.warehouse_name ?? order.origin?.panel_label, "Bölge yok");
+}
+
 function resolveShipmentWarehouseChoice(
   order: WarehouseReadyOrderItem | null,
   staffUser: WarehouseStaffChoice | null
@@ -392,6 +424,25 @@ export function WarehouseOrdersPage() {
     () => warehouseStaff.find((staffUser) => String(staffUser.id) === effectiveSelectedWarehouseStaffId) ?? null,
     [effectiveSelectedWarehouseStaffId, warehouseStaff]
   );
+  const warehouseStaffGroups = useMemo(() => {
+    const groups = new Map<string, { title: string; staff: WarehouseStaffChoice[] }>();
+
+    warehouseStaff.forEach((staffUser) => {
+      const warehouse = preferredWarehouseForStaff(staffUser);
+      const key = warehouse?.warehouse_code ?? "general";
+      const title = warehouse?.warehouse_name ?? "GENEL DEPO";
+      const current = groups.get(key);
+
+      if (current) {
+        current.staff.push(staffUser);
+        return;
+      }
+
+      groups.set(key, { title, staff: [staffUser] });
+    });
+
+    return Array.from(groups.values()).sort((first, second) => first.title.localeCompare(second.title, "tr"));
+  }, [warehouseStaff]);
   const shipmentWarehouseChoice = useMemo(
     () => resolveShipmentWarehouseChoice(shipmentOrder, selectedWarehouseStaff),
     [selectedWarehouseStaff, shipmentOrder]
@@ -776,6 +827,9 @@ export function WarehouseOrdersPage() {
                 rows.map((order: WarehouseReadyOrderItem) => {
                   const totalQuantity = toSafeNumber(order.items_summary?.total_quantity);
                   const itemCount = toSafeNumber(order.items_summary?.item_count);
+                  const checkoutBadge = checkoutSummaryBadge(order);
+                  const cargoOrder = isCargoOrder(order);
+                  const region = resolveOrderRegion(order);
 
                   return (
                     <article
@@ -790,6 +844,24 @@ export function WarehouseOrdersPage() {
                           <p className="mt-1 text-xs font-bold text-[var(--muted-foreground)]">
                             {itemCount} kalem · {totalQuantity} adet
                           </p>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            <span className={cn(WAREHOUSE_TAG_CLASSNAME, "border-emerald-200/70 bg-emerald-50 text-emerald-800")}>
+                              {region}
+                            </span>
+                            {checkoutBadge ? (
+                              <span
+                                title={checkoutBadge.label}
+                                className={cn(WAREHOUSE_TAG_CLASSNAME, "border-amber-200/80 bg-amber-50 text-amber-800")}
+                              >
+                                {checkoutBadge.code}
+                              </span>
+                            ) : null}
+                            {cargoOrder ? (
+                              <span className={cn(WAREHOUSE_TAG_CLASSNAME, "border-rose-200/80 bg-rose-50 text-rose-800")}>
+                                KARGO
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                         <span className="shrink-0 rounded-lg border border-[#c7ddd1] bg-[#eef8f1] px-2 py-1 text-xs font-black text-[#1f6a43]">
                           {formatMoney(order.grand_total, order.currency)}
@@ -845,13 +917,16 @@ export function WarehouseOrdersPage() {
             <div className="hidden overflow-hidden px-2 pb-1 pt-2 lg:block lg:px-3">
               <Table className="min-w-0 table-fixed text-[11px]">
                 <colgroup>
-                  <col className="w-[7%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[31%]" />
-                  <col className="w-[13%]" />
+                  <col className="w-[6%]" />
                   <col className="w-[12%]" />
+                  <col className="w-[24%]" />
                   <col className="w-[11%]" />
-                  <col className="w-[13%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[14%]" />
                 </colgroup>
                 <TableHeader className="bg-[linear-gradient(135deg,rgba(22,128,55,0.96)_0%,rgba(18,90,45,0.98)_52%,rgba(11,64,35,1)_100%)]">
                   <TableRow className="border-b border-emerald-300/35 hover:bg-transparent">
@@ -866,6 +941,15 @@ export function WarehouseOrdersPage() {
                     </TableHead>
                     <TableHead className="h-8 border-r border-white/15 px-1.5 text-center text-[9px] font-bold uppercase tracking-[0.06em] text-white">
                       Plasiyer
+                    </TableHead>
+                    <TableHead className="h-8 border-r border-white/15 px-1.5 text-center text-[9px] font-bold uppercase tracking-[0.06em] text-white">
+                      Bölge
+                    </TableHead>
+                    <TableHead className="h-8 border-r border-white/15 px-1.5 text-center text-[9px] font-bold uppercase tracking-[0.06em] text-white">
+                      Satış Tipi
+                    </TableHead>
+                    <TableHead className="h-8 border-r border-white/15 px-1.5 text-center text-[9px] font-bold uppercase tracking-[0.06em] text-white">
+                      Kalem
                     </TableHead>
                     <TableHead className="h-8 border-r border-white/15 px-1.5 text-center text-[9px] font-bold uppercase tracking-[0.06em] text-white">
                       Tarih
@@ -887,6 +971,9 @@ export function WarehouseOrdersPage() {
                         <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-2"><Skeleton className="mx-auto h-4 w-20" /></TableCell>
                         <TableCell className="border-r border-[var(--brand-border)]/80 py-2"><Skeleton className="h-4 w-52" /></TableCell>
                         <TableCell className="border-r border-[var(--brand-border)]/80 py-2"><Skeleton className="mx-auto h-4 w-24" /></TableCell>
+                        <TableCell className="border-r border-[var(--brand-border)]/80 py-2"><Skeleton className="mx-auto h-4 w-20" /></TableCell>
+                        <TableCell className="border-r border-[var(--brand-border)]/80 py-2"><Skeleton className="mx-auto h-4 w-16" /></TableCell>
+                        <TableCell className="border-r border-[var(--brand-border)]/80 py-2"><Skeleton className="mx-auto h-4 w-12" /></TableCell>
                         <TableCell className="border-r border-[var(--brand-border)]/80 py-2"><Skeleton className="mx-auto h-4 w-24" /></TableCell>
                         <TableCell className="border-r border-[var(--brand-border)]/80 py-2"><Skeleton className="mx-auto h-7 w-20 rounded-md" /></TableCell>
                         <TableCell className="px-1.5 py-2"><Skeleton className="mx-auto h-8 w-full rounded-md" /></TableCell>
@@ -896,7 +983,7 @@ export function WarehouseOrdersPage() {
 
                   {readyOrdersQuery.isError ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-8 text-center text-base text-red-600">
+                      <TableCell colSpan={10} className="py-8 text-center text-base text-red-600">
                         {readyOrdersQuery.error instanceof Error ? readyOrdersQuery.error.message : "Depo siparişleri alınamadı."}
                       </TableCell>
                     </TableRow>
@@ -904,7 +991,7 @@ export function WarehouseOrdersPage() {
 
                   {!readyOrdersQuery.isLoading && !readyOrdersQuery.isError && rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-10 text-center text-[var(--muted-foreground)]">
+                      <TableCell colSpan={10} className="py-10 text-center text-[var(--muted-foreground)]">
                         <PackageSearch className="mx-auto h-10 w-10 text-[var(--brand-primary)]" />
                         <p className="mt-3 text-base font-semibold">Sipariş yok</p>
                         {hasActiveFilters ? (
@@ -921,6 +1008,9 @@ export function WarehouseOrdersPage() {
                     rows.map((order: WarehouseReadyOrderItem) => {
                       const totalQuantity = toSafeNumber(order.items_summary?.total_quantity);
                       const itemCount = toSafeNumber(order.items_summary?.item_count);
+                      const checkoutBadge = checkoutSummaryBadge(order);
+                      const cargoOrder = isCargoOrder(order);
+                      const region = resolveOrderRegion(order);
 
                       return (
                         <TableRow
@@ -961,6 +1051,35 @@ export function WarehouseOrdersPage() {
                             <span className="inline-flex max-w-full items-center justify-center rounded-md border border-[var(--brand-border)] bg-[var(--surface-soft)] px-1.5 py-1 text-[10px] font-bold text-[var(--foreground)]">
                               <span className="truncate">{toDisplayText(order.salesperson?.name, "Atanmamış")}</span>
                             </span>
+                          </TableCell>
+                          <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle">
+                            <span
+                              title={region}
+                              className={cn(WAREHOUSE_TAG_CLASSNAME, "border-emerald-200/70 bg-emerald-50 text-emerald-800")}
+                            >
+                              <span className="truncate">{region}</span>
+                            </span>
+                            {cargoOrder ? (
+                              <span className={cn(WAREHOUSE_TAG_CLASSNAME, "mt-1 border-rose-200/80 bg-rose-50 text-rose-800")}>
+                                KARGO
+                              </span>
+                            ) : null}
+                          </TableCell>
+                          <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle">
+                            {checkoutBadge ? (
+                              <span
+                                title={checkoutBadge.label}
+                                className={cn(WAREHOUSE_TAG_CLASSNAME, "border-amber-200/80 bg-amber-50 text-amber-800")}
+                              >
+                                {checkoutBadge.code}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-black text-[var(--muted-foreground)]">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle">
+                            <span className="text-[12px] font-black text-[var(--foreground)]">{itemCount}</span>
+                            <span className="block text-[9px] font-bold text-[var(--muted-foreground)]">{totalQuantity} ad.</span>
                           </TableCell>
                           <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle">
                             <span className="text-[10px] font-semibold text-[var(--foreground)]">
@@ -1079,40 +1198,54 @@ export function WarehouseOrdersPage() {
                       ))}
                     </div>
                   ) : warehouseStaff.length > 0 ? (
-                    <div className="grid gap-2 md:grid-cols-2">
-                      {warehouseStaff.map((staffUser) => {
-                        const active = effectiveSelectedWarehouseStaffId === String(staffUser.id);
+                    <div className="space-y-3">
+                      {warehouseStaffGroups.map((group) => (
+                        <section key={group.title} className="rounded-[16px] border border-emerald-900/65 bg-[#07120f] p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <p className="truncate text-xs font-black uppercase tracking-[0.14em] text-[#b8f7b5]">
+                              {group.title}
+                            </p>
+                            <span className="rounded-full border border-[#72bf82]/35 bg-[#1f6b45]/25 px-2 py-0.5 text-[10px] font-black text-[#d9ffe1]">
+                              {group.staff.length} kişi
+                            </span>
+                          </div>
+                          <div className="grid gap-2 md:grid-cols-2">
+                            {group.staff.map((staffUser) => {
+                              const active = effectiveSelectedWarehouseStaffId === String(staffUser.id);
 
-                        return (
-                          <button
-                            key={staffUser.id}
-                            type="button"
-                            disabled={createShipmentMutation.isPending}
-                            onClick={() => setSelectedWarehouseStaffId(String(staffUser.id))}
-                            className={cn(
-                              "flex min-h-16 items-center justify-between gap-3 rounded-[16px] border px-4 py-3 text-left transition",
-                              active
-                                ? "border-[#72bf82]/80 bg-[#1f6b45]/35 text-white shadow-[inset_0_0_0_1px_rgba(114,191,130,0.22),0_18px_38px_-30px_rgba(114,191,130,0.8)]"
-                                : "border-emerald-900/75 bg-[#07120f] text-[#e6f3e9] hover:border-[#72bf82]/55 hover:bg-[#102019]"
-                            )}
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-black">{staffUser.name}</span>
-                              <span className="mt-0.5 block truncate text-xs font-semibold text-[#9fb2a7]">
-                                {staffUser.phone || staffUser.email}
-                              </span>
-                            </span>
-                            <span
-                              className={cn(
-                                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border",
-                                active ? "border-[#b8f7b5] bg-[#b8f7b5] text-[#07140d]" : "border-emerald-900/75 bg-[#071018] text-transparent"
-                              )}
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                            </span>
-                          </button>
-                        );
-                      })}
+                              return (
+                                <button
+                                  key={staffUser.id}
+                                  type="button"
+                                  disabled={createShipmentMutation.isPending}
+                                  onClick={() => setSelectedWarehouseStaffId(String(staffUser.id))}
+                                  className={cn(
+                                    "flex min-h-14 items-center justify-between gap-3 rounded-[14px] border px-3 py-2 text-left transition",
+                                    active
+                                      ? "border-[#72bf82]/80 bg-[#1f6b45]/35 text-white shadow-[inset_0_0_0_1px_rgba(114,191,130,0.22),0_18px_38px_-30px_rgba(114,191,130,0.8)]"
+                                      : "border-emerald-900/75 bg-[#0b1712] text-[#e6f3e9] hover:border-[#72bf82]/55 hover:bg-[#102019]"
+                                  )}
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-sm font-black">{staffUser.name}</span>
+                                    <span className="mt-0.5 block truncate text-xs font-semibold text-[#9fb2a7]">
+                                      {staffUser.phone || staffUser.email}
+                                    </span>
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border",
+                                      active ? "border-[#b8f7b5] bg-[#b8f7b5] text-[#07140d]" : "border-emerald-900/75 bg-[#071018] text-transparent"
+                                    )}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))}
                     </div>
                   ) : (
                     <div className="rounded-[16px] border border-amber-400/35 bg-amber-950/25 p-3 text-sm font-semibold text-amber-100">
@@ -1166,17 +1299,17 @@ export function WarehouseOrdersPage() {
         <DialogContent className="max-h-[88vh] max-w-[min(980px,calc(100vw-28px))] overflow-hidden rounded-2xl p-0">
           {detailOrderPreview ? (
             <>
-              <DialogHeader className="border-b border-[var(--brand-border)] bg-[var(--surface-soft)] px-5 py-4 pr-12 text-left">
-                <DialogTitle className="text-2xl font-black text-[var(--brand-primary-strong)]">
+              <DialogHeader className="border-b border-[var(--brand-border)] bg-[var(--surface-soft)] px-4 py-3 pr-12 text-left">
+                <DialogTitle className="text-xl font-black text-[var(--brand-primary-strong)]">
                   {toDisplayText(detailOrder?.order_no ?? detailOrderPreview.order_no, "Sipariş Detayı")}
                 </DialogTitle>
-                <DialogDescription className="text-sm font-semibold text-[var(--muted-foreground)]">
-                  Sipariş, müşteri ve ürün kalemleri
+                <DialogDescription className="text-xs font-semibold text-[var(--muted-foreground)]">
+                  Sipariş Formu · ürün kalemleri ana odakta
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="max-h-[calc(88vh-88px)] overflow-y-auto p-4">
-                <div className="mb-4 grid gap-2 md:grid-cols-[1.35fr_0.85fr_0.8fr]">
+              <div className="max-h-[calc(88vh-72px)] overflow-y-auto p-3">
+                <div className="mb-3 grid gap-2 md:grid-cols-[1.35fr_0.85fr_0.65fr_0.65fr]">
                   <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface)] p-3">
                     <p className="text-[11px] font-black uppercase tracking-[0.08em] text-[var(--muted-foreground)]">Müşteri</p>
                     <p className="mt-1 truncate text-sm font-black text-[var(--foreground)]">
@@ -1195,6 +1328,19 @@ export function WarehouseOrdersPage() {
                       {detailOrder
                         ? `${detailItems.length} kalem · ${detailTotalQuantity} adet`
                         : `${toSafeNumber(detailOrderPreview.items_summary?.item_count)} kalem · ${toSafeNumber(detailOrderPreview.items_summary?.total_quantity)} adet`}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200/70 bg-amber-50 p-3 text-amber-950">
+                    <p className="text-[11px] font-black uppercase tracking-[0.08em]">Satış Tipi</p>
+                    <p className="mt-1 text-sm font-black">
+                      {toDisplayText(
+                        detailOrder?.origin?.checkout_summary?.code
+                          ?? detailOrderPreview.origin?.checkout_summary?.code,
+                        "-"
+                      )}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs font-bold">
+                      {isCargoOrder(detailOrderPreview) ? "KARGO" : toDisplayText(detailOrder?.shipping_method ?? detailOrderPreview.origin?.shipping_method, "Standart")}
                     </p>
                   </div>
                   <div className="rounded-xl border border-emerald-200/70 bg-emerald-50 p-3 text-emerald-950">
@@ -1226,25 +1372,11 @@ export function WarehouseOrdersPage() {
 
                 {detailOrder ? (
                   <div className="flex flex-col gap-3">
-                    <div className="grid gap-3 lg:grid-cols-2">
-                      <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface)] p-3">
-                        <h3 className="text-sm font-black text-[var(--brand-primary-strong)]">Müşteri Bilgileri</h3>
-                        <div className="mt-2 grid gap-1.5 text-sm">
-                          <p><span className="font-bold text-[var(--muted-foreground)]">Telefon:</span> {toDisplayText(detailOrder.customer?.phone, "Telefon yok")}</p>
-                          <p><span className="font-bold text-[var(--muted-foreground)]">Adres:</span> {toDisplayText(detailOrder.customer?.address, "Adres yok")}</p>
-                          <p><span className="font-bold text-[var(--muted-foreground)]">İl / İlçe:</span> {[detailOrder.customer?.city, detailOrder.customer?.district].filter(Boolean).join(" / ") || "-"}</p>
-                          <p><span className="font-bold text-[var(--muted-foreground)]">Vergi:</span> {[detailOrder.customer?.tax_office, detailOrder.customer?.tax_number].filter(Boolean).join(" / ") || "-"}</p>
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface)] p-3">
-                        <h3 className="text-sm font-black text-[var(--brand-primary-strong)]">Sipariş Bilgileri</h3>
-                        <div className="mt-2 grid gap-1.5 text-sm">
-                          <p><span className="font-bold text-[var(--muted-foreground)]">Fatura:</span> {toDisplayText(detailOrder.invoice?.reference_no)}</p>
-                          <p><span className="font-bold text-[var(--muted-foreground)]">Oluşturan:</span> {toDisplayText(detailOrder.created_by?.name)}</p>
-                          <p><span className="font-bold text-[var(--muted-foreground)]">Sevkiyat:</span> {toDisplayText(detailOrder.shipping_method ?? detailOrder.origin?.shipping_method, "Sevkiyat bilgisi yok")}</p>
-                          <p><span className="font-bold text-[var(--muted-foreground)]">Not:</span> {toDisplayText(detailOrder.note ?? detailOrder.origin?.note, "Not yok")}</p>
-                        </div>
-                      </div>
+                    <div className="grid gap-2 rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-2 text-[11px] font-bold text-[var(--muted-foreground)] md:grid-cols-4">
+                      <p className="truncate"><span className="text-[var(--foreground)]">Telefon:</span> {toDisplayText(detailOrder.customer?.phone, "-")}</p>
+                      <p className="truncate"><span className="text-[var(--foreground)]">İl/İlçe:</span> {[detailOrder.customer?.city, detailOrder.customer?.district].filter(Boolean).join(" / ") || "-"}</p>
+                      <p className="truncate"><span className="text-[var(--foreground)]">Fatura:</span> {toDisplayText(detailOrder.invoice?.reference_no)}</p>
+                      <p className="truncate"><span className="text-[var(--foreground)]">Not:</span> {toDisplayText(detailOrder.note ?? detailOrder.origin?.note, "-")}</p>
                     </div>
 
                     <div className="overflow-x-auto rounded-xl border border-[var(--brand-border)]">
