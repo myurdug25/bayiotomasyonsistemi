@@ -791,6 +791,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const canSubmitUserModal =
     userForm.name.trim() !== "" &&
     userForm.username.trim() !== "" &&
+    (!userMenuRequiresDealer || userForm.dealer_id !== "") &&
     (isEditingUser ? userForm.password.trim() === "" || userForm.password.trim().length >= 6 : userForm.password.length >= 6);
   const applyPermissionTemplate = (template: PermissionTemplate) => {
     setUserForm((prev) => ({
@@ -830,11 +831,15 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   };
   const submitUserModal = async () => {
     if (!canSubmitUserModal) {
-      toast.error(
-        isEditingUser
-          ? "Ad ve kullanıcı adı zorunludur."
-          : "Ad, kullanıcı adı ve şifre (en az 6 karakter) zorunludur."
-      );
+      if (userMenuRequiresDealer && userForm.dealer_id === "") {
+        toast.error("Seçtiğiniz rol veya yetkiler bir bayiye bağlı çalışmayı gerektiriyor. Lütfen 'Bayi' alanından bir bayi seçin.");
+      } else {
+        toast.error(
+          isEditingUser
+            ? "Ad ve kullanıcı adı zorunludur."
+            : "Ad, kullanıcı adı ve şifre (en az 6 karakter) zorunludur."
+        );
+      }
       return;
     }
 
