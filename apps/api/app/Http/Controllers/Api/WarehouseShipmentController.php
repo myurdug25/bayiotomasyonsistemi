@@ -42,7 +42,7 @@ class WarehouseShipmentController extends Controller
         $user = $request->user();
 
         $staffQuery = User::query()
-            ->select(['id', 'dealer_id', 'name', 'email', 'phone', 'is_active'])
+            ->select(['id', 'dealer_id', 'name', 'username', 'email', 'phone', 'branch_code', 'branch_name', 'is_active'])
             ->where('is_active', true)
             ->whereHas('roles', fn ($roleQuery) => $roleQuery->where('slug', 'warehouse'))
             ->with(['roles:id,name,slug'])
@@ -62,9 +62,12 @@ class WarehouseShipmentController extends Controller
                 ->map(fn (User $staffUser): array => [
                     'id' => $staffUser->id,
                     'name' => $staffUser->name,
+                    'username' => $staffUser->username,
                     'email' => $staffUser->email,
                     'phone' => $staffUser->phone,
                     'dealer_id' => $staffUser->dealer_id,
+                    'branch_code' => $staffUser->branch_code,
+                    'branch_name' => $staffUser->branch_name,
                     'roles' => $staffUser->roles
                         ->map(fn ($role): array => [
                             'id' => $role->id,

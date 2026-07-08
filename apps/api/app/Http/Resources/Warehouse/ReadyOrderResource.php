@@ -162,7 +162,7 @@ class ReadyOrderResource extends JsonResource
             'excluded' => ['mode' => 'excluded', 'code' => '2-0', 'label' => '2 - 0'],
             'included' => ['mode' => 'included', 'code' => '3-B', 'label' => '3 - B'],
             'detailed' => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1 - F'],
-            default => null,
+            default => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1 - F'],
         };
     }
 

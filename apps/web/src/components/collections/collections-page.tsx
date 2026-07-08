@@ -839,7 +839,10 @@ function AddFactoryPosModal({ onAdd }: { onAdd: () => void }) {
 export function CollectionsPage() {
   const { selectedCustomer, user } = useSession();
   const collectionReceiptCaptureRef = useRef<HTMLDivElement | null>(null);
-  const roleSlugs = useMemo(() => user?.roles.map((role) => role.slug) ?? [], [user?.roles]);
+  const roleSlugs = useMemo(
+    () => (Array.isArray(user?.roles) ? user.roles.map((role) => role.slug) : []),
+    [user?.roles]
+  );
   const isPointUser = roleSlugs.includes("point");
   const isAdminUser = roleSlugs.includes("admin");
   const visibleMethods = useMemo(
@@ -892,7 +895,11 @@ export function CollectionsPage() {
       page: targetPage,
     })
       .then((response) => {
-        setPayload(response);
+        setPayload({
+          ...response,
+          data: Array.isArray(response.data) ? response.data : [],
+          tabs: Array.isArray(response.tabs) ? response.tabs : [],
+        });
         setPage(targetPage);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Tahsilat listesi alınamadı"))
@@ -920,7 +927,7 @@ export function CollectionsPage() {
   };
 
   useEffect(() => {
-    const hasPendingLogoWrite = payload?.data.some(
+    const hasPendingLogoWrite = (Array.isArray(payload?.data) ? payload.data : []).some(
       (row) => row.source_system === "b2b" && row.sync_status === "pending"
     );
     if (!selectedCustomer || !hasPendingLogoWrite) {
@@ -1027,7 +1034,7 @@ export function CollectionsPage() {
 
   const isListDisabled = listLoading || saving || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
   const isFormDisabled = saving || listLoading || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
-  const rawRows = useMemo(() => payload?.data ?? [], [payload?.data]);
+  const rawRows = useMemo(() => (Array.isArray(payload?.data) ? payload.data : []), [payload?.data]);
   const displayRows = useMemo(
     () => rawRows.filter((row) => row.sync_status !== "synced"),
     [rawRows]
@@ -1039,7 +1046,7 @@ export function CollectionsPage() {
   );
   const collectionGrandTotal = useMemo(
     () =>
-      (payload?.tabs ?? [])
+      (Array.isArray(payload?.tabs) ? payload.tabs : [])
         .filter((tab) => tab.method !== "invoice")
         .reduce((total, tab) => total + toApiAmount(tab.total_amount), 0),
     [payload?.tabs]

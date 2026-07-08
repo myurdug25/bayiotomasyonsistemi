@@ -82,8 +82,11 @@ type ShipmentWarehouseChoice = {
 type WarehouseStaffChoice = {
   id: number;
   name: string;
+  username?: string | null;
   email?: string | null;
   phone?: string | null;
+  branch_code?: string | null;
+  branch_name?: string | null;
 };
 
 type WarehouseDepotGroup = {
@@ -226,21 +229,30 @@ function normalizeWarehouseIdentity(value: string | null | undefined): string {
 }
 
 function preferredWarehouseForStaff(staffUser: WarehouseStaffChoice | null): ShipmentWarehouseChoice | null {
-  const identity = normalizeWarehouseIdentity([staffUser?.name, staffUser?.email].filter(Boolean).join(" "));
+  const identity = normalizeWarehouseIdentity([
+    staffUser?.name,
+    staffUser?.username,
+    staffUser?.email,
+    staffUser?.branch_code,
+    staffUser?.branch_name,
+  ].filter(Boolean).join(" "));
 
   if (!identity) {
     return null;
   }
 
   const choices: Array<ShipmentWarehouseChoice & { needles: string[] }> = [
-    { warehouse_code: "0", warehouse_name: "ERZURUM POINT", needles: ["ERZURUMPOINT", "ERZPOINT"] },
-    { warehouse_code: "1", warehouse_name: "ERZURUM DEPO", needles: ["ERZURUMDEPO", "ERZDEPO"] },
-    { warehouse_code: "2", warehouse_name: "TRABZON DEPO", needles: ["TRABZONDEPO"] },
-    { warehouse_code: "3", warehouse_name: "SAMSUN DEPO", needles: ["SAMSUNDEPO"] },
-    { warehouse_code: "4", warehouse_name: "BATUM DEPO", needles: ["BATUMDEPO"] },
+    { warehouse_code: "0", warehouse_name: "ERZURUM POINT", needles: ["ERZURUMPOINT", "ERZPOINT", "POINT"] },
+    { warehouse_code: "1", warehouse_name: "ERZURUM DEPO", needles: ["ERZURUMDEPO", "ERZDEPO", "ERZURUM", "IRFANKARAGOZLU", "ALIBUDAK", "IBRAHIMSAYAR"] },
+    { warehouse_code: "2", warehouse_name: "TRABZON DEPO", needles: ["TRABZONDEPO", "TRABZON", "MUSTAFAOZMEN"] },
+    { warehouse_code: "3", warehouse_name: "SAMSUN DEPO", needles: ["SAMSUNDEPO", "SAMSUN", "ILKERAYGUNOGLU"] },
+    { warehouse_code: "4", warehouse_name: "BATUM DEPO", needles: ["BATUMDEPO", "BATUM"] },
   ];
 
-  return choices.find((choice) => choice.needles.some((needle) => identity.includes(needle))) ?? null;
+  return choices.find((choice) => choice.needles.some((needle) => identity.includes(needle))) ?? {
+    warehouse_code: "1",
+    warehouse_name: "ERZURUM DEPO",
+  };
 }
 
 function checkoutSummaryBadge(order: WarehouseReadyOrderItem): { code: string; label: string } | null {
@@ -256,7 +268,7 @@ function checkoutSummaryBadge(order: WarehouseReadyOrderItem): { code: string; l
   const matched = note.match(/\b(1-F|2-0|2-O|3-B)\b/u)?.[1]?.replace("2-O", "2-0");
 
   if (!matched) {
-    return null;
+    return { code: "1-F", label: "1 - F" };
   }
 
   return { code: matched, label: matched };
@@ -490,12 +502,6 @@ export function WarehouseOrdersPage() {
     () => detailItems.reduce((total, item) => total + toSafeNumber(item.quantity), 0),
     [detailItems]
   );
-  const effectiveSelectedWarehouseStaffId =
-    selectedWarehouseStaffId || (shipmentOrder && warehouseStaff[0] ? String(warehouseStaff[0].id) : "");
-  const selectedWarehouseStaff = useMemo(
-    () => warehouseStaff.find((staffUser) => String(staffUser.id) === effectiveSelectedWarehouseStaffId) ?? null,
-    [effectiveSelectedWarehouseStaffId, warehouseStaff]
-  );
   const shipmentWarehouseGroups = useMemo<WarehouseDepotGroup[]>(() => {
     if (!shipmentOrder) {
       return [];
@@ -535,7 +541,7 @@ export function WarehouseOrdersPage() {
         return;
       }
 
-      const group = groups.get(warehouse.warehouse_code);
+      const group = groups.get(warehouse.warehouse_code) ?? groups.get("1") ?? Array.from(groups.values())[0];
       if (group) {
         group.staff.push(staffUser);
       }
@@ -546,6 +552,12 @@ export function WarehouseOrdersPage() {
   const selectedShipmentWarehouseGroup = useMemo(
     () => shipmentWarehouseGroups.find((group) => group.warehouse_code === selectedShipmentWarehouseCode) ?? shipmentWarehouseGroups[0] ?? null,
     [selectedShipmentWarehouseCode, shipmentWarehouseGroups]
+  );
+  const effectiveSelectedWarehouseStaffId =
+    selectedWarehouseStaffId || (selectedShipmentWarehouseGroup?.staff[0] ? String(selectedShipmentWarehouseGroup.staff[0].id) : "");
+  const selectedWarehouseStaff = useMemo(
+    () => warehouseStaff.find((staffUser) => String(staffUser.id) === effectiveSelectedWarehouseStaffId) ?? null,
+    [effectiveSelectedWarehouseStaffId, warehouseStaff]
   );
   const shipmentWarehouseChoice = useMemo(
     () => resolveShipmentWarehouseChoice(shipmentOrder, selectedShipmentWarehouseGroup),
@@ -1440,7 +1452,8 @@ export function WarehouseOrdersPage() {
                   className={cn("h-11 rounded-xl px-5 text-sm font-black", WAREHOUSE_PRIMARY_ACTION_CLASSNAME)}
                   disabled={
                     createShipmentMutation.isPending ||
-                    !selectedShipmentWarehouseGroup
+                    !selectedShipmentWarehouseGroup ||
+                    !effectiveSelectedWarehouseStaffId
                   }
                   onClick={() => createShipmentMutation.mutate()}
                 >

@@ -1701,8 +1701,11 @@ export type WarehouseStaffUser = {
   id: number;
   dealer_id: number | null;
   name: string;
+  username?: string | null;
   email: string;
   phone: string | null;
+  branch_code?: string | null;
+  branch_name?: string | null;
   roles: Array<{
     id: number;
     name: string;
