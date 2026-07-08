@@ -17,10 +17,13 @@ test("stock sync prioritizes Logo daily warehouse totals", () => {
   assert.match(source, /return uniqueColumns\(\[\.\.\.viewCandidates,\s*\.\.\.branchCandidates,\s*\.\.\.directCandidates\]\)/);
 });
 
-test("dated warehouse totals are accumulated through today", () => {
+test("dated warehouse totals use latest snapshot per warehouse", () => {
+  assert.match(source, /WITH LatestStockDate AS/);
+  assert.match(source, /MAX\(CAST\(\$\{dateColumn\} AS date\)\) AS latest_date/);
+  assert.match(source, /INNER JOIN LatestStockDate AS latest/);
+  assert.match(source, /latest\.latest_date = CAST\(s\.\$\{dateColumn\} AS date\)/);
   assert.match(source, /SUM\(COALESCE\(\$\{availableColumn\}, 0\)\) AS available_total/);
   assert.match(source, /CAST\(\$\{dateColumn\} AS date\) <= CAST\(GETDATE\(\) AS date\)/);
-  assert.doesNotMatch(source, /WITH RankedStock AS/);
 });
 
 test("physical stock is not reduced by reservations", () => {

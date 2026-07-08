@@ -840,14 +840,59 @@ function acquireSyncLock(lockFile, disableLock) {
   }
 
   if (fs.existsSync(lockFile)) {
-    console.warn(`[logo-sync] another sync is already running; lock file exists: ${lockFile}`);
-    return null;
+    const lockInfo = readSyncLockInfo(lockFile);
+    const staleAfterMs = config.sync.lockStaleMs;
+
+    if (lockInfo.pid && isProcessAlive(lockInfo.pid)) {
+      console.warn(`[logo-sync] another sync is already running; lock file exists: ${lockFile}`);
+      return null;
+    }
+
+    if (lockInfo.ageMs !== null && lockInfo.ageMs < staleAfterMs) {
+      console.warn(
+        `[logo-sync] lock file exists without live pid but is not stale yet age_ms=${lockInfo.ageMs}; lock=${lockFile}`
+      );
+      return null;
+    }
+
+    console.warn(
+      `[logo-sync] removing stale sync lock lock=${lockFile} pid=${lockInfo.pid ?? "unknown"} age_ms=${lockInfo.ageMs ?? "unknown"}`
+    );
+    fs.unlinkSync(lockFile);
   }
 
   const directory = path.dirname(lockFile);
   fs.mkdirSync(directory, { recursive: true });
   fs.writeFileSync(lockFile, `${new Date().toISOString()} ${process.pid}\n`, "utf8");
   return { path: lockFile, enabled: true };
+}
+
+function readSyncLockInfo(lockFile) {
+  try {
+    const stat = fs.statSync(lockFile);
+    const raw = fs.readFileSync(lockFile, "utf8");
+    const pid = normalizeInteger(raw.match(/\b(\d+)\b/)?.[1]);
+
+    return {
+      pid,
+      ageMs: Math.max(0, Date.now() - stat.mtimeMs),
+    };
+  } catch {
+    return { pid: null, ageMs: null };
+  }
+}
+
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function releaseSyncLock(lockHandle) {
@@ -1035,6 +1080,7 @@ function buildConfig() {
       imageFailedFile,
       logDir,
       lockFile: path.resolve(scriptDir, ".sync-state/products-sync.lock"),
+      lockStaleMs: parseInteger(process.env.SYNC_LOCK_STALE_MS, 10 * 60 * 1000),
       continueOnError: parseBoolean(process.env.SYNC_CONTINUE_ON_ERROR, false),
       disableLock: parseBoolean(process.env.SYNC_DISABLE_LOCK, false),
       imageStats: {
@@ -1802,16 +1848,29 @@ async function fetchStockSnapshotFromSummarySchema(pool, currentConfig, schema, 
   const result = await pool.request().query(
     dateColumn
       ? `
+        WITH LatestStockDate AS (
+          SELECT
+            ${referenceColumn} AS product_ref,
+            ${warehouseColumn ? "COALESCE(" + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
+            MAX(CAST(${dateColumn} AS date)) AS latest_date
+          FROM ${schema.qualifiedName}
+          WHERE ${referenceColumn} IN (${refsSql})
+            AND CAST(${dateColumn} AS date) >= CONVERT(date, '19190519', 112)
+            AND CAST(${dateColumn} AS date) <= CAST(GETDATE() AS date)
+          GROUP BY
+            ${referenceColumn}${warehouseGroupSql}
+        )
         SELECT
-          ${referenceColumn} AS product_ref,
-          ${warehouseColumn ? "COALESCE(" + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
-          SUM(COALESCE(${availableColumn}, 0)) AS available_total,
-          ${reservedSql} AS reserved_total
-        FROM ${schema.qualifiedName}
-        WHERE ${referenceColumn} IN (${refsSql})
-          AND CAST(${dateColumn} AS date) >= CONVERT(date, '19190519', 112)
-          AND CAST(${dateColumn} AS date) <= CAST(GETDATE() AS date)
-        GROUP BY ${referenceColumn}${warehouseGroupSql}
+          s.${referenceColumn} AS product_ref,
+          ${warehouseColumn ? "COALESCE(s." + warehouseColumn + ", -1)" : "-1"} AS warehouse_no,
+          SUM(COALESCE(s.${availableColumn}, 0)) AS available_total,
+          ${reservedColumn ? `SUM(COALESCE(s.${reservedColumn}, 0))` : "0"} AS reserved_total
+        FROM ${schema.qualifiedName} AS s
+        INNER JOIN LatestStockDate AS latest
+          ON latest.product_ref = s.${referenceColumn}
+         AND latest.warehouse_no = ${warehouseColumn ? "COALESCE(s." + warehouseColumn + ", -1)" : "-1"}
+         AND latest.latest_date = CAST(s.${dateColumn} AS date)
+        GROUP BY s.${referenceColumn}${warehouseColumn ? ", COALESCE(s." + warehouseColumn + ", -1)" : ""}
       `
       : `
         SELECT

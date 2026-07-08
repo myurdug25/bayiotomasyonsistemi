@@ -145,6 +145,7 @@ function buildConfig() {
       pendingUrl: pendingUrl ?? "",
       ackUrl: ackUrl ?? "",
       key: syncKey,
+      apiTimeoutMs: parseInteger(process.env.LOGO_API_REQUEST_TIMEOUT_MS, 15000),
       dealerId: parseInteger(process.env.POWERSA_DEALER_ID, undefined),
       dealerCode: nullable(process.env.POWERSA_DEALER_CODE),
       limit: parseInteger(process.env.POWERSA_COLLECTIONS_LIMIT, 100),
@@ -194,6 +195,7 @@ async function fetchPendingCollections(currentConfig) {
       accept: "application/json",
       "x-integration-key": currentConfig.sync.key,
     },
+    signal: AbortSignal.timeout(currentConfig.sync.apiTimeoutMs),
   });
 
   if (!response.ok) {
@@ -325,6 +327,7 @@ async function acknowledgeCollections(currentConfig, records) {
       "x-integration-key": currentConfig.sync.key,
     },
     body: JSON.stringify({ records }),
+    signal: AbortSignal.timeout(currentConfig.sync.apiTimeoutMs),
   });
 
   if (!response.ok) {

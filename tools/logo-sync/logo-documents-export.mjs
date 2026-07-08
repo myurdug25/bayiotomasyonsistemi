@@ -144,6 +144,7 @@ export function buildConfig() {
       dealerCode: nullable(process.env.POWERSA_DEALER_CODE),
       fallbackSyncKey: (process.env.POWERSA_SYNC_KEY ?? "").trim(),
       syncUrl: nullable(process.env.POWERSA_SYNC_URL),
+      apiTimeoutMs: parseInteger(process.env.LOGO_API_REQUEST_TIMEOUT_MS, 15000),
     },
   };
 }
@@ -258,6 +259,7 @@ export function buildSteps(currentConfig) {
     ...step,
     dealerId: currentConfig.common.dealerId,
     dealerCode: currentConfig.common.dealerCode,
+    apiTimeoutMs: currentConfig.common.apiTimeoutMs,
   }));
 }
 
@@ -312,6 +314,7 @@ async function fetchPending(step) {
       accept: "application/json",
       "x-integration-key": step.syncKey,
     },
+    signal: AbortSignal.timeout(step.apiTimeoutMs),
   });
 
   if (!response.ok) {
@@ -498,6 +501,7 @@ async function acknowledge(step, records) {
       "x-integration-key": step.syncKey,
     },
     body: JSON.stringify({ records }),
+    signal: AbortSignal.timeout(step.apiTimeoutMs),
   });
 
   if (!response.ok) {
