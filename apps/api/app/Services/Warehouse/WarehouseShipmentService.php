@@ -1171,7 +1171,60 @@ class WarehouseShipmentService
             ];
         }
 
+        $queuedSyncState = $this->waitForQueuedLogoShipmentSync($freshShipment);
+        if ($queuedSyncState instanceof IntegrationSyncState) {
+            if ($queuedSyncState->status === 'failed') {
+                throw ValidationException::withMessages([
+                    'logo' => ['Logo fatura aktarimi basarisiz: '.($queuedSyncState->last_error ?: 'Bilinmeyen hata')],
+                ]);
+            }
+
+            if ($queuedSyncState->status === 'synced') {
+                $freshState = $this->shipmentState($user, $freshShipment->fresh([
+                    'order.customer',
+                    'warehouse',
+                    'items.product',
+                    'scans.scannedBy',
+                ]));
+
+                return [
+                    ...$freshState,
+                    'message' => 'Sevkiyat finalize edildi ve Logo faturasi aktarildi.',
+                    'gonderilen_tutar' => $freshState['totals']['gonderilen_tutar'],
+                ];
+            }
+        }
+
         return $state;
+    }
+
+    private function waitForQueuedLogoShipmentSync(Shipment $shipment): ?IntegrationSyncState
+    {
+        $waitSeconds = (float) config('integrations.logo.shipments.queued_export_wait_seconds', 0);
+        if ($waitSeconds <= 0) {
+            return null;
+        }
+
+        $deadline = microtime(true) + min($waitSeconds, 20.0);
+        $sleepMicroseconds = 250_000;
+
+        do {
+            $state = IntegrationSyncState::query()
+                ->where('system', 'logo')
+                ->where('domain', 'warehouse-shipments')
+                ->where('direction', 'outbound')
+                ->where('entity_type', Shipment::class)
+                ->where('entity_id', (int) $shipment->getKey())
+                ->first();
+
+            if ($state instanceof IntegrationSyncState && in_array($state->status, ['synced', 'failed'], true)) {
+                return $state;
+            }
+
+            usleep($sleepMicroseconds);
+        } while (microtime(true) < $deadline);
+
+        return null;
     }
 
     /**

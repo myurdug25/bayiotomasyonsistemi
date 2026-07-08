@@ -23,6 +23,7 @@ return [
                 'token' => env('LOGO_SHIPMENT_IMMEDIATE_EXPORT_TOKEN', ''),
                 'timeout' => (float) env('LOGO_SHIPMENT_IMMEDIATE_EXPORT_TIMEOUT', 10.0),
             ],
+            'queued_export_wait_seconds' => (float) env('LOGO_SHIPMENT_QUEUED_EXPORT_WAIT_SECONDS', 0),
         ],
         'purchase_receipt_sync_key' => env('LOGO_PURCHASE_RECEIPT_SYNC_KEY', env('LOGO_SHIPMENT_SYNC_KEY', env('LOGO_ORDER_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', ''))))),
         'return_sync_key' => env('LOGO_RETURN_SYNC_KEY', env('LOGO_ORDER_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', '')))),
