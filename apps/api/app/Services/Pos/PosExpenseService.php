@@ -139,6 +139,7 @@ class PosExpenseService
     private function resolveExpenseDefinition(array $payload): FinanceDefinition
     {
         $category = trim((string) ($payload['category'] ?? ''));
+        $categoryCode = $this->normalizeLegacyPointExpenseCategory($category);
 
         $definition = FinanceDefinition::query()
             ->where('type', 'expense_category')
@@ -151,7 +152,7 @@ class PosExpenseService
                 }
 
                 $query
-                    ->where('code', $category)
+                    ->where('code', $categoryCode)
                     ->orWhere('name', $category);
             })
             ->first();
@@ -161,6 +162,13 @@ class PosExpenseService
         }
 
         return $definition;
+    }
+
+    private function normalizeLegacyPointExpenseCategory(string $category): string
+    {
+        $normalized = mb_strtoupper(trim($category), 'UTF-8');
+
+        return $normalized === 'MASRAF' ? 'marketing' : $category;
     }
 
     /**
