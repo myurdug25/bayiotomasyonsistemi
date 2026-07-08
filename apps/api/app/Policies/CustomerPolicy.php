@@ -20,8 +20,9 @@ class CustomerPolicy
 
     public function viewAny(User $user): bool
     {
-        return $user->hasAnyRole(['dealer_admin', 'salesperson', 'cashier', 'point', 'customer'])
-            || in_array('pos', MenuPermissions::forUser($user), true);
+        return $user->hasAnyRole(['dealer_admin', 'salesperson', 'cashier', 'point', 'customer', 'warehouse'])
+            || in_array('pos', MenuPermissions::forUser($user), true)
+            || in_array('customers', MenuPermissions::forUser($user), true);
     }
 
     public function view(User $user, Customer $customer): bool

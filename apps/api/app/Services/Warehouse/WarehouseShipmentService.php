@@ -305,10 +305,10 @@ class WarehouseShipmentService
 
         $choices = [
             ['code' => '0', 'name' => 'ERZURUM POINT', 'needles' => ['ERZURUMPOINT', 'ERZPOINT']],
-            ['code' => '1', 'name' => 'ERZURUM DEPO', 'needles' => ['ERZURUMDEPO', 'ERZDEPO']],
-            ['code' => '2', 'name' => 'TRABZON DEPO', 'needles' => ['TRABZONDEPO']],
-            ['code' => '3', 'name' => 'SAMSUN DEPO', 'needles' => ['SAMSUNDEPO']],
-            ['code' => '4', 'name' => 'BATUM DEPO', 'needles' => ['BATUMDEPO']],
+            ['code' => '1', 'name' => 'ERZURUM DEPO', 'needles' => ['ERZURUMDEPO', 'ERZDEPO', 'ERZURUMMERKEZ']],
+            ['code' => '2', 'name' => 'TRABZON DEPO', 'needles' => ['TRABZONDEPO', 'TRABZONMERKEZ', 'TRABZON']],
+            ['code' => '3', 'name' => 'SAMSUN DEPO', 'needles' => ['SAMSUNDEPO', 'SAMSUNMERKEZ', 'SAMSUN']],
+            ['code' => '4', 'name' => 'BATUM DEPO', 'needles' => ['BATUMDEPO', 'BATUMMERKEZ', 'BATUM']],
         ];
 
         foreach ($choices as $choice) {
