@@ -86,7 +86,18 @@ class OperationalUsersCommandTest extends TestCase
         $this->assertSame(MenuPermissions::fromRoles(['salesperson']), $salespersonUser->menu_permissions);
         $this->assertSame('assigned', $salespersonUser->customer_scope);
         $this->assertSame('ERZURUM', $salespersonUser->branch_code);
-        $this->assertSame('A,D', $salespersonUser->logo_customer_specode4);
+        $this->assertSame('A', $salespersonUser->logo_customer_specode4);
+
+        $this->assertSame('C', User::query()->where('username', 'mehmet.aksoy')->value('logo_customer_specode4'));
+        $this->assertSame('B', User::query()->where('username', 'huseyin.ozguney')->value('logo_customer_specode4'));
+        $this->assertSame('D', User::query()->where('username', 'erzurum.merkez')->value('logo_customer_specode4'));
+        $this->assertSame('E', User::query()->where('username', 'emre.kalayci')->value('logo_customer_specode4'));
+        $this->assertSame('F', User::query()->where('username', 'ahmet.cantufekci')->value('logo_customer_specode4'));
+        $this->assertSame('I', User::query()->where('username', 'samet.gorpuz')->value('logo_customer_specode4'));
+        $this->assertSame('G', User::query()->where('username', 'adem.canbakis')->value('logo_customer_specode4'));
+        $this->assertSame('J', User::query()->where('username', 'samsun.point')->value('logo_customer_specode4'));
+        $this->assertSame('L', User::query()->where('username', 'trabzon.point')->value('logo_customer_specode4'));
+        $this->assertSame('E,F,I,G,J,L', User::query()->where('username', 'turgay.buyukkal')->value('logo_customer_specode4'));
 
         $pointAliasUser = User::query()
             ->where('username', 'erzurum.hizlisatis')
@@ -105,6 +116,7 @@ class OperationalUsersCommandTest extends TestCase
         $this->assertTrue($managerUser->roles->contains('slug', 'admin'));
         $this->assertSame(MenuPermissions::keys(), $managerUser->menu_permissions);
         $this->assertNull($managerUser->dealer_id);
+        $this->assertSame('A,B,C,D', $managerUser->logo_customer_specode4);
 
         $warehouseAliasUser = User::query()
             ->where('username', 'erz.depo')
@@ -112,7 +124,7 @@ class OperationalUsersCommandTest extends TestCase
             ->firstOrFail();
 
         $this->assertTrue($warehouseAliasUser->roles->contains('slug', 'warehouse'));
-        $this->assertSame('branch', $warehouseAliasUser->customer_scope);
+        $this->assertSame('dealer', $warehouseAliasUser->customer_scope);
         $this->assertSame('ERZURUM', $warehouseAliasUser->branch_code);
 
         $batumUser = User::query()
@@ -124,6 +136,7 @@ class OperationalUsersCommandTest extends TestCase
         $this->assertTrue($batumUser->roles->contains('slug', 'point'));
         $this->assertSame(MenuPermissions::fromRoles(['dealer_admin', 'point']), $batumUser->menu_permissions);
         $this->assertSame('BATUM', $batumUser->branch_code);
+        $this->assertSame('K', $batumUser->logo_customer_specode4);
 
         $warehouseUser = User::query()
             ->where('username', 'depo')
@@ -139,7 +152,7 @@ class OperationalUsersCommandTest extends TestCase
             ->firstOrFail();
 
         $this->assertTrue($cashierUser->roles->contains('slug', 'cashier'));
-        $this->assertSame(['pos', 'delivery-notes'], $cashierUser->menu_permissions);
+        $this->assertSame(MenuPermissions::fromRoles(['cashier']), $cashierUser->menu_permissions);
     }
 
     public function test_operational_user_sync_accepts_per_user_password_map(): void

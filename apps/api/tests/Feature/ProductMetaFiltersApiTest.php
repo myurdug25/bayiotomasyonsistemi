@@ -643,6 +643,72 @@ class ProductMetaFiltersApiTest extends TestCase
         $response->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B1.3');
     }
 
+    public function test_batum_user_sees_batum_logo_warehouse_stock(): void
+    {
+        $context = $this->createSalesContext();
+        $product = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'STOCK-BATUM-001',
+            name: 'Batum Stock Product',
+            stock: 17,
+            listPrice: 210.00,
+            meta: [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'logo_stock' => [
+                                'warehouses' => [
+                                    [
+                                        'warehouse_code' => '1',
+                                        'warehouse_name' => 'ERZURUM DEPO',
+                                        'available_total' => 8,
+                                    ],
+                                    [
+                                        'warehouse_code' => '4',
+                                        'warehouse_name' => 'BATUM DEPO',
+                                        'available_total' => 6,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]
+        );
+
+        $pointRole = Role::query()->firstOrCreate(
+            ['slug' => 'point'],
+            ['name' => 'Point']
+        );
+        $batumUser = User::factory()->create([
+            'username' => 'batum',
+            'dealer_id' => $context['dealer']->id,
+            'is_active' => true,
+            'branch_code' => 'BATUM',
+            'branch_name' => 'Batum',
+            'menu_permissions' => ['search'],
+            'feature_permissions' => [
+                'search.stock',
+                'search.stock.warehouse.erzurum_depo',
+            ],
+        ]);
+        $batumUser->roles()->sync([$pointRole->id]);
+
+        $this->actingAs($batumUser);
+
+        $response = $this->getJson('/api/products/search?limit=20&sort=stock_desc&q=STOCK-BATUM-001');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $product->id);
+        $response->assertJsonPath('data.0.available_total', 6);
+        $response->assertJsonCount(1, 'data.0.stock_locations');
+        $response->assertJsonPath('data.0.stock_locations.0.warehouse_code', '4');
+        $response->assertJsonPath('data.0.stock_locations.0.branch', 'BATUM DEPO');
+        $response->assertJsonPath('data.0.stock_locations.0.stock', 6);
+    }
+
     public function test_salesperson_with_selected_customer_sees_only_customer_branch_stock(): void
     {
         $context = $this->createSalesContext();

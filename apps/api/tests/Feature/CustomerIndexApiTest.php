@@ -780,12 +780,35 @@ class CustomerIndexApiTest extends TestCase
             'is_active' => true,
         ]);
 
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'b2b',
+            'code' => 'LOCAL-UNASSIGNED',
+            'name' => 'Local Unassigned',
+            'salesperson_user_id' => null,
+            'branch_code' => 'ERZURUM',
+            'is_active' => true,
+        ]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'b2b',
+            'code' => 'LOCAL-ASSIGNED',
+            'name' => 'Local Assigned',
+            'salesperson_user_id' => $user->id,
+            'branch_code' => 'ERZURUM',
+            'is_active' => true,
+        ]);
+
         $this->actingAs($user);
 
         $this->getJson('/api/pos/customers?limit=50')
             ->assertOk()
             ->assertJsonPath('total_count', 1)
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.code', 'POINT-D');
+            ->assertJsonFragment(['code' => 'POINT-D'])
+            ->assertJsonMissing(['code' => 'LOCAL-UNASSIGNED'])
+            ->assertJsonMissing(['code' => 'LOCAL-ASSIGNED'])
+            ->assertJsonMissing(['code' => 'POINT-K']);
     }
 }

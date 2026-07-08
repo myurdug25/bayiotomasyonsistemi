@@ -38,22 +38,23 @@ final class OperationalUserRoster
             self::branchDealerAdmin('satinalma', 'SATINALMA', 'ERZURUM', 'Erzurum'),
             self::branchDealerAdmin('satis', 'SATIŞ', 'ERZURUM', 'Erzurum'),
 
-            self::salesperson('emre.kalayci', 'EMRE KALAYCI', 'TRABZON', 'Trabzon'),
-            self::salesperson('ahmet.cantufekci', 'AHMET CANTÜFEKCİ', 'TRABZON', 'Trabzon'),
+            self::salesperson('emre.kalayci', 'EMRE KALAYCI', 'TRABZON', 'Trabzon', 'E'),
+            self::salesperson('ahmet.cantufekci', 'AHMET CANTÜFEKCİ', 'TRABZON', 'Trabzon', 'F'),
             self::salesperson('trabzon.merkez', 'TRABZON MERKEZ', 'TRABZON', 'Trabzon'),
 
-            self::salesperson('samet.gorpuz', 'SAMET GÖRPÜZ', 'SAMSUN', 'Samsun'),
-            self::salesperson('adem.canbakis', 'ADEM CANBAKIŞ', 'SAMSUN', 'Samsun'),
+            self::salesperson('samet.gorpuz', 'SAMET GÖRPÜZ', 'SAMSUN', 'Samsun', 'I'),
+            self::salesperson('adem.canbakis', 'ADEM CANBAKIŞ', 'SAMSUN', 'Samsun', 'G'),
             self::salesperson('samsun.merkez', 'SAMSUN MERKEZ', 'SAMSUN', 'Samsun'),
 
             self::point('erzurum.point', 'ERZURUM POINT HIZLI SATIŞ', 'ERZURUM', 'Erzurum'),
             self::point('erzurum.hizlisatis', 'ERZURUM HIZLI SATIŞ', 'ERZURUM', 'Erzurum', 'dealer', 'D'),
-            self::point('trabzon.point', 'TRABZON POINT HIZLI SATIŞ', 'TRABZON', 'Trabzon'),
-            self::point('samsun.point', 'SAMSUN POINT HIZLI SATIŞ', 'SAMSUN', 'Samsun'),
-            self::b2bPoint('batum', 'BATUM B2B VE HIZLI SATIŞ', 'BATUM', 'Batum'),
+            self::point('trabzon.point', 'TRABZON POINT HIZLI SATIŞ', 'TRABZON', 'Trabzon', 'branch', 'L'),
+            self::point('samsun.point', 'SAMSUN POINT HIZLI SATIŞ', 'SAMSUN', 'Samsun', 'branch', 'J'),
+            self::b2bPoint('batum', 'BATUM B2B VE HIZLI SATIŞ', 'BATUM', 'Batum', 'K'),
 
             self::salesperson('mehmet.atacan', 'MEHMET ATACAN', 'BATUM', 'Batum'),
-            self::salesperson('tugay.buyukkal', 'TUGAY BÜYÜKKAL', 'BATUM', 'Batum'),
+            self::salesperson('tugay.buyukkal', 'TUGAY BÜYÜKKAL', 'BATUM', 'Batum', 'E,F,I,G,J,L'),
+            self::salesperson('turgay.buyukkal', 'TURGAY BÜYÜKKAL', 'BATUM', 'Batum', 'E,F,I,G,J,L'),
 
             self::dealerAdmin('ornek.musteri', 'Ornek Musteri'),
             self::dealerAdmin('bayi.admin', 'Bayi Yöneticisi'),
@@ -144,7 +145,13 @@ final class OperationalUserRoster
     /**
      * @return array<string, mixed>
      */
-    private static function b2bPoint(string $username, string $name, ?string $branchCode, ?string $branchName): array
+    private static function b2bPoint(
+        string $username,
+        string $name,
+        ?string $branchCode,
+        ?string $branchName,
+        ?string $logoCustomerSpecode4 = null
+    ): array
     {
         return self::definition(
             $username,
@@ -156,7 +163,8 @@ final class OperationalUserRoster
             ]),
             $branchCode,
             $branchName,
-            'branch'
+            'branch',
+            $logoCustomerSpecode4
         );
     }
 

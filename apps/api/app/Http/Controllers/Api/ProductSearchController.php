@@ -1871,6 +1871,9 @@ class ProductSearchController extends Controller
             'MEHMET.AKSOY' => [
                 'search.stock.warehouse.erzurum_depo',
             ],
+            'BATUM' => [
+                'search.stock.warehouse.batum',
+            ],
             default => [],
         };
 
