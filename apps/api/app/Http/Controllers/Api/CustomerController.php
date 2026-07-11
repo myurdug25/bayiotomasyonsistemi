@@ -10,6 +10,7 @@ use App\Http\Resources\CustomerResource;
 use App\Http\Resources\CustomerSelectionResource;
 use App\Models\Customer;
 use App\Models\LedgerEntry;
+use App\Models\Order;
 use App\Models\User;
 use App\Services\Customers\CustomerAccessScopeService;
 use App\Services\Integrations\Logo\LogoWritePublisher;
@@ -67,9 +68,13 @@ class CustomerController extends Controller
 
         if ($request->has('has_cart')) {
             if ($request->boolean('has_cart')) {
-                $baseQuery->whereHas('carts', fn ($q) => $q->where('status', 'draft'));
+                $baseQuery->whereHas('carts', fn ($q) => $q
+                    ->where('status', 'draft')
+                    ->whereHas('items'));
             } else {
-                $baseQuery->whereDoesntHave('carts', fn ($q) => $q->where('status', 'draft'));
+                $baseQuery->whereDoesntHave('carts', fn ($q) => $q
+                    ->where('status', 'draft')
+                    ->whereHas('items'));
             }
         }
 
@@ -83,9 +88,9 @@ class CustomerController extends Controller
 
         if ($request->has('has_order_balance')) {
             if ($request->boolean('has_order_balance')) {
-                $baseQuery->whereIn('customers.id', $this->balanceDueCustomerIdsSubquery(true, true));
+                $baseQuery->whereIn('customers.id', $this->orderBalanceCustomerIdsSubquery());
             } else {
-                $baseQuery->whereNotIn('customers.id', $this->balanceDueCustomerIdsSubquery(true, true));
+                $baseQuery->whereNotIn('customers.id', $this->orderBalanceCustomerIdsSubquery());
             }
         }
 
@@ -125,7 +130,9 @@ class CustomerController extends Controller
                 ->selectSub($this->balanceDueSubquery(), 'total_balance_due')
                 ->selectSub($this->orderBalanceDueSubquery(), 'order_balance_due')
                 ->withExists([
-                    'carts as has_draft_cart' => fn ($q) => $q->where('status', 'draft'),
+                    'carts as has_draft_cart' => fn ($q) => $q
+                        ->where('status', 'draft')
+                        ->whereHas('items'),
                 ]);
         } else {
             $query
@@ -133,7 +140,9 @@ class CustomerController extends Controller
                 ->selectSub($this->balanceDueSubquery(), 'total_balance_due')
                 ->selectSub($this->orderBalanceDueSubquery(), 'order_balance_due')
                 ->withExists([
-                    'carts as has_draft_cart' => fn ($q) => $q->where('status', 'draft'),
+                    'carts as has_draft_cart' => fn ($q) => $q
+                        ->where('status', 'draft')
+                        ->whereHas('items'),
                 ]);
         }
 
@@ -290,6 +299,16 @@ class CustomerController extends Controller
         }
 
         return $query;
+    }
+
+    private function orderBalanceCustomerIdsSubquery()
+    {
+        return Order::query()
+            ->select('customer_id')
+            ->whereNotNull('customer_id')
+            ->whereIn('status', ['balance', 'partially_shipped'])
+            ->whereHas('items', fn ($query) => $query->whereColumn('order_items.shipped_qty', '<', 'order_items.quantity'))
+            ->groupBy('customer_id');
     }
 
     private function validatedSalesperson(?int $dealerId, ?int $salespersonUserId): ?User

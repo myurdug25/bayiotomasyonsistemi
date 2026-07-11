@@ -7,6 +7,7 @@ use App\Http\Requests\Customer\CustomerLedgerIndexRequest;
 use App\Http\Resources\LedgerEntryResource;
 use App\Models\Customer;
 use App\Models\LedgerEntry;
+use App\Models\Order;
 use App\Models\User;
 use App\Support\Pricing\DisplayCurrency;
 use Illuminate\Support\Collection;
@@ -27,6 +28,8 @@ class CustomerLedgerController extends Controller
             static fn ($type): bool => is_string($type) && $type !== ''
         ));
 
+        $this->ensureOpenOrderLedgerRows($customer);
+
         $baseQuery = $this->ledgerQuery(
             customer: $customer,
             dateFrom: $dateFrom,
@@ -38,7 +41,11 @@ class CustomerLedgerController extends Controller
         $summary = $this->ledgerSummary(clone $baseQuery, $request->user());
 
         $entries = (clone $baseQuery)
-            ->with('collection')
+            ->with([
+                'collection',
+                'order:id,order_no,cart_id',
+                'order.cart:id,shipping_method',
+            ])
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->paginate($perPage)
@@ -69,7 +76,9 @@ class CustomerLedgerController extends Controller
             )
             ->when(
                 ! empty($type),
-                fn ($q) => $q->where('type', $type)
+                fn ($q) => $type === 'order'
+                    ? $q->where('meta->source', 'order_visibility')
+                    : $q->where('type', $type)
             )
             ->when(
                 ! empty($collectionMethod),
@@ -113,6 +122,68 @@ class CustomerLedgerController extends Controller
                 }
 
                 $collectionQuery->where('method', $method);
+            });
+    }
+
+    private function ensureOpenOrderLedgerRows(Customer $customer): void
+    {
+        Order::query()
+            ->where('customer_id', $customer->id)
+            ->whereIn('status', ['approved', 'partially_shipped', 'picking', 'packed'])
+            ->whereDoesntHave('ledgerEntries', function ($query): void {
+                $query->where('meta->source', 'order_visibility');
+            })
+            ->whereDoesntHave('ledgerEntries', function ($query): void {
+                $query->where('type', 'invoice');
+            })
+            ->select([
+                'id',
+                'dealer_id',
+                'customer_id',
+                'user_id',
+                'order_no',
+                'currency',
+                'grand_total',
+                'ordered_at',
+                'approved_at',
+                'created_at',
+            ])
+            ->orderBy('id')
+            ->chunkById(100, function ($orders): void {
+                foreach ($orders as $order) {
+                    $date = optional($order->approved_at ?? $order->ordered_at ?? $order->created_at)?->toDateString()
+                        ?? now()->toDateString();
+
+                    LedgerEntry::query()->updateOrCreate(
+                        [
+                            'order_id' => $order->id,
+                            'type' => 'debit',
+                            'source_system' => 'b2b',
+                            'source_reference' => $order->order_no,
+                        ],
+                        [
+                            'dealer_id' => $order->dealer_id,
+                            'customer_id' => $order->customer_id,
+                            'date' => $date,
+                            'debit' => number_format((float) $order->grand_total, 2, '.', ''),
+                            'credit' => 0,
+                            'balance_after' => 0,
+                            'entry_date' => $date,
+                            'entry_type' => 'debit',
+                            'amount' => number_format((float) $order->grand_total, 2, '.', ''),
+                            'currency' => $order->currency ?: 'TRY',
+                            'reference_no' => $order->order_no,
+                            'description' => 'Onaylı / bakiye sipariş '.$order->order_no,
+                            'created_by_user_id' => $order->user_id,
+                            'meta' => [
+                                'source' => 'order_visibility',
+                                'source_label' => 'Sipariş',
+                                'order_no' => $order->order_no,
+                                'order_total' => number_format((float) $order->grand_total, 2, '.', ''),
+                            ],
+                        ]
+                    );
+                }
             });
     }
 

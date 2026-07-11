@@ -41,6 +41,10 @@ function formatLedgerDate(value: string): string {
 }
 
 function getLedgerTypeMeta(type: LedgerEntryDto["type"]): { label: string; className: string } {
+  if (type === "order") {
+    return { label: "Sipariş", className: "border-cyan-300/40 bg-cyan-400/15 text-cyan-100" };
+  }
+
   if (type === "invoice") {
     return { label: "Fatura", className: "border-amber-400/40 bg-amber-500/15 text-amber-200" };
   }
@@ -81,6 +85,7 @@ const COLLECTION_METHOD_FILTERS: Array<{ value: CollectionMethodFilter; label: s
 ];
 
 const LEDGER_TYPE_FILTERS: Array<{ value: LedgerEntryType; label: string; className: string }> = [
+  { value: "order", label: "Sipariş", className: "border-cyan-300/40 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/16" },
   { value: "invoice", label: "Fatura", className: "border-amber-300/40 bg-amber-400/10 text-amber-100 hover:bg-amber-400/16" },
   { value: "payment", label: "Tahsilat", className: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/16" },
   { value: "credit", label: "Alacak", className: "border-blue-300/40 bg-blue-400/10 text-blue-100 hover:bg-blue-400/16" },
@@ -105,41 +110,59 @@ function formatAmount(value: string | number, currency: string): string {
   })} ${label}`;
 }
 
-function formatSyncDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return "-";
+function salesPriceTypeLabel(row: LedgerEntryDto | OrderDetailResponse["order"] | null | undefined): string | null {
+  const origin = row && "origin" in row ? row.origin : null;
+  const rawLabel = row && "sales_price_type_label" in row ? row.sales_price_type_label : origin?.sales_price_type;
+  const rawValue = row && "sales_price_type" in row ? row.sales_price_type : origin?.sales_price_type;
+  const value = String(rawLabel ?? rawValue ?? "").trim();
+  const normalized = value.toLocaleLowerCase("tr-TR");
+
+  if (!normalized) {
+    return null;
   }
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
+  if (["bank_transfer", "transfer", "havale", "havale/eft", "havale / eft"].includes(normalized)) {
+    return "Havale / EFT";
   }
 
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(parsed);
+  if (["cash", "nakit"].includes(normalized)) {
+    return "Nakit";
+  }
+
+  if (["single_payment", "tek çekim", "tek cekim"].includes(normalized)) {
+    return "Tek Çekim";
+  }
+
+  return value;
 }
 
-function getSourceMeta(sourceSystem: string | null | undefined): { label: string; className: string } {
-  if (sourceSystem === "logo") {
-    return {
-      label: "Logo",
-      className: "border-sky-300/45 bg-sky-400/14 text-sky-100",
-    };
+function shippingMethodLabel(row: LedgerEntryDto | OrderDetailResponse["order"] | null | undefined): string | null {
+  const rawValue =
+    row && "shipping_method_label" in row
+      ? row.shipping_method_label ?? row.shipping_method
+      : row && "origin" in row
+        ? row.origin?.shipping_method
+        : null;
+  const value = String(rawValue ?? "").trim();
+  const normalized = value.toLocaleUpperCase("tr-TR");
+
+  if (!normalized) {
+    return null;
   }
 
-  if (sourceSystem === "b2b") {
-    return {
-      label: "B2B",
-      className: "border-emerald-300/45 bg-emerald-400/14 text-emerald-100",
-    };
+  if (normalized.includes("KARGO") || normalized.includes("CARGO")) {
+    return "KARGO";
   }
 
-  return {
-    label: "Yerel",
-    className: "border-[var(--brand-border)] bg-[var(--surface-soft)] text-[var(--muted-foreground)]",
-  };
+  if (normalized.includes("OTOB")) {
+    return "OTOBÜS";
+  }
+
+  if (normalized.includes("DEPO")) {
+    return "DEPOYA SEVK";
+  }
+
+  return value;
 }
 
 export function LedgerPage() {
@@ -194,16 +217,17 @@ export function LedgerPage() {
   };
 
   const openOrderDetail = (row: LedgerEntryDto) => {
-    if (!row.order_id) {
-      return;
-    }
-
     setDetailOpen(true);
-    setDetailLoading(true);
     setDetailError(null);
     setDetailPayload(null);
     setDetailLedgerRow(row);
 
+    if (!row.order_id) {
+      setDetailLoading(false);
+      return;
+    }
+
+    setDetailLoading(true);
     void getOrderDetail(row.order_id)
       .then((response) => setDetailPayload(response))
       .catch((err) => setDetailError(err instanceof Error ? err.message : "Sipariş detayı alınamadı"))
@@ -247,7 +271,7 @@ export function LedgerPage() {
     <div className="space-y-3">
       <Card className="dashboard-panel-card md:sticky md:top-24 md:z-20">
         <CardContent className="p-3">
-          <div className="grid gap-3 xl:grid-cols-[minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(300px,1.35fr)_minmax(360px,1.65fr)_auto_auto] xl:items-end">
+          <div className="grid gap-2 xl:grid-cols-[130px_130px_auto_auto_86px_auto] xl:items-end">
             <div>
               <label className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                 <CalendarDays className="h-3.5 w-3.5" />
@@ -258,7 +282,7 @@ export function LedgerPage() {
                 value={dateFrom}
                 disabled={loading || !selectedCustomer}
                 onChange={(event) => setDateFrom(event.target.value)}
-                className="h-12"
+                className="h-10"
               />
             </div>
             <div>
@@ -271,22 +295,22 @@ export function LedgerPage() {
                 value={dateTo}
                 disabled={loading || !selectedCustomer}
                 onChange={(event) => setDateTo(event.target.value)}
-                className="h-12"
+                className="h-10"
               />
             </div>
             <div>
               <label className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                 Hareket Tipi
               </label>
-              <div className="flex min-h-12 flex-wrap items-center gap-2 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface)] px-2 py-1.5">
+              <div className="inline-flex min-h-10 w-fit max-w-full flex-nowrap items-center gap-1 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface)] px-1.5 py-1.5">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className={
                     ledgerTypeFilter === ""
-                      ? "h-8 border-white/70 bg-white/18 px-3 text-xs text-white"
-                      : "h-8 border-white/15 bg-white/[0.04] px-3 text-xs text-slate-200 hover:bg-white/[0.08] hover:text-white"
+                      ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[11px] text-white"
+                      : "h-7 shrink-0 whitespace-nowrap border-white/15 bg-white/[0.04] px-2 text-[11px] text-slate-200 hover:bg-white/[0.08] hover:text-white"
                   }
                   disabled={loading || !selectedCustomer}
                   onClick={() => {
@@ -304,7 +328,7 @@ export function LedgerPage() {
                       key={option.value}
                       size="sm"
                       variant="outline"
-                      className={selected ? "h-8 border-white/70 bg-white/18 px-3 text-xs text-white" : `h-8 px-3 text-xs ${option.className}`}
+                      className={selected ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[11px] text-white" : `h-7 shrink-0 whitespace-nowrap px-2 text-[11px] ${option.className}`}
                       disabled={loading || !selectedCustomer}
                       onClick={() => {
                         const nextType = selected ? "" : option.value;
@@ -322,15 +346,15 @@ export function LedgerPage() {
               <label className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                 Tahsilat Filtresi
               </label>
-              <div className="flex min-h-12 flex-wrap items-center gap-2 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface)] px-2 py-1.5">
+              <div className="inline-flex min-h-10 w-fit max-w-full flex-nowrap items-center gap-1 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface)] px-1.5 py-1.5">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className={
                     collectionMethodFilter === ""
-                      ? "h-8 border-white/70 bg-white/18 px-3 text-xs text-white"
-                      : "h-8 border-white/15 bg-white/[0.04] px-3 text-xs text-slate-200 hover:bg-white/[0.08] hover:text-white"
+                      ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[11px] text-white"
+                      : "h-7 shrink-0 whitespace-nowrap border-white/15 bg-white/[0.04] px-2 text-[11px] text-slate-200 hover:bg-white/[0.08] hover:text-white"
                   }
                   disabled={loading || !selectedCustomer}
                   onClick={() => {
@@ -348,7 +372,7 @@ export function LedgerPage() {
                       key={option.value}
                       size="sm"
                       variant="outline"
-                      className={selected ? "h-8 border-white/70 bg-white/18 px-3 text-xs text-white" : `h-8 px-3 text-xs ${option.className}`}
+                      className={selected ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[11px] text-white" : `h-7 shrink-0 whitespace-nowrap px-2 text-[11px] ${option.className}`}
                       disabled={loading || !selectedCustomer}
                       onClick={() => {
                         const nextMethod = selected ? "" : option.value;
@@ -362,14 +386,14 @@ export function LedgerPage() {
                 })}
               </div>
             </div>
-            <Button className="h-12 rounded-[12px]" onClick={() => fetchLedger(1)} disabled={loading || !selectedCustomer}>
+            <Button className="h-10 rounded-[12px] px-2 text-xs" onClick={() => fetchLedger(1)} disabled={loading || !selectedCustomer}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
               {loading ? "Yükleniyor..." : "Yenile"}
             </Button>
             {hasActiveFilters ? (
               <Button
                 variant="outline"
-                className="h-12 rounded-[12px]"
+                className="h-10 rounded-[12px] px-2 text-xs"
                 disabled={loading}
                 onClick={() => {
                   setDateFrom("");
@@ -452,7 +476,7 @@ export function LedgerPage() {
                   {displayRows.map((row) => (
                     <tr key={row.id} className="border-b border-[var(--brand-border)]/60 transition-colors hover:bg-[var(--surface-soft)]/70">
                       <td className="px-2 py-2.5 text-center">
-                        {row.order_id ? (
+                        {row.order_id || row.transaction_type === "invoice" || row.type === "debit" ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -481,19 +505,6 @@ export function LedgerPage() {
                               {row.collection_method_label}
                             </span>
                           ) : null}
-                          <Badge
-                            variant="outline"
-                            className={`h-5 px-1.5 text-[10px] font-black ${getSourceMeta(row.source_system).className}`}
-                            title={
-                              row.source_system === "logo"
-                                ? `Logo ref: ${row.source_reference ?? "-"} · Sync: ${formatSyncDateTime(row.last_synced_at)}`
-                                : row.source_system === "b2b"
-                                  ? "B2B kaynaklı hareket"
-                                  : "Yerel hareket"
-                            }
-                          >
-                            {getSourceMeta(row.source_system).label}
-                          </Badge>
                         </div>
                       </td>
                       <td className="px-2 py-2.5">
@@ -507,7 +518,25 @@ export function LedgerPage() {
                             className={`mt-1 h-5 px-1.5 text-[10px] font-black ${getCheckoutSummaryClass(row.checkout_summary.code)}`}
                             title={row.checkout_summary.label}
                           >
-                            {row.checkout_summary.code}
+                            {row.checkout_summary.label}
+                          </Badge>
+                        ) : null}
+                        {salesPriceTypeLabel(row) ? (
+                          <Badge
+                            variant="outline"
+                            className="ml-1 mt-1 h-5 border-sky-300/45 bg-sky-400/14 px-1.5 text-[10px] font-black text-sky-100"
+                            title="Fiyat tipi"
+                          >
+                            {salesPriceTypeLabel(row)}
+                          </Badge>
+                        ) : null}
+                        {shippingMethodLabel(row) ? (
+                          <Badge
+                            variant="outline"
+                            className="ml-1 mt-1 h-5 border-rose-200/60 bg-rose-100 px-1.5 text-[10px] font-black text-rose-800"
+                            title="Gönderim şekli"
+                          >
+                            {shippingMethodLabel(row)}
                           </Badge>
                         ) : null}
                       </td>
@@ -563,17 +592,21 @@ export function LedgerPage() {
       </Card>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-h-[calc(100vh-44px)] max-w-[min(1040px,calc(100vw-32px))] overflow-y-auto rounded-[26px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_58%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)]">
-          <DialogHeader className="mb-0 border-b border-white/10 px-6 py-5 pr-12">
-            <DialogTitle className="text-2xl font-black tracking-tight text-white">
-              {detailPayload?.order.order_no ? `Cari Hareket Detayı · ${detailPayload.order.order_no}` : "Cari Hareket Detayı"}
+        <DialogContent className="max-h-[calc(100vh-44px)] max-w-[min(1040px,calc(100vw-32px))] overflow-y-auto rounded-[22px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_58%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)]">
+          <DialogHeader className="mb-0 border-b border-white/10 px-5 py-3 pr-12">
+            <DialogTitle className="text-xl font-black tracking-tight text-white">
+              {detailPayload?.order.order_no
+                ? `Cari Hareket Detayı · ${detailPayload.order.order_no}`
+                : detailLedgerRow?.document_no || detailLedgerRow?.reference_no
+                  ? `Cari Hareket Detayı · ${detailLedgerRow.document_no || detailLedgerRow.reference_no}`
+                  : "Cari Hareket Detayı"}
             </DialogTitle>
-            <DialogDescription className="text-base font-semibold text-slate-400">
+            <DialogDescription className="text-sm font-semibold text-slate-400">
               Sipariş kalemleri, satış tipi, tutar ve müşteri bilgileri.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-6">
+          <div className="p-4">
             {detailLoading ? (
               <div className="space-y-3">
                 {Array.from({ length: 5 }).map((_, index) => (
@@ -585,45 +618,47 @@ export function LedgerPage() {
                 {detailError}
               </div>
             ) : detailPayload ? (
-              <div className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-4">
-                  <div className="rounded-[16px] border border-white/10 bg-white/6 p-4">
+              <div className="space-y-3">
+                <div className="grid gap-2 md:grid-cols-[1.15fr_.85fr_.85fr_1fr]">
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Müşteri</p>
-                    <p className="mt-2 line-clamp-2 text-lg font-black text-white">{detailPayload.order.customer?.title ?? selectedCustomer?.title ?? "-"}</p>
+                    <p className="mt-1 line-clamp-1 text-sm font-black text-white">{detailPayload.order.customer?.title ?? selectedCustomer?.title ?? "-"}</p>
                     <p className="mt-1 text-sm font-bold text-slate-400">{detailPayload.order.customer?.code ?? selectedCustomer?.code ?? "-"}</p>
                   </div>
-                  <div className="rounded-[16px] border border-white/10 bg-white/6 p-4">
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Satış Tipi</p>
-                    <div className="mt-3">
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {salesPriceTypeLabel(detailPayload.order) ? (
+                        <Badge variant="outline" className="h-7 border-sky-300/45 bg-sky-400/14 px-2 text-xs font-black text-sky-100">
+                          {salesPriceTypeLabel(detailPayload.order)}
+                        </Badge>
+                      ) : null}
                       {detailSummary ? (
-                        <Badge variant="outline" className={`h-8 px-3 text-sm font-black ${getCheckoutSummaryClass(detailSummary.code)}`}>
+                        <Badge variant="outline" className={`h-7 px-2 text-xs font-black ${getCheckoutSummaryClass(detailSummary.code)}`}>
                           {detailSummary.label}
                         </Badge>
-                      ) : (
-                        <p className="text-lg font-black text-white">-</p>
-                      )}
+                      ) : null}
+                      {shippingMethodLabel(detailPayload.order) ? (
+                        <Badge variant="outline" className="h-7 border-rose-200/60 bg-rose-100 px-2 text-xs font-black text-rose-800">
+                          {shippingMethodLabel(detailPayload.order)}
+                        </Badge>
+                      ) : null}
+                      {!salesPriceTypeLabel(detailPayload.order) && !detailSummary && !shippingMethodLabel(detailPayload.order) ? <p className="text-base font-black text-white">-</p> : null}
                     </div>
                   </div>
-                  <div className="rounded-[16px] border border-white/10 bg-white/6 p-4">
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Kalem / Adet</p>
-                    <p className="mt-2 text-lg font-black text-white">
+                    <p className="mt-1 text-base font-black text-white">
                       {detailPayload.order.items.length} kalem · {detailPayload.order.items.reduce((sum, item) => sum + item.quantity, 0)} adet
                     </p>
                   </div>
-                  <div className="rounded-[16px] border border-emerald-300/20 bg-emerald-400/10 p-4">
+                  <div className="rounded-[12px] border border-emerald-300/20 bg-emerald-400/10 p-2.5">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-100/70">Genel Toplam</p>
-                    <p className="mt-2 text-2xl font-black text-emerald-200">{formatAmount(detailPayload.order.grand_total, detailPayload.order.currency)}</p>
+                    <p className="mt-1 text-xl font-black text-emerald-200">{formatAmount(detailPayload.order.grand_total, detailPayload.order.currency)}</p>
                   </div>
                 </div>
 
-                {detailPayload.order.note ? (
-                  <div className="rounded-[16px] border border-cyan-200/18 bg-cyan-400/8 p-4">
-                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-cyan-100/70">Sipariş Notu</p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-cyan-50/86">{detailPayload.order.note}</p>
-                  </div>
-                ) : null}
-
-                <div className="overflow-x-auto rounded-[18px] border border-white/10">
+                <div className="overflow-x-auto rounded-[18px] border border-emerald-300/18 shadow-[0_18px_45px_rgba(0,0,0,0.2)]">
                   <table className="w-full min-w-[860px] text-left text-sm">
                     <thead className="bg-white/8 text-[12px] uppercase tracking-[0.06em] text-slate-400">
                       <tr>
@@ -662,6 +697,60 @@ export function LedgerPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+
+                {detailPayload.order.note ? (
+                  <div className="rounded-[12px] border border-cyan-200/18 bg-cyan-400/8 p-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-100/70">Sipariş Notu</p>
+                    <p className="mt-1 max-h-10 overflow-y-auto whitespace-pre-wrap text-[11px] font-semibold leading-4 text-cyan-50/86">{detailPayload.order.note}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : detailLedgerRow ? (
+              <div className="space-y-3">
+                <div className="grid gap-2 md:grid-cols-4">
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
+                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Müşteri</p>
+                    <p className="mt-1 line-clamp-1 text-sm font-black text-white">{selectedCustomer?.title ?? "-"}</p>
+                    <p className="mt-1 text-sm font-bold text-slate-400">{selectedCustomer?.code ?? "-"}</p>
+                  </div>
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
+                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">İşlem Tipi</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge variant="outline" className={`h-7 px-2 text-xs font-black ${getLedgerTypeMeta(detailLedgerRow.transaction_type ?? detailLedgerRow.type).className}`}>
+                        {detailLedgerRow.transaction_type_label ?? getLedgerTypeMeta(detailLedgerRow.type).label}
+                      </Badge>
+                      {salesPriceTypeLabel(detailLedgerRow) ? (
+                        <Badge variant="outline" className="h-7 border-sky-300/45 bg-sky-400/14 px-2 text-xs font-black text-sky-100">
+                          {salesPriceTypeLabel(detailLedgerRow)}
+                        </Badge>
+                      ) : null}
+                      {shippingMethodLabel(detailLedgerRow) ? (
+                        <Badge variant="outline" className="h-7 border-rose-200/60 bg-rose-100 px-2 text-xs font-black text-rose-800">
+                          {shippingMethodLabel(detailLedgerRow)}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
+                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Belge / Tarih</p>
+                    <p className="mt-1 text-sm font-black text-white">{detailLedgerRow.document_no || detailLedgerRow.reference_no || "-"}</p>
+                    <p className="mt-1 text-sm font-bold text-slate-400">{formatLedgerDate(detailLedgerRow.document_date ?? detailLedgerRow.date)}</p>
+                  </div>
+                  <div className="rounded-[12px] border border-emerald-300/20 bg-emerald-400/10 p-2.5">
+                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-100/70">Tutar</p>
+                    <p className="mt-1 text-xl font-black text-emerald-200">
+                      {formatAmount(toAmount(detailLedgerRow.debit) > 0 ? detailLedgerRow.debit : detailLedgerRow.credit, detailLedgerRow.currency)}
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-[18px] border border-amber-300/20 bg-amber-400/10 p-4 text-sm font-bold text-amber-50">
+                  Bu hareket Logo’dan cari hareket olarak geldi. Ürün kalemleri Logo sync payload’ında bulunmadığı için bu kayıtta şimdilik belge/tutar detayı gösteriliyor.
+                </div>
+                <div className="rounded-[12px] border border-white/10 bg-white/6 p-3">
+                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Açıklama / Kaynak</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-200">{detailLedgerRow.description || "-"}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">Kaynak evrak: {detailLedgerRow.source_document || "-"}</p>
                 </div>
               </div>
             ) : null}

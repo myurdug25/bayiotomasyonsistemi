@@ -4,13 +4,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Calculator,
   ImageIcon,
+  Info,
   Loader2,
-  Minus,
   PackageSearch,
-  Plus,
   Search,
   ShoppingCart,
   X,
@@ -42,14 +42,14 @@ import {
 import { cn } from "@/lib/utils";
 
 const PAGE_LIMIT = 12;
-const SEARCH_DEBOUNCE_MS = 180;
+const SEARCH_DEBOUNCE_MS = 220;
 const MIN_SEARCH_LENGTH = 2;
 const PRODUCT_PREVIEW_IMAGE_WIDTH = 960;
 const ALL_FILTER_VALUE = "__all";
 const PRODUCT_TABLE_GRID =
   "grid w-full items-stretch gap-0";
 const PRODUCT_FILTER_TRIGGER_CLASS =
-  "admin-dashboard-ghost h-12 w-full rounded-xl bg-[var(--surface-soft)] px-4 text-left text-sm font-extrabold shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors hover:border-[var(--brand-primary)]/55 hover:bg-[color-mix(in_oklab,var(--brand-primary)_10%,var(--surface))] focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]/45";
+  "admin-dashboard-ghost h-9 w-full rounded-lg bg-[var(--surface-soft)] px-3 text-left text-xs font-extrabold shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors hover:border-[var(--brand-primary)]/55 hover:bg-[color-mix(in_oklab,var(--brand-primary)_10%,var(--surface))] focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]/45";
 const PRODUCT_FILTER_CONTENT_CLASS =
   "max-h-[340px] w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] rounded-xl border border-[var(--brand-border)] bg-[#111c1e] p-1 text-[#e8f1ec] shadow-[0_24px_52px_-30px_rgba(0,0,0,0.88)]";
 const PRODUCT_FILTER_ITEM_CLASS =
@@ -68,13 +68,13 @@ type ProductSearchPageParam = {
 
 function productTableGridStyle(stockColumnCount: number): CSSProperties {
   const normalizedStockColumnCount = Math.max(stockColumnCount, 1);
-  const stockColumnWidth = Math.min(210, Math.max(88, normalizedStockColumnCount * 58));
-  const minWidth = 925 + stockColumnWidth;
+  const stockColumnWidth = Math.min(190, Math.max(78, normalizedStockColumnCount * 50));
+  const minWidth = 820 + stockColumnWidth;
   const stockColumnFlex = normalizedStockColumnCount >= 5 ? 0.94 : normalizedStockColumnCount === 2 ? 0.58 : 0.42;
 
   return {
     minWidth,
-    gridTemplateColumns: `40px minmax(84px,0.64fr) minmax(64px,0.42fr) minmax(250px,1.55fr) minmax(62px,0.36fr) 48px 78px minmax(${stockColumnWidth}px,${stockColumnFlex}fr) 154px 58px`,
+    gridTemplateColumns: `36px minmax(78px,0.58fr) minmax(58px,0.36fr) minmax(230px,1.55fr) minmax(58px,0.32fr) 44px 72px minmax(${stockColumnWidth}px,${stockColumnFlex}fr) 72px 50px`,
   };
 }
 
@@ -294,6 +294,10 @@ function formatCampaignTierPrice(
       currency
     ),
   };
+}
+
+function stripPriceCurrency(value: string): string {
+  return value.replace(/\s*(TRY|TL|₺|GEL|USD|EUR)\s*$/i, "").trim();
 }
 
 function formatPackageQuantity(value: string | number | null | undefined): string {
@@ -673,26 +677,26 @@ const ProductStockCell = memo(function ProductStockCell({
             <div
               key={`${product.id}-branch-stock-${branch.key}`}
               className={cn(
-                "flex min-w-0 flex-col items-center justify-center gap-1 border-l border-[var(--brand-border)] px-1.5 py-1 text-center leading-none first:border-l-0",
+                "flex min-w-0 flex-col items-center justify-center gap-0.5 border-l border-[var(--brand-border)] px-1 py-0.5 text-center leading-none first:border-l-0",
                 isPositive
                   ? "bg-emerald-300/10 text-emerald-100"
                   : "text-[var(--muted-foreground)]",
                 index === 0 && isPositive && "bg-emerald-300/14"
               )}
             >
-              <span className={cn("block w-full truncate text-[13px] font-black", isPositive ? "text-emerald-200" : "text-[var(--foreground)]")}>
+              <span className={cn("block w-full truncate text-[12px] font-black", isPositive ? "text-emerald-200" : "text-[var(--foreground)]")}>
                 {canViewStock && branch.stock !== null ? branch.stock.toLocaleString("tr-TR") : "-"}
               </span>
               <span
                 className={cn(
-                  "inline-flex min-h-5 w-full min-w-0 items-center justify-center gap-1 rounded-md border px-1 text-[10px] font-black leading-[11px] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+                  "inline-flex min-h-4 w-auto max-w-full min-w-0 items-center justify-center gap-1 rounded-md border px-1.5 text-[9px] font-black leading-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
                   hasShelfAddress
                     ? "border-sky-300/35 bg-sky-300/14 text-sky-100"
                     : "border-slate-500/20 bg-slate-500/10 text-slate-400"
                 )}
                 title={`${branch.title} raf adresi: ${shelfText}`}
               >
-                <span className="min-w-0 whitespace-normal break-words text-center">{shelfText}</span>
+                <span className="min-w-0 truncate text-center">{shelfText}</span>
               </span>
             </div>
           );
@@ -770,53 +774,53 @@ const ProductRow = memo(function ProductRow({
     >
       <div
         className={cn(
-          "admin-product-row-grid group min-h-[44px] border-b border-l-4 border-[var(--brand-border)] border-l-transparent bg-[var(--surface)] transition-[background-color,border-color,box-shadow] duration-150 hover:border-l-[#8bd19f] hover:bg-[#1d3024] hover:shadow-[inset_0_0_0_9999px_rgba(139,209,159,0.08)]",
+          "admin-product-row-grid group min-h-[34px] border-b border-l-4 border-[var(--brand-border)] border-l-transparent bg-[var(--surface)] transition-[background-color,border-color,box-shadow] duration-150 hover:border-l-[#8bd19f] hover:bg-[#1d3024] hover:shadow-[inset_0_0_0_9999px_rgba(139,209,159,0.08)]",
           campaignNames && campaignNames.length > 0 && "border-l-amber-300 bg-[linear-gradient(90deg,rgba(245,158,11,0.18)_0%,rgba(245,158,11,0.09)_38%,rgba(14,24,20,0.96)_100%)] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.08)] hover:border-l-amber-200 hover:bg-[linear-gradient(90deg,rgba(245,158,11,0.24)_0%,rgba(245,158,11,0.12)_42%,rgba(29,48,36,0.96)_100%)]",
           PRODUCT_TABLE_GRID
         )}
         style={tableGridStyle}
       >
-        <div role="cell" className="flex items-center justify-center px-1.5 py-1">
+        <div role="cell" className="flex items-center justify-center px-1 py-0.5">
           <ProductImageCell product={product} onPreviewImage={onPreviewImage} />
         </div>
 
-        <div role="cell" className="flex min-w-0 items-center border-l border-[var(--brand-border)] px-1.5 py-1">
-          <p className="truncate text-[14px] font-black tracking-[0.02em] text-[#f8fff9] drop-shadow-[0_1px_1px_rgba(0,0,0,0.42)]">
+        <div role="cell" className="flex min-w-0 items-center border-l border-[var(--brand-border)] px-1.5 py-0.5">
+          <p className="truncate text-[13px] font-black tracking-[0.02em] text-[#f8fff9] drop-shadow-[0_1px_1px_rgba(0,0,0,0.42)]">
             {product.sku}
           </p>
         </div>
 
-        <div role="cell" className="flex min-w-0 flex-col justify-center border-l border-[var(--brand-border)] px-1.5 py-1">
-          <p className="truncate text-[11px] font-extrabold text-[var(--foreground)]">
+        <div role="cell" className="flex min-w-0 flex-col justify-center border-l border-[var(--brand-border)] px-1.5 py-0.5">
+          <p className="truncate text-[10px] font-extrabold text-[var(--foreground)]">
             {product.brand.name ?? "-"}
           </p>
           {hasCategory ? (
-            <p className="mt-0.5 truncate text-[9px] font-medium text-[var(--muted-foreground)]">
+            <p className="truncate text-[8px] font-medium text-[var(--muted-foreground)]">
               {product.category?.name}
             </p>
           ) : null}
         </div>
 
-        <div role="cell" className="flex min-w-0 items-start border-l border-[var(--brand-border)] px-2 py-1 flex-col justify-center gap-0.5">
-          <p className="line-clamp-2 text-[12px] font-semibold leading-[14px] text-[var(--foreground)]">
+        <div role="cell" className="flex min-w-0 items-start border-l border-[var(--brand-border)] px-2 py-0.5 flex-col justify-center gap-0.5">
+          <p className="line-clamp-1 text-[12px] font-semibold leading-[13px] text-[var(--foreground)]">
             {product.name}
           </p>
         </div>
 
-        <div role="cell" className="flex min-w-0 items-center border-l border-[var(--brand-border)] px-1.5 py-1">
-          <p className="line-clamp-2 text-[11px] font-extrabold leading-[13px] text-[var(--muted-foreground)]">
+        <div role="cell" className="flex min-w-0 items-center border-l border-[var(--brand-border)] px-1.5 py-0.5">
+          <p className="truncate text-[10px] font-extrabold leading-[12px] text-[var(--muted-foreground)]">
             {product.type_name ?? "-"}
           </p>
         </div>
 
-        <div role="cell" className="flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-1">
-          <p className="text-center text-[12px] font-extrabold text-[var(--foreground)]">
+        <div role="cell" className="flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5">
+          <p className="text-center text-[11px] font-extrabold text-[var(--foreground)]">
             {formatPackageQuantity(product.package_quantity)}
           </p>
         </div>
 
-        <div role="cell" className="admin-product-price flex min-w-0 items-center justify-end border-l border-[var(--brand-border)] px-1.5 py-1">
-          <p className="flex max-w-full justify-end text-right text-[12px] font-extrabold text-[var(--foreground)]">
+        <div role="cell" className="admin-product-price flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1.5 py-0.5">
+          <p className="flex max-w-full justify-center text-center text-[11px] font-extrabold text-[var(--foreground)]">
             <span className="group/retail-price relative inline-flex max-w-full">
               <span className="truncate">{priceText}</span>
             {showRetailPriceHint && hasPrice ? (
@@ -833,11 +837,17 @@ const ProductRow = memo(function ProductRow({
           <ProductStockCell product={product} canViewStock={canViewStock} columns={visibleStockColumns} />
         </div>
 
-        <div role="cell" className="flex min-w-0 flex-col gap-1 border-l border-[var(--brand-border)] px-1 py-1">
-          <p className="line-clamp-3 text-[10px] leading-[12px] text-[var(--foreground)]">
-            {product.description || "-"}
-          </p>
-          <div className="grid max-w-full min-w-0 grid-cols-2 gap-1 text-[9px] font-black leading-tight">
+        <div role="cell" className="relative flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5">
+          <details className="group/details relative">
+            <summary
+              className="flex h-7 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#faee56]/55 bg-[#6b611f] text-[#fff4a3] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_18px_-18px_rgba(250,238,86,0.9)] transition-colors hover:bg-[#7d7228] [&::-webkit-details-marker]:hidden"
+              title="Ürün bilgileri"
+              aria-label={`${product.sku} ürün bilgileri`}
+            >
+              <Info className="h-4 w-4" strokeWidth={3} />
+            </summary>
+            <div className="absolute right-0 top-8 z-50 hidden w-56 rounded-xl border border-[#faee56]/35 bg-[#101817]/98 p-2 shadow-[0_24px_44px_-18px_rgba(0,0,0,0.92),0_0_24px_-16px_rgba(250,238,86,0.9)] group-open/details:block">
+              <div className="grid max-w-full min-w-0 grid-cols-2 gap-1.5 text-[9px] font-black leading-tight">
             <button
               type="button"
               onClick={() => competitorCodes.length > 0 && onShowCompetitorCodes({ sku: product.sku, name: product.name, codes: competitorCodes })}
@@ -900,27 +910,29 @@ const ProductRow = memo(function ProductRow({
                 {previousPurchase ? 1 : 0}
               </span>
             </button>
-          </div>
+              </div>
+            </div>
+          </details>
         </div>
 
-        <div role="cell" className="admin-product-actions sticky right-0 z-20 flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] bg-[var(--surface)] px-1 py-1 shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] group-hover:bg-[#1d3024]">
+        <div role="cell" className="admin-product-actions sticky right-0 z-20 flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] bg-[var(--surface)] px-1 py-0.5 shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] group-hover:bg-[#1d3024]">
           <Button
             type="button"
             size="icon"
             onClick={() => onOpenCartModal(product, qty)}
 	            disabled={!canAdd}
-            className="cart-primary-button relative mx-auto h-10 w-10 rounded-lg border border-red-200/45 bg-gradient-to-b from-[#ff4a43] via-[#d71920] to-[#8d070d] text-white shadow-[0_3px_0_#8a070d,0_12px_22px_-18px_rgba(255,35,35,0.9),inset_0_1px_0_rgba(255,255,255,0.48)] transition-transform hover:-translate-y-0.5 hover:from-[#ff625b] hover:via-[#e51f26] hover:to-[#9b080e] active:translate-y-0.5 active:shadow-[0_1px_0_#8a070d,0_8px_18px_-18px_rgba(255,35,35,0.82),inset_0_1px_0_rgba(255,255,255,0.34)] disabled:!translate-y-0 disabled:!border-slate-500/40 disabled:!bg-[#617488] disabled:!bg-none disabled:!text-[#07120d] disabled:!shadow-none"
+            className="cart-primary-button relative mx-auto h-8 w-8 rounded-lg border border-red-200/45 bg-gradient-to-b from-[#ff4a43] via-[#d71920] to-[#8d070d] text-white shadow-[0_2px_0_#8a070d,0_10px_18px_-18px_rgba(255,35,35,0.9),inset_0_1px_0_rgba(255,255,255,0.48)] transition-transform hover:-translate-y-0.5 hover:from-[#ff625b] hover:via-[#e51f26] hover:to-[#9b080e] active:translate-y-0.5 active:shadow-[0_1px_0_#8a070d,0_8px_18px_-18px_rgba(255,35,35,0.82),inset_0_1px_0_rgba(255,255,255,0.34)] disabled:!translate-y-0 disabled:!border-slate-500/40 disabled:!bg-[#617488] disabled:!bg-none disabled:!text-[#07120d] disabled:!shadow-none"
             aria-label={`${product.sku} sepete ekle`}
             title="Sepete ekle"
           >
-            {mutating ? <Loader2 className="h-5 w-5 animate-spin" strokeWidth={3} /> : <ShoppingCart className="h-6 w-6 drop-shadow-[0_2px_1px_rgba(0,0,0,0.42)]" strokeWidth={3.2} />}
+            {mutating ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={3} /> : <ShoppingCart className="h-5 w-5 drop-shadow-[0_2px_1px_rgba(0,0,0,0.42)]" strokeWidth={3.2} />}
             {qty > 0 ? (
-              <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border border-white/50 bg-[#faee56] px-1 text-[10px] font-black text-[#193126] shadow-[0_4px_10px_-4px_rgba(250,238,86,0.92)]">
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border border-white/50 bg-[#faee56] px-1 text-[9px] font-black text-[#193126] shadow-[0_4px_10px_-4px_rgba(250,238,86,0.92)]">
                 {qty}
               </span>
             ) : null}
             {cartDistinctLineCount > 0 ? (
-              <span className="absolute -left-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-100/80 bg-cyan-300 px-1 text-[10px] font-black text-[#0b2631] shadow-[0_4px_10px_-4px_rgba(103,232,249,0.88)]">
+              <span className="absolute -left-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border border-cyan-100/80 bg-cyan-300 px-1 text-[9px] font-black text-[#0b2631] shadow-[0_4px_10px_-4px_rgba(103,232,249,0.88)]">
                 {cartDistinctLineCount}
               </span>
             ) : null}
@@ -952,6 +964,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     };
   }, [resetFiltersAfterReload, searchParamsKey]);
   const previousQuerySearchRef = useRef(querySeed.q);
+  const skipNextDebouncedEmptySearchRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const cartQuantityInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1004,7 +1017,11 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const [previousPurchasePreview, setPreviousPurchasePreview] = useState<ProductPreviousPurchasePreview | null>(null);
   const [cartModalProduct, setCartModalProduct] = useState<ProductSearchItem | null>(null);
   const [cartModalQuantity, setCartModalQuantity] = useState<number | string>(1);
-  const [cartModalCampaignKey, setCartModalCampaignKey] = useState<string | null>(null);
+  const [cartDuplicateConfirm, setCartDuplicateConfirm] = useState<{
+    product: ProductSearchItem;
+    quantity: number;
+    campaignKey: string | null;
+  } | null>(null);
   const [cartCalculatorOpen, setCartCalculatorOpen] = useState(false);
   const [cartPricesIncludeVat, setCartPricesIncludeVat] = useState(false);
   const [calculatorDisplay, setCalculatorDisplay] = useState("0");
@@ -1060,6 +1077,10 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     const nextSearch = search.trim();
     const nextSubmittedSearch = nextSearch.length >= MIN_SEARCH_LENGTH ? nextSearch : "";
+    if (nextSearch === "" && skipNextDebouncedEmptySearchRef.current) {
+      skipNextDebouncedEmptySearchRef.current = false;
+      return;
+    }
     const timer = window.setTimeout(() => {
       setSubmittedSearch((currentSearch) => {
         if (currentSearch === nextSubmittedSearch) {
@@ -1170,11 +1191,13 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       return lastPage.next_cursor ? { cursor: null, page: allPages.length + 1 } : undefined;
     },
     refetchOnMount: false,
-    refetchOnReconnect: false,
-    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
     retry: 0,
-    staleTime: 5 * 60_000,
+    staleTime: 2_000,
     gcTime: 15 * 60_000,
+    refetchInterval: shouldFetchProducts ? 5_000 : false,
+    refetchIntervalInBackground: false,
     enabled: shouldFetchProducts,
     placeholderData: (previousData) => previousData,
   });
@@ -1328,23 +1351,41 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     [cartModalProduct?.campaigns]
   );
   const cartModalApplicableCampaign = useMemo(() => {
-    const campaign = cartModalCampaigns.find((item) => item.key === cartModalCampaignKey);
     const quantity = Math.max(1, Number(cartModalQuantity) || 1);
-    const tier = campaign?.tiers
-      .filter((item) => item.min_quantity <= quantity)
-      .sort((left, right) => right.min_quantity - left.min_quantity)[0];
+    const applicableCampaigns = cartModalCampaigns
+      .map((campaign) => {
+        const tier = campaign.tiers
+          .filter((item) => item.min_quantity <= quantity)
+          .sort((left, right) => {
+            if (right.min_quantity !== left.min_quantity) {
+              return right.min_quantity - left.min_quantity;
+            }
 
-    return campaign && tier ? { campaign, tier } : null;
-  }, [cartModalCampaignKey, cartModalCampaigns, cartModalQuantity]);
-  const cartModalApplicableCampaignPrice =
-    cartModalProduct && cartModalApplicableCampaign
-      ? formatCampaignTierPrice(
-          cartModalProduct,
-          cartModalApplicableCampaign.tier,
-          cartPricesIncludeVat
-        )
-      : null;
+            return Number(left.unit_price ?? Number.MAX_SAFE_INTEGER) - Number(right.unit_price ?? Number.MAX_SAFE_INTEGER);
+          })[0];
 
+        return tier ? { campaign, tier } : null;
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          campaign: (typeof cartModalCampaigns)[number];
+          tier: (typeof cartModalCampaigns)[number]["tiers"][number];
+        } => Boolean(item)
+      );
+
+    return applicableCampaigns.sort((left, right) => {
+      const leftPrice = Number(left.tier.unit_price ?? Number.MAX_SAFE_INTEGER);
+      const rightPrice = Number(right.tier.unit_price ?? Number.MAX_SAFE_INTEGER);
+
+      if (leftPrice !== rightPrice) {
+        return leftPrice - rightPrice;
+      }
+
+      return (right.tier.discount_percent ?? 0) - (left.tier.discount_percent ?? 0);
+    })[0] ?? null;
+  }, [cartModalCampaigns, cartModalQuantity]);
   const resetCalculator = useCallback(() => {
     setCalculatorDisplay("0");
     setCalculatorStored(null);
@@ -1353,25 +1394,29 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   }, []);
 
   const handleSetQuantity = useCallback(
-    (productId: number, nextQty: number, campaignKey?: string | null) => {
+    (product: ProductSearchItem, nextQty: number, campaignKey?: string | null, mode: "added" | "updated" = "added") => {
       if (!selectedCustomer) {
         return;
       }
 
-      void upsertQuantity(productId, Math.max(0, nextQty), campaignKey);
+      const quantity = Math.max(0, nextQty);
+      void upsertQuantity(product.id, quantity, campaignKey).then(() => {
+        toast.success(mode === "updated" ? "Sepetteki ürün güncellendi" : "Ürün sepete eklendi", {
+          description: `${product.sku} · ${quantity.toLocaleString("tr-TR")} adet`,
+          duration: 2600,
+        });
+      });
     },
     [selectedCustomer, upsertQuantity]
   );
 
   const handleOpenCartModal = useCallback((product: ProductSearchItem, currentQty: number) => {
-    const currentItem = cartData?.items.find((item) => item.product_id === product.id);
     setCartModalProduct(product);
     setCartModalQuantity(currentQty || "");
-    setCartModalCampaignKey(currentItem?.campaign_key ?? null);
     setCartCalculatorOpen(false);
     setCartPricesIncludeVat(false);
     resetCalculator();
-  }, [cartData?.items, resetCalculator]);
+  }, [resetCalculator]);
 
   const handleCartModalQuantityChange = useCallback(
     (nextQty: number | string) => {
@@ -1394,16 +1439,33 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
-    handleSetQuantity(
-      cartModalProduct.id,
-      Math.max(0, Number(cartModalQuantity) || 0),
-      cartModalCampaignKey
-    );
+    const quantity = Math.max(0, Number(cartModalQuantity) || 0);
+    const campaignKey = cartModalApplicableCampaign?.campaign.key ?? null;
+    const existingQuantity = cartData?.items.find((item) => item.product_id === cartModalProduct.id)?.quantity ?? 0;
+
+    if (existingQuantity > 0 && quantity > 0) {
+      setCartDuplicateConfirm({ product: cartModalProduct, quantity, campaignKey });
+      setCartModalProduct(null);
+      setCartCalculatorOpen(false);
+      return;
+    }
+
+    handleSetQuantity(cartModalProduct, quantity, campaignKey, "added");
     setCartModalProduct(null);
     setCartCalculatorOpen(false);
     setSearch("");
     setSubmittedSearch("");
-  }, [cartModalCampaignKey, cartModalHasPrice, cartModalProduct, cartModalQuantity, handleSetQuantity, selectedCustomer, setSearch, setSubmittedSearch]);
+  }, [
+    cartData?.items,
+    cartModalApplicableCampaign?.campaign.key,
+    cartModalHasPrice,
+    cartModalProduct,
+    cartModalQuantity,
+    handleSetQuantity,
+    selectedCustomer,
+    setSearch,
+    setSubmittedSearch,
+  ]);
 
   const handleCalculatorDigit = useCallback((digit: string) => {
     setCalculatorDisplay((current) => {
@@ -1522,6 +1584,10 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const handleSubmitSearch = useCallback(() => {
     const nextSearch = search.trim();
     setSubmittedSearch(nextSearch.length >= MIN_SEARCH_LENGTH ? nextSearch : "");
+    if (nextSearch.length >= MIN_SEARCH_LENGTH) {
+      skipNextDebouncedEmptySearchRef.current = true;
+      setSearch("");
+    }
   }, [search]);
 
   const handleFilterOptionsOpenChange = useCallback((open: boolean) => {
@@ -1544,12 +1610,12 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   }, []);
 
   return (
-    <div className="admin-catalog-page space-y-4">
+    <div className="admin-catalog-page space-y-2">
       <Card className="admin-catalog-list dashboard-panel-card min-h-[560px]">
-        <CardHeader className="space-y-3 pb-3">
-          <div className="grid gap-3 lg:grid-cols-[minmax(300px,1fr)_150px_138px_190px]">
+        <CardHeader className="space-y-2 pb-2">
+          <div className="grid gap-2 lg:grid-cols-[minmax(260px,1fr)_120px_112px_148px]">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[var(--muted-foreground)]" />
               <Input
                 ref={searchInputRef}
                 value={search}
@@ -1563,27 +1629,27 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                   }
                 }}
                 placeholder="Stok kodu, OEM, marka veya ürün adı ara..."
-                className="admin-dashboard-input h-14 rounded-xl pl-14 text-base font-semibold"
+                className="admin-dashboard-input h-10 rounded-lg pl-10 text-sm font-semibold"
               />
             </div>
 
             <Button
               type="button"
-              className="h-14 w-full rounded-xl border border-[#3f8f54] bg-[#2f7f56] px-5 text-base font-black text-white shadow-[0_16px_28px_-22px_rgba(47,127,86,0.9)] hover:bg-[#276d49] hover:text-white"
+              className="h-10 w-full rounded-lg border border-[#3f8f54] bg-[#2f7f56] px-4 text-sm font-black text-white shadow-[0_12px_22px_-20px_rgba(47,127,86,0.9)] hover:bg-[#276d49] hover:text-white"
               onClick={handleSubmitSearch}
             >
-              <Search className="h-5 w-5" />
+              <Search className="h-4 w-4" />
               Ara
             </Button>
 
             <Button
               type="button"
               variant="outline"
-              className="h-14 w-full rounded-xl border-[#ef4444] bg-[#dc2626] px-5 text-base font-black text-white shadow-[0_16px_30px_-20px_rgba(220,38,38,0.95)] hover:border-[#dc2626] hover:bg-[#b91c1c] hover:text-white disabled:border-[#dc2626] disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-70"
+              className="h-10 w-full rounded-lg border-[#ef4444] bg-[#dc2626] px-4 text-sm font-black text-white shadow-[0_12px_22px_-20px_rgba(220,38,38,0.95)] hover:border-[#dc2626] hover:bg-[#b91c1c] hover:text-white disabled:border-[#dc2626] disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-70"
               disabled={!search && !normalizedSearch && !hasMetaFilters && !showAllProducts && sort === "recommended"}
               onClick={handleResetFilters}
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
               Sil
             </Button>
 
@@ -1593,7 +1659,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                 setShowAllProducts((current) => !current);
               }}
               className={cn(
-                "h-14 w-full rounded-xl text-base font-extrabold",
+                "h-10 w-full rounded-lg text-sm font-extrabold",
                 showAllProducts ? "admin-primary-action" : "admin-dashboard-ghost"
               )}
             >
@@ -1601,9 +1667,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
             </Button>
           </div>
 
-          <div className="grid gap-2 rounded-xl border border-[var(--brand-border)] bg-[color-mix(in_oklab,var(--surface)_72%,transparent)] p-2 lg:grid-cols-4">
-            <div className="space-y-1">
-              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Sıralama</span>
+          <div className="grid gap-1.5 rounded-lg border border-[var(--brand-border)] bg-[color-mix(in_oklab,var(--surface)_72%,transparent)] p-1.5 lg:grid-cols-4">
+            <div className="space-y-0.5">
+              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Sıralama</span>
               <Select
                 value={sort}
                 onValueChange={(value) => {
@@ -1623,8 +1689,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
               </Select>
             </div>
 
-            <div className="space-y-1">
-              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Marka</span>
+            <div className="space-y-0.5">
+              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Marka</span>
               <Select
                 value={brandId ? String(brandId) : ALL_FILTER_VALUE}
                 onValueChange={handleBrandFilterChange}
@@ -1653,8 +1719,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
               { key: "kod2" as const, label: "Ürün Detayı 1", options: filterOptionsQuery.data?.meta.kod2 ?? [] },
               { key: "kod3" as const, label: "Ürün Detayı 2", options: filterOptionsQuery.data?.meta.kod3 ?? [] },
             ].map((filter) => (
-              <div key={filter.key} className="space-y-1">
-                <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{filter.label}</span>
+              <div key={filter.key} className="space-y-0.5">
+                <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">{filter.label}</span>
                 <Select
                   value={metaFilters[filter.key] || ALL_FILTER_VALUE}
                   onValueChange={(value) => handleMetaFilterChange(filter.key, value)}
@@ -1690,27 +1756,27 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
           ) : null}
 
           {shouldFetchProducts && productsQuery.isLoading ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)] px-4 py-3 text-sm font-black text-[var(--foreground)]">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 rounded-lg border border-[var(--brand-border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-black text-[var(--foreground)]">
                 <Loader2 className="h-4 w-4 animate-spin text-[var(--brand-primary)]" />
                 Ürünler aranıyor...
               </div>
               {Array.from({ length: 8 }).map((_, index) => (
                 <div
                   key={`product-skeleton-${index}`}
-                  className={cn(PRODUCT_TABLE_GRID, "rounded-md bg-[var(--surface)] px-3 py-3")}
+                  className={cn(PRODUCT_TABLE_GRID, "rounded-md bg-[var(--surface)] px-2 py-2")}
                   style={tableGridStyle}
                 >
-                  <Skeleton className="h-16 w-16 rounded-lg" />
+                  <Skeleton className="h-8 w-8 rounded-lg" />
                   <Skeleton className="h-4 w-28" />
                   <Skeleton className="h-4 w-24" />
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-20" />
                   <Skeleton className="h-4 w-16" />
                   <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-14 w-full" />
-                  <Skeleton className="h-14 w-full" />
-                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
                 </div>
               ))}
             </div>
@@ -1747,24 +1813,24 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                 ref={productListScrollRef}
                 role="table"
                 aria-label="Ürün listesi"
-                className="max-h-[calc(100dvh-260px)] min-h-[340px] overflow-auto rounded-[22px] bg-[var(--surface)] px-2 pb-3 pt-3 shadow-[0_24px_42px_-36px_rgba(0,0,0,0.7)] overscroll-contain [scrollbar-color:#8aa0b0_#122022] [scrollbar-width:thin] md:max-h-[calc(100dvh-300px)]"
+                className="max-h-[calc(100dvh-205px)] min-h-[340px] overflow-auto rounded-[18px] bg-[var(--surface)] px-1.5 pb-2 pt-2 shadow-[0_24px_42px_-36px_rgba(0,0,0,0.7)] overscroll-contain [scrollbar-color:#8aa0b0_#122022] [scrollbar-width:thin] md:max-h-[calc(100dvh-230px)]"
               >
                 <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)]">
                   <div
                     role="row"
                     className={cn(
                       PRODUCT_TABLE_GRID,
-                      "sticky top-0 z-30 border border-emerald-300/35 bg-[radial-gradient(circle_at_8%_16%,rgba(34,197,94,0.42)_0%,transparent_34%),linear-gradient(135deg,rgba(15,118,54,0.96)_0%,rgba(3,48,31,0.98)_100%)] text-[11px] font-black uppercase tracking-[0.1em] text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(34,197,94,0.12),0_16px_34px_-30px_rgba(34,197,94,0.84)]"
+                      "sticky top-0 z-30 border border-emerald-300/35 bg-[radial-gradient(circle_at_8%_16%,rgba(34,197,94,0.42)_0%,transparent_34%),linear-gradient(135deg,rgba(15,118,54,0.96)_0%,rgba(3,48,31,0.98)_100%)] text-[9px] font-black uppercase tracking-[0.08em] text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(34,197,94,0.12),0_16px_34px_-30px_rgba(34,197,94,0.84)]"
                     )}
                     style={tableGridStyle}
                   >
-                    <span role="columnheader" className="flex items-center justify-center px-2 py-3 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Resim</span>
-                    <span role="columnheader" className="flex items-center border-l border-white/10 px-2 py-3 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Stok Kodu</span>
-                    <span role="columnheader" className="flex items-center border-l border-white/10 px-2 py-3 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Marka</span>
-                    <span role="columnheader" className="flex items-center border-l border-white/10 px-2 py-3 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Ürün Adı</span>
-                    <span role="columnheader" className="flex items-center border-l border-white/10 px-2 py-3 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Ürün Tipi</span>
-                    <span role="columnheader" className="flex items-center justify-center border-l border-white/10 px-2 py-3 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Koli Adeti</span>
-                    <span role="columnheader" className="flex items-center justify-end border-l border-white/10 px-2 py-3 text-right drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Liste Fiyatı</span>
+                    <span role="columnheader" className="flex items-center justify-center px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Resim</span>
+                    <span role="columnheader" className="flex items-center border-l border-white/10 px-1.5 py-2 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Stok Kodu</span>
+                    <span role="columnheader" className="flex items-center border-l border-white/10 px-1.5 py-2 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Marka</span>
+                    <span role="columnheader" className="flex items-center border-l border-white/10 px-1.5 py-2 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Ürün Adı</span>
+                    <span role="columnheader" className="flex items-center border-l border-white/10 px-1.5 py-2 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Ürün Tipi</span>
+                    <span role="columnheader" className="flex items-center justify-center border-l border-white/10 px-1 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Koli</span>
+                    <span role="columnheader" className="flex items-center justify-center border-l border-white/10 px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Liste Fiyatı</span>
                     <span
                       role="columnheader"
                       className="grid items-stretch border-l border-white/10 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]"
@@ -1773,18 +1839,18 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                       {visibleStockColumns.length > 0 ? visibleStockColumns.map((branch) => (
                         <span
                           key={`stock-head-${branch.key}`}
-                          className="flex min-w-0 items-center justify-center whitespace-nowrap border-l border-white/10 px-1 py-3 text-center text-[8px] tracking-[0.02em] first:border-l-0"
+                          className="flex min-w-0 items-center justify-center whitespace-nowrap border-l border-white/10 px-1 py-2 text-center text-[7px] tracking-[0.02em] first:border-l-0"
                         >
                           {branch.label}
                         </span>
                       )) : (
-                        <span className="flex min-w-0 items-center justify-center whitespace-nowrap px-1 py-3 text-center text-[8px] tracking-[0.02em]">
+                        <span className="flex min-w-0 items-center justify-center whitespace-nowrap px-1 py-2 text-center text-[7px] tracking-[0.02em]">
                           Stok
                         </span>
                       )}
                     </span>
-	                    <span role="columnheader" className="flex items-center justify-center border-l border-white/10 px-2 py-3 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Ürün Detayı</span>
-		                    <span role="columnheader" className="sticky right-0 z-30 flex items-center justify-center border-l border-white/10 bg-[linear-gradient(135deg,rgba(10,96,54,0.98)_0%,rgba(3,48,31,1)_100%)] px-2 py-3 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)] shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)]">Sepet</span>
+	                    <span role="columnheader" className="flex items-center justify-center border-l border-white/10 px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Bilgi</span>
+		                    <span role="columnheader" className="sticky right-0 z-30 flex items-center justify-center border-l border-white/10 bg-[linear-gradient(135deg,rgba(10,96,54,0.98)_0%,rgba(3,48,31,1)_100%)] px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)] shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)]">Sepet</span>
                   </div>
                 </div>
                 <div className={cn("rounded-xl border border-t-0 border-[var(--brand-border)]", compact ? "min-h-[360px]" : "min-h-[520px]")}>
@@ -1872,13 +1938,13 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
           }
         }}
       >
-        <DialogContent className="z-[60] flex max-h-[calc(100dvh-16px)] max-w-[820px] flex-col overflow-hidden rounded-[30px] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(213,205,42,0.1)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_55%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)] sm:max-h-[calc(100dvh-32px)]">
-	          <DialogHeader className="mb-0 shrink-0 border-b border-white/10 px-6 py-5">
-	            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px] md:items-start">
+        <DialogContent className="z-[60] flex max-h-[calc(100dvh-16px)] max-w-[min(1080px,calc(100vw-16px))] flex-col overflow-hidden rounded-[30px] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(213,205,42,0.1)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_55%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)] sm:max-h-[calc(100dvh-32px)]">
+	          <DialogHeader className="mb-0 shrink-0 border-b border-white/10 px-5 py-4">
+	            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
 	              <div className="min-w-0">
-	                <DialogTitle className="flex items-center gap-3 text-3xl font-black text-white">
-	                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-300">
-	                    <ShoppingCart className="h-6 w-6" strokeWidth={3} />
+	                <DialogTitle className="flex items-center gap-3 text-2xl font-black text-white">
+	                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-300">
+	                    <ShoppingCart className="h-5 w-5" strokeWidth={3} />
 	                  </span>
 	                  Sepete Ekle
 	                </DialogTitle>
@@ -1886,24 +1952,24 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                  Ürün miktarını seçin
 	                </DialogDescription>
 	                {cartModalProduct ? (
-	                  <div className="mt-4 flex min-w-0 flex-wrap items-center gap-3 rounded-[22px] border border-white/10 bg-white/[0.035] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-	                    <p className="shrink-0 text-3xl font-black leading-none tracking-[0.02em] text-[#f8f3a1] drop-shadow-[0_6px_14px_rgba(0,0,0,0.42)]">
+	                  <div className="mt-3 flex w-fit max-w-full min-w-0 flex-nowrap items-center gap-3 overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+	                    <p className="shrink-0 whitespace-nowrap text-2xl font-black leading-none tracking-[0.02em] text-[#f8f3a1] drop-shadow-[0_6px_14px_rgba(0,0,0,0.42)]">
 	                      {cartModalProduct.sku}
 	                    </p>
 	                    <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-100">
 	                      {cartModalProduct.brand.name ?? "Marka Yok"}
 	                    </span>
-	                    <span className="line-clamp-1 min-w-[180px] flex-1 text-base font-extrabold text-slate-300">
+	                    <span className="min-w-0 max-w-[min(620px,54vw)] shrink truncate whitespace-nowrap text-sm font-extrabold leading-none text-slate-300 sm:text-base" title={cartModalProduct.name}>
 	                      {cartModalProduct.name}
 	                    </span>
 	                  </div>
 	                ) : null}
 	              </div>
-	              <div className="grid gap-3 md:justify-items-stretch">
+	              <div className="flex flex-wrap items-center gap-2 md:justify-end">
 	                <Button
 	                  type="button"
 	                  variant="outline"
-	                  className="h-11 rounded-xl border-[#d8cf42]/25 bg-[#d8cf42]/10 px-3 text-xs font-black uppercase tracking-[0.08em] text-[#f8f3a1] hover:bg-[#d8cf42]/16 hover:text-white"
+	                  className="h-10 rounded-xl border-[#d8cf42]/25 bg-[#d8cf42]/10 px-3 text-xs font-black uppercase tracking-[0.08em] text-[#f8f3a1] hover:bg-[#d8cf42]/16 hover:text-white"
 	                  onClick={() => setCartCalculatorOpen((open) => !open)}
 	                >
 	                  <Calculator className="h-4 w-4" />
@@ -1927,51 +1993,63 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	          </DialogHeader>
 
           {cartModalProduct ? (
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">
-              <div className={cn("grid gap-3 sm:grid-cols-2", cartModalProduct.special_discounted_price ? "xl:grid-cols-4" : "xl:grid-cols-3")}>
-                <div className="rounded-2xl border border-[#d8cf42]/20 bg-[#d8cf42]/[0.08] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+              <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="rounded-2xl border border-[#d8cf42]/25 bg-[#d8cf42]/[0.10] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
 	                  <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-	                    Liste Fiyatı
+	                    Satış Fiyatı
 	                  </span>
 	                  <strong className="mt-2 block text-2xl font-black text-[#f8f3a1]">
-	                    {formatProductModalPrice(cartModalProduct, cartModalProduct.list_price ?? cartModalProduct.net_price, cartPricesIncludeVat)}
-	                  </strong>
-	                  <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
-	                    {cartPricesIncludeVat ? "KDV Dahil" : "KDV Hariç"}
-	                  </span>
-	                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-	                  <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-	                    Kampanyasız Fiyat
-	                  </span>
-	                  <strong className="mt-2 block text-2xl font-black text-white">
-	                    {formatProductModalPrice(cartModalProduct, cartModalProduct.net_price ?? cartModalProduct.list_price, cartPricesIncludeVat)}
-	                  </strong>
-	                  <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
-	                    {cartPricesIncludeVat ? "KDV Dahil" : "KDV Hariç"}
-	                  </span>
-	                </div>
-                {cartModalProduct.special_discounted_price ? (
-                  <div className="rounded-2xl border border-emerald-300/25 bg-emerald-400/[0.10] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                    <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-emerald-100/70">
-                      İskontolu Fiyat
-                    </span>
-                    <strong className="mt-2 block text-2xl font-black text-emerald-100">
-                      {formatProductModalPrice(cartModalProduct, cartModalProduct.special_discounted_price, cartPricesIncludeVat)}
-                    </strong>
-                    <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.08em] text-emerald-100/65">
-                      {formatPercentValue(cartModalProduct.special_discount_rate)} özel iskonto
-                    </span>
-                  </div>
-                ) : null}
-	                <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-	                  <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-	                    Sepette
-                  </span>
-                  <strong className="mt-2 block text-3xl font-black text-cyan-200">
-                    {cartModalCurrentQty.toLocaleString("tr-TR")}
+	                    {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.list_price ?? cartModalProduct.net_price, cartPricesIncludeVat))}
 	                  </strong>
 	                </div>
+                <div className="flex min-h-[116px] flex-wrap gap-2">
+                  {cartModalProduct.special_discounted_price ? (
+                    <div className="min-w-[180px] flex-1 rounded-2xl border border-emerald-300/25 bg-emerald-400/[0.10] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                      <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/70">
+                        Özel İskonto
+                      </span>
+                      <strong className="mt-1 block text-xl font-black text-emerald-100">
+                        {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.special_discounted_price, cartPricesIncludeVat))}
+                      </strong>
+                    </div>
+                  ) : null}
+                  {cartModalCampaigns.flatMap((campaign) =>
+                    campaign.tiers.map((tier) => {
+                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, cartPricesIncludeVat);
+                      const active =
+                        cartModalApplicableCampaign?.campaign.key === campaign.key &&
+                        cartModalApplicableCampaign.tier.min_quantity === tier.min_quantity;
+
+                      return (
+                        <div
+                          key={`${campaign.key}-${tier.min_quantity}-${tier.unit_price}`}
+                          className={cn(
+                            "min-w-[180px] flex-1 rounded-2xl border p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+                            active
+                              ? "border-amber-200/45 bg-amber-200/16 text-amber-50"
+                              : "border-[#d8cf42]/20 bg-[#d8cf42]/[0.075] text-[#f8f3a1]"
+                          )}
+                        >
+                          <span className="block truncate text-[10px] font-black uppercase tracking-[0.12em] text-amber-100/75">
+                            {campaign.name}
+                          </span>
+                          <strong className="mt-1 block text-lg font-black text-emerald-100">
+                            {stripPriceCurrency(tierPrice.unit)}
+                          </strong>
+                          <span className="mt-1 block text-[11px] font-extrabold text-slate-300">
+                            {tier.min_quantity > 1 ? `${tier.min_quantity}+ adet` : "Tekli"}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                  {!cartModalProduct.special_discounted_price && cartModalCampaigns.length === 0 ? (
+                    <div className="min-w-[180px] flex-1 rounded-2xl border border-white/10 bg-white/[0.045] p-3 text-sm font-black text-slate-300">
+                      Kampanya yok
+                    </div>
+                  ) : null}
+                </div>
 	              </div>
 	              {!cartModalHasPrice ? (
 	                <p className="mt-3 rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-black text-red-100">
@@ -1983,123 +2061,12 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                </p>
 	              ) : null}
 
-                <div className="mt-5 rounded-[24px] border border-amber-300/20 bg-amber-300/[0.07] p-4">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-[12px] font-black uppercase tracking-[0.16em] text-amber-200">
-                          Kampanyalar
-                        </p>
-                        <p className="mt-1 text-xs font-semibold text-slate-400">
-                          Kampanya tanımlandığında miktara uygun kademe burada seçilebilir.
-                        </p>
-                      </div>
-                      {cartModalApplicableCampaign ? (
-                        <span className="rounded-full border border-emerald-300/25 bg-emerald-300/12 px-3 py-1 text-xs font-black text-emerald-100">
-                          Aktif: {cartModalApplicableCampaign.tier.discount_percent ? `%${cartModalApplicableCampaign.tier.discount_percent} İndirim` : "Kampanya"} · {cartModalApplicableCampaignPrice?.unit ?? "-"} / birim
-                        </span>
-                      ) : null}
-                    </div>
-                    {cartModalCampaigns.length > 0 ? (
-                      <div className="grid gap-3 lg:grid-cols-2">
-                      {cartModalCampaigns.map((campaign) => {
-                        const quantity = Math.max(1, Number(cartModalQuantity) || 1);
-                        const applicableTier = [...campaign.tiers]
-                          .filter((tier) => tier.min_quantity <= quantity)
-                          .sort((left, right) => right.min_quantity - left.min_quantity)[0] ?? null;
-                        const active = cartModalCampaignKey === campaign.key;
-
-                        return (
-                          <div
-                            key={campaign.key}
-                            className={cn(
-                              "rounded-2xl border p-4 transition-colors",
-                              active
-                                ? "border-emerald-300/40 bg-emerald-300/12"
-                                : "border-white/10 bg-slate-950/35"
-                            )}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-black text-white">{campaign.name}</p>
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {campaign.tiers.map((tier) => {
-                                    const tierPrice = formatCampaignTierPrice(
-                                      cartModalProduct,
-                                      tier,
-                                      cartPricesIncludeVat
-                                    );
-
-                                    return (
-                                      <div
-                                        key={`${campaign.key}-${tier.min_quantity}-${tier.unit_price}`}
-                                        className={cn(
-                                          "min-w-[190px] rounded-xl border px-3 py-2 text-[11px] font-black",
-                                          applicableTier === tier
-                                            ? "border-amber-200/35 bg-amber-200/15 text-amber-100"
-                                            : "border-white/10 bg-white/[0.04] text-slate-400"
-                                        )}
-                                      >
-                                        <p>
-                                          {tier.min_quantity > 1 ? `${tier.min_quantity}+ adet` : "Tekli"} ·{" "}
-                                          {tier.discount_percent ? `%${tier.discount_percent} İndirim` : "Kampanya fiyatı"}
-                                        </p>
-                                        <p className="mt-1 text-sm text-emerald-200">
-                                          Birim: {tierPrice.unit}
-                                        </p>
-                                        <p className="mt-0.5 text-[10px] text-slate-400">
-                                          {tier.min_quantity} adet toplam: {tierPrice.total}
-                                        </p>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className={cn(
-                                  "shrink-0 rounded-xl px-3 text-xs font-black",
-                                  active
-                                    ? "border-red-300/25 bg-red-400/10 text-red-100 hover:bg-red-400/18"
-                                    : "border-emerald-300/25 bg-emerald-300/10 text-emerald-100 hover:bg-emerald-300/18"
-                                )}
-                                disabled={!applicableTier || mutating}
-                                onClick={() => setCartModalCampaignKey(active ? null : campaign.key)}
-                              >
-                                {active ? "Kampanyayı Kapat" : "Kampanyayı Aktif Et"}
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/30 px-4 py-5 text-center">
-                        <p className="text-sm font-black text-slate-300">Bu ürün için aktif kampanya tanımlanmamış.</p>
-                        <p className="mt-1 text-xs font-semibold text-slate-500">
-                          Kampanya veri bağlantısı daha sonra buraya bağlanacak.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-	              <div className="mt-5 rounded-[24px] border border-emerald-300/15 bg-emerald-300/[0.055] p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <label className="block text-[12px] font-black uppercase tracking-[0.16em] text-slate-400">
+	              <div className="mt-4 rounded-[18px] border border-emerald-300/15 bg-emerald-300/[0.045] p-3">
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <label className="shrink-0 text-[12px] font-black uppercase tracking-[0.16em] text-slate-400">
                     Miktar
                   </label>
-                </div>
-                <div className="grid grid-cols-[64px_minmax(0,1fr)_64px] gap-3">
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-16 w-16 rounded-2xl border-white/10 bg-slate-950/45 text-xl text-slate-200 hover:bg-slate-800 hover:text-white"
-                    disabled={Number(cartModalQuantity) <= 1 || mutating}
-                    onClick={() => handleCartModalQuantityChange(Number(cartModalQuantity) - 1)}
-                  >
-                    <Minus className="h-6 w-6" />
-                  </Button>
+                  <div className="w-full max-w-[300px]">
 	                  <Input
                     ref={cartQuantityInputRef}
                     type="text"
@@ -2112,18 +2079,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         handleConfirmCartQuantity();
                       }
                     }}
-                    className="h-16 rounded-2xl border-emerald-300/25 bg-slate-950/55 text-center text-4xl font-black text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] [appearance:textfield] focus-visible:ring-2 focus-visible:ring-emerald-300/55 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="h-12 rounded-2xl border-emerald-300/25 bg-slate-950/55 text-center text-2xl font-black text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] [appearance:textfield] focus-visible:ring-2 focus-visible:ring-emerald-300/55 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-16 w-16 rounded-2xl border-emerald-300/20 bg-emerald-300/10 text-xl text-emerald-200 hover:bg-emerald-300/18 hover:text-emerald-100"
-                    disabled={mutating}
-                    onClick={() => handleCartModalQuantityChange(Number(cartModalQuantity) + 1)}
-                  >
-                    <Plus className="h-6 w-6" />
-                  </Button>
+                  </div>
                 </div>
                 {cartCalculatorOpen ? (
                   <div className="mt-4 rounded-[20px] border border-[#d8cf42]/20 bg-slate-950/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -2194,22 +2152,26 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
             </div>
           ) : null}
 
-          <DialogFooter className="mt-0 shrink-0 flex-col gap-4 border-t border-white/10 bg-black/12 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex h-12 items-center gap-2 rounded-full border border-emerald-300/18 bg-emerald-300/10 px-4 text-sm font-black text-emerald-100">
-                Stok <strong className="text-lg text-emerald-300">{cartModalProduct?.available_total.toLocaleString("tr-TR") ?? "-"}</strong>
+          <DialogFooter className="mt-0 shrink-0 flex-col gap-3 border-t border-white/10 bg-black/12 px-5 py-4">
+            <div className="grid w-full min-w-0 grid-cols-4 gap-2">
+              <span className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-300/18 bg-emerald-300/10 px-2 text-xs font-black text-emerald-100">
+                <span>Stok</span>
+                <strong className="min-w-0 truncate text-base text-emerald-300">{cartModalProduct?.available_total.toLocaleString("tr-TR") ?? "-"}</strong>
               </span>
-              <span className="inline-flex h-12 items-center gap-2 rounded-full border border-sky-200/18 bg-sky-200/10 px-4 text-sm font-black text-sky-100">
-                Açık Sepetler <strong className="text-lg text-sky-200">{(cartModalProduct?.open_cart_quantity ?? 0).toLocaleString("tr-TR")}</strong>
+              <span className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-sky-200/18 bg-sky-200/10 px-2 text-xs font-black text-sky-100">
+                <span className="truncate">Açık Sepetler</span>
+                <strong className="shrink-0 text-base text-sky-200">{(cartModalProduct?.open_cart_quantity ?? 0).toLocaleString("tr-TR")}</strong>
               </span>
-              <span className="inline-flex h-12 items-center gap-2 rounded-full border border-[#d8cf42]/18 bg-[#d8cf42]/10 px-4 text-sm font-black text-[#f8f3a1]">
-                Koli İçi <strong className="text-lg text-white">{formatPackageQuantity(cartModalProduct?.package_quantity)}</strong>
+              <span className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#d8cf42]/18 bg-[#d8cf42]/10 px-2 text-xs font-black text-[#f8f3a1]">
+                <span>Koli İçi</span>
+                <strong className="shrink-0 text-base text-white">{formatPackageQuantity(cartModalProduct?.package_quantity)}</strong>
               </span>
-              <span className="inline-flex h-12 max-w-[220px] items-center gap-2 rounded-full border border-cyan-200/18 bg-cyan-200/10 px-4 text-sm font-black text-cyan-100">
-                Raf Adresi <strong className="truncate text-lg text-white">{cartModalProduct ? productShelfAddress(cartModalProduct) : "-"}</strong>
+              <span className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-cyan-200/18 bg-cyan-200/10 px-2 text-xs font-black text-cyan-100">
+                <span className="shrink-0">Raf Adresi</span>
+                <strong className="min-w-0 truncate text-base text-white">{cartModalProduct ? productShelfAddress(cartModalProduct) : "-"}</strong>
               </span>
             </div>
-            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+            <div className="flex w-full flex-col-reverse justify-end gap-3 sm:flex-row">
               <Button
                 type="button"
                 variant="outline"
@@ -2228,6 +2190,84 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                 {cartModalCurrentQty > 0 ? "Güncelle" : "Sepete Ekle"}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(cartDuplicateConfirm)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCartDuplicateConfirm(null);
+          }
+        }}
+      >
+        <DialogContent className="z-[80] max-w-[min(460px,calc(100vw-24px))] overflow-hidden rounded-[28px] border border-red-200/30 bg-[radial-gradient(circle_at_20%_0%,rgba(255,77,79,0.22)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_58%,rgba(42,8,12,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-42px_rgba(0,0,0,0.95)]">
+          <DialogHeader className="border-b border-white/10 px-5 py-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-200/30 bg-red-500/15 text-red-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+                <ShoppingCart className="h-6 w-6" />
+              </span>
+              <div className="min-w-0">
+                <DialogTitle className="text-2xl font-black tracking-[-0.03em] text-white">
+                  Bu ürün zaten sepette
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-sm font-semibold leading-5 text-slate-300">
+                  Aynı ürün mevcut sepette var. Miktarı yeni değerle güncelleyelim mi?
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {cartDuplicateConfirm ? (
+            <div className="px-5 py-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                <p className="truncate text-xl font-black text-[#f8f3a1]" title={cartDuplicateConfirm.product.sku}>
+                  {cartDuplicateConfirm.product.sku}
+                </p>
+                <p className="mt-1 line-clamp-2 text-sm font-extrabold text-slate-200" title={cartDuplicateConfirm.product.name}>
+                  {cartDuplicateConfirm.product.name}
+                </p>
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-sm font-black text-emerald-100">
+                  Yeni miktar
+                  <strong className="text-base text-emerald-300">
+                    {cartDuplicateConfirm.quantity.toLocaleString("tr-TR")}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter className="grid gap-2 border-t border-white/10 px-5 py-4 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-2xl border-white/10 bg-white/[0.045] font-black text-slate-200 hover:bg-white/[0.08] hover:text-white"
+              onClick={() => setCartDuplicateConfirm(null)}
+            >
+              Hayır
+            </Button>
+            <Button
+              type="button"
+              className="h-12 rounded-2xl border border-red-200/45 bg-gradient-to-b from-[#ff4a43] via-[#d71920] to-[#8d070d] font-black text-white shadow-[0_3px_0_#8a070d,0_16px_28px_-18px_rgba(255,35,35,0.92),inset_0_1px_0_rgba(255,255,255,0.48)] hover:from-[#ff625b] hover:via-[#e51f26] hover:to-[#9b080e]"
+              onClick={() => {
+                if (!cartDuplicateConfirm) {
+                  return;
+                }
+
+                handleSetQuantity(
+                  cartDuplicateConfirm.product,
+                  cartDuplicateConfirm.quantity,
+                  cartDuplicateConfirm.campaignKey,
+                  "updated"
+                );
+                setCartDuplicateConfirm(null);
+                setSearch("");
+                setSubmittedSearch("");
+              }}
+            >
+              Evet, Güncelle
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Integrations\IntegrationSyncStateService;
 use App\Services\Integrations\Logo\LogoShipmentImmediateExportService;
+use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -64,8 +65,14 @@ class WarehouseShipmentService
 
             $assignedUser = $this->resolveAssignedWarehouseUser($assignedUserId, $user);
             $assignedWarehouse = $this->preferredWarehouseForAssignedUser($assignedUser);
+            $preferredWarehouse = $this->preferredWarehouseForOrder($order);
+            $this->ensureAssignedWarehouseMatchesOrderTarget($preferredWarehouse, $assignedWarehouse);
 
-            if ($assignedWarehouse !== null) {
+            if ($preferredWarehouse !== null) {
+                $warehouseId = null;
+                $warehouseCode = $preferredWarehouse['code'];
+                $warehouseName = $preferredWarehouse['name'];
+            } elseif ($assignedWarehouse !== null) {
                 $warehouseId = null;
                 $warehouseCode = $assignedWarehouse['code'];
                 $warehouseName = $assignedWarehouse['name'];
@@ -114,13 +121,14 @@ class WarehouseShipmentService
             ]);
 
             foreach ($order->items as $item) {
+                $unitPrice = $this->netUnitPriceForOrderItem($item);
                 ShipmentItem::create([
                     'shipment_id' => $shipment->id,
                     'order_item_id' => $item->id,
                     'product_id' => $item->product_id,
                     'ordered_qty' => (int) $item->quantity,
                     'shipped_qty' => 0,
-                    'unit_price' => number_format((float) $item->unit_net_price, 2, '.', ''),
+                    'unit_price' => number_format($unitPrice, 2, '.', ''),
                     'vat_rate' => number_format((float) $item->tax_rate, 2, '.', ''),
                     'line_total_shipped' => 0,
                 ]);
@@ -154,6 +162,7 @@ class WarehouseShipmentService
         foreach ($order->items as $orderItem) {
             $orderItemIds[] = (int) $orderItem->id;
             $shipmentItem = $shipmentItems->get($orderItem->id);
+            $unitPrice = $this->netUnitPriceForOrderItem($orderItem);
 
             if (! $shipmentItem instanceof ShipmentItem) {
                 ShipmentItem::create([
@@ -162,7 +171,7 @@ class WarehouseShipmentService
                     'product_id' => $orderItem->product_id,
                     'ordered_qty' => (int) $orderItem->quantity,
                     'shipped_qty' => 0,
-                    'unit_price' => number_format((float) $orderItem->unit_net_price, 2, '.', ''),
+                    'unit_price' => number_format($unitPrice, 2, '.', ''),
                     'vat_rate' => number_format((float) $orderItem->tax_rate, 2, '.', ''),
                     'line_total_shipped' => 0,
                 ]);
@@ -177,7 +186,7 @@ class WarehouseShipmentService
             $shipmentItem->forceFill([
                 'product_id' => $orderItem->product_id,
                 'ordered_qty' => (int) $orderItem->quantity,
-                'unit_price' => number_format((float) $orderItem->unit_net_price, 2, '.', ''),
+                'unit_price' => number_format($unitPrice, 2, '.', ''),
                 'vat_rate' => number_format((float) $orderItem->tax_rate, 2, '.', ''),
                 'line_total_shipped' => 0,
             ])->save();
@@ -242,6 +251,51 @@ class WarehouseShipmentService
         $this->syncWarehouseSelection($warehouse, $warehouseCode, $warehouseName);
 
         return $warehouse;
+    }
+
+    private function netUnitPriceForOrderItem(OrderItem $item): float
+    {
+        $quantity = max(1, (int) $item->quantity);
+        $lineTotal = (float) $item->line_total;
+
+        if ($lineTotal > 0) {
+            return round($lineTotal / $quantity, 2);
+        }
+
+        return round((float) $item->unit_net_price, 2);
+    }
+
+    /**
+     * @return array{code:string,name:string}|null
+     */
+    private function preferredWarehouseForOrder(Order $order): ?array
+    {
+        $order->loadMissing([
+            'cart:id,shipping_method',
+            'customer:id,salesperson_user_id,branch_code,branch_name',
+            'customer.salesperson:id,name,username,email,branch_code,branch_name',
+            'user:id,name,username,email,branch_code,branch_name',
+        ]);
+
+        $identityWarehouse = $this->targetWarehouseForOrderContext($order);
+
+        if ($identityWarehouse !== null) {
+            return $identityWarehouse;
+        }
+
+        $state = $this->logoSyncState('orders', Order::class, (int) $order->id);
+        $meta = is_array($state?->meta) ? $state->meta : [];
+        $code = trim((string) data_get($meta, 'target_warehouse_code'));
+        $name = trim((string) data_get($meta, 'target_warehouse_name'));
+
+        if ($code !== '') {
+            return [
+                'code' => $code,
+                'name' => $name !== '' ? $name : "Logo Ambar {$code}",
+            ];
+        }
+
+        return null;
     }
 
     private function syncWarehouseSelection(Warehouse $warehouse, ?string $warehouseCode, ?string $warehouseName): void
@@ -323,6 +377,117 @@ class WarehouseShipmentService
         }
 
         return null;
+    }
+
+    /**
+     * @param  array{code:string,name:string}|null  $preferredWarehouse
+     * @param  array{code:string,name:string}|null  $assignedWarehouse
+     */
+    private function ensureAssignedWarehouseMatchesOrderTarget(?array $preferredWarehouse, ?array $assignedWarehouse): void
+    {
+        if ($preferredWarehouse === null || $assignedWarehouse === null) {
+            return;
+        }
+
+        $preferredCode = trim((string) ($preferredWarehouse['code'] ?? ''));
+        $assignedCode = trim((string) ($assignedWarehouse['code'] ?? ''));
+
+        if ($preferredCode === '' || $assignedCode === '' || $preferredCode === $assignedCode) {
+            return;
+        }
+
+        $preferredName = trim((string) ($preferredWarehouse['name'] ?? ''));
+
+        throw ValidationException::withMessages([
+            'assigned_user_id' => [
+                sprintf(
+                    'Bu siparis %s deposuna ait. Farkli depo depocusu secilemez.',
+                    $preferredName !== '' ? $preferredName : "Logo Ambar {$preferredCode}",
+                ),
+            ],
+        ]);
+    }
+
+    /**
+     * @return array{code:string,name:string}|null
+     */
+    private function targetWarehouseForOrderContext(Order $order): ?array
+    {
+        $targetWarehouse = app(WarehouseBranchResolver::class)
+            ->targetWarehouse($order->user, $order->customer, $order->cart?->shipping_method);
+
+        if ($targetWarehouse === null) {
+            return null;
+        }
+
+        return [
+            'code' => $targetWarehouse['code'],
+            'name' => $targetWarehouse['name'],
+        ];
+    }
+
+    private function normalizeBranchCode(mixed $value): ?string
+    {
+        $normalized = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(trim((string) $value)))) ?? '';
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_contains($normalized, 'TRABZON')) {
+            return 'TRABZON';
+        }
+
+        if (str_contains($normalized, 'SAMSUN')) {
+            return 'SAMSUN';
+        }
+
+        if (str_contains($normalized, 'ERZURUM') || str_starts_with($normalized, 'ERZ')) {
+            return 'ERZURUM';
+        }
+
+        if (str_contains($normalized, 'BATUM')) {
+            return 'BATUM';
+        }
+
+        return $normalized;
+    }
+
+    private function branchCodeFromUserIdentity(?User $user): ?string
+    {
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        $identity = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(implode(' ', array_filter([
+            $user->username,
+            $user->email,
+            $user->name,
+        ]))))) ?? '';
+
+        if ($identity === '') {
+            return null;
+        }
+
+        $explicit = [
+            'TRABZONPOINT' => 'TRABZON',
+            'TRABZONDEPO' => 'TRABZON',
+            'SAMSUNPOINT' => 'SAMSUN',
+            'SAMSUNDEPO' => 'SAMSUN',
+            'ERZURUMMERKEZ' => 'ERZURUM',
+            'MUDURERZURUM' => 'ERZURUM',
+            'AHMETARAC' => 'ERZURUM',
+            'ERZDEPO' => 'ERZURUM',
+            'BATUM' => 'BATUM',
+        ];
+
+        foreach ($explicit as $needle => $branch) {
+            if (str_contains($identity, $needle)) {
+                return $branch;
+            }
+        }
+
+        return $this->normalizeBranchCode($identity);
     }
 
     /**
@@ -826,7 +991,7 @@ class WarehouseShipmentService
             $unitPrice = (float) $shipmentItem->unit_price;
             $orderItem->forceFill([
                 'quantity' => $safeQuantity,
-                'line_total' => number_format($safeQuantity * (float) $orderItem->unit_net_price, 2, '.', ''),
+                'line_total' => number_format($safeQuantity * $unitPrice, 2, '.', ''),
             ])->save();
 
             $shipmentItem->forceFill([

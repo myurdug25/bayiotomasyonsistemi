@@ -18,9 +18,12 @@ class OrderListItemResource extends JsonResource
     public function toArray(Request $request): array
     {
         $logoSyncState = $this->logoSyncState();
+        $logoSyncMeta = is_array($logoSyncState?->meta) ? $logoSyncState->meta : [];
         $totalQuantity = (int) round((float) ($this->getAttribute('total_quantity') ?? 0));
         $shippedQuantity = (int) round((float) ($this->getAttribute('shipped_quantity') ?? 0));
         $remainingQuantity = max(0, $totalQuantity - $shippedQuantity);
+        $checkoutSummary = $this->checkoutSummaryFromMode($logoSyncMeta['checkout_summary_mode'] ?? null);
+        $salesPriceType = $this->nullableString($logoSyncMeta['sales_price_type'] ?? null);
 
         $latestTimelineEntry = $this->latestStatusHistory;
         $totals = [
@@ -62,6 +65,16 @@ class OrderListItemResource extends JsonResource
             'logo_sync_error' => $logoSyncState?->last_error,
             'logo_external_ref' => $logoSyncState?->external_ref,
             'logo_last_synced_at' => $logoSyncState?->last_synced_at,
+            'checkout_summary' => $checkoutSummary,
+            'sales_price_type' => $salesPriceType,
+            'sales_price_type_label' => $this->salesPriceTypeLabel($salesPriceType),
+            'shipping_method' => $this->cart?->shipping_method,
+            'origin' => [
+                'checkout_summary' => $checkoutSummary,
+                'sales_price_type' => $salesPriceType,
+                'sales_price_type_label' => $this->salesPriceTypeLabel($salesPriceType),
+                'shipping_method' => $this->cart?->shipping_method,
+            ],
             'totals' => $totals,
             'status_timeline_summary' => [
                 'total_events' => (int) ($this->status_timeline_count ?? 0),
@@ -91,5 +104,43 @@ class OrderListItemResource extends JsonResource
             ->where('entity_id', $this->id)
             ->latest('id')
             ->first();
+    }
+
+    /**
+     * @return array{mode:string,code:string,label:string}|null
+     */
+    private function checkoutSummaryFromMode(mixed $value): ?array
+    {
+        $mode = trim((string) $value);
+
+        return match ($mode) {
+            'detailed' => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1-F'],
+            'excluded' => ['mode' => 'excluded', 'code' => '2-O', 'label' => '2-0'],
+            'included' => ['mode' => 'included', 'code' => '3-B', 'label' => '3-B'],
+            default => null,
+        };
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function salesPriceTypeLabel(?string $value): ?string
+    {
+        $normalized = mb_strtolower(trim((string) $value), 'UTF-8');
+
+        return match ($normalized) {
+            'bank_transfer', 'transfer', 'havale', 'havale/eft', 'havale / eft' => 'Havale / EFT',
+            'cash', 'nakit' => 'Nakit',
+            'single_payment', 'tek çekim', 'tek cekim' => 'Tek Çekim',
+            default => $value,
+        };
     }
 }

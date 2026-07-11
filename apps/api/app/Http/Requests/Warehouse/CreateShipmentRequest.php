@@ -18,8 +18,8 @@ class CreateShipmentRequest extends FormRequest
     {
         return [
             'order_id' => ['required', 'integer', 'exists:orders,id'],
-            'warehouse_id' => ['nullable', 'integer', 'required_without:warehouse_code'],
-            'warehouse_code' => ['nullable', 'string', 'max:64', 'required_without:warehouse_id'],
+            'warehouse_id' => ['nullable', 'integer'],
+            'warehouse_code' => ['nullable', 'string', 'max:64'],
             'warehouse_name' => ['nullable', 'string', 'max:160'],
             'assigned_user_id' => ['nullable', 'integer', 'exists:users,id'],
         ];

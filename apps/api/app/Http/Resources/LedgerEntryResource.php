@@ -56,6 +56,10 @@ class LedgerEntryResource extends JsonResource
             'document_date' => $date,
             'source_document' => $this->sourceDocument(),
             'checkout_summary' => $this->checkoutSummary(),
+            'sales_price_type' => $this->salesPriceType(),
+            'sales_price_type_label' => $this->salesPriceTypeLabel($this->salesPriceType()),
+            'shipping_method' => $this->shippingMethod(),
+            'shipping_method_label' => $this->shippingMethodLabel($this->shippingMethod()),
             'entry_date' => $this->entry_date,
             'entry_type' => $this->entry_type,
             'amount' => $this->amount,
@@ -67,6 +71,10 @@ class LedgerEntryResource extends JsonResource
 
     private function transactionType(): string
     {
+        if (data_get($this->meta, 'source') === 'order_visibility') {
+            return 'order';
+        }
+
         $type = trim((string) ($this->type ?? $this->entry_type));
 
         if ($type === 'debit' && $this->looksLikeInvoice()) {
@@ -79,6 +87,7 @@ class LedgerEntryResource extends JsonResource
     private function transactionTypeLabel(string $type): string
     {
         return match ($type) {
+            'order' => 'Sipariş',
             'invoice' => 'Fatura',
             'payment' => 'Tahsilat',
             'credit' => 'İade / Alacak',
@@ -181,7 +190,21 @@ class LedgerEntryResource extends JsonResource
      */
     private function checkoutSummary(): ?array
     {
-        $summary = data_get($this->meta, 'checkout_summary');
+        $summary = data_get($this->meta, 'checkout_summary')
+            ?? data_get($this->meta, 'order.checkout_summary')
+            ?? data_get($this->meta, 'integrations.logo.checkout_summary');
+
+        if (! is_array($summary)) {
+            $summary = $this->checkoutSummaryFromMode(
+                data_get($this->meta, 'checkout_summary_mode')
+                    ?? data_get($this->meta, 'order.checkout_summary_mode')
+                    ?? data_get($this->meta, 'integrations.logo.checkout_summary_mode')
+            );
+        }
+
+        if (! is_array($summary) && $this->relationLoaded('order') && $this->order !== null) {
+            $summary = $this->checkoutSummaryFromOrder($this->order);
+        }
 
         if (! is_array($summary)) {
             return null;
@@ -200,5 +223,122 @@ class LedgerEntryResource extends JsonResource
             'code' => $code,
             'label' => $label,
         ];
+    }
+
+    private function salesPriceType(): ?string
+    {
+        $value = data_get($this->meta, 'sales_price_type')
+            ?? data_get($this->meta, 'order.sales_price_type')
+            ?? data_get($this->meta, 'integrations.logo.sales_price_type');
+
+        if ($value === null && $this->relationLoaded('order') && $this->order !== null) {
+            $value = data_get($this->orderSyncMeta($this->order), 'sales_price_type');
+        }
+
+        if ($value === null) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function salesPriceTypeLabel(?string $value): ?string
+    {
+        $normalized = mb_strtolower(trim((string) $value), 'UTF-8');
+
+        return match ($normalized) {
+            'bank_transfer', 'transfer', 'havale', 'havale/eft', 'havale / eft' => 'Havale / EFT',
+            'cash', 'nakit' => 'Nakit',
+            'single_payment', 'tek çekim', 'tek cekim' => 'Tek Çekim',
+            default => $value,
+        };
+    }
+
+    private function shippingMethod(): ?string
+    {
+        $value = data_get($this->meta, 'shipping_method')
+            ?? data_get($this->meta, 'order.shipping_method')
+            ?? data_get($this->meta, 'integrations.logo.shipping_method');
+
+        if ($value === null && $this->relationLoaded('order') && $this->order !== null) {
+            $value = $this->order->cart?->shipping_method;
+        }
+
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function shippingMethodLabel(?string $value): ?string
+    {
+        $normalized = mb_strtoupper(trim((string) $value), 'UTF-8');
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_contains($normalized, 'KARGO') || str_contains($normalized, 'CARGO')) {
+            return 'KARGO';
+        }
+
+        if (str_contains($normalized, 'OTOB')) {
+            return 'OTOBÜS';
+        }
+
+        if (str_contains($normalized, 'DEPO')) {
+            return 'DEPOYA SEVK';
+        }
+
+        return $value;
+    }
+
+    /**
+     * @return array{mode: string, code: string, label: string}|null
+     */
+    private function checkoutSummaryFromOrder(mixed $order): ?array
+    {
+        return $this->checkoutSummaryFromMode(data_get($this->orderSyncMeta($order), 'checkout_summary_mode'));
+    }
+
+    /**
+     * @return array{mode: string, code: string, label: string}|null
+     */
+    private function checkoutSummaryFromMode(mixed $value): ?array
+    {
+        $mode = trim((string) $value);
+
+        return match ($mode) {
+            'detailed' => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1-F'],
+            'excluded' => ['mode' => 'excluded', 'code' => '2-O', 'label' => '2-0'],
+            'included' => ['mode' => 'included', 'code' => '3-B', 'label' => '3-B'],
+            default => null,
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function orderSyncMeta(mixed $order): array
+    {
+        if (! method_exists($order, 'getKey')) {
+            return [];
+        }
+
+        $state = \App\Models\IntegrationSyncState::query()
+            ->where('system', 'logo')
+            ->where('domain', 'orders')
+            ->where('direction', 'outbound')
+            ->where('entity_type', \App\Models\Order::class)
+            ->where('entity_id', (int) $order->getKey())
+            ->latest('id')
+            ->first();
+
+        return is_array($state?->meta) ? $state->meta : [];
     }
 }

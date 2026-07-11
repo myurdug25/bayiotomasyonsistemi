@@ -40,10 +40,10 @@ class CustomerLedgerIndexRequest extends FormRequest
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'from_date' => ['nullable', 'date'],
             'to_date' => ['nullable', 'date', 'after_or_equal:from_date'],
-            'type' => ['nullable', 'in:invoice,payment,credit,debit'],
+            'type' => ['nullable', 'in:order,invoice,payment,credit,debit'],
             'collection_method' => ['nullable', 'in:cash,transfer,check,note,cc,factory_cc'],
             'exclude_types' => ['nullable', 'array'],
-            'exclude_types.*' => ['in:invoice,payment,credit,debit'],
+            'exclude_types.*' => ['in:order,invoice,payment,credit,debit'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ];
     }

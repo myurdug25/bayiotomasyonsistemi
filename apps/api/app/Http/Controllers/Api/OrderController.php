@@ -19,6 +19,7 @@ use App\Models\StockSummary;
 use App\Models\User;
 use App\Services\Customers\CustomerAccessScopeService;
 use App\Services\Integrations\IntegrationSyncStateService;
+use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
@@ -45,6 +46,7 @@ class OrderController extends Controller
                 'order_no',
                 'dealer_id',
                 'customer_id',
+                'cart_id',
                 'status',
                 'currency',
                 'subtotal',
@@ -57,6 +59,7 @@ class OrderController extends Controller
             ])
             ->with([
                 'customer:id,code,name',
+                'cart:id,shipping_method',
                 'latestStatusHistory',
                 'latestStatusHistory.changedBy:id,name',
             ])
@@ -285,7 +288,7 @@ class OrderController extends Controller
 
         $order = DB::transaction(function () use ($validated, $dealerId, $user, $syncState, $forceWarehouseTransfer) {
             $cart = $this->resolveDraftCartForOrder($user, $dealerId, $validated);
-            $cart->loadMissing('customer');
+            $cart->loadMissing('customer.salesperson');
             $items = $cart->items()->with('product')->lockForUpdate()->get();
 
             if ($items->isEmpty()) {
@@ -334,16 +337,16 @@ class OrderController extends Controller
                 }
 
                 $quantity = (int) $item->quantity;
-                $lineCents = $this->toCents($item->line_total);
-                $grossCents = $this->toCents((float) $item->unit_net_price * $quantity);
+                $lineCents = $this->toCents($this->cartItemLineTotal($item));
+                $grossCents = $this->toCents(round((float) $item->unit_net_price, 2) * $quantity);
                 $sourceTaxRate = (float) ($item->vat_rate ?? $item->product?->vat_rate ?? 0);
                 $lineTaxCents = (int) round($lineCents * ($sourceTaxRate / 100));
                 $grossTaxCents = (int) round($grossCents * ($sourceTaxRate / 100));
                 $orderLineCents = $pricesIncludeTax ? $lineCents + $lineTaxCents : $lineCents;
                 $orderGrossCents = $pricesIncludeTax ? $grossCents + $grossTaxCents : $grossCents;
                 $orderUnitCents = $quantity > 0
-                    ? (int) round($orderGrossCents / $quantity)
-                    : $this->toCents($item->unit_net_price);
+                    ? (int) round($orderLineCents / $quantity)
+                    : $lineCents;
                 $orderTaxRate = $taxAsSeparateLine ? $sourceTaxRate : 0.0;
                 $orderTaxCents = $taxAsSeparateLine ? $lineTaxCents : 0;
 
@@ -370,6 +373,7 @@ class OrderController extends Controller
             $isWarehouseTransfer = $forceWarehouseTransfer || (bool) $cart->is_warehouse_transfer;
             $initialStatus = $isWarehouseTransfer ? 'approved' : 'pending';
             $orderNote = $this->resolveOrderNote($validated['note'] ?? null, $cart->order_note, $cart->note);
+            $targetWarehouse = $this->resolveTargetWarehouseForCheckout($user, $cart->customer, $cart->shipping_method);
             $timestamp = now();
 
             $order = Order::create([
@@ -434,6 +438,10 @@ class OrderController extends Controller
                     'checkout_summary_mode' => $checkoutSummaryMode,
                     'payment_method' => $paymentMethod,
                     'sales_price_type' => $salesPriceType,
+                    'shipping_method' => $cart->shipping_method,
+                    'target_warehouse_code' => $targetWarehouse['code'] ?? null,
+                    'target_warehouse_name' => $targetWarehouse['name'] ?? null,
+                    'target_warehouse_reason' => $targetWarehouse['reason'] ?? null,
                 ],
                 payload: [
                     'order_id' => $order->id,
@@ -442,6 +450,10 @@ class OrderController extends Controller
                     'checkout_summary_mode' => $checkoutSummaryMode,
                     'payment_method' => $paymentMethod,
                     'sales_price_type' => $salesPriceType,
+                    'shipping_method' => $cart->shipping_method,
+                    'target_warehouse_code' => $targetWarehouse['code'] ?? null,
+                    'target_warehouse_name' => $targetWarehouse['name'] ?? null,
+                    'target_warehouse_reason' => $targetWarehouse['reason'] ?? null,
                 ],
             );
 
@@ -545,6 +557,7 @@ class OrderController extends Controller
         $invoice = $this->invoiceLedgerEntry($order);
         $logoSyncState = $this->logoSyncState('orders', Order::class, (int) $order->id);
         $invoiceMeta = is_array($invoice?->meta) ? $invoice->meta : [];
+        $orderSyncMeta = is_array($logoSyncState?->meta) ? $logoSyncState->meta : [];
         $createdByRoleSlugs = $order->user instanceof User ? $this->userRoleSlugs($order->user) : [];
         $sourcePanel = $this->nullableString(data_get($invoiceMeta, 'source_panel'))
             ?? $this->resolveSourcePanelFromRoleSlugs($createdByRoleSlugs);
@@ -588,6 +601,10 @@ class OrderController extends Controller
                     'checkout_summary' => is_array(data_get($invoiceMeta, 'checkout_summary'))
                         ? data_get($invoiceMeta, 'checkout_summary')
                         : null,
+                    'sales_price_type' => $this->nullableString(data_get($invoiceMeta, 'sales_price_type'))
+                        ?? $this->nullableString(data_get($orderSyncMeta, 'sales_price_type')),
+                    'payment_method' => $this->nullableString(data_get($invoiceMeta, 'payment_method'))
+                        ?? $this->nullableString(data_get($orderSyncMeta, 'payment_method')),
                     'shipping_method' => $order->cart?->shipping_method,
                     'note' => $order->note ?? $order->cart?->order_note ?? $order->cart?->note,
                 ],
@@ -1223,6 +1240,74 @@ class OrderController extends Controller
         return $order->customer?->salesperson;
     }
 
+    /**
+     * @return array{code:string,name:string,reason:string}|null
+     */
+    private function resolveTargetWarehouseForCheckout(User $user, ?Customer $customer, ?string $shippingMethod): ?array
+    {
+        return app(WarehouseBranchResolver::class)->targetWarehouse($user, $customer, $shippingMethod);
+    }
+
+    private function normalizeBranchCode(mixed $value): ?string
+    {
+        $normalized = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(trim((string) $value)))) ?? '';
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_contains($normalized, 'TRABZON')) {
+            return 'TRABZON';
+        }
+
+        if (str_contains($normalized, 'SAMSUN')) {
+            return 'SAMSUN';
+        }
+
+        if (str_contains($normalized, 'ERZURUM') || str_starts_with($normalized, 'ERZ')) {
+            return 'ERZURUM';
+        }
+
+        if (str_contains($normalized, 'BATUM')) {
+            return 'BATUM';
+        }
+
+        return $normalized;
+    }
+
+    private function branchCodeFromUserIdentity(User $user): ?string
+    {
+        $identity = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(implode(' ', array_filter([
+            $user->username,
+            $user->email,
+            $user->name,
+        ]))))) ?? '';
+
+        if ($identity === '') {
+            return null;
+        }
+
+        $explicit = [
+            'TRABZONPOINT' => 'TRABZON',
+            'TRABZONDEPO' => 'TRABZON',
+            'SAMSUNPOINT' => 'SAMSUN',
+            'SAMSUNDEPO' => 'SAMSUN',
+            'ERZURUMMERKEZ' => 'ERZURUM',
+            'MUDURERZURUM' => 'ERZURUM',
+            'AHMETARAC' => 'ERZURUM',
+            'ERZDEPO' => 'ERZURUM',
+            'BATUM' => 'BATUM',
+        ];
+
+        foreach ($explicit as $needle => $branch) {
+            if (str_contains($identity, $needle)) {
+                return $branch;
+            }
+        }
+
+        return $this->normalizeBranchCode($identity);
+    }
+
     private function nullableString(mixed $value): ?string
     {
         if ($value === null) {
@@ -1360,5 +1445,24 @@ class OrderController extends Controller
     private function fromCents(int $cents): string
     {
         return number_format($cents / 100, 2, '.', '');
+    }
+
+    private function cartItemLineTotal($item): float
+    {
+        $quantity = max(1, (int) $item->quantity);
+        $unitPrice = round((float) $item->unit_net_price, 2);
+        $gross = $unitPrice * $quantity;
+
+        if (
+            $item->campaign_key !== null
+            && trim((string) $item->campaign_key) !== ''
+            && (float) $item->discount_rate <= 0
+        ) {
+            return round($gross, 2);
+        }
+
+        $discountRate = max(0.0, (float) $item->discount_rate);
+
+        return round($gross - ($gross * ($discountRate / 100)), 2);
     }
 }

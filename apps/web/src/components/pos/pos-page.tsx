@@ -746,14 +746,20 @@ function printHtmlDocument(html: string) {
   frame.style.border = "0";
   frame.style.opacity = "0";
   frame.style.pointerEvents = "none";
+  let readyToPrint = false;
+  let printed = false;
 
   const cleanup = () => {
     window.setTimeout(() => {
       frame.remove();
-    }, 250);
+    }, 1500);
   };
 
   frame.onload = () => {
+    if (!readyToPrint || printed) {
+      return;
+    }
+
     const printWindow = frame.contentWindow;
 
     if (!printWindow) {
@@ -762,9 +768,12 @@ function printHtmlDocument(html: string) {
       return;
     }
 
-    printWindow.focus();
-    printWindow.print();
-    cleanup();
+    printed = true;
+    window.setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      cleanup();
+    }, 160);
   };
 
   window.document.body.appendChild(frame);
@@ -777,6 +786,7 @@ function printHtmlDocument(html: string) {
   }
 
   printDocument.open();
+  readyToPrint = true;
   printDocument.write(html);
   printDocument.close();
 }
@@ -790,7 +800,7 @@ function openReceiptPrintWindow(
     return;
   }
 
-  const documentLabel = sale.document_type === "delivery" ? "Sevk İrsaliyesi" : "POS Fişi";
+  const documentLabel = sale.document_type === "delivery" ? "Sevk İrsaliyesi" : "Fatura";
   const receiptTitle = sale.receipt_no ? `${documentLabel} - ${sale.receipt_no}` : documentLabel;
   const customerTitle = selectedCustomer?.title ?? sale.customer.title ?? sale.customer.code ?? "-";
   const customerAddress = [
@@ -811,6 +821,138 @@ function openReceiptPrintWindow(
       `
     )
     .join("");
+
+  if (sale.document_type === "invoice") {
+    const invoiceRows = sale.items
+      .map(
+        (item, index) => `
+          <tr>
+            <td class="center">${index + 1}</td>
+            <td>${escapeReceiptText(item.sku ?? "-")}</td>
+            <td>${escapeReceiptText(item.name ?? "-")}</td>
+            <td class="center">${escapeReceiptText(item.qty)} Adet</td>
+            <td class="right">${formatReceiptAmount(item.unit_price, currencyLabel)}</td>
+            <td class="right">${formatReceiptAmount(item.line_total, currencyLabel)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    printHtmlDocument(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeReceiptText(receiptTitle)}</title>
+          <style>
+            @page { size: A4 portrait; margin: 6mm; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; background: #fff; color: #101010; font-family: Arial, Helvetica, sans-serif; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page { width: 100%; min-height: calc(297mm - 12mm); padding: 6mm 7mm; border: 1px solid #d7d7d7; }
+            .top { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 6mm; align-items: start; }
+            .brand { display: flex; gap: 5mm; align-items: flex-start; }
+            .logo { max-width: 42mm; max-height: 16mm; object-fit: contain; }
+            .company { font-size: 9.2px; line-height: 1.25; font-weight: 700; }
+            .meta { justify-self: end; width: 78mm; border: 1px solid #aeb4bb; font-size: 9.4px; }
+            .meta-row { display: grid; grid-template-columns: 30mm 1fr; min-height: 6mm; border-bottom: 1px solid #d8dde3; }
+            .meta-row:last-child { border-bottom: 0; }
+            .meta-row span { padding: 1.3mm 2mm; }
+            .meta-row span:first-child { background: #f3f5f7; font-weight: 800; }
+            .title { margin: 5mm 0 3mm; text-align: center; font-size: 16px; font-weight: 900; letter-spacing: 0.04em; }
+            .subtitle { margin-top: -2mm; margin-bottom: 4mm; text-align: center; font-size: 10px; font-weight: 700; color: #555; }
+            .customer { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-bottom: 4mm; font-size: 10px; }
+            .box { border: 1px solid #d7dce2; padding: 2.5mm; min-height: 18mm; }
+            .box-title { margin-bottom: 1.5mm; font-size: 8.5px; font-weight: 900; color: #667085; letter-spacing: 0.08em; text-transform: uppercase; }
+            .box-main { font-size: 11px; font-weight: 900; line-height: 1.3; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9.4px; }
+            th, td { border: 1px solid #98a2b3; padding: 1.7mm 1.5mm; vertical-align: middle; }
+            th { background: #f2f4f7; font-size: 8.4px; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; }
+            .center { text-align: center; }
+            .right { text-align: right; }
+            .totals { display: grid; grid-template-columns: 1fr 62mm; gap: 5mm; margin-top: 4mm; }
+            .totals table { font-size: 9.5px; }
+            .totals td:first-child { font-weight: 800; background: #f8fafc; }
+            .grand td { font-size: 11px; font-weight: 900; }
+            .slogan { margin-top: 5mm; border-top: 1px solid #cfd6dd; padding-top: 2.5mm; text-align: center; font-size: 12px; font-weight: 900; color: #555; letter-spacing: 0.04em; }
+            @media screen {
+              body { background: #e5e7eb; padding: 16px; }
+              .page { max-width: 210mm; margin: 0 auto; background: #fff; box-shadow: 0 18px 60px rgba(15,23,42,.18); }
+            }
+            @media print {
+              .page { min-height: auto; border-color: #d7d7d7; }
+            }
+          </style>
+        </head>
+        <body>
+          <main class="page">
+            <section class="top">
+              <div class="brand">
+                <img class="logo" src="/brand/powersa-gucsa-logo-clean.png" alt="PowerSA" />
+                <div class="company">
+                  GÜÇSA FİLTRECİM GRUP OTOMOTİV SANAYİ VE TİCARET A.Ş.<br />
+                  Şehit Nevtes Bulvarı Kızılay İş Merkezi No: 3 Kat:0 KONAK / İZMİR<br />
+                  Erzurum · Trabzon · Samsun · Batum<br />
+                  VKN: 1113111000
+                </div>
+              </div>
+              <div class="meta">
+                <div class="meta-row"><span>Belge No</span><span>${escapeReceiptText(sale.receipt_no)}</span></div>
+                <div class="meta-row"><span>Belge Tipi</span><span>${escapeReceiptText(documentLabel)}</span></div>
+                <div class="meta-row"><span>Tarih</span><span>${formatReceiptDate(sale.created_at)}</span></div>
+                <div class="meta-row"><span>Para Birimi</span><span>${escapeReceiptText(currencyLabel)}</span></div>
+              </div>
+            </section>
+            <h1 class="title">e- Fatura</h1>
+            <p class="subtitle">(POS hızlı satış çıktısı)</p>
+            <section class="customer">
+              <div class="box">
+                <div class="box-title">Sayın</div>
+                <div class="box-main">${escapeReceiptText(customerTitle)}</div>
+                <div>${escapeReceiptText(sale.customer.code ?? selectedCustomer?.code ?? "")}</div>
+                <div>${escapeReceiptText(customerAddress)}</div>
+              </div>
+              <div class="box">
+                <div class="box-title">Satış Bilgisi</div>
+                <div class="box-main">${escapeReceiptText(receiptTitle)}</div>
+                <div>Belge tipi: ${escapeReceiptText(documentLabel)}</div>
+                <div>Kalem: ${sale.items.length}</div>
+              </div>
+            </section>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 9mm;">Sıra</th>
+                  <th style="width: 28mm;">Stok Kodu</th>
+                  <th>Stok Adı</th>
+                  <th style="width: 22mm;">Miktar</th>
+                  <th style="width: 30mm;">Birim Fiyat</th>
+                  <th style="width: 32mm;">Mal Hizmet Tutarı</th>
+                </tr>
+              </thead>
+              <tbody>${invoiceRows}</tbody>
+            </table>
+            <section class="totals">
+              <div class="box">
+                <div class="box-title">Not</div>
+                <div>PowerSA hızlı satış üzerinden oluşturulmuştur.</div>
+              </div>
+              <table>
+                <tbody>
+                  <tr><td>Toplam</td><td class="right">${formatReceiptAmount(receiptSubtotal, currencyLabel)}</td></tr>
+                  <tr><td>Toplam İskonto</td><td class="right">${formatReceiptAmount(sale.discount_total, currencyLabel)}</td></tr>
+                  <tr><td>KDV (${RECEIPT_VAT_RATE_LABEL})</td><td class="right">${formatReceiptAmount(sale.vat_total, currencyLabel)}</td></tr>
+                  <tr class="grand"><td>Genel Toplam</td><td class="right">${formatReceiptAmount(sale.grand_total, currencyLabel)}</td></tr>
+                </tbody>
+              </table>
+            </section>
+            <div class="slogan">EN İYİ HİZMET - KALİTE - FİYAT - GARANTİ - ÜRÜN ÇEŞİTLİLİĞİ - SÜREKLİLİK</div>
+          </main>
+        </body>
+      </html>
+    `);
+    return;
+  }
 
   printHtmlDocument(`
     <html>
@@ -1017,9 +1159,7 @@ export function PosPage() {
     hasPosMenuPermission ||
     roleSlugs.some((role) => role === "admin" || role === "dealer_admin" || role === "cashier");
   const isErzurumPointFlow = canAccessPos && !isBatumPointFlowByUser;
-  const erzurumPointCustomerParams = isErzurumPointFlow
-    ? { specode4: ERZURUM_POINT_SPECIAL_CODE }
-    : null;
+  const erzurumPointCustomerParams = null;
 
   const [quickQuery, setQuickQuery] = useState("");
   const [activeQuickIndex, setActiveQuickIndex] = useState(0);
@@ -2273,7 +2413,7 @@ export function PosPage() {
       return;
     }
 
-    pointPrintAfterSaveRef.current = false;
+    pointPrintAfterSaveRef.current = documentType === "invoice";
     paymentForm.reset({
       cash_received: totals.grandTotalCents / 100,
       reference_note: "",
@@ -2284,7 +2424,7 @@ export function PosPage() {
     if (typeof window !== "undefined" && window.location.pathname !== "/pos") {
       window.history.replaceState(null, "", "/pos");
     }
-  }, [canSubmitSale, paymentForm, submitSale, totals.grandTotalCents]);
+  }, [canSubmitSale, documentType, paymentForm, submitSale, totals.grandTotalCents]);
 
   const handleOpenSession = openSessionForm.handleSubmit(async (values) => {
     await openSessionMutation.mutateAsync(values);

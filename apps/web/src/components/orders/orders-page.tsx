@@ -125,6 +125,27 @@ function OrderStatusBadge({ status }: { status: string }) {
   );
 }
 
+function getCheckoutSummaryClass(code: string): string {
+  if (code === "1-F") {
+    return "border-emerald-300/45 bg-emerald-400/14 text-emerald-100";
+  }
+
+  if (code === "2-O" || code === "2-0") {
+    return "border-sky-300/45 bg-sky-400/14 text-sky-100";
+  }
+
+  if (code === "3-B") {
+    return "border-fuchsia-300/45 bg-fuchsia-400/14 text-fuchsia-100";
+  }
+
+  return "border-white/15 bg-white/[0.04] text-slate-200";
+}
+
+function isCargoMethod(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "").toLocaleUpperCase("tr-TR");
+  return normalized.includes("KARGO") || normalized.includes("CARGO");
+}
+
 function formatOrderDateTime(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -189,6 +210,24 @@ type OrderRow = {
   logo_sync_error?: string | null;
   logo_external_ref?: string | null;
   logo_last_synced_at?: string | null;
+  checkout_summary?: {
+    mode: "detailed" | "excluded" | "included";
+    code: string;
+    label: string;
+  } | null;
+  sales_price_type?: string | null;
+  sales_price_type_label?: string | null;
+  shipping_method?: string | null;
+  origin?: {
+    checkout_summary?: {
+      mode: "detailed" | "excluded" | "included";
+      code: string;
+      label: string;
+    } | null;
+    sales_price_type?: string | null;
+    sales_price_type_label?: string | null;
+    shipping_method?: string | null;
+  } | null;
 };
 
 type OrderBalanceReport = {
@@ -520,7 +559,12 @@ export function OrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {displayRows.map((row) => (
+                    {displayRows.map((row) => {
+                      const checkoutSummary = row.origin?.checkout_summary ?? row.checkout_summary ?? null;
+                      const shippingMethod = row.origin?.shipping_method ?? row.shipping_method ?? null;
+                      const salesPriceType = row.origin?.sales_price_type_label ?? row.sales_price_type_label ?? row.origin?.sales_price_type ?? row.sales_price_type ?? null;
+
+                      return (
                       <tr
                         key={row.order_id}
                         role="button"
@@ -551,6 +595,21 @@ export function OrdersPage() {
                           ) : (
                             <div className="flex flex-wrap gap-1.5">
                               <OrderStatusBadge status={row.status} />
+                              {checkoutSummary ? (
+                                <Badge variant="outline" className={`rounded-full px-2.5 py-1 text-[11px] font-black ${getCheckoutSummaryClass(checkoutSummary.code)}`}>
+                                  {checkoutSummary.label}
+                                </Badge>
+                              ) : null}
+                              {salesPriceType ? (
+                                <Badge variant="outline" className="rounded-full border-sky-300/35 bg-sky-300/10 px-2.5 py-1 text-[11px] font-black text-sky-100">
+                                  {salesPriceType}
+                                </Badge>
+                              ) : null}
+                              {isCargoMethod(shippingMethod) ? (
+                                <Badge variant="outline" className="rounded-full border-rose-200/60 bg-rose-100 px-2.5 py-1 text-[11px] font-black text-rose-800">
+                                  KARGO
+                                </Badge>
+                              ) : null}
                               {(row.remaining_quantity ?? 0) > 0 ? (
                                 <Badge variant="outline" className="rounded-full border-yellow-300/40 bg-yellow-300/10 px-3 py-1 text-[12px] font-black text-yellow-100">
                                   Bakiye {row.remaining_quantity}
@@ -581,7 +640,8 @@ export function OrdersPage() {
                           </Button>
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
               </div>

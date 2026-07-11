@@ -758,6 +758,9 @@ export type OrderDetailResponse = {
         code: string;
         label: string;
       } | null;
+      sales_price_type?: string | null;
+      sales_price_type_label?: string | null;
+      payment_method?: string | null;
       shipping_method: string | null;
       note: string | null;
     };
@@ -846,6 +849,24 @@ export type OrderListItem = {
   logo_sync_error?: string | null;
   logo_external_ref?: string | null;
   logo_last_synced_at?: string | null;
+  checkout_summary?: {
+    mode: "detailed" | "excluded" | "included";
+    code: string;
+    label: string;
+  } | null;
+  sales_price_type?: string | null;
+  sales_price_type_label?: string | null;
+  shipping_method?: string | null;
+  origin?: {
+    checkout_summary?: {
+      mode: "detailed" | "excluded" | "included";
+      code: string;
+      label: string;
+    } | null;
+    sales_price_type?: string | null;
+    sales_price_type_label?: string | null;
+    shipping_method?: string | null;
+  } | null;
   totals?: {
     currency: string;
     subtotal: string;
@@ -1082,7 +1103,7 @@ export type CustomerCardRequestListResponse = CursorResponse<CustomerCardRequest
   };
 };
 
-export type LedgerEntryType = "invoice" | "payment" | "credit" | "debit";
+export type LedgerEntryType = "order" | "invoice" | "payment" | "credit" | "debit";
 export type CollectionMethodFilter = "cash" | "transfer" | "check" | "note" | "cc" | "factory_cc";
 
 export type LedgerEntryDto = {
@@ -1112,6 +1133,11 @@ export type LedgerEntryDto = {
     code: string;
     label: string;
   } | null;
+  sales_price_type?: string | null;
+  sales_price_type_label?: string | null;
+  shipping_method?: string | null;
+  shipping_method_label?: string | null;
+  payment_method?: string | null;
 };
 
 export type LedgerSummaryDto = {
@@ -1453,6 +1479,8 @@ export type PosDayEndReport = {
         quantity: string;
         unit_price: string;
         line_total: string;
+        unit_price_vat_included?: string | null;
+        line_total_vat_included?: string | null;
         warehouse_name?: string | null;
       }>;
       created_at: string | null;
@@ -1475,6 +1503,8 @@ export type PosDayEndReport = {
         quantity: string;
         unit_price: string;
         line_total: string;
+        unit_price_vat_included?: string | null;
+        line_total_vat_included?: string | null;
         warehouse_name?: string | null;
       }>;
       created_at: string | null;
@@ -1497,6 +1527,8 @@ export type PosDayEndReport = {
         quantity: string;
         unit_price: string;
         line_total: string;
+        unit_price_vat_included?: string | null;
+        line_total_vat_included?: string | null;
         warehouse_name?: string | null;
       }>;
       created_at: string | null;
@@ -1621,6 +1653,9 @@ export type WarehouseReadyOrderItem = {
       code: string;
       label: string;
     } | null;
+    sales_price_type?: string | null;
+    sales_price_type_label?: string | null;
+    payment_method?: string | null;
     shipping_method: string | null;
     note: string | null;
   };
@@ -1711,6 +1746,29 @@ export type WarehouseStaffUser = {
     name: string;
     slug: string;
   }>;
+};
+
+export type WarehouseShelfProduct = {
+  id: number;
+  product_code: string;
+  product_name: string;
+  brand?: string | null;
+  oem?: string | null;
+  competitor_codes: string[];
+  warehouse_code: string;
+  warehouse_name: string;
+  shelf_address?: string | null;
+  editable: boolean;
+  logo_ref?: string | null;
+};
+
+export type WarehouseShelfResponse = {
+  data: WarehouseShelfProduct[];
+  warehouse: {
+    code: string;
+    name: string;
+    editable: boolean;
+  };
 };
 
 export type WarehouseShipmentState = {
@@ -2385,6 +2443,7 @@ export async function createCustomerCardRequest(payload: {
   phone: string;
   email?: string;
   customer_kind?: "person" | "company";
+  logo_special_code?: string;
   logo_authorization_code?: string;
   auto_convert?: boolean;
   city: string;
@@ -3049,8 +3108,36 @@ export async function listWarehouseReadyOrders(params?: {
   );
 }
 
+export async function bulkCancelWarehouseOrders(orderIds: number[]) {
+  return apiFetch<{ message: string; cancelled: number }>("/api/warehouse/orders/bulk-cancel", {
+    method: "POST",
+    body: JSON.stringify({ order_ids: orderIds }),
+  });
+}
+
 export async function listWarehouseStaff() {
   return apiFetch<{ data: WarehouseStaffUser[] }>("/api/warehouse/staff");
+}
+
+export async function listWarehouseShelves(params?: {
+  q?: string;
+  warehouse_code?: string;
+  limit?: number;
+}) {
+  return apiFetch<WarehouseShelfResponse>(`/api/warehouse/shelves${toSearch(params ?? {})}`);
+}
+
+export async function updateWarehouseShelf(
+  productId: number,
+  payload: {
+    warehouse_code: string;
+    shelf_address?: string | null;
+  }
+) {
+  return apiFetch<{ data: WarehouseShelfProduct; message?: string }>(`/api/warehouse/shelves/${productId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function createWarehouseShipment(payload: {
@@ -3084,6 +3171,28 @@ export async function createPurchaseReceipt(payload: {
 
 export async function getWarehouseShipment(shipmentId: number | string) {
   return apiFetch<{ data: WarehouseShipmentState }>(`/api/warehouse/shipments/${shipmentId}`);
+}
+
+export async function getWarehouseShipmentInvoicePrintHtml(shipmentId: number | string): Promise<string> {
+  const response = await fetch(`${getApiBase()}/api/warehouse/shipments/${shipmentId}/print/invoice`, {
+    credentials: "include",
+    headers: {
+      ...getSanctumHeaders("GET"),
+      Accept: "text/html,application/xhtml+xml",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorizedRedirect();
+    }
+
+    const message = (await response.text().catch(() => "")).trim();
+    throw new ApiClientError(message || `Request failed: ${response.status}`, response.status);
+  }
+
+  return response.text();
 }
 
 export async function scanWarehouseShipment(

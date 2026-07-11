@@ -315,18 +315,18 @@ class ModeratorManagementController extends Controller
         ]);
 
         $updatedUser = DB::transaction(function () use ($actor, $user, $validated) {
-            $nextMenuPermissions = array_key_exists('menu_permissions', $validated)
+            $nextMenuPermissions = array_key_exists('menu_permissions', $validated) && is_array($validated['menu_permissions'])
                 ? collect(MenuPermissions::normalize($validated['menu_permissions'] ?? []))
                 : collect(MenuPermissions::forUser($user));
 
-            $nextRoleSlugs = array_key_exists('role_slugs', $validated)
+            $nextRoleSlugs = array_key_exists('role_slugs', $validated) && is_array($validated['role_slugs'])
                 ? $this->normalizedRoleSlugs($validated, $nextMenuPermissions)
                 : (
-                    array_key_exists('menu_permissions', $validated)
+                    array_key_exists('menu_permissions', $validated) && is_array($validated['menu_permissions'])
                         ? collect(MenuPermissions::rolesForPermissions($nextMenuPermissions->all()))
                         : $user->roles()->pluck('slug')->values()
                 );
-            $nextFeaturePermissions = array_key_exists('feature_permissions', $validated)
+            $nextFeaturePermissions = array_key_exists('feature_permissions', $validated) && is_array($validated['feature_permissions'])
                 ? CustomerFeaturePermissions::normalize($validated['feature_permissions'] ?? [])
                 : CustomerFeaturePermissions::forUser($user);
 

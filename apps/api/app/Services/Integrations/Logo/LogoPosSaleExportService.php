@@ -58,6 +58,8 @@ class LogoPosSaleExportService
                 'items.product:id,sku,oem_code,name,unit,vat_rate,meta',
                 'payments',
                 'posSession.cashbox',
+                'posSession.openedBy:id,name,username,email,branch_code,branch_name,region_code',
+                'createdBy:id,name,username,email,branch_code,branch_name,region_code',
             ])
             ->whereIn('id', $states->pluck('entity_id')->map(fn ($id) => (int) $id)->all())
             ->where('status', 'paid')
@@ -198,11 +200,13 @@ class LogoPosSaleExportService
      */
     private function logoPayload(PosSale $sale): array
     {
+        $pointWarehouseNo = $this->pointWarehouseNo($sale);
+
         $payload = [
-            'branch' => data_get($sale->meta_json, 'integrations.logo.branch'),
+            'branch' => data_get($sale->meta_json, 'integrations.logo.branch') ?? $pointWarehouseNo,
             'department' => data_get($sale->meta_json, 'integrations.logo.department'),
-            'source_index' => data_get($sale->meta_json, 'integrations.logo.source_index'),
-            'warehouse_no' => data_get($sale->meta_json, 'integrations.logo.warehouse_no'),
+            'source_index' => data_get($sale->meta_json, 'integrations.logo.source_index') ?? $pointWarehouseNo,
+            'warehouse_no' => data_get($sale->meta_json, 'integrations.logo.warehouse_no') ?? $pointWarehouseNo,
         ];
 
         if ($sale->document_type === 'delivery') {
@@ -361,5 +365,49 @@ class LogoPosSaleExportService
 
         return str_contains($haystack, 'BATUM')
             || ($batumCashboxCode !== '' && $normalizedCode === $batumCashboxCode);
+    }
+
+    private function pointWarehouseNo(PosSale $sale): int
+    {
+        $sale->loadMissing('posSession.cashbox', 'posSession.openedBy', 'createdBy');
+
+        $cashbox = $sale->posSession?->cashbox;
+        $user = $sale->posSession?->openedBy ?? $sale->createdBy;
+
+        if ($this->isBatumCashbox($cashbox?->code, $cashbox?->name)) {
+            return $this->configuredPointWarehouseNo('batum_point_warehouse_no', 4);
+        }
+
+        $haystack = mb_strtoupper(trim(implode(' ', array_filter([
+            $cashbox?->code,
+            $cashbox?->name,
+            $user?->username,
+            $user?->email,
+            $user?->name,
+            $user?->branch_code,
+            $user?->branch_name,
+            $user?->region_code,
+        ], fn ($value): bool => is_scalar($value) && trim((string) $value) !== ''))), 'UTF-8');
+
+        if (str_contains($haystack, 'BATUM')) {
+            return $this->configuredPointWarehouseNo('batum_point_warehouse_no', 4);
+        }
+
+        if (str_contains($haystack, 'TRABZON')) {
+            return $this->configuredPointWarehouseNo('trabzon_point_warehouse_no', 2);
+        }
+
+        if (str_contains($haystack, 'SAMSUN')) {
+            return $this->configuredPointWarehouseNo('samsun_point_warehouse_no', 3);
+        }
+
+        return $this->configuredPointWarehouseNo('erzurum_point_warehouse_no', $this->configuredPointWarehouseNo('point_warehouse_no', 0));
+    }
+
+    private function configuredPointWarehouseNo(string $key, int $fallback): int
+    {
+        $value = config('integrations.pos.'.$key);
+
+        return is_numeric($value) ? (int) $value : $fallback;
     }
 }

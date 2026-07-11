@@ -168,6 +168,9 @@ class LogoOrderExportService
             'checkout_summary_mode' => $this->nullableString(data_get($stateMeta, 'checkout_summary_mode')),
             'payment_method' => $this->nullableString(data_get($stateMeta, 'payment_method')),
             'sales_price_type' => $this->nullableString(data_get($stateMeta, 'sales_price_type')),
+            'target_warehouse_code' => $this->nullableString(data_get($stateMeta, 'target_warehouse_code')),
+            'target_warehouse_name' => $this->nullableString(data_get($stateMeta, 'target_warehouse_name')),
+            'target_warehouse_reason' => $this->nullableString(data_get($stateMeta, 'target_warehouse_reason')),
             'created_by_user_id' => $order->user_id,
             'created_by_name' => $order->user?->name,
             'sync_status' => $state->status,
@@ -192,6 +195,11 @@ class LogoOrderExportService
                     'note' => $order->cart?->note,
                     'order_note' => $order->cart?->order_note,
                 ],
+                'target_warehouse' => [
+                    'code' => $this->nullableString(data_get($stateMeta, 'target_warehouse_code')),
+                    'name' => $this->nullableString(data_get($stateMeta, 'target_warehouse_name')),
+                    'reason' => $this->nullableString(data_get($stateMeta, 'target_warehouse_reason')),
+                ],
                 'logo' => [
                     'document_type' => 'order',
                     'target_tables' => ['ORFICHE', 'ORFLINE'],
@@ -211,6 +219,10 @@ class LogoOrderExportService
                 $product = $item->product;
                 $productMeta = is_array($product?->meta) ? $product->meta : [];
                 $logoPayload = data_get($productMeta, 'integrations.logo.payload');
+                $quantity = max(1, (int) $item->quantity);
+                $unitNetPrice = (float) $item->line_total > 0
+                    ? round((float) $item->line_total / $quantity, 2)
+                    : round((float) $item->unit_net_price, 2);
 
                 return [
                     'order_item_id' => $item->id,
@@ -222,7 +234,7 @@ class LogoOrderExportService
                     'unit' => $product?->unit,
                     'quantity' => (int) $item->quantity,
                     'shipped_qty' => (int) $item->shipped_qty,
-                    'unit_net_price' => $this->money($item->unit_net_price),
+                    'unit_net_price' => $this->money($unitNetPrice),
                     'discount_rate' => $this->money($item->discount_rate),
                     'vat_rate' => $this->money($item->tax_rate),
                     'line_total' => $this->money($item->line_total),

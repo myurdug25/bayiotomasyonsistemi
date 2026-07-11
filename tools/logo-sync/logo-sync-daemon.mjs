@@ -20,10 +20,12 @@ const defaultPrioritySteps = [
   "pos-sales",
   "pos-expenses",
   "documents-export",
+  "product-shelves",
   "product-stocks",
 ];
 const defaultFastSteps = [
   "documents-export",
+  "product-shelves",
   "product-stocks",
   "ledger",
   "collections",
@@ -228,6 +230,10 @@ function resolveStep(name) {
           "POWERSA_RETURNS_PENDING_URL",
           "POWERSA_RETURN_SCRAPS_PENDING_URL",
         ),
+    },
+    "product-shelves": {
+      script: "logo-product-shelves-export.mjs",
+      when: () => hasAny("POWERSA_PRODUCT_SHELVES_PENDING_URL", "POWERSA_SYNC_URL"),
     },
     campaigns: {
       script: "logo-campaigns-sync.mjs",

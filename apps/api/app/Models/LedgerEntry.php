@@ -95,12 +95,28 @@ class LedgerEntry extends Model
         $collectionId = $query->qualifyColumn('collection_id');
         $customerId = $query->qualifyColumn('customer_id');
         $id = $query->qualifyColumn('id');
+        $orderId = $query->qualifyColumn('order_id');
 
         return $query
             ->where(function (Builder $query): void {
                 $query
                     ->whereNull('meta->source')
                     ->orWhere('meta->source', '!=', 'order_checkout');
+            })
+            ->where(function (Builder $query) use ($orderId, $customerId, $id): void {
+                $query
+                    ->whereNull('meta->source')
+                    ->orWhere('meta->source', '!=', 'order_visibility')
+                    ->orWhereNull($orderId)
+                    ->orWhereNotExists(function ($subquery) use ($orderId, $customerId, $id): void {
+                        $subquery
+                            ->selectRaw('1')
+                            ->from('ledger_entries as invoice_ledger_entries')
+                            ->whereColumn('invoice_ledger_entries.order_id', $orderId)
+                            ->whereColumn('invoice_ledger_entries.customer_id', $customerId)
+                            ->whereColumn('invoice_ledger_entries.id', '!=', $id)
+                            ->where('invoice_ledger_entries.type', 'invoice');
+                    });
             })
             ->where(function (Builder $query) use ($sourceSystem, $collectionId, $customerId, $id): void {
                 $query

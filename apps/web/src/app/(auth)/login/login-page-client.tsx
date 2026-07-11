@@ -141,6 +141,14 @@ function resolvePostLoginPath(args: {
     return safeNext || "/dashboard";
   }
 
+  if (isPointOnly) {
+    if (rawSafeNext && (rawSafeNext === "/pos" || rawSafeNext.startsWith("/pos/"))) {
+      return rawSafeNext;
+    }
+
+    return "/pos";
+  }
+
   if (!isAdmin && menuPermissionSet.size > 0) {
     const safeNextPermission = rawSafeNext ? menuPermissionForPath(rawSafeNext) : null;
     const safeNext = safeNextPermission && menuPermissionSet.has(safeNextPermission) ? rawSafeNext : null;
@@ -167,10 +175,6 @@ function resolvePostLoginPath(args: {
 
   if (isModeratorOnly) {
     return "/moderator/users";
-  }
-
-  if (isPointOnly) {
-    return "/pos";
   }
 
   if (isDealerAdmin) {

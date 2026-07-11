@@ -449,6 +449,14 @@ class PosQuickProductSearchController extends Controller
      */
     private function resolveUserSpecificStockVisibilityScope($user): ?array
     {
+        if ($user->hasAnyRole(['point', 'cashier']) || in_array('pos', (array) ($user->menu_permissions ?? []), true)) {
+            if ($this->normalizeScopeText($user->username) !== 'BATUM') {
+                return $this->stockScopeFromWarehouseKeys([
+                    'search.stock.warehouse.erzurum_point',
+                ]);
+            }
+        }
+
         $warehouseKeys = match ($this->normalizeScopeText($user->username)) {
             'ERZURUM.HIZLISATIS' => [
                 'search.stock.warehouse.erzurum_point',
@@ -469,6 +477,15 @@ class PosQuickProductSearchController extends Controller
             return null;
         }
 
+        return $this->stockScopeFromWarehouseKeys($warehouseKeys);
+    }
+
+    /**
+     * @param  list<string>  $warehouseKeys
+     * @return array{codes:list<string>,names:list<string>}
+     */
+    private function stockScopeFromWarehouseKeys(array $warehouseKeys): array
+    {
         $selectedLookup = array_flip($warehouseKeys);
         $codes = [];
         $names = [];

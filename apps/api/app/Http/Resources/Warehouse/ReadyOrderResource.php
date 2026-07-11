@@ -6,9 +6,11 @@ use App\Models\LedgerEntry;
 use App\Models\IntegrationSyncState;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class ReadyOrderResource extends JsonResource
 {
@@ -53,14 +55,27 @@ class ReadyOrderResource extends JsonResource
         $orderSyncMeta = $this->orderLogoSyncMeta();
         $checkoutSummary = $this->checkoutSummaryFromMeta($invoiceMeta)
             ?? $this->checkoutSummaryFromMeta($orderSyncMeta);
+        $salesPriceType = $this->nullableString(data_get($invoiceMeta, 'sales_price_type'))
+            ?? $this->nullableString(data_get($orderSyncMeta, 'sales_price_type'));
+        $paymentMethod = $this->nullableString(data_get($invoiceMeta, 'payment_method'))
+            ?? $this->nullableString(data_get($orderSyncMeta, 'payment_method'));
         $createdBy = $this->user;
         $createdByRoleSlugs = $this->userRoleSlugs($createdBy);
+        $fallbackTargetWarehouse = $this->targetWarehouseForContext($createdBy, $this->customer, $this->cart?->shipping_method);
+        $targetWarehouseCode = $this->nullableString(data_get($fallbackTargetWarehouse, 'code'))
+            ?? $this->nullableString(data_get($invoiceMeta, 'target_warehouse_code'))
+            ?? $this->nullableString(data_get($orderSyncMeta, 'target_warehouse_code'));
+        $targetWarehouseName = $this->nullableString(data_get($fallbackTargetWarehouse, 'name'))
+            ?? $this->nullableString(data_get($invoiceMeta, 'target_warehouse_name'))
+            ?? $this->nullableString(data_get($orderSyncMeta, 'target_warehouse_name'));
+        $targetWarehouseReason = $this->nullableString(data_get($fallbackTargetWarehouse, 'reason'))
+            ?? $this->nullableString(data_get($invoiceMeta, 'target_warehouse_reason'))
+            ?? $this->nullableString(data_get($orderSyncMeta, 'target_warehouse_reason'));
         $sourcePanel = $this->nullableString(data_get($invoiceMeta, 'source_panel'))
             ?? $this->resolveSourcePanel($createdByRoleSlugs);
         $salesperson = $this->resolveSalesperson($createdBy, $createdByRoleSlugs);
-        $preferredWarehouseCode = $this->preferredWarehouseCode(
-            $this->note ?? $this->cart?->order_note ?? $this->cart?->note
-        );
+        $preferredWarehouseCode = $targetWarehouseCode
+            ?? $this->preferredWarehouseCode($this->note ?? $this->cart?->order_note ?? $this->cart?->note);
 
         return [
             'id' => $this->id,
@@ -94,6 +109,12 @@ class ReadyOrderResource extends JsonResource
                     ?? $this->sourcePanelLabel($sourcePanel),
                 'warehouse_dispatch' => (bool) (data_get($invoiceMeta, 'warehouse_dispatch') ?? true),
                 'checkout_summary' => $checkoutSummary,
+                'sales_price_type' => $salesPriceType,
+                'sales_price_type_label' => $this->salesPriceTypeLabel($salesPriceType),
+                'payment_method' => $paymentMethod,
+                'target_warehouse_code' => $targetWarehouseCode,
+                'target_warehouse_name' => $targetWarehouseName,
+                'target_warehouse_reason' => $targetWarehouseReason,
                 'shipping_method' => $this->cart?->shipping_method,
                 'note' => $this->note ?? $this->cart?->order_note ?? $this->cart?->note,
             ],
@@ -138,6 +159,78 @@ class ReadyOrderResource extends JsonResource
     }
 
     /**
+     * @return array{code:string,name:string,reason:string}|null
+     */
+    private function targetWarehouseForContext(?User $user, mixed $customer, ?string $shippingMethod): ?array
+    {
+        return app(WarehouseBranchResolver::class)->targetWarehouse($user, $customer, $shippingMethod);
+    }
+
+    private function normalizeBranchCode(mixed $value): ?string
+    {
+        $normalized = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(trim((string) $value)))) ?? '';
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_contains($normalized, 'TRABZON')) {
+            return 'TRABZON';
+        }
+
+        if (str_contains($normalized, 'SAMSUN')) {
+            return 'SAMSUN';
+        }
+
+        if (str_contains($normalized, 'ERZURUM') || str_starts_with($normalized, 'ERZ')) {
+            return 'ERZURUM';
+        }
+
+        if (str_contains($normalized, 'BATUM')) {
+            return 'BATUM';
+        }
+
+        return $normalized;
+    }
+
+    private function branchCodeFromUserIdentity(?User $user): ?string
+    {
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        $identity = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(implode(' ', array_filter([
+            $user->username,
+            $user->email,
+            $user->name,
+        ]))))) ?? '';
+
+        if ($identity === '') {
+            return null;
+        }
+
+        $explicit = [
+            'TRABZONPOINT' => 'TRABZON',
+            'TRABZONDEPO' => 'TRABZON',
+            'SAMSUNPOINT' => 'SAMSUN',
+            'SAMSUNDEPO' => 'SAMSUN',
+            'ERZURUMMERKEZ' => 'ERZURUM',
+            'MUDURERZURUM' => 'ERZURUM',
+            'AHMETARAC' => 'ERZURUM',
+            'ERZDEPO' => 'ERZURUM',
+            'BATUM' => 'BATUM',
+        ];
+
+        foreach ($explicit as $needle => $branch) {
+            if (str_contains($identity, $needle)) {
+                return $branch;
+            }
+        }
+
+        return $this->normalizeBranchCode($identity);
+    }
+
+    /**
      * @param  array<string, mixed>  $meta
      * @return array{mode: string, code: string, label: string}|null
      */
@@ -166,6 +259,18 @@ class ReadyOrderResource extends JsonResource
             'included' => ['mode' => 'included', 'code' => '3-B', 'label' => '3 - B'],
             'detailed' => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1 - F'],
             default => null,
+        };
+    }
+
+    private function salesPriceTypeLabel(?string $value): ?string
+    {
+        $normalized = mb_strtolower(trim((string) $value), 'UTF-8');
+
+        return match ($normalized) {
+            'bank_transfer', 'transfer', 'havale', 'havale/eft', 'havale / eft' => 'Havale / EFT',
+            'cash', 'nakit' => 'Nakit',
+            'single_payment', 'tek çekim', 'tek cekim' => 'Tek Çekim',
+            default => $value,
         };
     }
 
@@ -266,6 +371,10 @@ class ReadyOrderResource extends JsonResource
             ->keyBy('code');
 
         return collect($logoWarehouses)
+            ->filter(fn (array $warehouse): bool => $this->isShipmentWarehouseOption(
+                $warehouse['warehouse_code'] !== null ? (string) $warehouse['warehouse_code'] : null,
+                $warehouse['warehouse_name'] !== null ? (string) $warehouse['warehouse_name'] : null,
+            ))
             ->map(function (array $warehouse) use ($localWarehouses): array {
                 $code = $warehouse['warehouse_code'] !== null ? (string) $warehouse['warehouse_code'] : null;
                 $orderQuantity = (int) $warehouse['order_quantity'];
@@ -291,6 +400,30 @@ class ReadyOrderResource extends JsonResource
             ])
             ->values()
             ->all();
+    }
+
+    private function isShipmentWarehouseOption(?string $code, ?string $name): bool
+    {
+        $normalizedCode = trim((string) $code);
+        $normalizedName = mb_strtolower(trim((string) $name), 'UTF-8');
+
+        if (in_array($normalizedCode, ['0', '4'], true)) {
+            return false;
+        }
+
+        foreach (['point', 'batum', 'batumi', 'sevkiyat'] as $blockedNeedle) {
+            if ($normalizedName !== '' && str_contains($normalizedName, $blockedNeedle)) {
+                return false;
+            }
+        }
+
+        if (in_array($normalizedCode, ['1', '2', '3'], true)) {
+            return true;
+        }
+
+        return str_contains($normalizedName, 'erzurum depo')
+            || str_contains($normalizedName, 'trabzon depo')
+            || str_contains($normalizedName, 'samsun depo');
     }
 
     /**

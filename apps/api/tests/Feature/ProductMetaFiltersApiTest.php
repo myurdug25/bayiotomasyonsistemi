@@ -924,7 +924,7 @@ class ProductMetaFiltersApiTest extends TestCase
         $spacedResponse->assertJsonPath('data.0.id', $product->id);
     }
 
-    public function test_code_like_product_search_avoids_global_cold_visibility_scans(): void
+    public function test_code_like_product_search_returns_visible_group_equivalents_without_global_cold_visibility_scans(): void
     {
         $context = $this->createSalesContext();
 
@@ -938,10 +938,11 @@ class ProductMetaFiltersApiTest extends TestCase
             listPrice: 175.00,
             meta: [
                 'specode4' => 'E',
+                'group_code' => 'CS0040-GROUP',
             ]
         );
 
-        $this->createProductWithMeta(
+        $hiddenEquivalent = $this->createProductWithMeta(
             dealer: $context['dealer'],
             brand: $context['brand'],
             category: $context['category'],
@@ -951,6 +952,49 @@ class ProductMetaFiltersApiTest extends TestCase
             listPrice: 165.00,
             meta: [
                 'specode4' => 'H',
+                'group_code' => 'CS0040-GROUP',
+            ]
+        );
+
+        $payloadGroupEquivalent = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'CS 0040 PAYLOAD',
+            name: 'Payload Group Equivalent Product',
+            stock: 6,
+            listPrice: 155.00,
+            meta: [
+                'specode4' => 'E',
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'group_code' => 'CS0040-GROUP',
+                        ],
+                    ],
+                ],
+            ]
+        );
+
+        $rawGroupEquivalent = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'CS 0040 RAW',
+            name: 'Raw Group Equivalent Product',
+            stock: 5,
+            listPrice: 145.00,
+            meta: [
+                'specode4' => 'E',
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'raw' => [
+                                'STGRPCODE' => 'CS0040-GROUP',
+                            ],
+                        ],
+                    ],
+                ],
             ]
         );
 
@@ -965,7 +1009,12 @@ class ProductMetaFiltersApiTest extends TestCase
         $response = $this->getJson('/api/products/search?limit=20&q=cs0040');
 
         $response->assertOk();
-        $response->assertJsonPath('data.0.id', $visibleProduct->id);
+        $response->assertJsonCount(3, 'data');
+        $this->assertEqualsCanonicalizing(
+            [$visibleProduct->id, $payloadGroupEquivalent->id, $rawGroupEquivalent->id],
+            collect($response->json('data'))->pluck('id')->all()
+        );
+        $this->assertNotContains($hiddenEquivalent->id, collect($response->json('data'))->pluck('id')->all());
         $response->assertJsonPath('search_backend', 'db_code_fast');
 
         $globalLogoMarkerCounts = array_values(array_filter(
@@ -979,6 +1028,8 @@ class ProductMetaFiltersApiTest extends TestCase
             fn (string $sql): bool => str_contains($sql, 'select "products"."id" from "products"')
                 && str_contains($sql, 'JSON_EXTRACT(products.meta')
                 && str_contains($sql, 'specode4')
+                && ! str_contains($sql, 'group_code')
+                && ! str_contains($sql, 'STGRPCODE')
                 && ! str_contains($sql, '"products"."id" in')
         ));
 

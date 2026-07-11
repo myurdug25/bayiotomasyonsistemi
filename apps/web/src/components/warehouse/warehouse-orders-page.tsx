@@ -14,21 +14,27 @@ import {
   RefreshCcw,
   Save,
   Search,
+  Trash2,
   Truck,
   UserRound,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useAuth } from "@/hooks/use-auth";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   ApiClientError,
+  bulkCancelWarehouseOrders,
   createWarehouseShipment,
   getOrderDetail,
+  listWarehouseShelves,
   listWarehouseStaff,
   listWarehouseReadyOrders,
   updateWarehouseOrderItem,
+  updateWarehouseShelf,
   type WarehouseReadyOrderItem,
+  type WarehouseShelfProduct,
 } from "@/lib/api";
 import { printPageInPlace } from "@/lib/print-page";
 import { cn } from "@/lib/utils";
@@ -313,6 +319,29 @@ function checkoutSummaryBadge(order: WarehouseReadyOrderItem): { code: string; l
   return { code: matched, label: matched };
 }
 
+function salesPriceTypeLabel(order: WarehouseReadyOrderItem): string {
+  const rawLabel = order.origin?.sales_price_type_label ?? order.origin?.sales_price_type ?? "";
+  const normalized = String(rawLabel).trim().toLocaleLowerCase("tr-TR");
+
+  if (!normalized) {
+    return "-";
+  }
+
+  if (["bank_transfer", "transfer", "havale", "havale/eft", "havale / eft"].includes(normalized)) {
+    return "Havale / EFT";
+  }
+
+  if (["cash", "nakit"].includes(normalized)) {
+    return "Nakit";
+  }
+
+  if (["single_payment", "tek çekim", "tek cekim"].includes(normalized)) {
+    return "Tek Çekim";
+  }
+
+  return String(rawLabel).trim();
+}
+
 function isCargoOrder(order: WarehouseReadyOrderItem): boolean {
   const source = [order.origin?.shipping_method, order.origin?.note]
     .filter(Boolean)
@@ -437,6 +466,7 @@ function buildPaginationKey(params: {
 export function WarehouseOrdersPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -447,12 +477,35 @@ export function WarehouseOrdersPage() {
   const [shipmentOrder, setShipmentOrder] = useState<WarehouseReadyOrderItem | null>(null);
   const [selectedShipmentWarehouseCode, setSelectedShipmentWarehouseCode] = useState("");
   const [selectedWarehouseStaffId, setSelectedWarehouseStaffId] = useState("");
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<number>>(() => new Set());
+  const [bulkDeleteMode, setBulkDeleteMode] = useState<"selected" | "all" | null>(null);
+  const [shelfDialogOpen, setShelfDialogOpen] = useState(false);
+  const [shelfQuery, setShelfQuery] = useState("");
+  const [shelfDrafts, setShelfDrafts] = useState<Record<number, string>>({});
   const [paginationByKey, setPaginationByKey] = useState<
     Record<string, { cursor?: string; history: string[] }>
   >({});
 
   const debouncedQuery = useDebouncedValue(query, 400);
+  const debouncedShelfQuery = useDebouncedValue(shelfQuery, 300);
   const detailOrderId = detailOrderPreview?.id ?? null;
+  const activeShelfWarehouse = useMemo(
+    () =>
+      preferredWarehouseForStaff(
+        user
+          ? {
+              id: user.id,
+              name: user.name,
+              username: user.username,
+              email: user.email,
+              branch_code: user.branch_code,
+              branch_name: user.branch_name,
+            }
+          : null
+      ),
+    [user]
+  );
+  const activeShelfWarehouseCode = activeShelfWarehouse?.warehouse_code ?? DEFAULT_WAREHOUSE_CODE;
 
   const paginationKey = useMemo(
     () =>
@@ -464,6 +517,7 @@ export function WarehouseOrdersPage() {
       }),
     [debouncedQuery, dateFrom, dateTo, selectedSalespersonId]
   );
+  const warehouseUserKey = user?.id ?? user?.username ?? "guest";
 
   const currentPagination = paginationByKey[paginationKey] ?? { cursor: undefined, history: [] };
 
@@ -481,6 +535,7 @@ export function WarehouseOrdersPage() {
         dateTo,
         salespersonId: selectedSalespersonId,
         cursor: currentPagination.cursor ?? null,
+        user: warehouseUserKey,
       },
     ],
     refetchInterval: 15_000,
@@ -493,7 +548,6 @@ export function WarehouseOrdersPage() {
         cursor: currentPagination.cursor,
         limit: PAGE_LIMIT,
       }),
-    placeholderData: (previous) => previous,
   });
 
   const salespersonOptionsQuery = useQuery({
@@ -504,6 +558,7 @@ export function WarehouseOrdersPage() {
         q: debouncedQuery,
         dateFrom,
         dateTo,
+        user: warehouseUserKey,
       },
     ],
     queryFn: () =>
@@ -513,7 +568,6 @@ export function WarehouseOrdersPage() {
         date_to: dateTo || undefined,
         limit: 50,
       }),
-    placeholderData: (previous) => previous,
     staleTime: 30_000,
   });
 
@@ -530,8 +584,27 @@ export function WarehouseOrdersPage() {
     staleTime: 60_000,
   });
 
+  const shelfProductsQuery = useQuery({
+    queryKey: ["warehouse", "shelves", activeShelfWarehouseCode, debouncedShelfQuery],
+    queryFn: () =>
+      listWarehouseShelves({
+        q: debouncedShelfQuery || undefined,
+        warehouse_code: activeShelfWarehouseCode,
+        limit: 50,
+      }),
+    enabled: shelfDialogOpen,
+    staleTime: 15_000,
+  });
+
   const rows = useMemo(() => readyOrdersQuery.data?.data ?? [], [readyOrdersQuery.data?.data]);
+  const visibleOrderIds = useMemo(() => rows.map((order) => order.id), [rows]);
+  const selectedVisibleCount = useMemo(
+    () => visibleOrderIds.filter((id) => selectedOrderIds.has(id)).length,
+    [selectedOrderIds, visibleOrderIds]
+  );
   const warehouseStaff = useMemo(() => warehouseStaffQuery.data?.data ?? [], [warehouseStaffQuery.data?.data]);
+  const shelfProducts = useMemo(() => shelfProductsQuery.data?.data ?? [], [shelfProductsQuery.data?.data]);
+  const shelfWarehouse = shelfProductsQuery.data?.warehouse ?? null;
   const detailOrder = orderDetailQuery.data?.order;
   const detailItems = useMemo(
     () => (Array.isArray(detailOrder?.items) ? detailOrder.items : []),
@@ -541,13 +614,18 @@ export function WarehouseOrdersPage() {
     () => detailItems.reduce((total, item) => total + toSafeNumber(item.quantity), 0),
     [detailItems]
   );
+
   const shipmentWarehouseGroups = useMemo<WarehouseDepotGroup[]>(() => {
     if (!shipmentOrder) {
       return [];
     }
 
     const groups = new Map<string, WarehouseDepotGroup>();
-    const sourceWarehouses = shipmentOrder.logo_warehouse_options?.filter((warehouse) => warehouse.warehouse_code) ?? [];
+    const targetWarehouseCode = preferredWarehouseCodeForOrder(shipmentOrder);
+    const sourceWarehouses =
+      shipmentOrder.logo_warehouse_options
+        ?.filter((warehouse) => warehouse.warehouse_code)
+        .filter((warehouse) => String(warehouse.warehouse_code ?? "").trim() === targetWarehouseCode) ?? [];
 
     sourceWarehouses.forEach((warehouse) => {
       const code = String(warehouse.warehouse_code ?? "").trim();
@@ -570,8 +648,9 @@ export function WarehouseOrdersPage() {
         { warehouse_code: "1", warehouse_name: "ERZURUM DEPO" },
         { warehouse_code: "2", warehouse_name: "TRABZON DEPO" },
         { warehouse_code: "3", warehouse_name: "SAMSUN DEPO" },
-        { warehouse_code: "4", warehouse_name: "BATUM DEPO" },
-      ].forEach((warehouse) => groups.set(warehouse.warehouse_code, { ...warehouse, staff: [] }));
+      ]
+        .filter((warehouse) => warehouse.warehouse_code === targetWarehouseCode)
+        .forEach((warehouse) => groups.set(warehouse.warehouse_code, { ...warehouse, staff: [] }));
     }
 
     warehouseStaff.forEach((staffUser) => {
@@ -580,7 +659,11 @@ export function WarehouseOrdersPage() {
         return;
       }
 
-      const group = groups.get(warehouse.warehouse_code) ?? groups.get("1") ?? Array.from(groups.values())[0];
+      if (warehouse.warehouse_code !== targetWarehouseCode) {
+        return;
+      }
+
+      const group = groups.get(warehouse.warehouse_code);
       if (group) {
         group.staff.push(staffUser);
       }
@@ -665,6 +748,37 @@ export function WarehouseOrdersPage() {
     void readyOrdersQuery.refetch();
   };
 
+  const toggleOrderSelection = (orderId: number) => {
+    setSelectedOrderIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+
+      return next;
+    });
+  };
+
+  const toggleVisibleOrdersSelection = () => {
+    setSelectedOrderIds((previous) => {
+      const next = new Set(previous);
+      const allVisibleSelected =
+        visibleOrderIds.length > 0 && visibleOrderIds.every((orderId) => next.has(orderId));
+
+      visibleOrderIds.forEach((orderId) => {
+        if (allVisibleSelected) {
+          next.delete(orderId);
+        } else {
+          next.add(orderId);
+        }
+      });
+
+      return next;
+    });
+  };
+
   const clearFilters = () => {
     setQuery("");
     setDateFrom("");
@@ -705,6 +819,52 @@ export function WarehouseOrdersPage() {
       toast.error(error instanceof Error ? error.message : "Sipariş adeti güncellenemedi.");
     },
   });
+
+  const bulkCancelOrdersMutation = useMutation({
+    mutationFn: (orderIds: number[]) => bulkCancelWarehouseOrders(orderIds),
+    onSuccess: (response, orderIds) => {
+      toast.success(`${response.cancelled || orderIds.length} sipariş depo havuzundan kaldırıldı`);
+      setBulkDeleteMode(null);
+      setSelectedOrderIds((previous) => {
+        const next = new Set(previous);
+        orderIds.forEach((orderId) => next.delete(orderId));
+        return next;
+      });
+      void queryClient.invalidateQueries({ queryKey: ["warehouse", "ready-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["warehouse", "ready-order-salespeople"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Siparişler kaldırılamadı.");
+    },
+  });
+
+  const updateShelfMutation = useMutation({
+    mutationFn: (payload: { product: WarehouseShelfProduct; shelfAddress: string }) =>
+      updateWarehouseShelf(payload.product.id, {
+        warehouse_code: payload.product.warehouse_code,
+        shelf_address: payload.shelfAddress.trim() || null,
+      }),
+    onSuccess: (response) => {
+      toast.success(response.message ?? "Raf adresi kaydedildi");
+      void queryClient.invalidateQueries({ queryKey: ["warehouse", "shelves"] });
+      void queryClient.invalidateQueries({ queryKey: ["warehouse", "ready-orders"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Raf adresi kaydedilemedi.");
+    },
+  });
+
+  const confirmBulkDelete = () => {
+    const orderIds = bulkDeleteMode === "all" ? visibleOrderIds : Array.from(selectedOrderIds);
+    const uniqueOrderIds = Array.from(new Set(orderIds)).filter((orderId) => visibleOrderIds.includes(orderId));
+
+    if (uniqueOrderIds.length === 0) {
+      toast.error("Silinecek sipariş seçilmedi.");
+      return;
+    }
+
+    bulkCancelOrdersMutation.mutate(uniqueOrderIds);
+  };
 
   const setDetailQuantityDraft = (itemId: number, value: string) => {
     const numericValue = value.replace(/\D/g, "");
@@ -878,7 +1038,7 @@ export function WarehouseOrdersPage() {
             </div>
           </div>
 
-          <div className="grid gap-2 lg:grid-cols-[minmax(300px,1fr)_150px_150px_112px] lg:items-end">
+          <div className="grid gap-2 lg:grid-cols-[minmax(300px,1fr)_150px_150px_minmax(330px,auto)] lg:items-end">
             <div className="space-y-1">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -898,14 +1058,49 @@ export function WarehouseOrdersPage() {
             <div className="space-y-1">
               <Input className="h-11 rounded-xl text-sm" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
             </div>
-            <Button className="h-11 rounded-xl text-sm font-extrabold" onClick={onRefresh} disabled={readyOrdersQuery.isFetching}>
-              {readyOrdersQuery.isFetching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCcw className="h-4 w-4" />
-              )}
-              Yenile
-            </Button>
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-red-300/35 bg-[linear-gradient(135deg,rgba(48,18,18,0.92)_0%,rgba(17,28,23,0.88)_100%)] px-3 text-xs font-black text-red-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_28px_-24px_rgba(248,113,113,0.85)] transition hover:-translate-y-0.5 hover:border-red-200/65 hover:bg-[linear-gradient(135deg,rgba(94,25,25,0.96)_0%,rgba(30,38,30,0.94)_100%)] hover:text-white disabled:translate-y-0 disabled:border-red-900/35 disabled:text-red-200/35 disabled:shadow-none"
+                disabled={selectedOrderIds.size === 0 || bulkCancelOrdersMutation.isPending}
+                onClick={() => setBulkDeleteMode("selected")}
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-red-300/25 bg-red-500/10 text-red-200">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </span>
+                Seçilenleri Sil
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-red-200/45 bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.26)_0%,transparent_34%),linear-gradient(135deg,#ef4444_0%,#b91c1c_54%,#6f1010_100%)] px-3 text-xs font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_36px_-24px_rgba(239,68,68,0.95)] transition hover:-translate-y-0.5 hover:border-red-100/70 hover:brightness-110 disabled:translate-y-0 disabled:border-red-900/35 disabled:from-red-950 disabled:to-slate-950 disabled:text-white/35 disabled:shadow-none"
+                disabled={visibleOrderIds.length === 0 || bulkCancelOrdersMutation.isPending}
+                onClick={() => setBulkDeleteMode("all")}
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/20 bg-white/12 text-white">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </span>
+                Tümünü Sil
+              </Button>
+              <Button className="h-11 rounded-xl px-3 text-sm font-extrabold" onClick={onRefresh} disabled={readyOrdersQuery.isFetching}>
+                {readyOrdersQuery.isFetching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-4 w-4" />
+                )}
+                Yenile
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-amber-200/45 bg-[linear-gradient(135deg,rgba(46,39,12,0.92)_0%,rgba(16,39,28,0.9)_100%)] px-3 text-xs font-black text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_32px_-26px_rgba(245,158,11,0.85)] transition hover:-translate-y-0.5 hover:border-amber-100/70 hover:bg-[linear-gradient(135deg,rgba(85,63,10,0.96)_0%,rgba(18,51,36,0.94)_100%)] hover:text-white"
+                onClick={() => setShelfDialogOpen(true)}
+              >
+                <Save className="h-4 w-4" />
+                Raf Adreslerini Güncelle
+              </Button>
+            </div>
           </div>
 
           {hasActiveFilters ? (
@@ -987,6 +1182,7 @@ export function WarehouseOrdersPage() {
                   const totalQuantity = toSafeNumber(order.items_summary?.total_quantity);
                   const itemCount = toSafeNumber(order.items_summary?.item_count);
                   const checkoutBadge = checkoutSummaryBadge(order);
+                  const salesPriceType = salesPriceTypeLabel(order);
                   const cargoOrder = isCargoOrder(order);
                   const region = resolveOrderRegion(order);
 
@@ -1013,6 +1209,11 @@ export function WarehouseOrdersPage() {
                                 className={cn(WAREHOUSE_TAG_CLASSNAME, "border-amber-200/80 bg-amber-50 text-amber-800")}
                               >
                                 {checkoutBadge.code}
+                              </span>
+                            ) : null}
+                            {salesPriceType !== "-" ? (
+                              <span className={cn(WAREHOUSE_TAG_CLASSNAME, "border-sky-200/80 bg-sky-50 text-sky-800")}>
+                                {salesPriceType}
                               </span>
                             ) : null}
                             {cargoOrder ? (
@@ -1076,9 +1277,10 @@ export function WarehouseOrdersPage() {
             <div className="hidden overflow-hidden px-2 pb-1 pt-2 lg:block lg:px-3">
               <Table className="min-w-0 table-fixed text-[11px]">
                 <colgroup>
+                  <col className="w-[3%]" />
                   <col className="w-[6%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[24%]" />
+                  <col className="w-[23%]" />
                   <col className="w-[11%]" />
                   <col className="w-[10%]" />
                   <col className="w-[8%]" />
@@ -1089,6 +1291,15 @@ export function WarehouseOrdersPage() {
                 </colgroup>
                 <TableHeader className="bg-[linear-gradient(135deg,rgba(22,128,55,0.96)_0%,rgba(18,90,45,0.98)_52%,rgba(11,64,35,1)_100%)]">
                   <TableRow className="border-b border-emerald-300/35 hover:bg-transparent">
+                    <TableHead className="h-8 border-r border-white/15 px-1 text-center text-[9px] font-bold uppercase tracking-[0.06em] text-white">
+                      <input
+                        type="checkbox"
+                        aria-label="Sayfadaki siparişleri seç"
+                        checked={visibleOrderIds.length > 0 && selectedVisibleCount === visibleOrderIds.length}
+                        onChange={toggleVisibleOrdersSelection}
+                        className="h-4 w-4 rounded border-white/40 accent-emerald-400"
+                      />
+                    </TableHead>
                     <TableHead className="h-8 border-r border-white/15 px-1.5 text-center text-[9px] font-bold uppercase tracking-[0.06em] text-white">
                       Detay
                     </TableHead>
@@ -1126,6 +1337,7 @@ export function WarehouseOrdersPage() {
                   {readyOrdersQuery.isLoading ? (
                     Array.from({ length: 8 }).map((_, index) => (
                       <TableRow key={`warehouse-table-skeleton-${index}`} className="h-[56px] border-b border-[var(--brand-border)]">
+                        <TableCell className="border-r border-[var(--brand-border)]/80 px-1 py-2"><Skeleton className="mx-auto h-4 w-4 rounded" /></TableCell>
                         <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-2"><Skeleton className="mx-auto h-8 w-14 rounded-md" /></TableCell>
                         <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-2"><Skeleton className="mx-auto h-4 w-20" /></TableCell>
                         <TableCell className="border-r border-[var(--brand-border)]/80 py-2"><Skeleton className="h-4 w-52" /></TableCell>
@@ -1142,7 +1354,7 @@ export function WarehouseOrdersPage() {
 
                   {readyOrdersQuery.isError ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="py-8 text-center text-base text-red-600">
+                      <TableCell colSpan={11} className="py-8 text-center text-base text-red-600">
                         {readyOrdersQuery.error instanceof Error ? readyOrdersQuery.error.message : "Depo siparişleri alınamadı."}
                       </TableCell>
                     </TableRow>
@@ -1150,7 +1362,7 @@ export function WarehouseOrdersPage() {
 
                   {!readyOrdersQuery.isLoading && !readyOrdersQuery.isError && rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="py-10 text-center text-[var(--muted-foreground)]">
+                      <TableCell colSpan={11} className="py-10 text-center text-[var(--muted-foreground)]">
                         <PackageSearch className="mx-auto h-10 w-10 text-[var(--brand-primary)]" />
                         <p className="mt-3 text-base font-semibold">Sipariş yok</p>
                         {hasActiveFilters ? (
@@ -1168,14 +1380,28 @@ export function WarehouseOrdersPage() {
                       const totalQuantity = toSafeNumber(order.items_summary?.total_quantity);
                       const itemCount = toSafeNumber(order.items_summary?.item_count);
                       const checkoutBadge = checkoutSummaryBadge(order);
+                      const salesPriceType = salesPriceTypeLabel(order);
                       const cargoOrder = isCargoOrder(order);
                       const region = resolveOrderRegion(order);
+                      const selected = selectedOrderIds.has(order.id);
 
                       return (
                         <TableRow
                           key={order.id}
-                          className="h-[56px] border-b border-l-2 border-l-transparent border-[var(--brand-border)] bg-[var(--surface)] transition-[background-color,border-color,box-shadow] duration-150 hover:border-l-[#2f7f56] hover:bg-[var(--surface-soft)]"
+                          className={cn(
+                            "h-[56px] border-b border-l-2 border-[var(--brand-border)] bg-[var(--surface)] transition-[background-color,border-color,box-shadow] duration-150 hover:border-l-[#2f7f56] hover:bg-[var(--surface-soft)]",
+                            selected ? "border-l-emerald-400 bg-emerald-950/10" : "border-l-transparent"
+                          )}
                         >
+                          <TableCell className="border-r border-[var(--brand-border)]/80 px-1 py-1.5 text-center align-middle">
+                            <input
+                              type="checkbox"
+                              aria-label={`${toDisplayText(order.order_no)} siparişini seç`}
+                              checked={selected}
+                              onChange={() => toggleOrderSelection(order.id)}
+                              className="h-4 w-4 rounded border-[var(--brand-border)] accent-emerald-500"
+                            />
+                          </TableCell>
                           <TableCell
                             className="cursor-pointer border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle"
                             onClick={() => openOrderDetail(order)}
@@ -1225,16 +1451,20 @@ export function WarehouseOrdersPage() {
                             ) : null}
                           </TableCell>
                           <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle">
-                            {checkoutBadge ? (
+                            <span
+                              title={checkoutBadge?.label ?? "-"}
+                              className={cn(WAREHOUSE_TAG_CLASSNAME, "border-amber-200/80 bg-amber-50 text-amber-800")}
+                            >
+                              {checkoutBadge?.code ?? "-"}
+                            </span>
+                            {salesPriceType !== "-" ? (
                               <span
-                                title={checkoutBadge.label}
-                                className={cn(WAREHOUSE_TAG_CLASSNAME, "border-amber-200/80 bg-amber-50 text-amber-800")}
+                                title={`Fiyat tipi: ${salesPriceType}`}
+                                className="mt-1 block truncate text-[9px] font-bold text-[var(--muted-foreground)]"
                               >
-                                {checkoutBadge.code}
+                                {salesPriceType}
                               </span>
-                            ) : (
-                              <span className="text-[10px] font-black text-[var(--muted-foreground)]">-</span>
-                            )}
+                            ) : null}
                           </TableCell>
                           <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle">
                             <span className="text-[12px] font-black text-[var(--foreground)]">{itemCount}</span>
@@ -1311,6 +1541,136 @@ export function WarehouseOrdersPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={shelfDialogOpen} onOpenChange={setShelfDialogOpen}>
+        <DialogContent className="max-h-[88vh] max-w-[min(1120px,calc(100vw-28px))] overflow-hidden rounded-[24px] border border-amber-900/45 bg-[#071018] p-0 text-[#eef8ef] shadow-[0_34px_110px_-42px_rgba(0,0,0,0.95)]">
+          <DialogHeader className="border-b border-amber-900/35 bg-[linear-gradient(135deg,#172018_0%,#071018_58%,#1f1a08_100%)] px-5 py-4 pr-12 text-left">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <DialogTitle className="text-2xl font-black text-white">
+                  Raf Adreslerini Güncelle
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-sm font-semibold text-[#aebdaf]">
+                  Logo ürün kartından gelen OEM, rakip kod ve raf bilgilerini depoya göre yönetin.
+                </DialogDescription>
+              </div>
+              {shelfWarehouse ? (
+                <Badge className="w-fit border border-amber-200/45 bg-amber-400/12 px-3 py-1 text-xs font-black text-amber-100">
+                  {shelfWarehouse.name}
+                </Badge>
+              ) : null}
+            </div>
+          </DialogHeader>
+
+          <div className="flex max-h-[calc(88vh-86px)] flex-col">
+            <div className="border-b border-emerald-900/55 bg-[#091510] p-4">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9fb2a7]" />
+                <Input
+                  className="h-11 rounded-2xl border-emerald-900/70 bg-[#07120f] pl-11 text-sm font-bold text-white placeholder:text-[#819489]"
+                  value={shelfQuery}
+                  onChange={(event) => setShelfQuery(event.target.value)}
+                  placeholder="Ürün kodu, ürün adı, OEM, rakip kod veya raf ara..."
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              {shelfProductsQuery.isLoading ? (
+                <div className="grid gap-2">
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <Skeleton key={`shelf-skeleton-${index}`} className="h-12 rounded-xl bg-emerald-950/45" />
+                  ))}
+                </div>
+              ) : shelfProductsQuery.isError ? (
+                <div className="rounded-2xl border border-red-400/30 bg-red-950/25 p-4 text-sm font-bold text-red-100">
+                  {shelfProductsQuery.error instanceof Error ? shelfProductsQuery.error.message : "Raf adresleri alınamadı."}
+                </div>
+              ) : shelfProducts.length === 0 ? (
+                <div className="rounded-2xl border border-emerald-900/60 bg-[#0b1712] p-8 text-center">
+                  <PackageSearch className="mx-auto h-10 w-10 text-[#b8f7b5]" />
+                  <p className="mt-3 text-lg font-black text-white">Ürün bulunamadı</p>
+                  <p className="mt-1 text-sm font-semibold text-[#9fb2a7]">Kod, ad, OEM, rakip kod veya raf adresiyle arayın.</p>
+                </div>
+              ) : (
+                <div className="grid gap-2 xl:grid-cols-2">
+                  {shelfProducts.map((product) => {
+                    const draft = shelfDrafts[product.id] ?? product.shelf_address ?? "";
+                    const saving =
+                      updateShelfMutation.isPending &&
+                      updateShelfMutation.variables?.product.id === product.id;
+                    const competitorPreview =
+                      product.competitor_codes.length > 0
+                        ? product.competitor_codes.slice(0, 2).join(", ")
+                        : "-";
+
+                    return (
+                      <div
+                        key={product.id}
+                        className="rounded-2xl border border-emerald-900/65 bg-[linear-gradient(135deg,rgba(6,18,13,0.98)_0%,rgba(8,28,19,0.94)_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-lg border border-emerald-300/25 bg-emerald-400/10 px-2 py-1 text-xs font-black text-emerald-100">
+                                {product.product_code}
+                              </span>
+                              {product.shelf_address ? (
+                                <span className="rounded-lg border border-sky-200/35 bg-sky-400/12 px-2 py-1 text-xs font-black text-sky-100">
+                                  Raf {product.shelf_address}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-2 truncate text-sm font-black text-white" title={product.product_name}>
+                              {product.product_name}
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-bold text-[#9fb2a7]">
+                              <span>{product.brand ?? "-"}</span>
+                              <span className="text-emerald-700/80">•</span>
+                              <span className="max-w-[180px] truncate" title={product.oem ?? undefined}>
+                                OEM: {product.oem || "-"}
+                              </span>
+                              <span className="text-emerald-700/80">•</span>
+                              <span className="max-w-[220px] truncate" title={competitorPreview}>
+                                RKP: {competitorPreview}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex w-full shrink-0 gap-2 lg:w-[310px]">
+                            <Input
+                              className="h-10 min-w-0 flex-1 rounded-xl border-emerald-800/80 bg-[#06100d] text-sm font-black text-white placeholder:text-[#5f7469]"
+                              value={draft}
+                              onChange={(event) =>
+                                setShelfDrafts((previous) => ({
+                                  ...previous,
+                                  [product.id]: event.target.value,
+                                }))
+                              }
+                              placeholder="Raf adresi"
+                              disabled={!product.editable || saving}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-10 shrink-0 rounded-xl border border-amber-200/45 bg-[linear-gradient(135deg,#fff3b0_0%,#f6c44f_45%,#b77810_100%)] px-3 text-xs font-black text-[#201400] shadow-[0_12px_28px_-22px_rgba(246,196,79,0.9)] hover:brightness-105 disabled:opacity-50"
+                              disabled={!product.editable || saving}
+                              onClick={() => updateShelfMutation.mutate({ product, shelfAddress: draft })}
+                            >
+                              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                              Kaydet
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={shipmentOrder !== null} onOpenChange={(open) => {
         if (!open && !createShipmentMutation.isPending) {
@@ -1506,6 +1866,50 @@ export function WarehouseOrdersPage() {
               </div>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteMode !== null} onOpenChange={(open) => {
+        if (!open && !bulkCancelOrdersMutation.isPending) {
+          setBulkDeleteMode(null);
+        }
+      }}>
+        <DialogContent className="max-w-[460px] rounded-[24px] border border-red-900/50 bg-[#0b1210] p-0 text-[#eef8ef] shadow-[0_32px_96px_-42px_rgba(0,0,0,0.95)]">
+          <DialogHeader className="border-b border-red-900/35 bg-[linear-gradient(135deg,#1a1111_0%,#0b1210_62%,#161b13_100%)] px-5 py-4 pr-12 text-left">
+            <DialogTitle className="text-xl font-black text-white">
+              {bulkDeleteMode === "all" ? "Tüm siparişleri kaldır" : "Seçilen siparişleri kaldır"}
+            </DialogTitle>
+            <DialogDescription className="text-sm font-semibold text-[#b8c7bd]">
+              İşlem depo havuzundan kaldırır, ayrılmış stokları geri bırakır.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 px-5 py-5">
+            <div className="rounded-2xl border border-red-400/25 bg-red-950/20 p-4 text-sm font-bold text-red-50">
+              {bulkDeleteMode === "all"
+                ? `Bu sayfadaki ${visibleOrderIds.length} siparişi silmek istediğinize emin misiniz?`
+                : `Seçilen ${selectedOrderIds.size} siparişi silmek istediğinize emin misiniz?`}
+            </div>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-emerald-900/70 bg-[#07120f] px-5 font-black text-[#e6f3e9] hover:bg-[#102019]"
+                disabled={bulkCancelOrdersMutation.isPending}
+                onClick={() => setBulkDeleteMode(null)}
+              >
+                Vazgeç
+              </Button>
+              <Button
+                type="button"
+                className="h-11 rounded-xl border border-red-300/40 bg-[linear-gradient(135deg,#ff6b6b_0%,#d92f2f_54%,#8f1515_100%)] px-5 font-black text-white shadow-[0_18px_42px_-24px_rgba(255,77,79,0.9)]"
+                disabled={bulkCancelOrdersMutation.isPending}
+                onClick={confirmBulkDelete}
+              >
+                {bulkCancelOrdersMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Evet
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

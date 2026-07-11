@@ -303,6 +303,19 @@ BEGIN
     DECLARE @Second SMALLINT = DATEPART(SECOND, @Now);
     DECLARE @CyphCode VARCHAR(11) = CONVERT(VARCHAR(11), LEFT(COALESCE(NULLIF(@OrderNo, N''), N''), 11));
     DECLARE @LineExp VARCHAR(251) = CONVERT(VARCHAR(251), LEFT(COALESCE(NULLIF(@ShipmentNo, N''), NULLIF(@OrderNo, N''), @ExportKey), 251));
+    DECLARE @SalesPriceTypeRaw NVARCHAR(64) = COALESCE(
+        NULLIF(JSON_VALUE(@PayloadJson, '$.sales_price_type'), N''),
+        NULLIF(JSON_VALUE(@PayloadJson, '$.payment_method'), N'')
+    );
+    DECLARE @SalesPriceType VARCHAR(51) = CONVERT(VARCHAR(51), LEFT(
+        CASE
+            WHEN LOWER(COALESCE(@SalesPriceTypeRaw, N'')) IN (N'bank_transfer', N'transfer', N'havale', N'havale/eft', N'havale / eft') THEN N'Havale / EFT'
+            WHEN LOWER(COALESCE(@SalesPriceTypeRaw, N'')) IN (N'cash', N'nakit') THEN N'Nakit'
+            WHEN LOWER(COALESCE(@SalesPriceTypeRaw, N'')) IN (N'single_payment', N'tek çekim', N'tek cekim') THEN N'Tek Çekim'
+            ELSE COALESCE(@SalesPriceTypeRaw, N'')
+        END,
+        51
+    ));
     DECLARE @InvoiceRef INT;
     DECLARE @StockFicheRef INT;
     DECLARE @ClflineRef INT;
@@ -411,7 +424,7 @@ BEGIN
         CONVERT(FLOAT, @Subtotal), CONVERT(FLOAT, @VatTotal), CONVERT(FLOAT, @Subtotal), CONVERT(FLOAT, @GrandTotal),
         CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@ShipmentNo, N''), @ExportKey), 51)),
         CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@CustomerCode, N''), N''), 51)),
-        CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@OrderNo, N''), N''), 51)),
+        CONVERT(VARCHAR(51), LEFT(CONCAT(COALESCE(NULLIF(@OrderNo, N''), N''), CASE WHEN NULLIF(@SalesPriceType, '') IS NOT NULL THEN CONCAT(N' | ', @SalesPriceType) ELSE N'' END), 51)),
         CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@WarehouseCode, N''), N''), 51)),
         0, 1, 1, CONVERT(FLOAT, @GrandTotal), 0, 0, 0,
         1, @Now, @Hour, @Minute, @Second
@@ -426,7 +439,7 @@ BEGIN
         INVOICEREF, TOTALDISCOUNTS, TOTALDISCOUNTED, ADDEXPENSES, TOTALEXPENSES,
         TOTALVAT, GROSSTOTAL, NETTOTAL, REPORTRATE, REPORTNET, GENEXP1, GENEXP2,
         CAPIBLOCK_CREATEDBY, CAPIBLOCK_CREADEDDATE, CAPIBLOCK_CREATEDHOUR,
-        CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC
+        CAPIBLOCK_CREATEDMIN, CAPIBLOCK_CREATEDSEC, STATUS
     )
     VALUES (
         2, 8, 4, @FicheNo, @ShipmentDate, 0, @Docode, @Specode, @CyphCode,
@@ -437,7 +450,7 @@ BEGIN
         1, CONVERT(FLOAT, @GrandTotal),
         CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@ShipmentNo, N''), @ExportKey), 51)),
         CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@CustomerCode, N''), N''), 51)),
-        1, @Now, @Hour, @Minute, @Second
+        1, @Now, @Hour, @Minute, @Second, 1
     );
 
     SET @StockFicheRef = SCOPE_IDENTITY();
@@ -501,14 +514,14 @@ BEGIN
     EXEC sp_executesql @NormalizeSql, N'@Ref INT', @Ref = @StockFicheRef;
 
     SET @NormalizeSql = N'';
-    SELECT @NormalizeSql = @NormalizeSql + N'UPDATE dbo.LG_003_01_STLINE SET ' + QUOTENAME(c.name) + N' = 0 WHERE STFICHEREF = @Ref AND ' + QUOTENAME(c.name) + N' IS NULL;'
+    SELECT @NormalizeSql = @NormalizeSql + N'UPDATE dbo.LG_003_01_STLINE SET ' + QUOTENAME(c.name) + N' = 0 WHERE INVOICEREF = @Ref AND ' + QUOTENAME(c.name) + N' IS NULL;'
     FROM sys.columns AS c
     INNER JOIN sys.types AS t ON t.user_type_id = c.user_type_id
     WHERE c.object_id = OBJECT_ID(N'dbo.LG_003_01_STLINE')
       AND c.is_nullable = 1
       AND t.name IN (N'tinyint', N'smallint', N'int', N'bigint', N'float', N'real', N'decimal', N'numeric', N'money', N'smallmoney');
 
-    EXEC sp_executesql @NormalizeSql, N'@Ref INT', @Ref = @StockFicheRef;
+    EXEC sp_executesql @NormalizeSql, N'@Ref INT', @Ref = @InvoiceRef;
 
     MERGE dbo.LG_003_01_GNTOTST AS target
     USING (
@@ -544,10 +557,10 @@ BEGIN
     ) AS source
     ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
     WHEN MATCHED THEN
-        UPDATE SET ONHAND = ONHAND - source.TotalQty
+        UPDATE SET ONHAND = ONHAND - source.TotalQty, DATE_ = @ShipmentDate
     WHEN NOT MATCHED THEN
-        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
-        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+        INSERT (STOCKREF, INVENNO, DATE_, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, @ShipmentDate, -source.TotalQty, 0, 0);
 
     MERGE dbo.LG_003_01_STINVTOT AS target
     USING (
@@ -557,10 +570,10 @@ BEGIN
     ) AS source
     ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
     WHEN MATCHED THEN
-        UPDATE SET ONHAND = ONHAND - source.TotalQty
+        UPDATE SET ONHAND = ONHAND - source.TotalQty, DATE_ = @ShipmentDate
     WHEN NOT MATCHED THEN
-        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
-        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+        INSERT (STOCKREF, INVENNO, DATE_, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, @ShipmentDate, -source.TotalQty, 0, 0);
 
     SET @ExternalRef = CONCAT(N'INVOICE-', @InvoiceRef);
     EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;
@@ -597,41 +610,67 @@ BEGIN
     EXEC dbo.PowersaB2B_BeginExport @ExportKey, N'pos-sale', @PayloadJson, @ExistingExternalRef OUTPUT;
     IF @ExistingExternalRef IS NOT NULL
     BEGIN
-        SET @ExternalRef = @ExistingExternalRef;
-        RETURN;
+        DECLARE @ExistingRefId INT = TRY_CONVERT(INT, SUBSTRING(@ExistingExternalRef, CHARINDEX(N'-', @ExistingExternalRef) + 1, 32));
+        DECLARE @ExistingRefIsValid BIT = 0;
+
+        IF @ExistingExternalRef LIKE N'STFICHE-%'
+           AND @ExistingRefId IS NOT NULL
+           AND EXISTS (
+               SELECT 1
+               FROM dbo.LG_003_01_STFICHE WITH (NOLOCK)
+               WHERE LOGICALREF = @ExistingRefId
+                 AND GENEXP1 = CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@ReceiptNo, N''), @ExportKey), 51))
+           )
+            SET @ExistingRefIsValid = 1;
+
+        IF @ExistingExternalRef LIKE N'INVOICE-%'
+           AND @ExistingRefId IS NOT NULL
+           AND EXISTS (
+               SELECT 1
+               FROM dbo.LG_003_01_INVOICE WITH (NOLOCK)
+               WHERE LOGICALREF = @ExistingRefId
+                 AND GENEXP1 = CONVERT(VARCHAR(51), LEFT(COALESCE(NULLIF(@ReceiptNo, N''), @ExportKey), 51))
+           )
+            SET @ExistingRefIsValid = 1;
+
+        IF @ExistingRefIsValid = 1
+        BEGIN
+            SET @ExternalRef = @ExistingExternalRef;
+            RETURN;
+        END;
+
+        UPDATE dbo.POWERSA_B2B_EXPORT_LOG
+           SET STATUS = N'pending',
+               EXTERNAL_REF = NULL,
+               ERROR_MESSAGE = CONCAT(N'Stale external ref ignored: ', @ExistingExternalRef),
+               PAYLOAD_JSON = @PayloadJson,
+               UPDATED_AT = SYSUTCDATETIME()
+         WHERE EXPORT_KEY = @ExportKey;
     END;
 
     DECLARE @CustomerRef INT = TRY_CONVERT(INT, NULLIF(LTRIM(RTRIM(@CustomerExternalRef)), N''));
-    DECLARE @SourceIndex SMALLINT = 0;
-    DECLARE @Branch SMALLINT = 0;
-    DECLARE @Department SMALLINT = 0;
+    DECLARE @SourceIndex SMALLINT = COALESCE(
+        TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.source_index')),
+        TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.warehouse_no'))
+    );
+    DECLARE @Branch SMALLINT = TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.branch'));
+    DECLARE @Department SMALLINT = COALESCE(TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.department')), 0);
 
-    IF @CashboxCode = '100.01.002'
+    IF @SourceIndex IS NULL AND @CashboxCode = '100.01.002'
     BEGIN
         SET @SourceIndex = 4;
-        SET @Branch = 4;
+        SET @Branch = COALESCE(@Branch, 4);
     END;
-    ELSE IF @CashboxCode = '100.01.007'
+    ELSE IF @SourceIndex IS NULL AND @CashboxCode = '100.01.007'
     BEGIN
         SET @SourceIndex = 0;
-        SET @Branch = 0;
+        SET @Branch = COALESCE(@Branch, 0);
     END;
-    ELSE
-    BEGIN
-        SET @SourceIndex = COALESCE(
-            TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.source_index')),
-            TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.warehouse_no')),
-            0
-        );
-        SET @Branch = COALESCE(
-            TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.branch')),
-            0
-        );
-        SET @Department = COALESCE(
-            TRY_CONVERT(SMALLINT, JSON_VALUE(@PayloadJson, '$.logo.department')),
-            0
-        );
-    END;
+    ELSE IF @SourceIndex IS NULL
+        SET @SourceIndex = 0;
+
+    SET @Branch = COALESCE(@Branch, @SourceIndex, 0);
+    SET @Department = COALESCE(@Department, 0);
     DECLARE @Docode VARCHAR(33) = CONVERT(VARCHAR(33), LEFT(COALESCE(NULLIF(@ReceiptNo, N''), @ExportKey), 33));
     DECLARE @FicheNo VARCHAR(17) = CONVERT(VARCHAR(17), 'F' + RIGHT(REPLICATE('0', 16) + CONVERT(VARCHAR(32), ABS(CHECKSUM(@ExportKey))), 16));
     DECLARE @Specode VARCHAR(11) = CONVERT(VARCHAR(11), LEFT(@ExportKey, 11));
@@ -804,7 +843,7 @@ BEGIN
         CONVERT(FLOAT, src.Price), CONVERT(FLOAT, src.LineTotal), 0, CONVERT(FLOAT, src.Price), 0, 1, 1,
         CONVERT(VARCHAR(251), src.LineExp), COALESCE(src.UomRef, 0), COALESCE(src.UsRef, 0), 1, 1,
         0, CONVERT(FLOAT, src.VatRate), CONVERT(FLOAT, src.VatAmount), CONVERT(FLOAT, src.LineTotal),
-        0, @IsInvoice, 0, CONVERT(FLOAT, src.LineTotal), MONTH(@SaleDate), YEAR(@SaleDate), 1
+        0, @IsInvoice, 0, CONVERT(FLOAT, src.LineTotal), MONTH(@SaleDate), YEAR(@SaleDate), 0
     FROM @Lines AS src
     ORDER BY src.RowNo;
 
@@ -945,10 +984,10 @@ BEGIN
     ) AS source
     ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
     WHEN MATCHED THEN
-        UPDATE SET ONHAND = ONHAND - source.TotalQty
+        UPDATE SET ONHAND = ONHAND - source.TotalQty, DATE_ = @SaleDate
     WHEN NOT MATCHED THEN
-        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
-        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+        INSERT (STOCKREF, INVENNO, DATE_, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, @SaleDate, -source.TotalQty, 0, 0);
 
     MERGE dbo.LG_003_01_STINVTOT AS target
     USING (
@@ -958,10 +997,10 @@ BEGIN
     ) AS source
     ON target.STOCKREF = source.StockRef AND target.INVENNO = source.InvenNo
     WHEN MATCHED THEN
-        UPDATE SET ONHAND = ONHAND - source.TotalQty
+        UPDATE SET ONHAND = ONHAND - source.TotalQty, DATE_ = @SaleDate
     WHEN NOT MATCHED THEN
-        INSERT (STOCKREF, INVENNO, ONHAND, RESERVED, TRANSFERRED)
-        VALUES (source.StockRef, source.InvenNo, -source.TotalQty, 0, 0);
+        INSERT (STOCKREF, INVENNO, DATE_, ONHAND, RESERVED, TRANSFERRED)
+        VALUES (source.StockRef, source.InvenNo, @SaleDate, -source.TotalQty, 0, 0);
 
     SET @ExternalRef = CASE WHEN @IsInvoice = 1 THEN CONCAT(N'INVOICE-', @InvoiceRef) ELSE CONCAT(N'STFICHE-', @StockFicheRef) END;
     EXEC dbo.PowersaB2B_FinishExport @ExportKey, @ExternalRef;

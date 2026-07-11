@@ -255,6 +255,16 @@ class CustomerIndexApiTest extends TestCase
             'code' => '0000000000000001',
             'name' => 'Existing Logo Customer',
             'is_active' => true,
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode4' => 'A',
+                            'raw' => ['SPECODE4' => 'A'],
+                        ],
+                    ],
+                ],
+            ],
         ]);
 
         $pendingCustomer = Customer::query()->create([

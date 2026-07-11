@@ -918,8 +918,12 @@ export function PosDayEndPage() {
                         <span className="px-3 py-3 font-black">{item.product_code ?? "-"}</span>
                         <span className="px-3 py-3">{item.product_name ?? "-"}</span>
                         <span className="px-3 py-3 text-right tabular-nums">{Number(item.quantity).toLocaleString("tr-TR")}</span>
-                        <span className="px-3 py-3 text-right tabular-nums">{compactMoney(item.unit_price, currencyLabel)}</span>
-                        <span className="px-3 py-3 text-right tabular-nums">{compactMoney(item.line_total, currencyLabel)}</span>
+                        <span className="px-3 py-3 text-right tabular-nums">
+                          {compactMoney(item.unit_price_vat_included ?? item.unit_price, currencyLabel)}
+                        </span>
+                        <span className="px-3 py-3 text-right tabular-nums">
+                          {compactMoney(item.line_total_vat_included ?? item.line_total, currencyLabel)}
+                        </span>
                         <span className="px-3 py-3">{item.warehouse_name ?? selectedSaleDetail.warehouse_name ?? "-"}</span>
                       </div>
                     ))

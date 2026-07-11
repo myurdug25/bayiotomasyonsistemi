@@ -8,11 +8,9 @@ use Illuminate\Support\Collection;
 class CartWarehouseOptions
 {
     private const DEFAULT_WAREHOUSES = [
-        ['code' => '0', 'name' => 'ERZURUM POINT'],
         ['code' => '1', 'name' => 'ERZURUM DEPO'],
         ['code' => '2', 'name' => 'TRABZON DEPO'],
         ['code' => '3', 'name' => 'SAMSUN DEPO'],
-        ['code' => '4', 'name' => 'BATUM DEPO'],
     ];
 
     /**
@@ -42,7 +40,17 @@ class CartWarehouseOptions
             ->get(['id', 'code', 'name', 'is_active'])
             ->keyBy('code');
 
-        return collect($logoWarehouses)
+        $shipmentWarehouses = collect($logoWarehouses)
+            ->filter(fn (array $warehouse): bool => $this->isShipmentWarehouseOption(
+                $warehouse['warehouse_code'] !== null ? (string) $warehouse['warehouse_code'] : null,
+                $warehouse['warehouse_name'] !== null ? (string) $warehouse['warehouse_name'] : null,
+            ));
+
+        if ($shipmentWarehouses->isEmpty()) {
+            return $this->localWarehouseOptions();
+        }
+
+        return $shipmentWarehouses
             ->map(function (array $warehouse) use ($localWarehouses): array {
                 $code = $warehouse['warehouse_code'] !== null ? (string) $warehouse['warehouse_code'] : null;
                 $orderQuantity = (int) $warehouse['order_quantity'];
@@ -151,6 +159,7 @@ class CartWarehouseOptions
         }
 
         return $warehouses
+            ->filter(fn (Warehouse $warehouse): bool => $this->isShipmentWarehouseOption($warehouse->code, $warehouse->name))
             ->map(fn (Warehouse $warehouse): array => [
                 'warehouse_id' => (int) $warehouse->id,
                 'warehouse_code' => $warehouse->code,
@@ -164,6 +173,30 @@ class CartWarehouseOptions
             ])
             ->values()
             ->all();
+    }
+
+    private function isShipmentWarehouseOption(?string $code, ?string $name): bool
+    {
+        $normalizedCode = trim((string) $code);
+        $normalizedName = mb_strtolower(trim((string) $name), 'UTF-8');
+
+        if (in_array($normalizedCode, ['0', '4'], true)) {
+            return false;
+        }
+
+        foreach (['point', 'batum', 'batumi', 'sevkiyat'] as $blockedNeedle) {
+            if ($normalizedName !== '' && str_contains($normalizedName, $blockedNeedle)) {
+                return false;
+            }
+        }
+
+        if (in_array($normalizedCode, ['1', '2', '3'], true)) {
+            return true;
+        }
+
+        return str_contains($normalizedName, 'erzurum depo')
+            || str_contains($normalizedName, 'trabzon depo')
+            || str_contains($normalizedName, 'samsun depo');
     }
 
     /**

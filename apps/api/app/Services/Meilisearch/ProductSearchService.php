@@ -35,7 +35,7 @@ class ProductSearchService
     public function markSearchUnavailable(Throwable $_exception): void
     {
         Cache::store((string) config('cache.default', 'file'))
-            ->put(self::SEARCH_UNAVAILABLE_CACHE_KEY, true, now()->addSeconds(30));
+            ->put(self::SEARCH_UNAVAILABLE_CACHE_KEY, true, now()->addSeconds(120));
     }
 
     /**

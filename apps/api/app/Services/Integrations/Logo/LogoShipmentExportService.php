@@ -172,6 +172,7 @@ class LogoShipmentExportService
         $totals = $this->shipmentTotals($shipment->items);
         $invoiceDate = optional($shipment->shipped_at ?? $shipment->updated_at)?->toDateString()
             ?? now()->toDateString();
+        $orderSyncMeta = $this->orderSyncMeta($order);
 
         return $this->ledgerWriter->write([
             'dealer_id' => $order->dealer_id,
@@ -195,8 +196,32 @@ class LogoShipmentExportService
                 'shipment_no' => $shipment->shipment_no,
                 'order_no' => $order->order_no,
                 'export_key' => $shipment->logoExportKey(),
+                'checkout_summary_mode' => $this->nullableString(data_get($orderSyncMeta, 'checkout_summary_mode')),
+                'payment_method' => $this->nullableString(data_get($orderSyncMeta, 'payment_method')),
+                'sales_price_type' => $this->nullableString(data_get($orderSyncMeta, 'sales_price_type')),
             ],
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function orderSyncMeta($order): array
+    {
+        if (! $order) {
+            return [];
+        }
+
+        $state = IntegrationSyncState::query()
+            ->where('system', 'logo')
+            ->where('domain', 'orders')
+            ->where('direction', 'outbound')
+            ->where('entity_type', $order::class)
+            ->where('entity_id', (int) $order->id)
+            ->latest('id')
+            ->first();
+
+        return is_array($state?->meta) ? $state->meta : [];
     }
 
     /**
@@ -246,6 +271,7 @@ class LogoShipmentExportService
         $customer = $order?->customer;
         $customerMeta = is_array($customer?->meta) ? $customer->meta : [];
         $totals = $this->shipmentTotals($shipment->items);
+        $orderSyncMeta = $this->orderSyncMeta($order);
         $logoDocument = [
             'document_type' => 'wholesale_sales_invoice',
             'document_label' => '(08) Toptan Satış Faturası',
@@ -278,6 +304,9 @@ class LogoShipmentExportService
             'carrier_name' => $shipment->carrier_name,
             'tracking_no' => $shipment->tracking_no,
             'note' => $shipment->note,
+            'checkout_summary_mode' => $this->nullableString(data_get($orderSyncMeta, 'checkout_summary_mode')),
+            'payment_method' => $this->nullableString(data_get($orderSyncMeta, 'payment_method')),
+            'sales_price_type' => $this->nullableString(data_get($orderSyncMeta, 'sales_price_type')),
             'subtotal' => $this->money($totals['subtotal']),
             'vat_total' => $this->money($totals['vat_total']),
             'grand_total' => $this->money($totals['grand_total']),
@@ -301,6 +330,9 @@ class LogoShipmentExportService
                 'updated_at' => optional($shipment->updated_at)?->toIso8601String(),
                 'logo_external_ref' => $state->external_ref,
                 'logo' => $logoDocument,
+                'checkout_summary_mode' => $this->nullableString(data_get($orderSyncMeta, 'checkout_summary_mode')),
+                'payment_method' => $this->nullableString(data_get($orderSyncMeta, 'payment_method')),
+                'sales_price_type' => $this->nullableString(data_get($orderSyncMeta, 'sales_price_type')),
             ],
         ];
     }

@@ -113,14 +113,20 @@ class DayEndReportService
                         'created_by_name' => $sale->createdBy?->name,
                         'warehouse_name' => $this->saleWarehouseName($sale),
                         'items' => $sale->items
-                            ->map(fn ($item): array => [
-                                'product_code' => $item->product?->sku,
-                                'product_name' => $item->product?->name,
-                                'quantity' => number_format((float) $item->qty, 3, '.', ''),
-                                'unit_price' => number_format((float) $item->unit_price, 2, '.', ''),
-                                'line_total' => number_format((float) $item->line_total, 2, '.', ''),
-                                'warehouse_name' => $this->saleWarehouseName($sale),
-                            ])
+                            ->map(function ($item) use ($sale): array {
+                                $vatMultiplier = 1 + ((float) $item->vat_rate / 100);
+
+                                return [
+                                    'product_code' => $item->product?->sku,
+                                    'product_name' => $item->product?->name,
+                                    'quantity' => number_format((float) $item->qty, 3, '.', ''),
+                                    'unit_price' => number_format((float) $item->unit_price, 2, '.', ''),
+                                    'line_total' => number_format((float) $item->line_total, 2, '.', ''),
+                                    'unit_price_vat_included' => number_format((float) $item->unit_price * $vatMultiplier, 2, '.', ''),
+                                    'line_total_vat_included' => number_format((float) $item->line_total * $vatMultiplier, 2, '.', ''),
+                                    'warehouse_name' => $this->saleWarehouseName($sale),
+                                ];
+                            })
                             ->values()
                             ->all(),
                         'created_at' => $sale->created_at?->toIso8601String(),

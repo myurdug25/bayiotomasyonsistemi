@@ -50,6 +50,11 @@ return [
         'erzurum_point_cashbox_name' => env('POS_ERZURUM_POINT_CASHBOX_NAME', env('POS_POINT_CASHBOX_NAME', 'ERZURUM POINT KASASI')),
         'batum_point_cashbox_code' => env('POS_BATUM_POINT_CASHBOX_CODE', '100.01.002'),
         'batum_point_cashbox_name' => env('POS_BATUM_POINT_CASHBOX_NAME', 'BATUM POINT KASASI'),
+        'point_warehouse_no' => (int) env('POS_POINT_WAREHOUSE_NO', 0),
+        'erzurum_point_warehouse_no' => (int) env('POS_ERZURUM_POINT_WAREHOUSE_NO', env('POS_POINT_WAREHOUSE_NO', 0)),
+        'trabzon_point_warehouse_no' => (int) env('POS_TRABZON_POINT_WAREHOUSE_NO', 2),
+        'samsun_point_warehouse_no' => (int) env('POS_SAMSUN_POINT_WAREHOUSE_NO', 3),
+        'batum_point_warehouse_no' => (int) env('POS_BATUM_POINT_WAREHOUSE_NO', 4),
     ],
     'ownership' => [
         'customers' => [

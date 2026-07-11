@@ -366,11 +366,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       clearLocalCart();
       await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
-      toast.success(
-        effectiveWarehouseTransfer
-          ? `Sipariş depoya gönderildi: ${orderResponse.order.order_no}`
-          : `Sipariş gönderildi: ${orderResponse.order.order_no}`
-      );
+      toast.success(effectiveWarehouseTransfer ? "Sipariş depoya gönderildi" : "Sipariş gönderildi", {
+        description: `${orderResponse.order.order_no} · ${selectedCustomer.title ?? selectedCustomer.code}`,
+        duration: 2800,
+      });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sipariş oluşturulamadı");

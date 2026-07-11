@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\LogoLedgerSyncController;
 use App\Http\Controllers\Api\LogoOrderExportController;
 use App\Http\Controllers\Api\LogoPosExpenseExportController;
 use App\Http\Controllers\Api\LogoPosSaleExportController;
+use App\Http\Controllers\Api\LogoProductShelfExportController;
 use App\Http\Controllers\Api\LogoProductSyncController;
 use App\Http\Controllers\Api\LogoPurchaseReceiptExportController;
 use App\Http\Controllers\Api\LogoReturnExportController;
@@ -50,6 +51,7 @@ use App\Http\Controllers\Api\SalesReportController;
 use App\Http\Controllers\Api\UserContextController;
 use App\Http\Controllers\Api\UserNoteController;
 use App\Http\Controllers\Api\WarehouseOrderController;
+use App\Http\Controllers\Api\WarehouseShelfController;
 use App\Http\Controllers\Api\WarehouseShipmentController;
 use App\Http\Controllers\Api\WarehouseShipmentPrintController;
 use Illuminate\Support\Facades\Route;
@@ -69,6 +71,8 @@ Route::middleware('throttle:logo-integration')->group(function (): void {
     Route::post('/integrations/logo/orders/ack', [LogoOrderExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/shipments/pending', [LogoShipmentExportController::class, 'index']);
     Route::post('/integrations/logo/shipments/ack', [LogoShipmentExportController::class, 'acknowledge']);
+    Route::get('/integrations/logo/product-shelves/pending', [LogoProductShelfExportController::class, 'index']);
+    Route::post('/integrations/logo/product-shelves/ack', [LogoProductShelfExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/purchase-receipts/pending', [LogoPurchaseReceiptExportController::class, 'index']);
     Route::post('/integrations/logo/purchase-receipts/ack', [LogoPurchaseReceiptExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/returns/pending', [LogoReturnExportController::class, 'index']);
@@ -243,12 +247,16 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware(['role:warehouse,admin,dealer_admin', 'menu:warehouse', 'throttle:warehouse'])
         ->group(function () {
             Route::get('/orders/ready', [WarehouseOrderController::class, 'ready']);
+            Route::post('/orders/bulk-cancel', [WarehouseOrderController::class, 'bulkCancel']);
             Route::patch('/orders/{order}/items/{item}', [OrderController::class, 'updateWarehouseItem']);
+            Route::get('/shelves', [WarehouseShelfController::class, 'index']);
+            Route::patch('/shelves/{product}', [WarehouseShelfController::class, 'update']);
             Route::get('/staff', [WarehouseShipmentController::class, 'staff']);
             Route::post('/shipments', [WarehouseShipmentController::class, 'store']);
             Route::get('/shipments/{shipment}', [WarehouseShipmentController::class, 'show']);
             Route::get('/shipments/{shipment}/print/packing-slip', [WarehouseShipmentPrintController::class, 'packingSlip']);
             Route::get('/shipments/{shipment}/print/label', [WarehouseShipmentPrintController::class, 'label']);
+            Route::get('/shipments/{shipment}/print/invoice', [WarehouseShipmentPrintController::class, 'invoice']);
             Route::post('/shipments/{shipment}/scan', [WarehouseShipmentController::class, 'scan']);
             Route::post('/shipments/{shipment}/return-item', [WarehouseShipmentController::class, 'returnItem']);
             Route::post('/shipments/{shipment}/return-all', [WarehouseShipmentController::class, 'returnAllItems']);

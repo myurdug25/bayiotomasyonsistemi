@@ -244,16 +244,20 @@ class CartItemController extends Controller
                 ]);
             }
 
-            $unitPrice = (float) ($campaignPrice['unit_price'] ?? $price['net_price']);
+            $unitPrice = round((float) ($campaignPrice['unit_price'] ?? $price['net_price']), 2);
             $priceCurrency = (string) ($campaignPrice['currency'] ?? $price['currency']);
             if ($campaignPrice !== null) {
                 $discountRate = $campaignPrice['discount_percent'] !== null
                     ? (float) $campaignPrice['discount_percent']
                     : 0.0;
             }
+            $campaignProvidesFinalUnitPrice = $campaignPrice !== null
+                && ($campaignPrice['unit_price'] ?? null) !== null;
             $grossTotal = $unitPrice * $quantity;
-            $discountAmount = $grossTotal * ($discountRate / 100);
-            $lineTotal = number_format($grossTotal - $discountAmount, 2, '.', '');
+            $discountAmount = $campaignProvidesFinalUnitPrice
+                ? 0.0
+                : $grossTotal * ($discountRate / 100);
+            $lineTotal = number_format(round($grossTotal - $discountAmount, 2), 2, '.', '');
             $vatRate = (float) ($product?->vat_rate ?? 20.00);
             $cart->fill(['currency' => $priceCurrency])->save();
 
@@ -392,25 +396,32 @@ class CartItemController extends Controller
 
     private function cartPayload(Cart $cart): array
     {
-        $items = $cart->items->map(fn ($item) => [
-            'id' => $item->id,
-            'product_id' => $item->product_id,
-            'sku' => $item->product?->sku,
-            'name' => $item->product?->name,
-            'brand' => $item->product?->brand?->name,
-            'stock' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
-            'available_total' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
-            'qty' => $item->quantity,
-            'quantity' => $item->quantity,
-            'unit_price' => $item->unit_net_price,
-            'unit_net_price' => $item->unit_net_price,
-            'discount' => $item->discount_rate,
-            'discount_rate' => $item->discount_rate,
-            'vat_rate' => $item->vat_rate,
-            'line_total' => $item->line_total,
-            'currency' => $item->currency,
-            'campaign_key' => $item->campaign_key,
-        ])->values();
+        $items = $cart->items->map(function ($item): array {
+            $quantity = max(1, (int) $item->quantity);
+            $lineTotal = $this->cartLineTotal($item);
+            $effectiveUnitPrice = round($lineTotal / $quantity, 2);
+
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'sku' => $item->product?->sku,
+                'name' => $item->product?->name,
+                'brand' => $item->product?->brand?->name,
+                'stock' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
+                'available_total' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
+                'qty' => $item->quantity,
+                'quantity' => $item->quantity,
+                'unit_price' => number_format($effectiveUnitPrice, 2, '.', ''),
+                'unit_net_price' => number_format($effectiveUnitPrice, 2, '.', ''),
+                'source_unit_net_price' => $item->unit_net_price,
+                'discount' => $item->discount_rate,
+                'discount_rate' => $item->discount_rate,
+                'vat_rate' => $item->vat_rate,
+                'line_total' => number_format($lineTotal, 2, '.', ''),
+                'currency' => $item->currency,
+                'campaign_key' => $item->campaign_key,
+            ];
+        })->values();
 
         $totals = $this->calculateTotals($cart);
 
@@ -444,13 +455,16 @@ class CartItemController extends Controller
 
         foreach ($cart->items as $item) {
             $qty = (int) $item->quantity;
-            $unitPrice = (float) $item->unit_net_price;
+            $unitPrice = round((float) $item->unit_net_price, 2);
             $discountRate = (float) $item->discount_rate;
             $vatRate = (float) $item->vat_rate;
 
             $gross = $unitPrice * $qty;
-            $discount = $gross * ($discountRate / 100);
-            $net = (float) $item->line_total;
+            $hasFinalCampaignUnitPrice = $item->campaign_key !== null
+                && trim((string) $item->campaign_key) !== ''
+                && $discountRate <= 0;
+            $discount = $hasFinalCampaignUnitPrice ? 0.0 : $gross * ($discountRate / 100);
+            $net = $this->cartLineTotal($item);
             $vat = $net * ($vatRate / 100);
 
             $grossTotal += $gross;
@@ -471,6 +485,25 @@ class CartItemController extends Controller
             'subtotal' => number_format($netTotal, 2, '.', ''),
             'line_count' => $lineCount,
         ];
+    }
+
+    private function cartLineTotal(CartItem $item): float
+    {
+        $quantity = max(1, (int) $item->quantity);
+        $unitPrice = round((float) $item->unit_net_price, 2);
+        $gross = $unitPrice * $quantity;
+
+        if (
+            $item->campaign_key !== null
+            && trim((string) $item->campaign_key) !== ''
+            && (float) $item->discount_rate <= 0
+        ) {
+            return round($gross, 2);
+        }
+
+        $discountRate = max(0.0, (float) $item->discount_rate);
+
+        return round($gross - ($gross * ($discountRate / 100)), 2);
     }
 
     /**

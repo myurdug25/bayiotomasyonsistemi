@@ -29,11 +29,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ProductSearchController extends Controller
 {
-    private const SEARCH_RESPONSE_CACHE_TTL_SECONDS = 120;
+    private const SEARCH_RESPONSE_CACHE_TTL_SECONDS = 300;
 
-    private const SEARCH_RELATED_CACHE_TTL_SECONDS = 90;
+    private const SEARCH_RELATED_CACHE_TTL_SECONDS = 300;
 
-    private const SEARCH_RESPONSE_CACHE_VERSION = 9;
+    private const SEARCH_RESPONSE_CACHE_VERSION = 12;
 
     public function __invoke(
         SearchProductsRequest $request,
@@ -75,18 +75,20 @@ class ProductSearchController extends Controller
         $includeEquivalents = $request->boolean('include_equivalents');
         $normalizedSearch = ProductCodeNormalizer::normalize($searchQuery);
         $isLikelyProductCodeSearch = $this->isLikelyProductCodeSearch($searchQuery);
-        $shouldResolveExactMatchGroups = $this->shouldResolveExactCodeMatchGroups($searchQuery, $normalizedSearch);
+        $shouldResolveExactMatchGroups = $includeEquivalents
+            && $this->shouldResolveExactCodeMatchGroups($searchQuery, $normalizedSearch);
         $exactMatchGroupCodes = [];
         $canUseMeili = $searchQuery !== ''
             && ! isset($validated['sort'])
-            && ! $this->shouldUseDatabaseForPunctuationInsensitiveSearch($searchQuery);
+            && ! $this->shouldUseDatabaseForPunctuationInsensitiveSearch($searchQuery)
+            && ! ($isLikelyProductCodeSearch && $shouldResolveExactMatchGroups && $includeEquivalents);
 
         // For short, code-like queries, prefer Meili first to avoid the heavier DB-only search path.
         if ($canUseMeili) {
             try {
                 if ($meili->shouldAttemptSearch()) {
-                    $meiliExactMatchGroupCodes = ($isLikelyProductCodeSearch && $shouldResolveExactMatchGroups && $includeEquivalents)
-                        ? $this->resolveExactCodeMatchGroupCodes($searchQuery, $normalizedSearch, $includeEquivalents)
+                    $meiliExactMatchGroupCodes = ($isLikelyProductCodeSearch && $shouldResolveExactMatchGroups)
+                        ? $this->resolveExactCodeMatchGroupCodes($searchQuery, $normalizedSearch, true)
                         : [];
 
                     return $this->searchUsingMeili(
@@ -112,7 +114,7 @@ class ProductSearchController extends Controller
         }
 
         if ($shouldResolveExactMatchGroups) {
-            $exactMatchGroupCodes = $this->resolveExactCodeMatchGroupCodes($searchQuery, $normalizedSearch, $includeEquivalents);
+            $exactMatchGroupCodes = $this->resolveExactCodeMatchGroupCodes($searchQuery, $normalizedSearch, true);
         }
         $databaseSearchBackend = $searchQuery === ''
             ? 'db'
@@ -320,7 +322,13 @@ class ProductSearchController extends Controller
 
             try {
                 if ($exactMatchGroupCodes !== []) {
-                    $matchingProductIds = $this->matchingGroupProductIds($exactMatchGroupCodes, $includeEquivalents, 500);
+                    $matchingProductIds = $this->matchingGroupProductIds(
+                        $exactMatchGroupCodes,
+                        $includeEquivalents,
+                        500,
+                        $search,
+                        $normalizedSearch
+                    );
                     $preferInlineSpecialCodeVisibility = true;
 
                     if ($matchingProductIds === []) {
@@ -334,7 +342,24 @@ class ProductSearchController extends Controller
                     $preferInlineSpecialCodeVisibility = true;
 
                     if ($matchingProductIds === []) {
-                        $query->whereRaw('1 = 0');
+                        $preferInlineSpecialCodeVisibility = false;
+
+                        if ($this->canUseProductFullTextSearch($search)) {
+                            $booleanSearch = $this->toBooleanFullTextSearch($search);
+                            $matchingProductIds = $this->matchingFullTextProductIds($search, $booleanSearch, 500);
+                            $preferInlineSpecialCodeVisibility = true;
+
+                            if ($matchingProductIds === []) {
+                                $this->applyLooseProductTextSearchConstraint($query, $search);
+                                $this->applyTextSearchRanking($query, $search, $normalizedSearch, false);
+                            } else {
+                                $query->whereIn('products.id', $matchingProductIds);
+                                $this->applyIdSequenceOrder($query, $matchingProductIds);
+                            }
+                        } else {
+                            $this->applyLooseProductTextSearchConstraint($query, $search);
+                            $this->applyTextSearchRanking($query, $search, $normalizedSearch, false);
+                        }
                     } else {
                         $query->whereIn('products.id', $matchingProductIds);
                         $this->applyIdSequenceOrder($query, $matchingProductIds);
@@ -363,7 +388,7 @@ class ProductSearchController extends Controller
                 $this->applyLooseProductTextSearchConstraint($query, $search);
             }
 
-            if ($exactMatchGroupCodes !== [] || $shouldSearchCodeAliases) {
+            if ($exactMatchGroupCodes === [] && $shouldSearchCodeAliases) {
                 $this->applyTextSearchRanking($query, $search, $normalizedSearch, $shouldSearchCodeAliases);
             }
         }
@@ -378,6 +403,23 @@ class ProductSearchController extends Controller
         );
 
         $this->applySort($query, $validated['sort'] ?? null);
+
+        if ($exactMatchGroupCodes !== [] && ! isset($validated['page'])) {
+            $items = $query->limit($limit)->get();
+
+            $payload = [
+                'data' => $this->mapProducts($items, $cache, $dealerId, $stockScope, $selectedCustomerId, $user),
+                'next_cursor' => null,
+                'prev_cursor' => null,
+                'limit' => $limit,
+                'total_count' => null,
+                'search_backend' => $searchBackend,
+            ];
+
+            $cache->put($cacheKey, $payload, now()->addSeconds(self::SEARCH_RESPONSE_CACHE_TTL_SECONDS));
+
+            return response()->json($payload);
+        }
 
         if (isset($validated['page'])) {
             $page = max(1, (int) $validated['page']);
@@ -605,7 +647,7 @@ class ProductSearchController extends Controller
             return [];
         }
 
-        $cacheKey = 'products:exact-code-groups:v1:'.md5(mb_strtolower($search, 'UTF-8').':'.$normalizedSearch.':'.($includeEquivalents ? '1' : '0'));
+        $cacheKey = 'products:exact-code-groups:v2:'.md5(mb_strtolower($search, 'UTF-8').':'.$normalizedSearch.':'.($includeEquivalents ? '1' : '0'));
 
         return $this->cacheStore()->remember($cacheKey, now()->addMinutes(10), function () use ($search, $normalizedSearch, $includeEquivalents): array {
             $aliasProductIds = $this->matchingExactCodeAliasProductIds($normalizedSearch, 120);
@@ -670,7 +712,11 @@ class ProductSearchController extends Controller
         $query->where(function (Builder $groupQuery) use ($groupCodes): void {
             $groupQuery
                 ->whereIn('products.meta->category_code', $groupCodes)
+                ->orWhereIn('products.meta->group_code', $groupCodes)
+                ->orWhereIn('products.meta->grup_kodu', $groupCodes)
                 ->orWhereIn('products.meta->integrations->logo->payload->category_code', $groupCodes)
+                ->orWhereIn('products.meta->integrations->logo->payload->group_code', $groupCodes)
+                ->orWhereIn('products.meta->integrations->logo->payload->grup_kodu', $groupCodes)
                 ->orWhereIn('products.meta->integrations->logo->payload->raw->STGRPCODE', $groupCodes)
                 ->orWhereIn('products.meta->integrations->logo->payload->raw->GRPCODE', $groupCodes);
         });
@@ -680,7 +726,13 @@ class ProductSearchController extends Controller
      * @param  list<string>  $groupCodes
      * @return list<int>
      */
-    private function matchingGroupProductIds(array $groupCodes, bool $includeEquivalents, int $limit): array
+    private function matchingGroupProductIds(
+        array $groupCodes,
+        bool $includeEquivalents,
+        int $limit,
+        ?string $search = null,
+        ?string $normalizedSearch = null
+    ): array
     {
         if ($groupCodes === []) {
             return [];
@@ -701,12 +753,16 @@ class ProductSearchController extends Controller
             return [];
         }
 
-        $cacheKey = 'products:group-product-ids:v2:'.md5(json_encode($lookupCodes).':'.$limit.':'.($includeEquivalents ? '1' : '0'));
+        $search = $search !== null ? trim($search) : null;
+        $search = $search !== '' ? $search : null;
+        $normalizedSearch = $normalizedSearch !== null && $normalizedSearch !== '' ? $normalizedSearch : null;
+
+        $cacheKey = 'products:group-product-ids:v4:'.md5(json_encode($lookupCodes).':'.$limit.':'.($includeEquivalents ? '1' : '0').':'.($search ?? '').':'.($normalizedSearch ?? ''));
 
         return $this->cacheStore()->remember(
             $cacheKey,
             now()->addMinutes(10),
-            function () use ($lookupCodes, $includeEquivalents, $limit): array {
+            function () use ($lookupCodes, $includeEquivalents, $limit, $search, $normalizedSearch): array {
                 $query = Product::query()
                     ->select('products.id')
                     ->where('products.is_active', true)
@@ -716,12 +772,43 @@ class ProductSearchController extends Controller
                     ->where(function (Builder $query) use ($lookupCodes): void {
                         $query
                             ->whereIn('products.meta->category_code', $lookupCodes)
+                            ->orWhereIn('products.meta->group_code', $lookupCodes)
+                            ->orWhereIn('products.meta->grup_kodu', $lookupCodes)
                             ->orWhereIn('products.meta->integrations->logo->payload->category_code', $lookupCodes)
+                            ->orWhereIn('products.meta->integrations->logo->payload->group_code', $lookupCodes)
+                            ->orWhereIn('products.meta->integrations->logo->payload->grup_kodu', $lookupCodes)
                             ->orWhereIn('products.meta->integrations->logo->payload->raw->STGRPCODE', $lookupCodes)
                             ->orWhereIn('products.meta->integrations->logo->payload->raw->GRPCODE', $lookupCodes);
                     });
 
                 $this->applyProductSpecialCodeVisibility($query, $includeEquivalents, preferInline: true);
+
+                if ($search !== null || $normalizedSearch !== null) {
+                    $case = 'CASE ';
+                    $bindings = [];
+
+                    if ($search !== null) {
+                        $case .= 'WHEN products.sku = ? THEN 0 WHEN products.oem_code = ? THEN 1 ';
+                        $bindings[] = $search;
+                        $bindings[] = $search;
+                    }
+
+                    if ($normalizedSearch !== null) {
+                        $case .= 'WHEN '.$this->normalizedProductCodeSql('products.sku').' = ? THEN 2 '
+                            .'WHEN '.$this->normalizedProductCodeSql('products.oem_code').' = ? THEN 3 '
+                            .'WHEN EXISTS ('
+                            .'SELECT 1 FROM product_code_aliases pca_exact '
+                            .'WHERE pca_exact.product_id = products.id '
+                            .'AND pca_exact.normalized_code = ?'
+                            .') THEN 4 ';
+                        $bindings[] = $normalizedSearch;
+                        $bindings[] = $normalizedSearch;
+                        $bindings[] = $normalizedSearch;
+                    }
+
+                    $case .= 'ELSE 5 END';
+                    $query->orderByRaw($case, $bindings);
+                }
 
                 return $query
                     ->orderByDesc('products.id')
@@ -2782,7 +2869,7 @@ class ProductSearchController extends Controller
 
         $normalizedSearch = $normalizedSearch !== null && $normalizedSearch !== '' ? $normalizedSearch : null;
         $limit = max(1, $limit);
-        $cacheKey = 'products:fast-code-product-ids:v1:'.md5(mb_strtolower($search, 'UTF-8').':'.($normalizedSearch ?? '').':'.$limit);
+        $cacheKey = 'products:fast-code-product-ids:v2:'.md5(mb_strtolower($search, 'UTF-8').':'.($normalizedSearch ?? '').':'.$limit);
 
         return $this->cacheStore()->remember(
             $cacheKey,
@@ -2944,7 +3031,38 @@ class ProductSearchController extends Controller
 
     private function isLikelyProductCodeSearch(string $search): bool
     {
-        return preg_match('/[0-9\\-_.\\/]/', $search) === 1;
+        $search = trim($search);
+        if ($search === '') {
+            return false;
+        }
+
+        if (preg_match('/[0-9\\-_.\\/]/', $search) !== 1) {
+            return false;
+        }
+
+        $tokens = preg_split('/\\s+/u', $search) ?: [];
+        $tokens = array_values(array_filter($tokens, fn (string $token): bool => trim($token) !== ''));
+
+        if (count($tokens) <= 1) {
+            return true;
+        }
+
+        $hasCodeLikeToken = false;
+        foreach ($tokens as $token) {
+            $token = trim($token);
+            $compactToken = $this->compactProductSearchToken($token);
+
+            if (preg_match('/[0-9\\-_.\\/]/', $token) === 1 || mb_strlen($compactToken, 'UTF-8') <= 3) {
+                $hasCodeLikeToken = true;
+                continue;
+            }
+
+            if (preg_match('/^[\\pL]+$/u', $token) === 1 && mb_strlen($token, 'UTF-8') >= 4) {
+                return false;
+            }
+        }
+
+        return $hasCodeLikeToken;
     }
 
     private function shouldUseDatabaseForPunctuationInsensitiveSearch(string $search): bool

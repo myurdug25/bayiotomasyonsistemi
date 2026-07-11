@@ -379,6 +379,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
     () => ({
       packingSlip: `/warehouse/shipments/${shipmentId}/print/packing-slip`,
       label: `/warehouse/shipments/${shipmentId}/print/label?${printSearchParams}`,
+      invoice: `/warehouse/shipments/${shipmentId}/print/invoice`,
     }),
     [shipmentId, printSearchParams]
   );
@@ -555,7 +556,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
       queryClient.setQueryData(queryKey, response);
       setFinalizeConfirmOpen(false);
       toast.success(response.data.message ?? "Fatura Logo'ya aktarıldı");
-      router.replace("/warehouse");
+      printPageInPlace(printUrls.invoice);
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey });

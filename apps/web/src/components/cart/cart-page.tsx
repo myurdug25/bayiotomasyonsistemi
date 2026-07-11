@@ -110,7 +110,7 @@ type BulkCartUploadRow = {
 
 const CHECKOUT_SUMMARY_MODES: Record<VatSummaryMode, { code: string; label: string }> = {
   detailed: { code: "1-F", label: "1 - F" },
-  excluded: { code: "2-O", label: "2 - O" },
+  excluded: { code: "2-0", label: "2 - 0" },
   included: { code: "3-B", label: "3 - B" },
 };
 
@@ -274,6 +274,8 @@ export function CartPage() {
   const [vatSummaryMode, setVatSummaryMode] = useState<VatSummaryMode>("detailed");
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkUploadResults, setBulkUploadResults] = useState<Array<{ product_code: string; quantity: number; status: string; message: string }>>([]);
+  const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
+  const [deleteDialog, setDeleteDialog] = useState<"selected" | "all" | null>(null);
   const bulkUploadInputRef = useRef<HTMLInputElement | null>(null);
   const {
     cartData,
@@ -296,7 +298,46 @@ export function CartPage() {
   }, [setShippingMethod]);
 
   const items = useMemo(() => cartData?.items ?? [], [cartData?.items]);
+  const selectableProductIds = useMemo(() => items.map((item) => item.product_id), [items]);
+  const selectedProductIdSet = useMemo(() => new Set(selectedProductIds), [selectedProductIds]);
+  const allItemsSelected = items.length > 0 && selectedProductIds.length === items.length;
   const warehouseOptions = useMemo(() => cartData?.warehouse_options ?? [], [cartData?.warehouse_options]);
+
+  useEffect(() => {
+    setSelectedProductIds((current) => current.filter((productId) => selectableProductIds.includes(productId)));
+  }, [selectableProductIds]);
+
+  const toggleProductSelection = (productId: number) => {
+    setSelectedProductIds((current) => (
+      current.includes(productId)
+        ? current.filter((currentProductId) => currentProductId !== productId)
+        : [...current, productId]
+    ));
+  };
+
+  const toggleAllProductSelection = () => {
+    setSelectedProductIds(allItemsSelected ? [] : selectableProductIds);
+  };
+
+  const confirmDeleteItems = async () => {
+    const targetProductIds = deleteDialog === "all" ? selectableProductIds : selectedProductIds;
+
+    if (targetProductIds.length === 0) {
+      setDeleteDialog(null);
+      return;
+    }
+
+    try {
+      for (const productId of targetProductIds) {
+        await removeItemByProduct(productId);
+      }
+
+      setSelectedProductIds([]);
+      toast.success(deleteDialog === "all" ? "Sepetteki ürünler silindi." : "Seçilen ürünler silindi.");
+    } finally {
+      setDeleteDialog(null);
+    }
+  };
   const setQuantityDraft = (productId: number, nextValue: string) => {
     const numericValue = nextValue.replace(/\D/g, "");
 
@@ -386,11 +427,12 @@ export function CartPage() {
   ]);
   const noteStepNumber = isBatumBranch ? 2 : 3;
   const summaryStepNumber = isBatumBranch ? 3 : 4;
-  const effectiveVatSummaryMode = isBatumBranch ? "included" : vatSummaryMode;
+  const effectiveVatSummaryMode = vatSummaryMode;
+  const checkoutDisplayTotal = effectiveVatSummaryMode === "excluded" ? subtotal : grandTotal;
   const shouldShowShippingFeeNotice =
-    (shippingMethod === "otobus" || shippingMethod === "kargo") && grandTotal > SHIPPING_FEE_THRESHOLD;
+    (shippingMethod === "otobus" || shippingMethod === "kargo") && checkoutDisplayTotal > SHIPPING_FEE_THRESHOLD;
   const shippingFeeAmount = shouldShowShippingFeeNotice ? SHIPPING_FEE_AMOUNT : 0;
-  const selectedPayableTotal = (effectiveVatSummaryMode === "excluded" ? subtotal : grandTotal) * selectedPaymentMultiplier + shippingFeeAmount;
+  const selectedPayableTotal = checkoutDisplayTotal * selectedPaymentMultiplier + shippingFeeAmount;
   const isBankTransferPayment =
     Boolean(isCombinedPayment && "requiresReference" in selectedCombinedPayment && selectedCombinedPayment.requiresReference);
   const generatedTransferReference = [
@@ -507,71 +549,7 @@ export function CartPage() {
         </div>
       ) : null}
 
-      <Card className="dashboard-panel-card order-1 overflow-hidden">
-        <CardContent className="space-y-3 p-3 2xl:p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <StepTitle step={1} title="Excel ile Sepete Ekle" icon={FileSpreadsheet} />
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Button
-                type="button"
-                variant="outline"
-                className="admin-dashboard-ghost h-11 rounded-xl px-4 text-sm font-black"
-                onClick={downloadBulkCartTemplate}
-              >
-                <Download className="h-4 w-4" />
-                Örnek Excel İndir
-              </Button>
-              <input
-                ref={bulkUploadInputRef}
-                type="file"
-                accept=".xls,.csv,.tsv,.txt,text/csv,text/tab-separated-values,application/vnd.ms-excel"
-                className="hidden"
-                onChange={(event) => void handleBulkCartFileChange(event.target.files?.[0] ?? null)}
-              />
-              <Button
-                type="button"
-                className="admin-primary-action h-11 rounded-xl px-4 text-sm font-black"
-                disabled={bulkUploading || !selectedCustomer}
-                onClick={() => bulkUploadInputRef.current?.click()}
-              >
-                {bulkUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                Excel Yükle
-              </Button>
-            </div>
-          </div>
-          <p className="text-sm font-semibold text-[var(--muted-foreground)]">
-            Excel formatı: <span className="font-black text-[var(--foreground)]">Ürün Kodu</span> ve{" "}
-            <span className="font-black text-[var(--foreground)]">Miktar</span>. Yüklenen ürünler doğrudan seçili carinin sepetine eklenir.
-          </p>
-          {bulkUploadResults.length > 0 ? (
-            <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
-              <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
-                <FileSpreadsheet className="h-4 w-4 text-[var(--brand-primary)]" />
-                Toplu sepet sonucu
-              </div>
-              <div className="grid max-h-40 gap-1 overflow-auto text-sm font-semibold sm:grid-cols-2 lg:grid-cols-3">
-                {bulkUploadResults.map((result, index) => (
-                  <div
-                    key={`${result.product_code}-${index}`}
-                    className={cn(
-                      "rounded-lg border px-3 py-2",
-                      result.status === "added"
-                        ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-100"
-                        : "border-rose-400/35 bg-rose-400/10 text-rose-100"
-                    )}
-                  >
-                    <span className="font-black">{result.product_code}</span>
-                    <span className="text-[var(--muted-foreground)]"> · {result.quantity} adet</span>
-                    <div className="text-xs">{result.message}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      {!isBatumBranch ? (
+      {selectedCustomer ? (
         <Card className="dashboard-panel-card order-2 overflow-hidden">
           <CardContent className="space-y-3 p-3 2xl:p-4">
             <StepTitle step={2} title="Ödeme Şekli" />
@@ -582,7 +560,7 @@ export function CartPage() {
                 const active = selectedPaymentMethod === method.key;
                 const methodBadge = method.key === "cash_transfer_single" ? selectedCombinedPayment.badge : method.badge;
                 const methodMultiplier = method.key === "cash_transfer_single" ? selectedCombinedPayment.multiplier : method.multiplier;
-                const payableTotal = grandTotal * methodMultiplier + shippingFeeAmount;
+                const payableTotal = checkoutDisplayTotal * methodMultiplier + shippingFeeAmount;
 
                 return (
                   <div
@@ -737,7 +715,84 @@ export function CartPage() {
 
       <Card className="dashboard-panel-card order-1 overflow-hidden">
         <CardContent className="space-y-5 p-4 md:p-6 2xl:p-7">
-          <StepTitle step={1} title="Ürün Listesi" />
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <StepTitle step={1} title="Ürün Listesi" />
+            <div className="flex flex-wrap items-center gap-2">
+              {items.length > 0 ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 rounded-xl border-red-400/35 bg-red-500/5 px-3 text-xs font-black text-red-200 hover:bg-red-500/10"
+                    disabled={isFormDisabled || selectedProductIds.length === 0}
+                    onClick={() => setDeleteDialog("selected")}
+                  >
+                    Seçilenleri Sil
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 rounded-xl border-red-400/45 bg-red-500/10 px-3 text-xs font-black text-red-100 hover:bg-red-500/15"
+                    disabled={isFormDisabled}
+                    onClick={() => setDeleteDialog("all")}
+                  >
+                    Tümünü Sil
+                  </Button>
+                </>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="admin-dashboard-ghost h-10 rounded-xl px-3 text-xs font-black"
+                onClick={downloadBulkCartTemplate}
+              >
+                <Download className="h-4 w-4" />
+                Örnek Excel İndir
+              </Button>
+              <input
+                ref={bulkUploadInputRef}
+                type="file"
+                accept=".xls,.csv,.tsv,.txt,text/csv,text/tab-separated-values,application/vnd.ms-excel"
+                className="hidden"
+                onChange={(event) => void handleBulkCartFileChange(event.target.files?.[0] ?? null)}
+              />
+              <Button
+                type="button"
+                className="admin-primary-action h-10 rounded-xl px-3 text-xs font-black"
+                disabled={bulkUploading || !selectedCustomer}
+                onClick={() => bulkUploadInputRef.current?.click()}
+              >
+                {bulkUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Excel Yükle
+              </Button>
+            </div>
+          </div>
+
+          {bulkUploadResults.length > 0 ? (
+            <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
+              <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+                <FileSpreadsheet className="h-4 w-4 text-[var(--brand-primary)]" />
+                Toplu sepet sonucu
+              </div>
+              <div className="grid max-h-32 gap-1 overflow-auto text-sm font-semibold sm:grid-cols-2 lg:grid-cols-3">
+                {bulkUploadResults.map((result, index) => (
+                  <div
+                    key={`${result.product_code}-${index}`}
+                    className={cn(
+                      "rounded-lg border px-3 py-2",
+                      result.status === "added"
+                        ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-100"
+                        : "border-rose-400/35 bg-rose-400/10 text-rose-100"
+                    )}
+                  >
+                    <span className="font-black">{result.product_code}</span>
+                    <span className="text-[var(--muted-foreground)]"> · {result.quantity} adet</span>
+                    <div className="text-xs">{result.message}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {loading ? (
             <div className="space-y-3">
@@ -767,6 +822,7 @@ export function CartPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1180px] table-fixed border-collapse">
                   <colgroup>
+                    <col className="w-[54px]" />
                     <col className="w-[82px]" />
                     <col className="w-[136px]" />
                     <col />
@@ -778,6 +834,16 @@ export function CartPage() {
                   </colgroup>
                   <thead className="bg-[radial-gradient(circle_at_8%_16%,rgba(34,197,94,0.42)_0%,transparent_34%),linear-gradient(135deg,rgba(15,118,54,0.96)_0%,rgba(3,48,31,0.98)_100%)]">
                     <tr className="border-b border-emerald-300/35 text-[12px] font-black uppercase tracking-[0.14em] text-emerald-50">
+                      <th scope="col" className="border-r border-emerald-200/20 px-3 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={allItemsSelected}
+                          onChange={toggleAllProductSelection}
+                          disabled={isFormDisabled}
+                          aria-label="Tüm ürünleri seç"
+                          className="h-4 w-4 rounded border-emerald-200/40 accent-emerald-400"
+                        />
+                      </th>
                       <th scope="col" className="border-r border-emerald-200/20 px-4 py-4 text-right">Stok</th>
                       <th scope="col" className="border-r border-emerald-200/20 px-4 py-4 text-left">Stok Kodu</th>
                       <th scope="col" className="border-r border-emerald-200/20 px-4 py-4 text-left">Ürün Adı</th>
@@ -789,8 +855,22 @@ export function CartPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item) => (
+                    {items.map((item) => {
+                      const effectiveUnitPrice =
+                        item.quantity > 0 ? toAmount(item.line_total) / item.quantity : toAmount(item.unit_net_price);
+
+                      return (
                       <tr key={item.id} className="border-b border-[var(--brand-border)] last:border-b-0">
+                        <td className="border-r border-[var(--brand-border)] px-3 py-4 text-center align-middle">
+                          <input
+                            type="checkbox"
+                            checked={selectedProductIdSet.has(item.product_id)}
+                            onChange={() => toggleProductSelection(item.product_id)}
+                            disabled={isFormDisabled}
+                            aria-label={`${item.name} seç`}
+                            className="h-4 w-4 rounded border-[var(--brand-border)] accent-emerald-400"
+                          />
+                        </td>
                         <td className="border-r border-[var(--brand-border)] px-4 py-4 text-right align-middle text-base font-black text-emerald-300">
                           {formatStock(item.available_total)}
                         </td>
@@ -809,7 +889,7 @@ export function CartPage() {
                           <p className="truncate text-sm font-black text-[var(--foreground)]">{item.brand ?? "-"}</p>
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-4 py-4 text-right align-middle text-base font-black text-[var(--foreground)]">
-                          {formatTry(item.unit_net_price, item.currency)}
+                          {formatTryAmount(effectiveUnitPrice, item.currency)}
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-3 py-4 align-middle">
                           <div className="mx-auto grid h-11 w-[148px] grid-cols-[36px_1fr_36px] items-center rounded-[12px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-1">
@@ -847,7 +927,8 @@ export function CartPage() {
                           </Button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1017,16 +1098,11 @@ export function CartPage() {
         </div>
 
         <Card className="dashboard-panel-card overflow-hidden">
-          <CardContent className={cn(
-            "grid gap-5 p-4 2xl:gap-6 2xl:p-6",
-            isBatumBranch
-              ? "lg:grid-cols-[minmax(260px,1fr)_minmax(260px,0.58fr)]"
-              : "lg:grid-cols-[minmax(280px,1fr)_minmax(340px,0.86fr)]"
-          )}>
-            <div>
+          <CardContent className="grid min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] 2xl:gap-5 2xl:p-5">
+            <div className="min-w-0">
               <StepTitle step={summaryStepNumber} title="Sipariş Özeti" />
               <div className="mt-5 space-y-3">
-                {!isBatumBranch && effectiveVatSummaryMode === "detailed" ? (
+                {effectiveVatSummaryMode === "detailed" ? (
                   <>
                     <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
                       <span className="text-[var(--muted-foreground)]">Ara Toplam</span>
@@ -1040,7 +1116,7 @@ export function CartPage() {
 	                    </div>
 	                  </>
 	                ) : null}
-                {!isBatumBranch && effectiveVatSummaryMode === "excluded" ? (
+                {effectiveVatSummaryMode === "excluded" ? (
                   <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
                     <span className="text-[var(--muted-foreground)]">KDV</span>
                     <span className="h-px bg-[var(--brand-border)]" />
@@ -1076,26 +1152,24 @@ export function CartPage() {
               </div>
             </div>
 
-            <div className={cn(
-              "items-stretch gap-4 border-t border-[var(--brand-border)] pt-5 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0",
-              isBatumBranch ? "flex min-w-0 flex-col justify-center" : "grid grid-cols-[76px_minmax(0,1fr)]"
-            )}>
-              {!isBatumBranch ? (
-              <div className="grid gap-2 rounded-[18px] border border-emerald-300/25 bg-[linear-gradient(135deg,rgba(7,23,29,0.92)_0%,rgba(5,37,28,0.92)_100%)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+            <div className="flex min-w-0 max-w-full flex-col gap-3 overflow-hidden border-t border-[var(--brand-border)] pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+              {selectedCustomer ? (
+              <div className="grid min-w-0 grid-cols-3 items-center gap-1.5 rounded-[16px] border border-emerald-300/25 bg-[linear-gradient(135deg,rgba(7,23,29,0.92)_0%,rgba(5,37,28,0.92)_100%)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                <span className="col-span-3 px-1 text-center text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/70">Satış Tipi</span>
                 <button
                   type="button"
                   onClick={() => setVatSummaryMode("detailed")}
                   aria-label="1 - F özet görünümü"
                   aria-pressed={vatSummaryMode === "detailed"}
                   className={cn(
-                    "group flex min-h-16 items-center justify-center rounded-[16px] border text-base font-black transition duration-200",
+                    "group flex min-h-9 min-w-0 items-center justify-center rounded-[12px] border text-xs font-black transition duration-200",
                     vatSummaryMode === "detailed"
                       ? "border-emerald-200 bg-[radial-gradient(circle_at_26%_20%,rgba(187,247,208,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(16,185,129,0.96)_0%,rgba(3,92,64,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(16,185,129,0.9)]"
                       : "border-emerald-300/18 bg-emerald-500/8 text-emerald-100/80 hover:border-emerald-200/70 hover:bg-emerald-500/18"
                   )}
                 >
-                  <span className="flex h-9 min-w-14 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
-                    {CHECKOUT_SUMMARY_MODES.detailed.label}
+                  <span className="flex h-7 min-w-10 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
+                    {CHECKOUT_SUMMARY_MODES.detailed.code}
                   </span>
                 </button>
                 <button
@@ -1104,14 +1178,14 @@ export function CartPage() {
                   aria-label="2 - O özet görünümü"
                   aria-pressed={vatSummaryMode === "excluded"}
                   className={cn(
-                    "group flex min-h-16 items-center justify-center rounded-[16px] border text-base font-black transition duration-200",
+                    "group flex min-h-9 min-w-0 items-center justify-center rounded-[12px] border text-xs font-black transition duration-200",
                     vatSummaryMode === "excluded"
                       ? "border-sky-200 bg-[radial-gradient(circle_at_26%_20%,rgba(186,230,253,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(14,165,233,0.96)_0%,rgba(7,89,133,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(14,165,233,0.9)]"
                       : "border-sky-300/18 bg-sky-500/8 text-sky-100/80 hover:border-sky-200/70 hover:bg-sky-500/18"
                   )}
                 >
-                  <span className="flex h-9 min-w-14 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
-                    {CHECKOUT_SUMMARY_MODES.excluded.label}
+                  <span className="flex h-7 min-w-10 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
+                    {CHECKOUT_SUMMARY_MODES.excluded.code}
                   </span>
                 </button>
                 <button
@@ -1120,30 +1194,29 @@ export function CartPage() {
                   aria-label="3 - B özet görünümü"
                   aria-pressed={vatSummaryMode === "included"}
                   className={cn(
-                    "group flex min-h-16 items-center justify-center rounded-[16px] border text-base font-black transition duration-200",
+                    "group flex min-h-9 min-w-0 items-center justify-center rounded-[12px] border text-xs font-black transition duration-200",
                     vatSummaryMode === "included"
                       ? "border-fuchsia-200 bg-[radial-gradient(circle_at_26%_20%,rgba(245,208,254,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(192,38,211,0.94)_0%,rgba(91,33,182,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(192,38,211,0.86)]"
                       : "border-fuchsia-300/18 bg-fuchsia-500/8 text-fuchsia-100/80 hover:border-fuchsia-200/70 hover:bg-fuchsia-500/18"
                   )}
                 >
-                  <span className="flex h-9 min-w-14 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
-                    {CHECKOUT_SUMMARY_MODES.included.label}
+                  <span className="flex h-7 min-w-10 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
+                    {CHECKOUT_SUMMARY_MODES.included.code}
                   </span>
                 </button>
               </div>
               ) : null}
-              <div className="flex min-w-0 flex-col justify-center gap-3">
+              <div className="flex min-w-0 max-w-full flex-col justify-center gap-3 overflow-hidden">
                 <Button
                   className={cn(
-                    "w-full rounded-[18px] border border-red-300/45 !bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.3)_0%,transparent_34%),linear-gradient(135deg,rgba(239,68,68,0.98)_0%,rgba(153,27,27,1)_100%)] px-4 text-2xl font-black uppercase tracking-[0.05em] !text-white shadow-[0_28px_48px_-26px_rgba(239,68,68,0.95),inset_0_1px_0_rgba(255,255,255,0.22)] hover:!bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.36)_0%,transparent_34%),linear-gradient(135deg,rgba(248,113,113,1)_0%,rgba(185,28,28,1)_100%)] 2xl:text-3xl",
-                    isBatumBranch ? "min-h-36" : "aspect-square min-h-44"
+                    "min-h-20 w-full max-w-full whitespace-nowrap rounded-[18px] border border-red-300/45 !bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.3)_0%,transparent_34%),linear-gradient(135deg,rgba(239,68,68,0.98)_0%,rgba(153,27,27,1)_100%)] px-4 text-lg font-black uppercase tracking-[0.03em] !text-white shadow-[0_22px_38px_-24px_rgba(239,68,68,0.95),inset_0_1px_0_rgba(255,255,255,0.22)] hover:!bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.36)_0%,transparent_34%),linear-gradient(135deg,rgba(248,113,113,1)_0%,rgba(185,28,28,1)_100%)] 2xl:min-h-24 2xl:text-xl"
                   )}
                   disabled={isCheckoutDisabled}
                   onClick={() => void createOrderFromCart({
                     note: checkoutNote,
-                    checkoutSummaryMode: isBatumBranch ? undefined : effectiveVatSummaryMode,
+                    checkoutSummaryMode: effectiveVatSummaryMode,
                     paymentMethod: isCombinedPayment ? selectedCombinedPayment.key : selectedPayment.key,
-                    salesPriceType: selectedPaymentTitle,
+                    salesPriceType: isCombinedPayment ? selectedCombinedPayment.key : undefined,
                   })}
                 >
                   {mutating ? <Loader2 className="h-9 w-9 animate-spin" /> : <PackageCheck className="h-9 w-9" />}
@@ -1158,6 +1231,44 @@ export function CartPage() {
           </CardContent>
         </Card>
       </div>
+
+      {deleteDialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[24px] border border-red-300/30 bg-[radial-gradient(circle_at_16%_14%,rgba(248,113,113,0.24)_0%,transparent_34%),linear-gradient(145deg,rgba(16,28,31,0.98)_0%,rgba(8,19,22,0.98)_100%)] p-5 text-center shadow-[0_30px_80px_rgba(0,0,0,0.46)]">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-red-300/35 bg-red-500/12 text-red-200">
+              <Trash2 className="h-6 w-6" />
+            </div>
+            <h3 className="mt-4 text-xl font-black text-white">
+              {deleteDialog === "all" ? "Tüm sepet silinsin mi?" : "Seçilen ürünler silinsin mi?"}
+            </h3>
+            <p className="mt-2 text-sm font-semibold leading-6 text-white/68">
+              {deleteDialog === "all"
+                ? "Sepetteki tüm ürünleri silmek istediğine emin misin?"
+                : `${selectedProductIds.length} seçili ürünü silmek istediğine emin misin?`}
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-white/15 bg-white/6 font-black text-white hover:bg-white/10"
+                disabled={mutating}
+                onClick={() => setDeleteDialog(null)}
+              >
+                Vazgeç
+              </Button>
+              <Button
+                type="button"
+                className="h-11 rounded-xl border border-red-300/40 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] font-black text-white shadow-[0_16px_30px_rgba(225,29,46,0.28)] hover:brightness-110"
+                disabled={mutating}
+                onClick={() => void confirmDeleteItems()}
+              >
+                {mutating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Evet
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -227,6 +227,7 @@ class ReportService
                 'customers.name as customer_title',
                 'customers.salesperson_user_id',
                 'marketers.name as salesperson_name',
+                'carts.shipping_method as shipping_method',
                 'orders.currency',
                 'orders.subtotal',
                 'orders.grand_total',
@@ -235,6 +236,7 @@ class ReportService
                 'logo_order_sync.last_error as logo_sync_error',
                 'logo_order_sync.external_ref as logo_external_ref',
                 'logo_order_sync.last_synced_at as logo_last_synced_at',
+                'logo_order_sync.meta as logo_sync_meta',
             ])
             ->selectSub(
                 DB::table('order_items')
@@ -253,6 +255,10 @@ class ReportService
         $data = collect($paginator->items())
             ->map(function ($row) use ($logoStockByOrder): array {
                 $orderId = (int) $row->id;
+                $syncMeta = $this->decodeJsonMeta($row->logo_sync_meta ?? null);
+                $checkoutSummary = $this->checkoutSummaryFromMode($syncMeta['checkout_summary_mode'] ?? null);
+                $salesPriceType = $this->nullableString($syncMeta['sales_price_type'] ?? null);
+                $shippingMethod = $this->nullableString($row->shipping_method ?? null);
 
                 return [
                     'order_id' => $orderId,
@@ -272,6 +278,16 @@ class ReportService
                     'grand_total' => $this->money($row->grand_total),
                     'remaining_quantity' => (int) $row->remaining_quantity,
                     'ordered_at' => $row->ordered_at,
+                    'origin' => [
+                        'checkout_summary' => $checkoutSummary,
+                        'sales_price_type' => $salesPriceType,
+                        'sales_price_type_label' => $this->salesPriceTypeLabel($salesPriceType),
+                        'shipping_method' => $shippingMethod,
+                    ],
+                    'checkout_summary' => $checkoutSummary,
+                    'sales_price_type' => $salesPriceType,
+                    'sales_price_type_label' => $this->salesPriceTypeLabel($salesPriceType),
+                    'shipping_method' => $shippingMethod,
                     'logo_sync_status' => $row->logo_sync_status,
                     'logo_sync_error' => $row->logo_sync_error,
                     'logo_external_ref' => $row->logo_external_ref,
@@ -816,6 +832,7 @@ class ReportService
 
         $query = Order::query()
             ->join('customers', 'customers.id', '=', 'orders.customer_id')
+            ->leftJoin('carts', 'carts.id', '=', 'orders.cart_id')
             ->leftJoin('users as marketers', 'marketers.id', '=', 'customers.salesperson_user_id')
             ->leftJoin('integration_sync_states as logo_order_sync', function ($join): void {
                 $join->on('logo_order_sync.entity_id', '=', 'orders.id')
@@ -1049,6 +1066,62 @@ class ReportService
         throw ValidationException::withMessages([
             'dealer_id' => ['dealer_id is required for users without assigned dealer context.'],
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeJsonMeta(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (! is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @return array{mode:string,code:string,label:string}|null
+     */
+    private function checkoutSummaryFromMode(mixed $value): ?array
+    {
+        $mode = trim((string) $value);
+
+        return match ($mode) {
+            'detailed' => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1-F'],
+            'excluded' => ['mode' => 'excluded', 'code' => '2-O', 'label' => '2-0'],
+            'included' => ['mode' => 'included', 'code' => '3-B', 'label' => '3-B'],
+            default => null,
+        };
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function salesPriceTypeLabel(?string $value): ?string
+    {
+        $normalized = mb_strtolower(trim((string) $value), 'UTF-8');
+
+        return match ($normalized) {
+            'bank_transfer', 'transfer', 'havale', 'havale/eft', 'havale / eft' => 'Havale / EFT',
+            'cash', 'nakit' => 'Nakit',
+            'single_payment', 'tek çekim', 'tek cekim' => 'Tek Çekim',
+            default => $value,
+        };
     }
 
     private function money(mixed $value): string

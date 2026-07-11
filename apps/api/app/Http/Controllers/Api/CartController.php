@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Cart\ShowCartRequest;
 use App\Models\Cart;
+use App\Models\CartItem;
 use App\Models\Customer;
 use App\Models\User;
 use App\Support\Cart\CartLogoIntegrationSummary;
@@ -68,25 +69,32 @@ class CartController extends Controller
 
     private function cartPayload(Cart $cart): array
     {
-        $items = $cart->items->map(fn ($item) => [
-            'id' => $item->id,
-            'product_id' => $item->product_id,
-            'sku' => $item->product?->sku,
-            'name' => $item->product?->name,
-            'brand' => $item->product?->brand?->name,
-            'stock' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
-            'available_total' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
-            'qty' => $item->quantity,
-            'quantity' => $item->quantity,
-            'unit_price' => $item->unit_net_price,
-            'unit_net_price' => $item->unit_net_price,
-            'discount' => $item->discount_rate,
-            'discount_rate' => $item->discount_rate,
-            'vat_rate' => $item->vat_rate,
-            'line_total' => $item->line_total,
-            'currency' => $item->currency,
-            'campaign_key' => $item->campaign_key,
-        ])->values();
+        $items = $cart->items->map(function (CartItem $item): array {
+            $quantity = max(1, (int) $item->quantity);
+            $lineTotal = $this->cartLineTotal($item);
+            $unitPrice = round($lineTotal / $quantity, 2);
+
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'sku' => $item->product?->sku,
+                'name' => $item->product?->name,
+                'brand' => $item->product?->brand?->name,
+                'stock' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
+                'available_total' => max(0, (int) ($item->product?->stockSummary?->available_total ?? 0)),
+                'qty' => $item->quantity,
+                'quantity' => $item->quantity,
+                'unit_price' => number_format($unitPrice, 2, '.', ''),
+                'unit_net_price' => number_format($unitPrice, 2, '.', ''),
+                'discount' => $item->discount_rate,
+                'discount_rate' => $item->discount_rate,
+                'vat_rate' => $item->vat_rate,
+                'source_unit_net_price' => $item->unit_net_price,
+                'line_total' => number_format($lineTotal, 2, '.', ''),
+                'currency' => $item->currency,
+                'campaign_key' => $item->campaign_key,
+            ];
+        })->values();
 
         $totals = $this->calculateTotals($cart);
 
@@ -120,13 +128,16 @@ class CartController extends Controller
 
         foreach ($cart->items as $item) {
             $qty = (int) $item->quantity;
-            $unitPrice = (float) $item->unit_net_price;
+            $unitPrice = round((float) $item->unit_net_price, 2);
             $discountRate = (float) $item->discount_rate;
             $vatRate = (float) $item->vat_rate;
 
             $gross = $unitPrice * $qty;
-            $discount = $gross * ($discountRate / 100);
-            $net = (float) $item->line_total;
+            $hasFinalCampaignUnitPrice = $item->campaign_key !== null
+                && trim((string) $item->campaign_key) !== ''
+                && $discountRate <= 0;
+            $discount = $hasFinalCampaignUnitPrice ? 0.0 : $gross * ($discountRate / 100);
+            $net = $this->cartLineTotal($item);
             $vat = $net * ($vatRate / 100);
 
             $grossTotal += $gross;
@@ -147,6 +158,25 @@ class CartController extends Controller
             'subtotal' => number_format($netTotal, 2, '.', ''),
             'line_count' => $lineCount,
         ];
+    }
+
+    private function cartLineTotal(CartItem $item): float
+    {
+        $qty = max(1, (int) $item->quantity);
+        $unitPrice = round((float) $item->unit_net_price, 2);
+        $gross = $unitPrice * $qty;
+
+        if (
+            $item->campaign_key !== null
+            && trim((string) $item->campaign_key) !== ''
+            && (float) $item->discount_rate <= 0
+        ) {
+            return round($gross, 2);
+        }
+
+        $discountRate = max(0.0, (float) $item->discount_rate);
+
+        return round($gross - ($gross * ($discountRate / 100)), 2);
     }
 
     private function emptyTotals(): array

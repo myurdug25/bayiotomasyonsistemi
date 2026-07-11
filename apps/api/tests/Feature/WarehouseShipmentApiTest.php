@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Collection as CollectionModel;
+use App\Models\Cart;
 use App\Models\Customer;
 use App\Models\Dealer;
 use App\Models\IntegrationSyncState;
@@ -36,9 +37,9 @@ class WarehouseShipmentApiTest extends TestCase
 
         $options = app(CartWarehouseOptions::class)->forCartItems(collect());
 
-        $this->assertSame(['0', '1', '2', '3', '4'], array_column($options, 'warehouse_code'));
-        $this->assertSame('ERZURUM POINT', $options[0]['warehouse_name']);
-        $this->assertSame('BATUM DEPO', $options[4]['warehouse_name']);
+        $this->assertSame(['1', '2', '3'], array_column($options, 'warehouse_code'));
+        $this->assertSame('ERZURUM DEPO', $options[0]['warehouse_name']);
+        $this->assertSame('SAMSUN DEPO', $options[2]['warehouse_name']);
     }
 
     public function test_cart_warehouse_options_ignore_single_placeholder_warehouse(): void
@@ -51,8 +52,8 @@ class WarehouseShipmentApiTest extends TestCase
 
         $options = app(CartWarehouseOptions::class)->forCartItems(collect());
 
-        $this->assertSame(['0', '1', '2', '3', '4'], array_column($options, 'warehouse_code'));
-        $this->assertSame('ERZURUM DEPO', $options[1]['warehouse_name']);
+        $this->assertSame(['1', '2', '3'], array_column($options, 'warehouse_code'));
+        $this->assertSame('ERZURUM DEPO', $options[0]['warehouse_name']);
     }
 
     public function test_salesperson_cannot_access_warehouse_endpoints(): void
@@ -71,7 +72,11 @@ class WarehouseShipmentApiTest extends TestCase
     {
         $dealer = $this->createDealer('DLR-SP-READY');
         $salesperson = $this->createUserWithRole('salesperson', $dealer);
-        $salesperson->forceFill(['name' => 'Ahmet Plasiyer'])->save();
+        $salesperson->forceFill([
+            'name' => 'Ahmet Plasiyer',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
         $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
         Warehouse::query()->create([
             'code' => '1',
@@ -198,6 +203,10 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('data.0.salesperson.name', 'Ahmet Plasiyer')
             ->assertJsonPath('data.0.origin.panel', 'salesperson')
             ->assertJsonPath('data.0.origin.panel_label', 'Plasiyer Paneli')
+            ->assertJsonPath('data.0.origin.shipping_method', 'kargo')
+            ->assertJsonPath('data.0.origin.target_warehouse_code', '1')
+            ->assertJsonPath('data.0.origin.target_warehouse_name', 'ERZURUM DEPO')
+            ->assertJsonPath('data.0.preferred_warehouse_code', '1')
             ->assertJsonPath('data.0.origin.source', 'order_checkout')
             ->assertJsonPath('data.0.origin.note', $orderNote)
             ->assertJsonPath('data.0.invoice.reference_no', $orderResponse->json('order.order_no'));
@@ -868,6 +877,284 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertJsonPath('data.0.preferred_warehouse_code', '1');
     }
 
+    public function test_trabzon_salesperson_order_defaults_to_trabzon_depo(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-BRANCH-TRABZON');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $salesperson->forceFill([
+            'username' => 'trabzon.point',
+            'branch_code' => null,
+            'branch_name' => null,
+        ])->save();
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        Warehouse::query()->firstOrCreate(['code' => '2'], ['name' => 'TRABZON DEPO', 'is_active' => true]);
+
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $salesperson, [
+            'order_no' => 'ORD-WH-BRANCH-TRABZON',
+        ]);
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-BRANCH-TRABZON')
+            ->assertOk()
+            ->assertJsonPath('data.0.origin.target_warehouse_code', '2')
+            ->assertJsonPath('data.0.origin.target_warehouse_name', 'TRABZON DEPO')
+            ->assertJsonPath('data.0.preferred_warehouse_code', '2');
+
+        $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.shipment.warehouse.code', '2')
+            ->assertJsonPath('data.shipment.warehouse.name', 'TRABZON DEPO');
+    }
+
+    public function test_samsun_salesperson_kargo_order_defaults_to_erzurum_depo(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-BRANCH-SAMSUN-KARGO');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $salesperson->forceFill([
+            'username' => 'samsun.point',
+            'branch_code' => null,
+            'branch_name' => null,
+        ])->save();
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        Warehouse::query()->firstOrCreate(['code' => '1'], ['name' => 'ERZURUM DEPO', 'is_active' => true]);
+
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $salesperson, [
+            'order_no' => 'ORD-WH-BRANCH-SAMSUN-KARGO',
+        ]);
+        $cart = Cart::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $ctx['customer']->id,
+            'user_id' => $salesperson->id,
+            'status' => 'ordered',
+            'shipping_method' => 'kargo',
+            'currency' => 'TRY',
+        ]);
+        $ctx['order']->forceFill(['cart_id' => $cart->id])->save();
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-BRANCH-SAMSUN-KARGO')
+            ->assertOk()
+            ->assertJsonPath('data.0.origin.target_warehouse_code', '1')
+            ->assertJsonPath('data.0.origin.target_warehouse_name', 'ERZURUM DEPO')
+            ->assertJsonPath('data.0.origin.target_warehouse_reason', 'SAMSUN_KARGO_TO_ERZURUM')
+            ->assertJsonPath('data.0.preferred_warehouse_code', '1');
+
+        $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_code' => '2',
+            'warehouse_name' => 'TRABZON DEPO',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.shipment.warehouse.code', '1')
+            ->assertJsonPath('data.shipment.warehouse.name', 'ERZURUM DEPO');
+    }
+
+    public function test_ahmet_arac_identity_overrides_wrong_branch_and_targets_erzurum_depo(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-BRANCH-AHMET');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $salesperson->forceFill([
+            'name' => 'AHMET ARAÇ',
+            'username' => 'ahmet.arac',
+            'email' => 'ahmet.arac@example.test',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        Warehouse::query()->firstOrCreate(['code' => '1'], ['name' => 'ERZURUM DEPO', 'is_active' => true]);
+
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $salesperson, [
+            'order_no' => 'ORD-WH-BRANCH-AHMET',
+        ]);
+
+        IntegrationSyncState::query()->create([
+            'system' => 'logo',
+            'domain' => 'orders',
+            'entity_type' => Order::class,
+            'entity_id' => $ctx['order']->id,
+            'direction' => 'outbound',
+            'status' => 'pending',
+            'sync_key' => 'ORD-WH-BRANCH-AHMET',
+            'meta' => [
+                'target_warehouse_code' => '2',
+                'target_warehouse_name' => 'TRABZON DEPO',
+            ],
+            'payload' => [],
+        ]);
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-BRANCH-AHMET')
+            ->assertOk()
+            ->assertJsonPath('data.0.origin.target_warehouse_code', '1')
+            ->assertJsonPath('data.0.origin.target_warehouse_name', 'ERZURUM DEPO')
+            ->assertJsonPath('data.0.preferred_warehouse_code', '1');
+
+        $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.shipment.warehouse.code', '1')
+            ->assertJsonPath('data.shipment.warehouse.name', 'ERZURUM DEPO');
+    }
+
+    public function test_customer_user_order_uses_assigned_salesperson_branch_for_warehouse(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-BRANCH-CUSTOMER-SP');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $salesperson->forceFill([
+            'name' => 'AHMET ARAÇ',
+            'username' => 'ahmet.arac',
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum',
+        ])->save();
+        $customerUser = $this->createUserWithRole('customer', $dealer);
+        $customerUser->forceFill([
+            'name' => 'OTO TEST MÜŞTERİ',
+            'username' => 'oto.test',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        Warehouse::query()->firstOrCreate(['code' => '1'], ['name' => 'ERZURUM DEPO', 'is_active' => true]);
+
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $customerUser, [
+            'order_no' => 'ORD-WH-BRANCH-CUSTOMER-SP',
+        ]);
+        $ctx['customer']->forceFill([
+            'salesperson_user_id' => $salesperson->id,
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-BRANCH-CUSTOMER-SP')
+            ->assertOk()
+            ->assertJsonPath('data.0.salesperson.id', $salesperson->id)
+            ->assertJsonPath('data.0.origin.target_warehouse_code', '1')
+            ->assertJsonPath('data.0.origin.target_warehouse_name', 'ERZURUM DEPO')
+            ->assertJsonPath('data.0.preferred_warehouse_code', '1');
+
+        $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.shipment.warehouse.code', '1')
+            ->assertJsonPath('data.shipment.warehouse.name', 'ERZURUM DEPO');
+    }
+
+    public function test_assigned_trabzon_warehouse_staff_is_rejected_for_erzurum_salesperson_order(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-BRANCH-ASSIGNED-STAFF');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $salesperson->forceFill([
+            'name' => 'AHMET ARAÇ',
+            'username' => 'ahmet.arac',
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum',
+        ])->save();
+        $trabzonWarehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $trabzonWarehouseUser->forceFill([
+            'name' => 'TRABZON DEPO',
+            'username' => 'trabzon.depo',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
+        $actor = $this->createUserWithRole('warehouse', $dealer);
+        Warehouse::query()->firstOrCreate(['code' => '1'], ['name' => 'ERZURUM DEPO', 'is_active' => true]);
+        Warehouse::query()->firstOrCreate(['code' => '2'], ['name' => 'TRABZON DEPO', 'is_active' => true]);
+
+        $this->actingAs($actor);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $salesperson, [
+            'order_no' => 'ORD-WH-BRANCH-ASSIGNED-STAFF',
+        ]);
+        $ctx['customer']->forceFill([
+            'salesperson_user_id' => $salesperson->id,
+        ])->save();
+
+        $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_code' => '2',
+            'warehouse_name' => 'TRABZON DEPO',
+            'assigned_user_id' => $trabzonWarehouseUser->id,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['assigned_user_id']);
+
+        $this->assertDatabaseMissing('shipments', [
+            'order_id' => $ctx['order']->id,
+        ]);
+    }
+
+    public function test_warehouse_ready_list_is_scoped_to_logged_in_warehouse_branch(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-BRANCH-SCOPE');
+
+        $erzurumSalesperson = $this->createUserWithRole('salesperson', $dealer);
+        $erzurumSalesperson->forceFill([
+            'name' => 'AHMET ARAÇ',
+            'username' => 'ahmet.arac',
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum',
+        ])->save();
+
+        $trabzonSalesperson = $this->createUserWithRole('salesperson', $dealer);
+        $trabzonSalesperson->forceFill([
+            'name' => 'TRABZON POINT',
+            'username' => 'trabzon.point',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
+
+        $erzurumWarehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $erzurumWarehouseUser->forceFill([
+            'name' => 'ERZURUM DEPO',
+            'username' => 'erz.depo',
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum',
+        ])->save();
+
+        $trabzonWarehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $trabzonWarehouseUser->forceFill([
+            'name' => 'TRABZON DEPO',
+            'username' => 'trabzon.depo',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
+
+        Warehouse::query()->firstOrCreate(['code' => '1'], ['name' => 'ERZURUM DEPO', 'is_active' => true]);
+        Warehouse::query()->firstOrCreate(['code' => '2'], ['name' => 'TRABZON DEPO', 'is_active' => true]);
+
+        $erzurumOrder = $this->createApprovedOrderContext($dealer, $erzurumSalesperson, [
+            'order_no' => 'ORD-WH-SCOPE-ERZURUM',
+        ]);
+        $trabzonOrder = $this->createApprovedOrderContext($dealer, $trabzonSalesperson, [
+            'order_no' => 'ORD-WH-SCOPE-TRABZON',
+        ]);
+
+        $this->actingAs($erzurumWarehouseUser);
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-SCOPE&limit=50')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $erzurumOrder['order']->id)
+            ->assertJsonPath('data.0.preferred_warehouse_code', '1');
+
+        $this->actingAs($trabzonWarehouseUser);
+
+        $this->getJson('/api/warehouse/orders/ready?q=ORD-WH-SCOPE&limit=50')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $trabzonOrder['order']->id)
+            ->assertJsonPath('data.0.preferred_warehouse_code', '2');
+    }
+
     public function test_shipped_order_is_hidden_from_ready_list(): void
     {
         $dealer = $this->createDealer('DLR-WH-SHIPPED');
@@ -1119,6 +1406,35 @@ class WarehouseShipmentApiTest extends TestCase
             'code' => '1',
             'name' => 'Varsayılan depo',
             'is_active' => true,
+        ]);
+    }
+
+    public function test_create_shipment_uses_discounted_order_line_unit_price(): void
+    {
+        $dealer = $this->createDealer('DLR-WH-NET-001');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-WH-NET-001',
+            'quantity' => 20,
+            'unit_net_price' => 134.73,
+            'line_total' => 1077.84,
+        ]);
+
+        $response = $this->postJson('/api/warehouse/shipments', [
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('data.remaining_items.0.unit_price', '53.89');
+
+        $this->assertDatabaseHas('shipment_items', [
+            'order_item_id' => $ctx['orderItem']->id,
+            'ordered_qty' => 20,
+            'unit_price' => '53.89',
         ]);
     }
 
@@ -1915,7 +2231,7 @@ class WarehouseShipmentApiTest extends TestCase
             ]);
         });
 
-        $subtotal = $quantity * $unitNetPrice;
+        $subtotal = (float) ($overrides['line_total'] ?? ($quantity * $unitNetPrice));
         $vatTotal = $subtotal * ($vatRate / 100);
 
         $order = Order::query()->create([

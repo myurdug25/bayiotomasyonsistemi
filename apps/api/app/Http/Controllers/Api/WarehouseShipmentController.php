@@ -47,8 +47,8 @@ class WarehouseShipmentController extends Controller
             ->where(function ($query): void {
                 $query
                     ->whereHas('roles', fn ($roleQuery) => $roleQuery->where('slug', 'warehouse'))
-                    ->orWhereIn('username', ['erz.depo', 'trabzon.merkez', 'samsun.merkez', 'batum'])
-                    ->orWhereIn('name', ['ERZURUM DEPO', 'TRABZON DEPO', 'SAMSUN DEPO', 'BATUM DEPO']);
+                    ->orWhereIn('username', ['erz.depo', 'trabzon.merkez', 'samsun.merkez'])
+                    ->orWhereIn('name', ['ERZURUM DEPO', 'TRABZON DEPO', 'SAMSUN DEPO']);
             })
             ->with(['roles:id,name,slug'])
             ->orderBy('name');

@@ -231,14 +231,12 @@ class CustomerCardRequestController extends Controller
         $query = User::query()
             ->select(['id', 'dealer_id', 'name', 'email', 'phone', 'is_active'])
             ->where('is_active', true)
-            ->whereHas('roles', fn (Builder $builder) => $builder->where('slug', 'salesperson'))
+            ->whereHas('roles', fn (Builder $builder) => $builder->whereIn('slug', ['salesperson', 'point']))
             ->with('dealer:id,code,name')
             ->orderBy('name');
 
-        if ($user->hasRole('salesperson')) {
+        if (! $user->hasAnyRole(['admin', 'dealer_admin'])) {
             $query->whereKey((int) $user->id);
-        } elseif ($user->hasRole('point')) {
-            // Point users create cards on behalf of the selected salesperson.
         } elseif (! $user->hasRole('admin')) {
             if ($user->dealer_id === null) {
                 abort(Response::HTTP_FORBIDDEN, 'User has no dealer scope.');
@@ -305,7 +303,7 @@ class CustomerCardRequestController extends Controller
             'phone' => (string) $validated['phone'],
             'email' => $validated['email'] ?? null,
             'customer_kind' => (string) ($validated['customer_kind'] ?? 'company'),
-            'logo_special_code' => 'F1',
+            'logo_special_code' => (string) ($validated['logo_special_code'] ?? 'F1'),
             'logo_authorization_code' => $validated['logo_authorization_code'] ?? null,
             'logo_e_collection_note' => $this->generateLogoECollectionNote(),
             'city' => (string) $validated['city'],
@@ -575,7 +573,7 @@ class CustomerCardRequestController extends Controller
      */
     private function resolveSalesperson(User $user, ?int $dealerId, array $validated): ?User
     {
-        if ($user->hasRole('salesperson')) {
+        if (! $user->hasAnyRole(['admin', 'dealer_admin'])) {
             return $user;
         }
 
@@ -592,9 +590,9 @@ class CustomerCardRequestController extends Controller
         $salespersonQuery = User::query()
             ->whereKey((int) $validated['salesperson_user_id'])
             ->where('is_active', true)
-            ->whereHas('roles', fn (Builder $builder) => $builder->where('slug', 'salesperson'))
+            ->whereHas('roles', fn (Builder $builder) => $builder->whereIn('slug', ['salesperson', 'point']))
             ->when(
-                $dealerId !== null && ! $user->hasRole('point'),
+                $dealerId !== null,
                 fn (Builder $builder) => $builder->where('dealer_id', $dealerId)
             );
 

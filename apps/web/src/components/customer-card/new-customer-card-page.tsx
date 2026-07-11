@@ -28,6 +28,7 @@ type FormState = {
   email: string;
   salesperson_user_id: string;
   customer_kind: CustomerKind;
+  logo_special_code: string;
   logo_authorization_code: string;
   city: string;
   district: string;
@@ -48,10 +49,11 @@ function createInitialForm(user?: { name?: string | null; email?: string | null;
   return {
     company_name: "",
     contact_name: user?.name ?? "",
-    phone: user?.phone ?? "",
+    phone: "",
     email: user?.email ?? "",
     salesperson_user_id: "",
     customer_kind: "company",
+    logo_special_code: "F1",
     logo_authorization_code: "",
     city: "",
     district: "",
@@ -62,12 +64,25 @@ function createInitialForm(user?: { name?: string | null; email?: string | null;
   };
 }
 
+function digitsOnly(value: string, maxLength: number) {
+  return value.replace(/\D/g, "").slice(0, maxLength);
+}
+
+function isValidPhone(value: string) {
+  return /^05\d{9}$/.test(digitsOnly(value, 11));
+}
+
+function isValidTc(value: string) {
+  return /^\d{11}$/.test(digitsOnly(value, 11));
+}
+
 const CUSTOMER_KIND_OPTIONS: Array<{ value: CustomerKind; label: string }> = [
   { value: "company", label: "Tüzel" },
   { value: "person", label: "Şahıs" },
 ];
 
 const LOGO_AUTHORIZATION_CODE_OPTIONS = ["A", "D", "K"];
+const LOGO_SPECIAL_CODE_OPTIONS = ["F1", "F2", "F3"];
 
 function logoECollectionPreview(): string {
   return `e ( yeni cari - ${new Intl.DateTimeFormat("tr-TR", {
@@ -81,7 +96,7 @@ export function NewCustomerCardPage() {
   const queryClient = useQueryClient();
   const { user, selectCustomer } = useSession();
   const roleSlugs = user?.roles.map((role) => role.slug) ?? [];
-  const isSalesperson = roleSlugs.includes("salesperson");
+  const canChooseSalesperson = roleSlugs.includes("admin") || roleSlugs.includes("dealer_admin");
   const [form, setForm] = useState<FormState>(() => createInitialForm(user));
 
   const salespeopleQuery = useQuery({
@@ -143,7 +158,7 @@ export function NewCustomerCardPage() {
     () => salespersonOptions.find((salesperson) => salesperson.id === user?.id) ?? salespersonOptions[0] ?? null,
     [salespersonOptions, user?.id]
   );
-  const selectedSalespersonId = isSalesperson
+  const selectedSalespersonId = !canChooseSalesperson
     ? String(ownSalesperson?.id ?? user?.id ?? "")
     : form.salesperson_user_id;
 
@@ -157,8 +172,18 @@ export function NewCustomerCardPage() {
       return;
     }
 
+    if (!isValidPhone(form.phone)) {
+      toast.error("❌ Telefon numarası hatalı");
+      return;
+    }
+
     if (isCompanyCustomer && (!form.tax_office.trim() || !form.tax_number.trim())) {
       toast.error("Tüzel cari için vergi dairesi ve vergi no zorunlu.");
+      return;
+    }
+
+    if (!isCompanyCustomer && !isValidTc(form.tax_number)) {
+      toast.error("❌ TC Kimlik numarası hatalı");
       return;
     }
 
@@ -174,6 +199,7 @@ export function NewCustomerCardPage() {
       phone: form.phone.trim(),
       email: form.email.trim() || undefined,
       customer_kind: form.customer_kind,
+      logo_special_code: form.logo_special_code,
       logo_authorization_code: form.logo_authorization_code.trim() || undefined,
       auto_convert: true,
       city: form.city.trim(),
@@ -226,8 +252,10 @@ export function NewCustomerCardPage() {
               <Input
                 className={FIELD_CLASSNAME}
                 value={form.phone}
-                onChange={(event) => updateField("phone", event.target.value)}
+                onChange={(event) => updateField("phone", digitsOnly(event.target.value, 11))}
                 placeholder="05xx xxx xx xx"
+                inputMode="numeric"
+                maxLength={11}
               />
             </div>
             <div className="space-y-2">
@@ -262,7 +290,7 @@ export function NewCustomerCardPage() {
               <Select
                 value={selectedSalespersonId}
                 onValueChange={(value) => updateField("salesperson_user_id", value)}
-                disabled={isSalesperson || salespeopleQuery.isLoading}
+                disabled={!canChooseSalesperson || salespeopleQuery.isLoading}
               >
                 <SelectTrigger className={FIELD_CLASSNAME}>
                   <SelectValue placeholder={salespeopleQuery.isLoading ? "Plasiyerler yükleniyor" : "Plasiyer seç"} />
@@ -278,7 +306,18 @@ export function NewCustomerCardPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Özel Kodu</label>
-              <Input className={FIELD_CLASSNAME + " font-bold"} value="F1" readOnly />
+              <Select value={form.logo_special_code} onValueChange={(value) => updateField("logo_special_code", value)}>
+                <SelectTrigger className={FIELD_CLASSNAME + " font-bold"}>
+                  <SelectValue placeholder="Özel kod seç" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOGO_SPECIAL_CODE_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Yetki Kodu</label>
@@ -312,8 +351,10 @@ export function NewCustomerCardPage() {
                   <Input
                     className={FIELD_CLASSNAME}
                     value={form.tax_number}
-                    onChange={(event) => updateField("tax_number", event.target.value)}
+                    onChange={(event) => updateField("tax_number", digitsOnly(event.target.value, 10))}
                     placeholder="10 haneli vergi no"
+                    inputMode="numeric"
+                    maxLength={10}
                   />
                 </div>
               </>
@@ -323,8 +364,10 @@ export function NewCustomerCardPage() {
                 <Input
                   className={FIELD_CLASSNAME}
                   value={form.tax_number}
-                  onChange={(event) => updateField("tax_number", event.target.value)}
+                  onChange={(event) => updateField("tax_number", digitsOnly(event.target.value, 11))}
                   placeholder="11 haneli T.C. kimlik no"
+                  inputMode="numeric"
+                  maxLength={11}
                 />
               </div>
             )}
@@ -358,7 +401,7 @@ export function NewCustomerCardPage() {
               Temizle
             </Button>
             <Button
-              className="bg-[linear-gradient(135deg,var(--brand-primary)_0%,#d8df72_100%)] px-6 text-[var(--primary-foreground)] hover:opacity-95"
+              className="rounded-[14px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-6 font-black text-white shadow-[0_14px_34px_rgba(225,29,46,0.28)] hover:brightness-110"
               onClick={handleSubmit}
               disabled={createMutation.isPending}
             >
