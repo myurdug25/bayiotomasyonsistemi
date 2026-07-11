@@ -12,19 +12,38 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response as HttpStatus;
 
 class AuthController extends Controller
 {
     public function login(LoginRequest $request): JsonResponse
     {
-        $username = mb_strtolower(trim((string) $request->input('username')));
+        $username = $this->normalizeLoginIdentifier((string) $request->input('username'));
         $password = (string) $request->input('password');
+        $normalizedPassword = $this->trimCredentialEdges($password);
         $user = User::query()
-            ->whereRaw('LOWER(username) = ?', [$username])
+            ->where(function ($query) use ($username): void {
+                $query
+                    ->whereRaw('LOWER(username) = ?', [$username])
+                    ->orWhereRaw('LOWER(email) = ?', [$username]);
+            })
             ->first();
 
-        if (! $user instanceof User || ! Hash::check($password, $user->password)) {
+        $passwordMatches = $user instanceof User && (
+            Hash::check($password, $user->password)
+            || ($normalizedPassword !== $password && Hash::check($normalizedPassword, $user->password))
+        );
+
+        if (! $passwordMatches) {
+            Log::warning('Login failed', [
+                'username' => $username,
+                'user_found' => $user instanceof User,
+                'user_active' => $user instanceof User ? (bool) $user->is_active : null,
+                'ip' => $request->ip(),
+                'user_agent' => mb_substr((string) $request->userAgent(), 0, 180),
+            ]);
+
             return response()->json([
                 'message' => 'Kullanıcı adı veya şifre hatalı.',
             ], HttpStatus::HTTP_UNPROCESSABLE_ENTITY);
@@ -47,6 +66,19 @@ class AuthController extends Controller
         return response()->json([
             'user' => $this->serializeAuthenticatedUser($user),
         ]);
+    }
+
+    private function normalizeLoginIdentifier(string $value): string
+    {
+        $value = $this->trimCredentialEdges($value);
+        $value = preg_replace('/[\p{C}]+/u', '', $value) ?? $value;
+
+        return mb_strtolower($value, 'UTF-8');
+    }
+
+    private function trimCredentialEdges(string $value): string
+    {
+        return preg_replace('/^[\p{Z}\p{C}\s]+|[\p{Z}\p{C}\s]+$/u', '', $value) ?? trim($value);
     }
 
     public function logout(Request $request): Response
