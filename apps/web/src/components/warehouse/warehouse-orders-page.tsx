@@ -1543,14 +1543,14 @@ export function WarehouseOrdersPage() {
       </Card>
 
       <Dialog open={shelfDialogOpen} onOpenChange={setShelfDialogOpen}>
-        <DialogContent className="max-h-[88vh] max-w-[min(1120px,calc(100vw-28px))] overflow-hidden rounded-[24px] border border-amber-900/45 bg-[#071018] p-0 text-[#eef8ef] shadow-[0_34px_110px_-42px_rgba(0,0,0,0.95)]">
-          <DialogHeader className="border-b border-amber-900/35 bg-[linear-gradient(135deg,#172018_0%,#071018_58%,#1f1a08_100%)] px-5 py-4 pr-12 text-left">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <DialogContent className="max-h-[88vh] max-w-[min(1180px,calc(100vw-24px))] overflow-hidden rounded-[20px] border border-amber-900/45 bg-[#071018] p-0 text-[#eef8ef] shadow-[0_34px_110px_-42px_rgba(0,0,0,0.95)]">
+          <DialogHeader className="border-b border-amber-900/35 bg-[linear-gradient(135deg,#172018_0%,#071018_58%,#1f1a08_100%)] px-4 py-3 pr-12 text-left">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <DialogTitle className="text-2xl font-black text-white">
+                <DialogTitle className="text-xl font-black text-white">
                   Raf Adreslerini Güncelle
                 </DialogTitle>
-                <DialogDescription className="mt-1 text-sm font-semibold text-[#aebdaf]">
+                <DialogDescription className="mt-0.5 text-xs font-semibold text-[#aebdaf]">
                   Logo ürün kartından gelen OEM, rakip kod ve raf bilgilerini depoya göre yönetin.
                 </DialogDescription>
               </div>
@@ -1562,12 +1562,12 @@ export function WarehouseOrdersPage() {
             </div>
           </DialogHeader>
 
-          <div className="flex max-h-[calc(88vh-86px)] flex-col">
-            <div className="border-b border-emerald-900/55 bg-[#091510] p-4">
+          <div className="flex max-h-[calc(88vh-68px)] flex-col">
+            <div className="border-b border-emerald-900/55 bg-[#091510] p-3">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9fb2a7]" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9fb2a7]" />
                 <Input
-                  className="h-11 rounded-2xl border-emerald-900/70 bg-[#07120f] pl-11 text-sm font-bold text-white placeholder:text-[#819489]"
+                  className="h-9 rounded-xl border-emerald-900/70 bg-[#07120f] pl-9 text-sm font-bold text-white placeholder:text-[#819489]"
                   value={shelfQuery}
                   onChange={(event) => setShelfQuery(event.target.value)}
                   placeholder="Ürün kodu, ürün adı, OEM, rakip kod veya raf ara..."
@@ -1575,7 +1575,7 @@ export function WarehouseOrdersPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-auto p-3">
               {shelfProductsQuery.isLoading ? (
                 <div className="grid gap-2">
                   {Array.from({ length: 8 }).map((_, index) => (
@@ -1593,78 +1593,102 @@ export function WarehouseOrdersPage() {
                   <p className="mt-1 text-sm font-semibold text-[#9fb2a7]">Kod, ad, OEM, rakip kod veya raf adresiyle arayın.</p>
                 </div>
               ) : (
-                <div className="grid gap-2 xl:grid-cols-2">
-                  {shelfProducts.map((product) => {
-                    const draft = shelfDrafts[product.id] ?? product.shelf_address ?? "";
-                    const saving =
-                      updateShelfMutation.isPending &&
-                      updateShelfMutation.variables?.product.id === product.id;
-                    const competitorPreview =
-                      product.competitor_codes.length > 0
-                        ? product.competitor_codes.slice(0, 2).join(", ")
-                        : "-";
+                <div className="overflow-hidden rounded-2xl border border-emerald-900/65 bg-[#06100d]">
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[980px] text-[12px]">
+                      <TableHeader className="sticky top-0 z-10 bg-[#10241a]">
+                        <TableRow className="border-emerald-900/70 hover:bg-transparent">
+                          <TableHead className="h-9 w-[150px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Ürün Kodu</TableHead>
+                          <TableHead className="h-9 min-w-[260px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Ürün</TableHead>
+                          <TableHead className="h-9 w-[170px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">OEM</TableHead>
+                          <TableHead className="h-9 min-w-[220px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Rakip Kod</TableHead>
+                          <TableHead className="h-9 w-[120px] px-3 text-center text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Mevcut Raf</TableHead>
+                          <TableHead className="h-9 w-[230px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Yeni Raf</TableHead>
+                          <TableHead className="h-9 w-[104px] px-3 text-center text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">İşlem</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {shelfProducts.map((product) => {
+                          const draft = shelfDrafts[product.id] ?? product.shelf_address ?? "";
+                          const saving =
+                            updateShelfMutation.isPending &&
+                            updateShelfMutation.variables?.product.id === product.id;
+                          const competitorPreview =
+                            product.competitor_codes.length > 0
+                              ? product.competitor_codes.slice(0, 4).join(", ")
+                              : "-";
 
-                    return (
-                      <div
-                        key={product.id}
-                        className="rounded-2xl border border-emerald-900/65 bg-[linear-gradient(135deg,rgba(6,18,13,0.98)_0%,rgba(8,28,19,0.94)_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                      >
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="rounded-lg border border-emerald-300/25 bg-emerald-400/10 px-2 py-1 text-xs font-black text-emerald-100">
-                                {product.product_code}
-                              </span>
-                              {product.shelf_address ? (
-                                <span className="rounded-lg border border-sky-200/35 bg-sky-400/12 px-2 py-1 text-xs font-black text-sky-100">
-                                  Raf {product.shelf_address}
+                          return (
+                            <TableRow key={product.id} className="border-emerald-950/80 hover:bg-emerald-400/5">
+                              <TableCell className="px-3 py-2 align-middle font-black text-white">
+                                <span className="block max-w-[138px] truncate" title={product.product_code}>
+                                  {product.product_code}
                                 </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-2 truncate text-sm font-black text-white" title={product.product_name}>
-                              {product.product_name}
-                            </p>
-                            <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-bold text-[#9fb2a7]">
-                              <span>{product.brand ?? "-"}</span>
-                              <span className="text-emerald-700/80">•</span>
-                              <span className="max-w-[180px] truncate" title={product.oem ?? undefined}>
-                                OEM: {product.oem || "-"}
-                              </span>
-                              <span className="text-emerald-700/80">•</span>
-                              <span className="max-w-[220px] truncate" title={competitorPreview}>
-                                RKP: {competitorPreview}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex w-full shrink-0 gap-2 lg:w-[310px]">
-                            <Input
-                              className="h-10 min-w-0 flex-1 rounded-xl border-emerald-800/80 bg-[#06100d] text-sm font-black text-white placeholder:text-[#5f7469]"
-                              value={draft}
-                              onChange={(event) =>
-                                setShelfDrafts((previous) => ({
-                                  ...previous,
-                                  [product.id]: event.target.value,
-                                }))
-                              }
-                              placeholder="Raf adresi"
-                              disabled={!product.editable || saving}
-                            />
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-10 shrink-0 rounded-xl border border-amber-200/45 bg-[linear-gradient(135deg,#fff3b0_0%,#f6c44f_45%,#b77810_100%)] px-3 text-xs font-black text-[#201400] shadow-[0_12px_28px_-22px_rgba(246,196,79,0.9)] hover:brightness-105 disabled:opacity-50"
-                              disabled={!product.editable || saving}
-                              onClick={() => updateShelfMutation.mutate({ product, shelfAddress: draft })}
-                            >
-                              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                              Kaydet
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                              </TableCell>
+                              <TableCell className="px-3 py-2 align-middle">
+                                <p className="max-w-[360px] truncate font-black text-white" title={product.product_name}>
+                                  {product.product_name}
+                                </p>
+                                <p className="mt-0.5 max-w-[220px] truncate text-[10px] font-bold text-[#8aa092]" title={product.brand ?? undefined}>
+                                  {product.brand ?? "-"}
+                                </p>
+                              </TableCell>
+                              <TableCell className="px-3 py-2 align-middle font-bold text-[#cfe1d2]">
+                                <span className="block max-w-[160px] truncate" title={product.oem ?? undefined}>
+                                  {product.oem || "-"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="px-3 py-2 align-middle font-bold text-[#cfe1d2]">
+                                <span className="block max-w-[260px] truncate" title={competitorPreview}>
+                                  {competitorPreview}
+                                </span>
+                              </TableCell>
+                              <TableCell className="px-3 py-2 text-center align-middle">
+                                {product.shelf_address ? (
+                                  <span className="inline-flex min-w-[58px] items-center justify-center rounded-lg border border-sky-200/35 bg-sky-400/12 px-2 py-1 text-xs font-black text-sky-100">
+                                    {product.shelf_address}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-bold text-[#607267]">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="px-3 py-2 align-middle">
+                                <Input
+                                  className="h-8 rounded-lg border-emerald-800/80 bg-[#020907] px-2 text-center text-xs font-black text-white placeholder:text-[#5f7469]"
+                                  value={draft}
+                                  onChange={(event) =>
+                                    setShelfDrafts((previous) => ({
+                                      ...previous,
+                                      [product.id]: event.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" && product.editable && !saving) {
+                                      updateShelfMutation.mutate({ product, shelfAddress: draft });
+                                    }
+                                  }}
+                                  placeholder="Raf adresi"
+                                  disabled={!product.editable || saving}
+                                />
+                              </TableCell>
+                              <TableCell className="px-3 py-2 text-center align-middle">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-8 rounded-lg border border-amber-200/45 bg-[linear-gradient(135deg,#fff3b0_0%,#f6c44f_45%,#b77810_100%)] px-2.5 text-[11px] font-black text-[#201400] shadow-none hover:brightness-105 disabled:opacity-50"
+                                  disabled={!product.editable || saving}
+                                  onClick={() => updateShelfMutation.mutate({ product, shelfAddress: draft })}
+                                >
+                                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                  Kaydet
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               )}
             </div>
