@@ -861,6 +861,7 @@ export function CollectionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<CustomerCollectionsResponse | null>(null);
   const [editingCollection, setEditingCollection] = useState<CollectionRecord | null>(null);
+  const [deleteConfirmCollection, setDeleteConfirmCollection] = useState<CollectionRecord | null>(null);
   const [deletingCollectionId, setDeletingCollectionId] = useState<number | null>(null);
   const [currentPointSession, setCurrentPointSession] = useState<PosSessionDto | null>(null);
   const [financeDefinitions, setFinanceDefinitions] = useState<FinanceDefinitionDto[]>([]);
@@ -1119,6 +1120,8 @@ export function CollectionsPage() {
     "min-w-0 space-y-1";
   const fieldLabelClassName =
     "block text-[11px] font-black uppercase tracking-[0.11em] text-slate-500";
+  const premiumRedActionClassName =
+    "border border-red-200/30 bg-[linear-gradient(135deg,#ff6161_0%,#e62d2d_48%,#8f1717_100%)] text-white shadow-[0_18px_34px_-20px_rgba(255,77,79,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-18px_rgba(255,77,79,1)] disabled:translate-y-0 disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500 disabled:shadow-none";
 
   const buildPointCollectionMeta = () => {
     if (!isPointUser || !currentPointSession) {
@@ -1434,8 +1437,13 @@ export function CollectionsPage() {
       return;
     }
 
-    const confirmed = window.confirm(`${getCollectionMethodLabel(row)} tahsilatını silmek istiyor musunuz?`);
-    if (!confirmed) {
+    setDeleteConfirmCollection(row);
+  };
+
+  const confirmDeleteCollection = () => {
+    const row = deleteConfirmCollection;
+    if (!selectedCustomer || !row) {
+      setDeleteConfirmCollection(null);
       return;
     }
 
@@ -1453,7 +1461,10 @@ export function CollectionsPage() {
         refreshPointDayEnd();
       })
       .catch((err) => setError(getCollectionApiErrorMessage(err)))
-      .finally(() => setDeletingCollectionId(null));
+      .finally(() => {
+        setDeletingCollectionId(null);
+        setDeleteConfirmCollection(null);
+      });
   };
 
   const printCollections = () => {
@@ -1958,7 +1969,8 @@ export function CollectionsPage() {
 
             <Button
               className={cn(
-                "admin-danger-action h-12 w-full rounded-[14px] text-sm font-black",
+                premiumRedActionClassName,
+                "h-12 w-full rounded-[14px] text-sm font-black",
                 checkValorNeedsManagerApproval && "from-amber-300 to-amber-600"
               )}
               disabled={isFormDisabled}
@@ -2202,7 +2214,7 @@ export function CollectionsPage() {
                   type="button"
                   disabled={isListDisabled || sendableRows.length === 0}
                   onClick={sendCollections}
-                  className="admin-danger-action h-11 w-full rounded-[12px] text-sm font-black disabled:border disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
+                  className={cn(premiumRedActionClassName, "h-11 w-full rounded-[12px] text-sm font-black")}
                 >
                   {sendingCollections ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   {sendActionLabel}
@@ -2244,6 +2256,64 @@ export function CollectionsPage() {
         </div>
       </DialogContent>
     </Dialog>
-    </>
+    <Dialog open={deleteConfirmCollection !== null} onOpenChange={(open) => !open && setDeleteConfirmCollection(null)}>
+      <DialogContent className="max-w-md overflow-hidden border-red-200/20 bg-[linear-gradient(160deg,rgba(18,28,36,0.98)_0%,rgba(47,18,22,0.98)_100%)] p-0 text-slate-100 shadow-[0_30px_90px_-40px_rgba(255,77,79,0.85)]">
+        <div className="relative border-b border-white/10 px-5 py-4">
+          <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,155,155,0.75),transparent)]" />
+          <DialogTitle className="flex items-center gap-3 text-xl font-black text-white">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-200/25 bg-red-400/15 text-red-100">
+              <Trash2 className="h-5 w-5" />
+            </span>
+            Tahsilat silinsin mi?
+          </DialogTitle>
+          <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-300">
+            Bu işlem geri alınamaz. Seçili tahsilat kaydı silinecek ve liste yeniden güncellenecek.
+          </p>
+        </div>
+        <div className="space-y-3 px-5 py-4">
+          {deleteConfirmCollection ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Tahsilat Tipi
+                </span>
+                <span className="rounded-full border border-red-200/20 bg-red-300/10 px-3 py-1 text-xs font-black text-red-100">
+                  {getCollectionMethodLabel(deleteConfirmCollection)}
+                </span>
+              </div>
+              <div className="mt-3 flex items-end justify-between gap-3">
+                <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Tutar
+                </span>
+                <span className="text-2xl font-black text-white">
+                  {formatAmount(String(deleteConfirmCollection.amount), String(deleteConfirmCollection.currency))}
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter className="grid grid-cols-2 gap-3 border-t border-white/10 bg-black/10 px-5 py-4 sm:space-x-0">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 rounded-xl border-white/15 bg-white/[0.035] text-sm font-black text-slate-100 hover:bg-white/10 hover:text-white"
+            disabled={deletingCollectionId !== null}
+            onClick={() => setDeleteConfirmCollection(null)}
+          >
+            Vazgeç
+          </Button>
+          <Button
+            type="button"
+            className={cn(premiumRedActionClassName, "h-11 rounded-xl text-sm font-black")}
+            disabled={deletingCollectionId !== null}
+            onClick={confirmDeleteCollection}
+          >
+            {deletingCollectionId !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Evet, Sil
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>
   );
 }
