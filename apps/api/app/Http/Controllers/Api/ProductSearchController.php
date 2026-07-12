@@ -33,7 +33,7 @@ class ProductSearchController extends Controller
 
     private const SEARCH_RELATED_CACHE_TTL_SECONDS = 300;
 
-    private const SEARCH_RESPONSE_CACHE_VERSION = 12;
+    private const SEARCH_RESPONSE_CACHE_VERSION = 13;
 
     public function __invoke(
         SearchProductsRequest $request,
@@ -319,6 +319,7 @@ class ProductSearchController extends Controller
             $search = trim((string) $validated['q']);
             $normalizedSearch = ProductCodeNormalizer::normalize($search);
             $shouldSearchCodeAliases = $this->isLikelyProductCodeSearch($search);
+            $appliedFastIdSequence = false;
 
             try {
                 if ($exactMatchGroupCodes !== []) {
@@ -363,6 +364,7 @@ class ProductSearchController extends Controller
                     } else {
                         $query->whereIn('products.id', $matchingProductIds);
                         $this->applyIdSequenceOrder($query, $matchingProductIds);
+                        $appliedFastIdSequence = true;
                     }
                 } elseif ($this->canUseProductFullTextSearch($search)) {
                     $booleanSearch = $this->toBooleanFullTextSearch($search);
@@ -388,7 +390,7 @@ class ProductSearchController extends Controller
                 $this->applyLooseProductTextSearchConstraint($query, $search);
             }
 
-            if ($exactMatchGroupCodes === [] && $shouldSearchCodeAliases) {
+            if ($exactMatchGroupCodes === [] && $shouldSearchCodeAliases && ! $appliedFastIdSequence) {
                 $this->applyTextSearchRanking($query, $search, $normalizedSearch, $shouldSearchCodeAliases);
             }
         }
@@ -2869,108 +2871,162 @@ class ProductSearchController extends Controller
 
         $normalizedSearch = $normalizedSearch !== null && $normalizedSearch !== '' ? $normalizedSearch : null;
         $limit = max(1, $limit);
-        $cacheKey = 'products:fast-code-product-ids:v2:'.md5(mb_strtolower($search, 'UTF-8').':'.($normalizedSearch ?? '').':'.$limit);
+        $cacheKey = 'products:fast-code-product-ids:v3:'.md5(mb_strtolower($search, 'UTF-8').':'.($normalizedSearch ?? '').':'.$limit);
 
         return $this->cacheStore()->remember(
             $cacheKey,
             now()->addMinutes(10),
             function () use ($search, $normalizedSearch, $limit): array {
-                $ids = [];
-                $appendIds = function (array $productIds) use (&$ids, $limit): void {
-                    foreach ($productIds as $productId) {
-                        $id = (int) $productId;
-                        if ($id <= 0 || in_array($id, $ids, true)) {
-                            continue;
-                        }
-
-                        $ids[] = $id;
-                        if (count($ids) >= $limit) {
-                            return;
-                        }
-                    }
-                };
-                $appendProductQuery = function (callable $scope) use (&$ids, $limit, $appendIds): void {
-                    $remaining = $limit - count($ids);
-                    if ($remaining <= 0) {
-                        return;
-                    }
-
-                    $query = Product::query()
-                        ->select('products.id')
-                        ->where('products.is_active', true)
-                        ->where(function (Builder $query): void {
-                            $this->applyLogoProductFilter($query, preferInline: true);
-                        });
-
-                    $scope($query);
-
-                    $appendIds(
-                        $query
-                            ->limit($remaining)
-                            ->pluck('products.id')
-                            ->map(fn ($id): int => (int) $id)
-                            ->all()
-                    );
-                };
-
                 $exactValues = array_values(array_unique(array_filter(
                     [$search, $normalizedSearch],
                     fn (?string $value): bool => $value !== null && trim($value) !== ''
                 )));
 
-                $appendProductQuery(function (Builder $query) use ($exactValues): void {
-                    $query->where(function (Builder $codeQuery) use ($exactValues): void {
-                        $codeQuery
-                            ->whereIn('products.sku', $exactValues)
-                            ->orWhereIn('products.oem_code', $exactValues);
-                    });
-                });
-
                 $prefixValues = array_map(fn (string $value): string => $this->escapeLike($value).'%', $exactValues);
-                $appendProductQuery(function (Builder $query) use ($prefixValues): void {
-                    $query->where(function (Builder $codeQuery) use ($prefixValues): void {
-                        foreach ($prefixValues as $index => $prefix) {
-                            $method = $index === 0 ? 'whereLike' : 'orWhereLike';
-                            $codeQuery->{$method}('products.sku', $prefix, caseSensitive: false)
+                $aliasProductIds = $this->matchingCodeAliasProductIds($normalizedSearch, $limit);
+                $escapedNormalizedSearch = $normalizedSearch !== null ? $this->escapeLike($normalizedSearch) : null;
+
+                $query = Product::query()
+                    ->select('products.id')
+                    ->where('products.is_active', true)
+                    ->where(function (Builder $query): void {
+                        $this->applyLogoProductFilter($query, preferInline: true);
+                    })
+                    ->where(function (Builder $codeQuery) use ($exactValues, $prefixValues, $normalizedSearch, $escapedNormalizedSearch, $aliasProductIds): void {
+                        if ($exactValues !== []) {
+                            $codeQuery
+                                ->whereIn('products.sku', $exactValues)
+                                ->orWhereIn('products.oem_code', $exactValues);
+                        }
+
+                        foreach ($prefixValues as $prefix) {
+                            $codeQuery
+                                ->orWhereLike('products.sku', $prefix, caseSensitive: false)
                                 ->orWhereLike('products.oem_code', $prefix, caseSensitive: false);
                         }
-                    });
-                });
 
-                if ($normalizedSearch !== null) {
-                    $escapedNormalizedSearch = $this->escapeLike($normalizedSearch);
-                    $appendProductQuery(function (Builder $query) use ($normalizedSearch): void {
-                        $query->where(function (Builder $codeQuery) use ($normalizedSearch): void {
+                        if ($normalizedSearch !== null && $escapedNormalizedSearch !== null) {
                             $codeQuery
-                                ->whereRaw($this->normalizedProductCodeSql('products.sku').' = ?', [$normalizedSearch])
-                                ->orWhereRaw($this->normalizedProductCodeSql('products.oem_code').' = ?', [$normalizedSearch]);
-                        });
-                    });
-
-                    $appendProductQuery(function (Builder $query) use ($escapedNormalizedSearch): void {
-                        $query->where(function (Builder $codeQuery) use ($escapedNormalizedSearch): void {
-                            $codeQuery
-                                ->whereRaw($this->normalizedProductCodeSql('products.sku').' LIKE ?', [$escapedNormalizedSearch.'%'])
+                                ->orWhereRaw($this->normalizedProductCodeSql('products.sku').' = ?', [$normalizedSearch])
+                                ->orWhereRaw($this->normalizedProductCodeSql('products.oem_code').' = ?', [$normalizedSearch])
+                                ->orWhereRaw($this->normalizedProductCodeSql('products.sku').' LIKE ?', [$escapedNormalizedSearch.'%'])
                                 ->orWhereRaw($this->normalizedProductCodeSql('products.oem_code').' LIKE ?', [$escapedNormalizedSearch.'%']);
-                        });
+
+                            if (mb_strlen($normalizedSearch, 'UTF-8') <= 4) {
+                                $codeQuery
+                                    ->orWhereRaw($this->normalizedProductCodeSql('products.sku').' LIKE ?', ['%'.$escapedNormalizedSearch.'%'])
+                                    ->orWhereRaw($this->normalizedProductCodeSql('products.oem_code').' LIKE ?', ['%'.$escapedNormalizedSearch.'%']);
+                            }
+                        }
+
+                        if ($aliasProductIds !== []) {
+                            $codeQuery->orWhereIn('products.id', $aliasProductIds);
+                        }
                     });
 
-                    if (mb_strlen($normalizedSearch, 'UTF-8') <= 4) {
-                        $appendProductQuery(function (Builder $query) use ($escapedNormalizedSearch): void {
-                            $query->where(function (Builder $codeQuery) use ($escapedNormalizedSearch): void {
-                                $codeQuery
-                                    ->whereRaw($this->normalizedProductCodeSql('products.sku').' LIKE ?', ['%'.$escapedNormalizedSearch.'%'])
-                                    ->orWhereRaw($this->normalizedProductCodeSql('products.oem_code').' LIKE ?', ['%'.$escapedNormalizedSearch.'%']);
-                            });
-                        });
-                    }
-
-                    $appendIds($this->matchingCodeAliasProductIds($normalizedSearch, $limit));
+                $orderBindings = [];
+                $rankCase = 'CASE ';
+                if ($exactValues !== []) {
+                    $placeholders = implode(',', array_fill(0, count($exactValues), '?'));
+                    $rankCase .= "WHEN products.sku IN ({$placeholders}) THEN 0 ";
+                    array_push($orderBindings, ...$exactValues);
+                    $rankCase .= "WHEN products.oem_code IN ({$placeholders}) THEN 1 ";
+                    array_push($orderBindings, ...$exactValues);
                 }
 
-                return array_values($ids);
+                if ($aliasProductIds !== []) {
+                    $placeholders = implode(',', array_fill(0, count($aliasProductIds), '?'));
+                    $rankCase .= "WHEN products.id IN ({$placeholders}) THEN 2 ";
+                    array_push($orderBindings, ...$aliasProductIds);
+                }
+
+                foreach ($prefixValues as $prefix) {
+                    $rankCase .= 'WHEN products.sku LIKE ? THEN 3 WHEN products.oem_code LIKE ? THEN 4 ';
+                    $orderBindings[] = $prefix;
+                    $orderBindings[] = $prefix;
+                }
+
+                if ($normalizedSearch !== null && $escapedNormalizedSearch !== null) {
+                    $rankCase .= 'WHEN '.$this->normalizedProductCodeSql('products.sku').' = ? THEN 5 '
+                        .'WHEN '.$this->normalizedProductCodeSql('products.oem_code').' = ? THEN 6 '
+                        .'WHEN '.$this->normalizedProductCodeSql('products.sku').' LIKE ? THEN 7 '
+                        .'WHEN '.$this->normalizedProductCodeSql('products.oem_code').' LIKE ? THEN 8 ';
+                    $orderBindings[] = $normalizedSearch;
+                    $orderBindings[] = $normalizedSearch;
+                    $orderBindings[] = $escapedNormalizedSearch.'%';
+                    $orderBindings[] = $escapedNormalizedSearch.'%';
+                }
+
+                $rankCase .= 'ELSE 9 END';
+
+                $ids = $query
+                    ->orderByRaw($rankCase, $orderBindings)
+                    ->orderBy('products.id')
+                    ->limit($limit)
+                    ->pluck('products.id')
+                    ->map(fn ($id): int => (int) $id)
+                    ->all();
+
+                return $this->expandFastCodeProductIdsByLogoGroups(
+                    productIds: $ids,
+                    includeEquivalents: false,
+                    limit: $limit,
+                    search: $search,
+                    normalizedSearch: $normalizedSearch
+                );
             }
         );
+    }
+
+    /**
+     * @param  list<int>  $productIds
+     * @return list<int>
+     */
+    private function expandFastCodeProductIdsByLogoGroups(
+        array $productIds,
+        bool $includeEquivalents,
+        int $limit,
+        string $search,
+        ?string $normalizedSearch
+    ): array {
+        if ($productIds === [] || count($productIds) >= $limit) {
+            return $productIds;
+        }
+
+        $groupCodes = Product::query()
+            ->select(['products.id', 'products.meta'])
+            ->whereIn('products.id', $productIds)
+            ->get()
+            ->map(fn (Product $product): ?string => $this->resolveProductGroupCode($this->productMeta($product)))
+            ->filter()
+            ->unique(fn (string $groupCode): string => mb_strtoupper($groupCode, 'UTF-8'))
+            ->values()
+            ->all();
+
+        if ($groupCodes === []) {
+            return $productIds;
+        }
+
+        $groupProductIds = $this->matchingGroupProductIds(
+            $groupCodes,
+            $includeEquivalents,
+            $limit,
+            $search,
+            $normalizedSearch
+        );
+
+        foreach ($groupProductIds as $groupProductId) {
+            if (in_array($groupProductId, $productIds, true)) {
+                continue;
+            }
+
+            $productIds[] = $groupProductId;
+            if (count($productIds) >= $limit) {
+                break;
+            }
+        }
+
+        return $productIds;
     }
 
     /**

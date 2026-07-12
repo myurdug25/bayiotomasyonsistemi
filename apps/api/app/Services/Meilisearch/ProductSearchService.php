@@ -193,7 +193,7 @@ class ProductSearchService
     {
         $request = Http::baseUrl((string) config('meilisearch.host'))
             ->acceptJson()
-            ->timeout((int) config('meilisearch.timeout', 3));
+            ->timeout((float) config('meilisearch.timeout', 0.8));
 
         $key = (string) config('meilisearch.key', '');
         if ($key !== '') {
