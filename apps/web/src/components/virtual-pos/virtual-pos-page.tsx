@@ -208,25 +208,27 @@ export function VirtualPosPage() {
           <CardContent className="p-5">
             <form className="grid gap-4" onSubmit={handleSubmit}>
               <div className="grid gap-5 xl:grid-cols-[minmax(360px,520px)_minmax(0,1fr)] xl:items-start">
-                <div className="relative aspect-[1.62/1] w-full overflow-hidden rounded-[24px] border border-white/15 bg-[radial-gradient(circle_at_18%_12%,rgba(255,255,255,0.20)_0%,transparent_32%),radial-gradient(circle_at_85%_18%,rgba(255,89,94,0.34)_0%,transparent_36%),linear-gradient(135deg,#152333_0%,#0b1424_48%,#451018_100%)] p-5 text-white shadow-[0_22px_56px_rgba(0,0,0,0.32)]">
+                <div className="relative aspect-[1.62/1] min-h-[210px] w-full overflow-hidden rounded-[24px] border border-white/15 bg-[radial-gradient(circle_at_18%_12%,rgba(255,255,255,0.20)_0%,transparent_32%),radial-gradient(circle_at_85%_18%,rgba(255,89,94,0.34)_0%,transparent_36%),linear-gradient(135deg,#152333_0%,#0b1424_48%,#451018_100%)] p-4 text-white shadow-[0_22px_56px_rgba(0,0,0,0.32)] sm:p-5">
                   <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-400/20 blur-2xl" />
                   <div className="absolute -bottom-14 left-8 h-32 w-32 rounded-full bg-emerald-300/14 blur-2xl" />
                   <div className="absolute inset-x-6 top-1/2 h-px bg-white/10" />
-                  <div className="relative flex items-start justify-between gap-4">
-                    <div>
+                  <div className="relative flex items-start justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/62">PowerSA Sanal POS</p>
-                      <p className="mt-7 font-mono text-[22px] font-black tracking-[0.12em]">{displayCardNumber}</p>
+                      <p className="mt-5 truncate font-mono text-[clamp(16px,4.2vw,22px)] font-black tracking-[0.08em] sm:mt-7 sm:tracking-[0.12em]">
+                        {displayCardNumber}
+                      </p>
                     </div>
                     <span className="flex h-9 w-12 items-center justify-center rounded-[8px] border border-white/18 bg-white/10">
                       <CreditCard className="h-6 w-6 text-white/72" />
                     </span>
                   </div>
-                  <div className="relative mt-6 flex items-end justify-between gap-4">
-                    <div>
+                  <div className="relative mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:mt-6">
+                    <div className="min-w-0">
                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">Kart Sahibi</p>
                       <p className="mt-1 max-w-[240px] truncate text-sm font-black tracking-[0.08em]">{displayCardHolder}</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 text-right">
+                    <div className="grid grid-cols-2 gap-2 text-right sm:gap-4">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">AA/YY</p>
                         <p className="mt-1 font-mono text-sm font-black">{displayExpiry}</p>

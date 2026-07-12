@@ -685,19 +685,19 @@ export function OrdersPage() {
       </div>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-h-[calc(100vh-44px)] max-w-[min(980px,calc(100vw-32px))] overflow-y-auto rounded-[28px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_58%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)]">
-          <DialogHeader className="mb-0 border-b border-white/10 px-6 py-5">
-            <DialogTitle className="pr-8 text-2xl font-black tracking-tight text-white">
+        <DialogContent className="max-h-[calc(100vh-32px)] max-w-[min(980px,calc(100vw-24px))] overflow-y-auto rounded-[24px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_58%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)]">
+          <DialogHeader className="mb-0 border-b border-white/10 px-5 py-3">
+            <DialogTitle className="pr-8 text-xl font-black tracking-tight text-white">
               {detailPayload?.order.order_no ? `Sipariş Detayı · ${detailPayload.order.order_no}` : "Sipariş Detayı"}
             </DialogTitle>
-            <DialogDescription className="text-base font-semibold text-slate-400">
+            <DialogDescription className="text-sm font-semibold text-slate-400">
               {detailPayload?.order.customer
                 ? `${detailPayload.order.customer.code} - ${detailPayload.order.customer.title}`
                 : "Kalemler ve durum geçmişi"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 px-6 py-5">
+          <div className="space-y-3 px-5 py-4">
             {detailLoading ? (
               <div className="space-y-3">
                 <Skeleton className="h-20 w-full bg-white/10" />
@@ -711,32 +711,32 @@ export function OrdersPage() {
             {!detailLoading && !detailError && detailPayload ? (
               <>
                 {detailIsBalance ? (
-                  <div className="rounded-[18px] border border-yellow-300/25 bg-yellow-300/10 px-5 py-4">
+                  <div className="rounded-[16px] border border-yellow-300/25 bg-yellow-300/10 px-4 py-2.5">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-yellow-100/70">Bakiye Adedi</p>
-                    <p className="mt-1 text-3xl font-black text-yellow-100">{detailBalanceQuantity}</p>
+                    <p className="text-2xl font-black text-yellow-100">{detailBalanceQuantity}</p>
                   </div>
                 ) : (
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
-                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Kalem</p>
-                      <p className="mt-1 text-2xl font-black text-white">{detailPayload.order.items.length}</p>
+                    <div className="rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Kalem</p>
+                      <p className="text-xl font-black text-white">{detailPayload.order.items.length}</p>
                     </div>
-                    <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
-                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Toplam Adet</p>
-                      <p className="mt-1 text-2xl font-black text-white">
+                    <div className="rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Toplam Adet</p>
+                      <p className="text-xl font-black text-white">
                         {detailPayload.order.items.reduce((sum, item) => sum + item.quantity, 0)}
                       </p>
                     </div>
-                    <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
-                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Stok Eksik</p>
-                      <p className="mt-1 text-2xl font-black text-white">{detailStockShortageCount}</p>
+                    <div className="rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Stok Eksik</p>
+                      <p className="text-xl font-black text-white">{detailStockShortageCount}</p>
                     </div>
                   </div>
                 )}
 
                 <Card className="border-white/10 bg-white/[0.035] text-slate-100 shadow-none">
-                  <CardContent className="p-4 text-sm">
-                    <div className="grid gap-3 md:grid-cols-2">
+                  <CardContent className="p-3 text-sm">
+                    <div className="grid gap-2 md:grid-cols-3">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.1em] text-slate-500">Durum</p>
                         <div className="mt-1">
@@ -747,17 +747,23 @@ export function OrdersPage() {
                         <p className="text-xs font-black uppercase tracking-[0.1em] text-slate-500">Sipariş Tarihi</p>
                         <p className="font-black text-white">{formatOrderDateTime(detailPayload.order.ordered_at)}</p>
                       </div>
+                      {!detailIsBalance ? (
+                        <div className="rounded-[12px] border border-emerald-300/16 bg-emerald-300/8 px-3 py-2 text-right">
+                          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-100/62">Genel Toplam</p>
+                          <p className="text-lg font-black text-emerald-100">{formatTry(detailPayload.order.grand_total, detailPayload.order.currency)}</p>
+                        </div>
+                      ) : null}
                     </div>
 
                     {detailPayload.order.note ? (
-                      <div className="mt-3 rounded-[14px] border border-white/10 bg-black/15 px-3 py-2">
+                      <div className="mt-2 rounded-[12px] border border-white/10 bg-black/15 px-3 py-2">
                         <p className="text-xs font-black uppercase tracking-[0.1em] text-slate-500">Not</p>
-                        <p className="text-sm font-semibold text-slate-200">{detailPayload.order.note}</p>
+                        <p className="line-clamp-2 text-sm font-semibold text-slate-200">{detailPayload.order.note}</p>
                       </div>
                     ) : null}
 
                     {!detailIsBalance ? (
-                      <div className="mt-3 space-y-1 rounded-[14px] border border-white/10 bg-black/15 px-3 py-2">
+                      <div className="mt-2 grid gap-2 rounded-[12px] border border-white/10 bg-black/15 px-3 py-2 text-xs sm:grid-cols-3">
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400">Ara Toplam</span>
                         <span className="font-semibold text-slate-100">{formatTry(detailPayload.order.subtotal, detailPayload.order.currency)}</span>
@@ -770,22 +776,18 @@ export function OrdersPage() {
                         <span className="text-slate-400">KDV</span>
                         <span className="font-semibold text-slate-100">{formatTry(detailPayload.order.tax_total, detailPayload.order.currency)}</span>
                       </div>
-                      <div className="flex items-center justify-between border-t border-white/10 pt-1 font-black text-white">
-                        <span>Genel Toplam</span>
-                        <span>{formatTry(detailPayload.order.grand_total, detailPayload.order.currency)}</span>
-                      </div>
                       </div>
                     ) : null}
                   </CardContent>
                 </Card>
 
                 <Card className="border-white/10 bg-white/[0.035] text-slate-100 shadow-none">
-                  <CardHeader className="border-b border-white/10 pb-3">
-                    <CardTitle className="text-lg font-black text-white">
+                  <CardHeader className="border-b border-white/10 px-4 py-3">
+                    <CardTitle className="text-base font-black text-white">
                       {detailIsBalance ? "Bakiye Ürünleri" : "Sipariş Kalemleri"}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-3">
                     <div className="overflow-x-auto">
                       <table className={`w-full text-left text-sm ${detailIsBalance ? "min-w-[460px]" : "min-w-[760px]"}`}>
                         <thead>
@@ -809,27 +811,27 @@ export function OrdersPage() {
                             const stockMeta = stockStatusMeta(available, item.quantity);
 
                             return (
-                              <tr key={item.id} className="border-b border-white/10">
-                                <td className="py-2">
-                                  <p className="text-base font-black text-yellow-100">{item.sku ?? "-"}</p>
+                              <tr key={item.id} className="border-b border-white/10 last:border-b-0">
+                                <td className="py-1.5">
+                                  <p className="text-sm font-black text-yellow-100">{item.sku ?? "-"}</p>
                                   <p className="mt-0.5 text-xs font-semibold text-slate-400">{item.name ?? "-"}</p>
                                 </td>
-                                <td className="py-2 font-semibold text-slate-300">{item.brand ?? "-"}</td>
-                                <td className={`py-2 text-right font-black ${detailIsBalance ? "text-xl text-yellow-100" : "text-slate-100"}`}>
+                                <td className="py-1.5 font-semibold text-slate-300">{item.brand ?? "-"}</td>
+                                <td className={`py-1.5 text-right font-black ${detailIsBalance ? "text-xl text-yellow-100" : "text-slate-100"}`}>
                                   {detailIsBalance ? item.remaining_quantity : item.quantity}
                                 </td>
                                 {!detailIsBalance ? (
                                   <>
-                                    <td className="py-2 text-right font-black text-white">{available}</td>
-                                    <td className="py-2 text-right">
+                                    <td className="py-1.5 text-right font-black text-white">{available}</td>
+                                    <td className="py-1.5 text-right">
                                       <Badge variant="outline" className={`font-semibold ${stockMeta.className}`}>
                                         {stockMeta.label}
                                       </Badge>
                                     </td>
-                                    <td className="py-2 text-right font-semibold text-slate-100">
+                                    <td className="py-1.5 text-right font-semibold text-slate-100">
                                       {formatTry(item.unit_net_price, item.currency)}
                                     </td>
-                                    <td className="py-2 text-right font-black text-white">
+                                    <td className="py-1.5 text-right font-black text-white">
                                       {formatTry(item.line_total, item.currency)}
                                     </td>
                                   </>
@@ -843,11 +845,11 @@ export function OrdersPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-white/10 bg-white/[0.035] text-slate-100 shadow-none">
-                  <CardHeader className="border-b border-white/10 pb-3">
-                    <CardTitle className="text-lg font-black text-white">Durum Geçmişi</CardTitle>
-                  </CardHeader>
-                  <CardContent>
+                <details className="rounded-[16px] border border-white/10 bg-white/[0.025] text-slate-100">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-black text-white">
+                    Durum Geçmişi · {detailPayload.status_timeline.length} kayıt
+                  </summary>
+                  <div className="border-t border-white/10 p-3">
                     {detailPayload.status_timeline.length === 0 ? (
                       <p className="rounded-[14px] border border-white/10 bg-black/15 p-3 text-sm text-slate-400">
                         Durum geçmişi bulunamadı.
@@ -873,8 +875,8 @@ export function OrdersPage() {
                         ))}
                       </div>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                </details>
               </>
             ) : null}
           </div>

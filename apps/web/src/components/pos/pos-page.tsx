@@ -116,6 +116,7 @@ const POINT_LEDGER_DATE_FORMATTER = new Intl.DateTimeFormat("tr-TR", {
   dateStyle: "medium",
 });
 type PosActionDialog = "session" | "sale" | "collection" | "expense";
+type PosDeleteConfirmMode = "selected" | "all";
 
 const POINT_STOCK_COLUMNS = [
   { key: "erz-depo", label: "Erz. Depo", permissionKey: "search.stock.warehouse.erzurum_depo", aliases: ["1", "25", "genel", "erzurum", "erzurum dep", "erzurum depo", "erz depo", "erz. depo", "depo"] },
@@ -1192,6 +1193,16 @@ export function PosPage() {
   const [closeSessionDialogOpen, setCloseSessionDialogOpen] = useState(false);
   const [posActionDialog, setPosActionDialog] = useState<PosActionDialog | null>(null);
   const [pointSaveResult, setPointSaveResult] = useState<PosSaleDto | null>(null);
+  const [selectedPosCartItemIds, setSelectedPosCartItemIds] = useState<number[]>([]);
+  const [posDeleteConfirmMode, setPosDeleteConfirmMode] = useState<PosDeleteConfirmMode | null>(null);
+  const [pendingCustomerSelection, setPendingCustomerSelection] = useState<{
+    customer: CustomerListItem;
+    options?: {
+      closeDialog?: boolean;
+      showToast?: boolean;
+      manualOverride?: boolean;
+    };
+  } | null>(null);
 
   const [movementProduct, setMovementProduct] = useState<PosCartItem | null>(null);
 
@@ -1831,6 +1842,12 @@ export function PosPage() {
     () => activeCartItems.filter((item) => item.qty > 0),
     [activeCartItems]
   );
+  const visibleCartItemIdSet = useMemo(
+    () => new Set(visibleCartItems.map((item) => item.product_id)),
+    [visibleCartItems]
+  );
+  const allVisibleCartItemsSelected = visibleCartItems.length > 0 && visibleCartItems.every((item) => selectedPosCartItemIds.includes(item.product_id));
+  const selectedVisibleCartItemCount = selectedPosCartItemIds.filter((id) => visibleCartItemIdSet.has(id)).length;
 
   const normalizedActiveQuickIndex = quickProducts.length
     ? Math.min(activeQuickIndex, quickProducts.length - 1)
@@ -1850,6 +1867,9 @@ export function PosPage() {
     () => visibleCartItems.reduce((sum, item) => sum + item.qty, 0),
     [visibleCartItems]
   );
+  useEffect(() => {
+    setSelectedPosCartItemIds((previous) => previous.filter((id) => visibleCartItemIdSet.has(id)));
+  }, [visibleCartItemIdSet]);
   const pointSaleContextLabel = useMemo(
     () => (isBatumPointFlow ? getPointSaleContextLabel(saleType) : getNonBatumPointSaleContextLabel(saleType)),
     [isBatumPointFlow, saleType]
@@ -2072,6 +2092,7 @@ export function PosPage() {
 
   const removeItem = useCallback((productId: number) => {
     updateActiveCartItems((previous) => previous.filter((item) => item.product_id !== productId));
+    setSelectedPosCartItemIds((previous) => previous.filter((id) => id !== productId));
     setPointCartPriceInputs((previous) => {
       const next = { ...previous };
       delete next[productId];
@@ -2079,6 +2100,60 @@ export function PosPage() {
     });
     setActivePointCartProductId((current) => (current === productId ? null : current));
   }, [updateActiveCartItems]);
+
+  const togglePosCartItemSelection = useCallback((productId: number) => {
+    setSelectedPosCartItemIds((previous) =>
+      previous.includes(productId)
+        ? previous.filter((id) => id !== productId)
+        : [...previous, productId]
+    );
+  }, []);
+
+  const toggleAllVisiblePosCartItems = useCallback(() => {
+    setSelectedPosCartItemIds((previous) => {
+      if (visibleCartItems.length === 0) {
+        return [];
+      }
+
+      if (visibleCartItems.every((item) => previous.includes(item.product_id))) {
+        return previous.filter((id) => !visibleCartItemIdSet.has(id));
+      }
+
+      const next = new Set(previous);
+      visibleCartItems.forEach((item) => next.add(item.product_id));
+      return Array.from(next);
+    });
+  }, [visibleCartItemIdSet, visibleCartItems]);
+
+  const clearActivePointInputs = useCallback(() => {
+    setPointCartPriceInputs({});
+    setActivePointCartProductId(null);
+    setPointDraftProduct(null);
+    setPointProductCodeInput("");
+    setPointQtyInput("1");
+    setPointPriceInput("");
+  }, []);
+
+  const clearActiveCart = useCallback(() => {
+    updateActiveCartItems(() => []);
+    setSelectedPosCartItemIds([]);
+    clearActivePointInputs();
+  }, [clearActivePointInputs, updateActiveCartItems]);
+
+  const confirmPosCartDelete = useCallback(() => {
+    if (posDeleteConfirmMode === "all") {
+      clearActiveCart();
+      setPosDeleteConfirmMode(null);
+      toast.success("Sepet temizlendi.");
+      return;
+    }
+
+    const selected = new Set(selectedPosCartItemIds);
+    updateActiveCartItems((previous) => previous.filter((item) => !selected.has(item.product_id)));
+    setSelectedPosCartItemIds([]);
+    setPosDeleteConfirmMode(null);
+    toast.success("Seçilen ürünler silindi.");
+  }, [clearActiveCart, posDeleteConfirmMode, selectedPosCartItemIds, updateActiveCartItems]);
 
   const addQuickProduct = useCallback(
     (product: ProductSearchItem) => {
@@ -2457,6 +2532,16 @@ export function PosPage() {
       const showToast = options?.showToast ?? true;
       const manualOverride = options?.manualOverride ?? true;
 
+      if (
+        manualOverride &&
+        selectedCustomerId !== null &&
+        selectedCustomerId !== customer.id &&
+        visibleCartItems.length > 0
+      ) {
+        setPendingCustomerSelection({ customer, options });
+        return;
+      }
+
       rememberCustomer(customer);
       posForm.setValue("customer_id", customer.id, { shouldDirty: true, shouldValidate: true });
       setManualCustomerOverride(manualOverride);
@@ -2474,8 +2559,22 @@ export function PosPage() {
         toast.success(`${customer.code} seçildi`);
       }
     },
-    [isPointRole, posForm, rememberCustomer, syncContextCustomer]
+    [isPointRole, posForm, rememberCustomer, selectedCustomerId, syncContextCustomer, visibleCartItems.length]
   );
+
+  const applyPendingCustomerSelection = useCallback(() => {
+    if (!pendingCustomerSelection) {
+      return;
+    }
+
+    const { customer, options } = pendingCustomerSelection;
+    clearActiveCart();
+    setPendingCustomerSelection(null);
+    handleSelectCustomer(customer, {
+      ...options,
+      manualOverride: false,
+    });
+  }, [clearActiveCart, handleSelectCustomer, pendingCustomerSelection]);
 
   const selectAnonymousPointCustomer = useCallback(async () => {
     const existingCustomer =
@@ -2926,8 +3025,8 @@ export function PosPage() {
                         min={0}
                         step="0.01"
                         value={pointPriceInput}
-                        onChange={(event) => setPointPriceInput(event.target.value)}
-                        className="h-14 rounded-[14px] text-xl font-black"
+                        readOnly
+                        className="h-14 cursor-not-allowed rounded-[14px] bg-black/10 text-xl font-black opacity-85"
                       />
                     </div>
                     <div>
@@ -2948,7 +3047,7 @@ export function PosPage() {
                 type="button"
                 onClick={addPointDraftLine}
                 disabled={!pointDraftProduct}
-                className="mt-4 h-16 w-full rounded-[18px] text-xl font-black"
+                className="hidden"
               >
                 <Plus className="h-6 w-6" />
                 Sepete Ekle
@@ -4570,8 +4669,7 @@ export function PosPage() {
                     }
 
                     event.preventDefault();
-                    pointPriceInputRef.current?.focus();
-                    pointPriceInputRef.current?.select();
+                    addPointDraftLine();
                   }}
                   inputMode="numeric"
                   className={cn(
@@ -4601,10 +4699,7 @@ export function PosPage() {
                 <Input
                   ref={pointPriceInputRef}
                   value={pointPriceInput}
-                  onChange={(event) => {
-                    const cleanValue = event.target.value.replace(/[^\d,.]/g, "");
-                    setPointPriceInput(cleanValue);
-                  }}
+                  readOnly
                   onFocus={(event) => {
                     setPointFocusedInput("price");
                     event.currentTarget.select();
@@ -4629,7 +4724,7 @@ export function PosPage() {
                   inputMode="decimal"
                   placeholder="0,00"
                   className={cn(
-                    "h-12 rounded-none border-0 bg-transparent text-center text-lg font-black shadow-none focus-visible:ring-0 xl:h-14 xl:text-xl 2xl:h-16",
+                    "h-12 cursor-not-allowed rounded-none border-0 bg-transparent text-center text-lg font-black text-white/85 shadow-none focus-visible:ring-0 xl:h-14 xl:text-xl 2xl:h-16",
                     pointFocusedInput === "price" && "text-[#faee56]"
                   )}
                 />
@@ -4640,7 +4735,7 @@ export function PosPage() {
               type="button"
               onClick={addPointDraftLine}
               disabled={!pointDraftProduct}
-              className="point-yellow-action-button h-12 rounded-[14px] text-sm font-black disabled:border-[var(--point-border)] disabled:bg-[var(--point-control-strong)] disabled:text-[var(--point-muted)] disabled:shadow-none xl:h-14 xl:text-base 2xl:h-16 2xl:text-lg"
+              className="hidden"
             >
               <Plus className="h-4 w-4 xl:h-5 xl:w-5" />
               Sepete Ekle
@@ -4649,8 +4744,44 @@ export function PosPage() {
         </section>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-[var(--point-border)] bg-[var(--point-panel)] p-2">
+        <label className="flex h-10 items-center gap-2 rounded-[12px] border border-[var(--point-border)] bg-[var(--point-control)] px-3 text-xs font-black text-[#e6f3e9]">
+          <input
+            type="checkbox"
+            checked={allVisibleCartItemsSelected}
+            onChange={toggleAllVisiblePosCartItems}
+            disabled={visibleCartItems.length === 0}
+            className="h-4 w-4 accent-[#faee56]"
+          />
+          Tümünü Seç
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={selectedVisibleCartItemCount === 0}
+            onClick={() => setPosDeleteConfirmMode("selected")}
+            className="h-10 rounded-[12px] border-red-300/35 bg-[linear-gradient(135deg,rgba(127,29,29,0.28)_0%,rgba(25,8,8,0.72)_100%)] px-3 text-xs font-black text-red-100 hover:border-red-200 hover:bg-red-900/40"
+          >
+            <Trash2 className="h-4 w-4" />
+            Seçilenleri Sil
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={visibleCartItems.length === 0}
+            onClick={() => setPosDeleteConfirmMode("all")}
+            className="h-10 rounded-[12px] border-red-300/45 bg-[linear-gradient(135deg,#ff4d4f_0%,#8f1111_100%)] px-3 text-xs font-black text-white shadow-[0_18px_34px_-24px_rgba(255,77,79,0.9)] hover:brightness-110"
+          >
+            <Trash2 className="h-4 w-4" />
+            Tümünü Sil
+          </Button>
+        </div>
+      </div>
+
       <section className="point-table overflow-x-auto rounded-[12px] border">
-	        <div className="point-cart-head grid min-w-[920px] grid-cols-[38px_124px_minmax(230px,1fr)_96px_76px_96px_112px] border-b border-[var(--point-border)] bg-[linear-gradient(135deg,#1f6b45_0%,#2f7650_55%,#416650_100%)] text-xs font-black text-[#e6f3e9] xl:min-w-[1030px] xl:grid-cols-[44px_150px_minmax(260px,1fr)_118px_90px_116px_130px] xl:text-sm 2xl:min-w-[1160px] 2xl:grid-cols-[48px_176px_minmax(300px,1fr)_140px_104px_130px_150px]">
+	        <div className="point-cart-head grid min-w-[960px] grid-cols-[40px_38px_124px_minmax(230px,1fr)_96px_76px_96px_112px] border-b border-[var(--point-border)] bg-[linear-gradient(135deg,#1f6b45_0%,#2f7650_55%,#416650_100%)] text-xs font-black text-[#e6f3e9] xl:min-w-[1070px] xl:grid-cols-[44px_44px_150px_minmax(260px,1fr)_118px_90px_116px_130px] xl:text-sm 2xl:min-w-[1208px] 2xl:grid-cols-[48px_48px_176px_minmax(300px,1fr)_140px_104px_130px_150px]">
+	          <div className="px-2 py-2 text-center xl:px-3 2xl:px-4">✓</div>
 	          <div className="px-2 py-2 xl:px-3 2xl:px-4">#</div>
 	          <div className="px-2 py-2 xl:px-3 2xl:px-4">Stok Kodu</div>
 	          <div className="px-2 py-2 xl:px-3 2xl:px-4">Ürün Adı</div>
@@ -4659,7 +4790,7 @@ export function PosPage() {
 	          <div className="px-2 py-2 text-center xl:px-3 2xl:px-4">{pointPriceIncludesVat ? "KDV Dahil" : "Fiyat"}</div>
 	          <div className="px-2 py-2 text-center xl:px-3 2xl:px-4">Tutar</div>
 	        </div>
-	        <div className="point-cart-body min-h-[46px] min-w-[920px] xl:min-h-[52px] xl:min-w-[1030px] 2xl:min-w-[1160px]">
+	        <div className="point-cart-body min-h-[46px] min-w-[960px] xl:min-h-[52px] xl:min-w-[1070px] 2xl:min-w-[1208px]">
           {visibleCartItems.length === 0 ? (
             <div className="flex min-h-[46px] items-center justify-center text-sm font-black text-[var(--point-muted)] xl:min-h-[52px]">
               Stok kodu ile ürünü getirin veya seçim penceresinden ürün seçin.
@@ -4669,7 +4800,7 @@ export function PosPage() {
               <div
                 key={item.product_id}
                 className={cn(
-	                  "point-cart-row grid grid-cols-[38px_124px_minmax(230px,1fr)_96px_76px_96px_112px] items-center border-b border-[var(--point-border)] transition-colors last:border-0 xl:grid-cols-[44px_150px_minmax(260px,1fr)_118px_90px_116px_130px] 2xl:grid-cols-[48px_176px_minmax(300px,1fr)_140px_104px_130px_150px]",
+	                  "point-cart-row grid grid-cols-[40px_38px_124px_minmax(230px,1fr)_96px_76px_96px_112px] items-center border-b border-[var(--point-border)] transition-colors last:border-0 xl:grid-cols-[44px_44px_150px_minmax(260px,1fr)_118px_90px_116px_130px] 2xl:grid-cols-[48px_48px_176px_minmax(300px,1fr)_140px_104px_130px_150px]",
 	                  activePointCartProductId === item.product_id && "bg-[#1d2f25]/60"
 	                )}
                 onClick={() => {
@@ -4677,6 +4808,15 @@ export function PosPage() {
                   setPointPriceInput("");
                 }}
               >
+                <div className="px-2 py-1 text-center xl:px-3 xl:py-1.5 2xl:px-4" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedPosCartItemIds.includes(item.product_id)}
+                    onChange={() => togglePosCartItemSelection(item.product_id)}
+                    className="h-4 w-4 accent-[#faee56]"
+                    aria-label={`${item.sku} seç`}
+                  />
+                </div>
                 <div className="px-2 py-1 text-xs font-black xl:px-3 xl:py-1.5 xl:text-sm 2xl:px-4">{index + 1}</div>
                 <div className="px-2 py-1 text-xs font-black tracking-wide xl:px-3 xl:py-1.5 xl:text-sm 2xl:px-4">{item.sku}</div>
 	                <div className="min-w-0 px-2 py-1 xl:px-3 xl:py-1.5 2xl:px-4">
@@ -4705,37 +4845,9 @@ export function PosPage() {
                       pointCartPriceInputs[item.product_id] ??
                       fromCents(displayPriceCents(item.unit_price_cents, item.vat_rate, pointPriceIncludesVat)).replace(".", ",")
                     }
-                    onChange={(event) => {
-                      const cleanValue = event.target.value.replace(/[^\d,.]/g, "");
-                      const parsed = Number(cleanValue.replace(",", "."));
-                      const nextUnitPriceCents = Number.isFinite(parsed)
-                        ? netPriceCentsFromDisplay(toCents(parsed), item.vat_rate, pointPriceIncludesVat)
-                        : null;
-                      const minimumUnitPriceCents = getMinimumEditablePriceCents(item.original_unit_price_cents);
-
-                      setPointCartPriceInputs((previous) => ({
-                        ...previous,
-                        [item.product_id]: cleanValue,
-                      }));
-
-                      if (nextUnitPriceCents !== null && nextUnitPriceCents >= 0) {
-                        if (nextUnitPriceCents < minimumUnitPriceCents) {
-                          const minimumDisplayCents = displayPriceCents(minimumUnitPriceCents, item.vat_rate, pointPriceIncludesVat);
-                          toast.error(`Fiyat ${formatCurrency(fromCents(minimumDisplayCents))} altına düşemez.`);
-                          return;
-                        }
-
-                        setItemUnitPriceCents(item.product_id, nextUnitPriceCents);
-                      }
-                    }}
+                    readOnly
                     onClick={(event) => event.stopPropagation()}
                     onFocus={(event) => event.currentTarget.select()}
-                    onBlur={() => {
-                      setPointCartPriceInputs((previous) => ({
-                        ...previous,
-                        [item.product_id]: fromCents(displayPriceCents(item.unit_price_cents, item.vat_rate, pointPriceIncludesVat)).replace(".", ","),
-                      }));
-                    }}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter") {
                         return;
@@ -4751,7 +4863,7 @@ export function PosPage() {
                       pointProductCodeInputRef.current?.select();
                     }}
                     inputMode="decimal"
-                    className="h-7 rounded-[9px] border-[var(--point-border-strong)] bg-[var(--point-control)] text-center text-sm font-black xl:h-8 xl:text-base"
+                    className="h-7 cursor-not-allowed rounded-[9px] border-[var(--point-border-strong)] bg-[var(--point-control)] text-center text-sm font-black opacity-85 xl:h-8 xl:text-base"
                     aria-label={`${item.sku} fiyatı`}
                   />
                 </div>
@@ -4800,13 +4912,11 @@ export function PosPage() {
           variant="outline"
           className="point-secondary-button h-full min-h-[58px] rounded-[14px] px-1.5 text-xs font-semibold xl:min-h-[64px] xl:px-2 xl:text-sm 2xl:min-h-[72px] 2xl:text-[15px]"
           onClick={() => {
-            setCartItems([]);
-            setPointCartPriceInputs({});
-            setPointDraftProduct(null);
-            setActivePointCartProductId(null);
-            setPointProductCodeInput("");
-            setPointQtyInput("1");
-            setPointPriceInput("");
+            if (visibleCartItems.length > 0) {
+              setPosDeleteConfirmMode("all");
+              return;
+            }
+            clearActiveCart();
           }}
         >
           <RefreshCcw className="h-4 w-4 text-[#fbbf24] xl:h-5 xl:w-5 2xl:h-7 2xl:w-7" />
@@ -4982,6 +5092,72 @@ export function PosPage() {
               onClick={() => setPointSaveResult(null)}
             >
               Tamam
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={posDeleteConfirmMode !== null} onOpenChange={(open) => !open && setPosDeleteConfirmMode(null)}>
+        <DialogContent className="max-w-[min(460px,calc(100vw-32px))] rounded-[28px] border-red-300/25 bg-[linear-gradient(145deg,#160b0b_0%,#071018_58%,#1b1010_100%)] p-0 text-[#edf7ef] shadow-[0_34px_110px_-42px_rgba(0,0,0,0.95)]">
+          <DialogHeader className="border-b border-red-300/12 px-6 py-5 text-left">
+            <DialogTitle className="text-2xl font-black text-white">Silme Onayı</DialogTitle>
+            <DialogDescription className="mt-1 text-sm font-semibold text-red-100/72">
+              {posDeleteConfirmMode === "all"
+                ? "Sepetteki tüm ürünleri silmek istiyor musunuz?"
+                : `${selectedVisibleCartItemCount} seçili ürünü silmek istiyor musunuz?`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="grid gap-2 border-t border-red-300/12 px-6 py-4 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-2xl border-white/12 bg-white/8 font-black text-white hover:bg-white/12"
+              onClick={() => setPosDeleteConfirmMode(null)}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              className="h-12 rounded-2xl bg-[linear-gradient(135deg,#ff4d4f_0%,#b71c1c_100%)] font-black text-white shadow-[0_20px_42px_-26px_rgba(255,77,79,0.95)] hover:brightness-110"
+              onClick={confirmPosCartDelete}
+            >
+              Evet, Sil
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pendingCustomerSelection !== null} onOpenChange={(open) => !open && setPendingCustomerSelection(null)}>
+        <DialogContent className="max-w-[min(500px,calc(100vw-32px))] rounded-[28px] border-[#416650] bg-[#071018] p-0 text-[#edf7ef] shadow-[0_34px_110px_-42px_rgba(0,0,0,0.95)]">
+          <DialogHeader className="border-b border-[#243d34] bg-[linear-gradient(135deg,rgba(31,107,69,0.28)_0%,rgba(250,238,86,0.08)_55%,rgba(7,16,24,1)_100%)] px-6 py-5 text-left">
+            <DialogTitle className="text-2xl font-black text-white">Cari Değiştirilsin mi?</DialogTitle>
+            <DialogDescription className="mt-1 text-sm font-semibold text-[#c2d3c6]">
+              Sepetinizde ürünler bulunmaktadır. Cariyi değiştirirseniz mevcut sepet temizlenecek.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 py-4">
+            <div className="rounded-2xl border border-[#243d34] bg-black/18 px-4 py-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#8fa394]">Yeni Cari</p>
+              <p className="mt-1 truncate text-lg font-black text-white">
+                {pendingCustomerSelection?.customer.code} · {pendingCustomerSelection?.customer.title}
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="grid gap-2 border-t border-[#243d34] px-6 py-4 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-2xl border-[#416650] bg-[#0c1a1d] font-black text-[#e6f3e9] hover:bg-[#14281e] hover:text-white"
+              onClick={() => setPendingCustomerSelection(null)}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              className="h-12 rounded-2xl bg-[linear-gradient(135deg,#ff4d4f_0%,#b71c1c_100%)] font-black text-white shadow-[0_20px_42px_-26px_rgba(255,77,79,0.95)] hover:brightness-110"
+              onClick={applyPendingCustomerSelection}
+            >
+              Devam Et
             </Button>
           </DialogFooter>
         </DialogContent>

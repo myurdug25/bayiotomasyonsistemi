@@ -560,31 +560,21 @@ export function LedgerPage() {
             </div>
           ) : null}
           {selectedCustomer ? (
-            <div className="mt-5 rounded-[20px] border border-emerald-300/22 bg-[radial-gradient(circle_at_10%_18%,rgba(52,211,153,0.16)_0%,transparent_35%),linear-gradient(135deg,rgba(7,33,28,0.92)_0%,rgba(7,18,27,0.98)_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-              <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-lg font-black text-white">Genel Toplam</p>
-                  <p className="text-sm font-semibold text-emerald-50/62">
-                    Seçili cari ve aktif filtrelere göre toplam hareket özeti
-                  </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-stretch">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[16px] border border-rose-300/16 bg-rose-400/7 p-3 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-100/58">Toplam Borç</p>
+                  <p className="mt-1 text-xl font-black text-rose-100">{formatAmount(summary.debit, summary.currency)}</p>
                 </div>
-                <Badge variant="outline" className="w-fit border-emerald-300/35 bg-emerald-300/10 text-emerald-100">
-                  {listedRowCount} hareket
-                </Badge>
+                <div className="rounded-[16px] border border-emerald-300/16 bg-emerald-400/7 p-3 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/58">Toplam Alacak</p>
+                  <p className="mt-1 text-xl font-black text-emerald-100">{formatAmount(summary.credit, summary.currency)}</p>
+                </div>
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-[16px] border border-rose-300/18 bg-rose-400/8 p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-rose-100/62">Toplam Borç</p>
-                  <p className="mt-2 text-2xl font-black text-rose-100">{formatAmount(summary.debit, summary.currency)}</p>
-                </div>
-                <div className="rounded-[16px] border border-emerald-300/18 bg-emerald-400/8 p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-100/62">Toplam Alacak</p>
-                  <p className="mt-2 text-2xl font-black text-emerald-100">{formatAmount(summary.credit, summary.currency)}</p>
-                </div>
-                <div className="rounded-[16px] border border-amber-300/24 bg-amber-400/10 p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-amber-100/68">Toplam Bakiye</p>
-                  <p className="mt-2 text-3xl font-black text-amber-100">{formatAmount(summary.balance, summary.currency)}</p>
-                </div>
+              <div className="flex min-h-[88px] flex-col items-center justify-center rounded-[18px] border border-red-200/24 bg-[radial-gradient(circle_at_20%_15%,rgba(255,255,255,0.16)_0%,transparent_34%),linear-gradient(135deg,#ff4d4f_0%,#b71c1c_100%)] p-3 text-center shadow-[0_22px_48px_-30px_rgba(255,77,79,0.9)]">
+                <p className="text-[11px] font-black uppercase tracking-[0.13em] text-white/78">Toplam Bakiye</p>
+                <p className="mt-1 text-2xl font-black text-white">{formatAmount(summary.balance, summary.currency)}</p>
+                <p className="mt-1 text-[11px] font-bold text-white/62">{listedRowCount} hareket</p>
               </div>
             </div>
           ) : null}

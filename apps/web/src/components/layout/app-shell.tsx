@@ -1150,7 +1150,6 @@ function SidebarMenu({
   pathname,
   currentHash,
   items,
-  panelTitle,
   darkMode,
   dashboardRoute,
   homeHref,
@@ -1163,7 +1162,6 @@ function SidebarMenu({
   pathname: string;
   currentHash: string;
   items: NavItem[];
-  panelTitle: string;
   darkMode: boolean;
   dashboardRoute: boolean;
   homeHref: string;
@@ -1348,40 +1346,6 @@ function SidebarMenu({
       </div>
 
       <div className="app-sidebar-system px-3 pb-16 pt-1.5">
-        <div className="mb-2 px-1">
-          <p className={cn("text-[10px] font-extrabold uppercase tracking-[0.14em]", lightDashboardSidebar ? "text-[var(--muted-foreground)]" : "text-[color-mix(in_oklab,var(--sidebar-foreground)_72%,var(--sidebar-primary))]")}>
-            Sistem
-          </p>
-        </div>
-        <div
-          className={cn(
-            "rounded-[18px] px-3 py-2.5",
-            dashboardRoute
-              ? "border border-[var(--brand-border)] bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-            : lightDashboardSidebar
-              ? "border border-[var(--brand-border)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--surface)_96%,white)_0%,color-mix(in_oklab,var(--surface-soft)_92%,white)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]"
-              : "border border-[color-mix(in_oklab,var(--sidebar-border)_64%,white)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--sidebar)_92%,black)_0%,color-mix(in_oklab,var(--sidebar-accent)_92%,black)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-          )}
-        >
-          <p className={cn("text-[11px] font-semibold", lightDashboardSidebar ? "text-[var(--brand-primary-strong)]" : "text-[var(--sidebar-foreground)]")}>Powersa B2B v1.0.0</p>
-          <p className={cn("mt-0.5 text-[11px]", lightDashboardSidebar ? "text-[var(--muted-foreground)]" : "text-[color-mix(in_oklab,var(--sidebar-foreground)_72%,var(--sidebar-primary))]")}>Sistem çevrimiçi</p>
-        </div>
-        <Link
-          href={homeHref}
-          title="Ana sayfaya dön"
-          className={cn(
-            "mt-2 block rounded-[18px] px-3 py-2.5 transition hover:-translate-y-0.5 hover:border-[var(--brand-primary)]",
-            dashboardRoute
-              ? "border border-[var(--brand-border)] bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[0_20px_28px_-24px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]"
-            : lightDashboardSidebar
-              ? "border border-[var(--brand-border)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--surface-soft)_94%,white)_0%,color-mix(in_oklab,var(--background)_90%,white)_100%)] shadow-[0_20px_28px_-24px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.72)]"
-              : "border border-[color-mix(in_oklab,var(--sidebar-border)_64%,white)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--sidebar-accent)_84%,black)_0%,color-mix(in_oklab,var(--sidebar)_94%,black)_100%)] shadow-[0_20px_28px_-20px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.05)]"
-          )}
-        >
-          <p className={cn("text-[11px] font-extrabold uppercase tracking-[0.14em]", lightDashboardSidebar ? "text-[var(--brand-primary-strong)]" : "text-[var(--sidebar-foreground)]")}>Powersa B2B</p>
-          <p className={cn("mt-1 text-[18px] font-extrabold leading-6 tracking-tight", lightDashboardSidebar ? "text-[var(--foreground)]" : "text-white")}>{panelTitle}</p>
-          <p className={cn("mt-1.5 text-[12px] leading-[1.3]", lightDashboardSidebar ? "text-[var(--muted-foreground)]" : "text-[color-mix(in_oklab,var(--sidebar-foreground)_78%,var(--sidebar-primary))]")}>Ana sayfaya dön</p>
-        </Link>
         <button
           type="button"
           onClick={onLogout}
@@ -2370,7 +2334,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               pathname={pathname}
               currentHash={currentHash}
               items={dashboardSidebarItems}
-              panelTitle={panelTitle}
               darkMode={isDarkMode}
               dashboardRoute={isDashboardRoute}
               homeHref={shellHomeHref}

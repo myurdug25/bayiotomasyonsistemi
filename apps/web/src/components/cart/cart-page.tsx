@@ -446,6 +446,18 @@ export function CartPage() {
   const isFormDisabled = loading || mutating || !selectedCustomer;
   const isCustomerUser = useMemo(() => user?.roles.some((role) => role.slug === "customer") ?? false, [user?.roles]);
   const featurePermissionSet = useMemo(() => new Set(user?.feature_permissions ?? []), [user?.feature_permissions]);
+  const roleSlugSet = useMemo(() => new Set(user?.roles.map((role) => role.slug) ?? []), [user?.roles]);
+  const canManageWarehouseTransfer = useMemo(
+    () =>
+      roleSlugSet.has("admin") ||
+      roleSlugSet.has("moderator") ||
+      roleSlugSet.has("warehouse") ||
+      roleSlugSet.has("warehouse_user") ||
+      roleSlugSet.has("depo") ||
+      roleSlugSet.has("depocu") ||
+      featurePermissionSet.has("cart.warehouse_transfer"),
+    [featurePermissionSet, roleSlugSet]
+  );
   const canCheckout = !isCustomerUser || featurePermissionSet.has("cart.checkout");
   const isCheckoutDisabled = mutating || loading || items.length === 0 || !selectedCustomer || !canCheckout;
   const handleBulkCartFileChange = useCallback(
@@ -997,7 +1009,7 @@ export function CartPage() {
                 </div>
               </div>
 
-              {!isBatumBranch ? (
+              {!isBatumBranch && canManageWarehouseTransfer ? (
                 <div className="rounded-[18px] border border-emerald-300/25 bg-[radial-gradient(circle_at_8%_16%,rgba(52,211,153,0.18)_0%,transparent_34%),linear-gradient(135deg,rgba(6,48,37,0.86)_0%,rgba(6,24,32,0.96)_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2.5">
