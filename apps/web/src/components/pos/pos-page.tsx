@@ -851,16 +851,23 @@ function openReceiptPrintWindow(
             html, body { margin: 0; padding: 0; background: #fff; color: #101010; font-family: Arial, Helvetica, sans-serif; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .page { width: 100%; min-height: calc(297mm - 12mm); padding: 6mm 7mm; border: 1px solid #d7d7d7; }
-            .top { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 6mm; align-items: start; }
-            .brand { display: flex; gap: 5mm; align-items: flex-start; }
-            .logo { max-width: 42mm; max-height: 16mm; object-fit: contain; }
-            .company { font-size: 9.2px; line-height: 1.25; font-weight: 700; }
+            .doc-topline { display: flex; justify-content: space-between; color: #6b6b6b; font-size: 9px; font-weight: 700; margin-bottom: 2mm; }
+            .top { display: grid; grid-template-columns: 1fr 76mm; gap: 7mm; align-items: start; min-height: 55mm; }
+            .brand { display: block; }
+            .logo { width: 76mm; max-height: 25mm; object-fit: contain; object-position: left center; display: block; margin-bottom: 6mm; }
+            .company { font-size: 8.8px; line-height: 1.18; font-weight: 700; }
+            .seal-qr { display: flex; justify-content: center; align-items: center; gap: 12mm; min-height: 36mm; padding-top: 8mm; }
+            .seal { width: 24mm; height: 24mm; border: 2px solid #a5adb5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #9b1f27; font-size: 9px; font-weight: 900; text-align: center; }
+            .qr { width: 26mm; height: 26mm; border: 1px solid #aaa; background:
+              linear-gradient(90deg, #222 50%, transparent 50%) 0 0 / 4px 4px,
+              linear-gradient(#222 50%, transparent 50%) 0 0 / 4px 4px,
+              #fff; }
             .meta { justify-self: end; width: 78mm; border: 1px solid #aeb4bb; font-size: 9.4px; }
             .meta-row { display: grid; grid-template-columns: 30mm 1fr; min-height: 6mm; border-bottom: 1px solid #d8dde3; }
             .meta-row:last-child { border-bottom: 0; }
             .meta-row span { padding: 1.3mm 2mm; }
             .meta-row span:first-child { background: #f3f5f7; font-weight: 800; }
-            .title { margin: 5mm 0 3mm; text-align: center; font-size: 16px; font-weight: 900; letter-spacing: 0.04em; }
+            .title { margin: 2mm 0 3mm; padding-top: 2mm; border-top: 1px solid #d7d7d7; text-align: center; font-size: 18px; font-weight: 900; letter-spacing: 0.02em; color: #666; }
             .subtitle { margin-top: -2mm; margin-bottom: 4mm; text-align: center; font-size: 10px; font-weight: 700; color: #555; }
             .customer { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-bottom: 4mm; font-size: 10px; }
             .box { border: 1px solid #d7dce2; padding: 2.5mm; min-height: 18mm; }
@@ -887,25 +894,28 @@ function openReceiptPrintWindow(
         </head>
         <body>
           <main class="page">
+            <div class="doc-topline">
+              <span>e-Fatura</span>
+              <span>Page 1 of 1</span>
+            </div>
             <section class="top">
               <div class="brand">
-                <img class="logo" src="/brand/powersa-gucsa-logo-clean.png" alt="PowerSA" />
+                <img class="logo" src="/brand/apple/powersa-filter-logo-from-pdf.png" alt="PowerSA Filter" />
                 <div class="company">
                   GÜÇSA FİLTRECİM GRUP OTOMOTİV SANAYİ VE TİCARET A.Ş.<br />
-                  Şehit Nevtes Bulvarı Kızılay İş Merkezi No: 3 Kat:0 KONAK / İZMİR<br />
-                  Erzurum · Trabzon · Samsun · Batum<br />
-                  VKN: 1113111000
+                  Şehit Nevtes Bulvarı Kızılay İş Merkezi No: 3 Kat:6 KONAK / İZMİR<br />
+                  Trabzon: Anadolu Cd. Sanayi Mh. No:34/A · Samsun: Yeni Mh. 40 Sk. Gülsan San. Sit. 43/1<br />
+                  Batum: Fridon Khalvashi No:25 Batumi / GEORGIA<br />
+                  Vergi Dairesi: KONAK · VKN: 1113111000
                 </div>
               </div>
-              <div class="meta">
-                <div class="meta-row"><span>Belge No</span><span>${escapeReceiptText(sale.receipt_no)}</span></div>
-                <div class="meta-row"><span>Belge Tipi</span><span>${escapeReceiptText(documentLabel)}</span></div>
-                <div class="meta-row"><span>Tarih</span><span>${formatReceiptDate(sale.created_at)}</span></div>
-                <div class="meta-row"><span>Para Birimi</span><span>${escapeReceiptText(currencyLabel)}</span></div>
+              <div class="seal-qr">
+                <div class="seal">GİB<br/>e-Fatura</div>
+                <div class="qr" aria-label="QR Kod"></div>
               </div>
             </section>
-            <h1 class="title">e- Fatura</h1>
-            <p class="subtitle">(POS hızlı satış çıktısı)</p>
+            <h1 class="title">e-Arşiv Fatura</h1>
+            <p class="subtitle">(İrsaliye Yerine Geçer)</p>
             <section class="customer">
               <div class="box">
                 <div class="box-title">Sayın</div>
@@ -913,11 +923,13 @@ function openReceiptPrintWindow(
                 <div>${escapeReceiptText(sale.customer.code ?? selectedCustomer?.code ?? "")}</div>
                 <div>${escapeReceiptText(customerAddress)}</div>
               </div>
-              <div class="box">
-                <div class="box-title">Satış Bilgisi</div>
-                <div class="box-main">${escapeReceiptText(receiptTitle)}</div>
-                <div>Belge tipi: ${escapeReceiptText(documentLabel)}</div>
-                <div>Kalem: ${sale.items.length}</div>
+              <div class="meta">
+                <div class="meta-row"><span>Özelleştirme No</span><span>TR1.0</span></div>
+                <div class="meta-row"><span>Senaryo</span><span>TEMELFATURA</span></div>
+                <div class="meta-row"><span>Fatura Tipi</span><span>SATIŞ</span></div>
+                <div class="meta-row"><span>Fatura No</span><span>${escapeReceiptText(sale.receipt_no)}</span></div>
+                <div class="meta-row"><span>Fatura Tarihi</span><span>${formatReceiptDate(sale.created_at)}</span></div>
+                <div class="meta-row"><span>Para Birimi</span><span>${escapeReceiptText(currencyLabel)}</span></div>
               </div>
             </section>
             <table>

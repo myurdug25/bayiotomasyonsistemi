@@ -21,21 +21,26 @@
     <style>
         * { box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
-        body { font-family: Arial, Helvetica, sans-serif; background: #eef3ef; color: #18251d; }
+        body { font-family: Arial, Helvetica, sans-serif; background: #eef3ef; color: #1f1f1f; }
         .actions { position: sticky; top: 0; z-index: 3; display: flex; justify-content: flex-end; gap: 8px; padding: 8px 14px; background: rgba(238,243,239,.94); border-bottom: 1px solid #d8e2da; }
         .actions button { border: 0; border-radius: 999px; padding: 8px 13px; font-weight: 800; cursor: pointer; color: #fff; background: linear-gradient(135deg,#198754,#0f5132); }
-        .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 8mm 10mm; background: #fff; box-shadow: 0 20px 58px rgba(0,0,0,.08); }
-        .top { display: grid; grid-template-columns: 1.35fr .65fr; gap: 6mm; align-items: start; }
-        .brand { display: flex; align-items: flex-start; gap: 5mm; }
-        .logo { width: 42mm; max-height: 16mm; object-fit: contain; }
-        .fallback { display: inline-flex; width: 42mm; min-height: 14mm; align-items: center; justify-content: center; border-radius: 8px; background: #153d2b; color: #fff; font-size: 17px; font-weight: 900; letter-spacing: .12em; }
-        .company { margin-top: 3mm; font-size: 9.2px; line-height: 1.25; color: #38463e; }
-        .stamp-box { display: flex; gap: 5mm; align-items: center; justify-content: flex-end; min-height: 22mm; }
-        .stamp, .qr { display: flex; align-items: center; justify-content: center; border: 2px solid #d9e4dc; color: #8a978f; font-weight: 900; }
-        .stamp { width: 22mm; height: 22mm; border-radius: 50%; font-size: 9px; text-align: center; }
-        .qr { width: 22mm; height: 22mm; font-size: 8px; }
-        .title { margin: 4mm 0 3mm; padding-top: 3mm; border-top: 1px solid #dce4dd; text-align: center; }
-        .title h1 { margin: 0; font-size: 18px; letter-spacing: .04em; }
+        .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 7mm 9mm; background: #fff; box-shadow: 0 20px 58px rgba(0,0,0,.08); }
+        .doc-topline { display: flex; justify-content: space-between; color: #6b6b6b; font-size: 9px; font-weight: 700; margin-bottom: 2mm; }
+        .top { display: grid; grid-template-columns: 1fr 78mm; gap: 7mm; align-items: start; min-height: 58mm; }
+        .brand { display: block; }
+        .logo { width: 78mm; max-height: 26mm; object-fit: contain; object-position: left center; display: block; margin-bottom: 6mm; }
+        .fallback { display: inline-flex; width: 62mm; min-height: 18mm; align-items: center; justify-content: center; border-radius: 8px; background: #153d2b; color: #fff; font-size: 17px; font-weight: 900; letter-spacing: .12em; margin-bottom: 6mm; }
+        .company { margin-top: 0; font-size: 8.8px; line-height: 1.18; color: #303030; }
+        .stamp-box { display: flex; gap: 12mm; align-items: center; justify-content: center; min-height: 44mm; padding-top: 9mm; }
+        .stamp, .qr { display: flex; align-items: center; justify-content: center; color: #777; font-weight: 900; }
+        .stamp { width: 24mm; height: 24mm; border: 2px solid #a5adb5; border-radius: 50%; font-size: 9px; text-align: center; color: #9b1f27; }
+        .stamp::first-line { color: #9b1f27; }
+        .qr { width: 26mm; height: 26mm; border: 1px solid #aaa; font-size: 0; background:
+            linear-gradient(90deg, #222 50%, transparent 50%) 0 0 / 4px 4px,
+            linear-gradient(#222 50%, transparent 50%) 0 0 / 4px 4px,
+            #fff; }
+        .title { margin: 2mm 0 3mm; padding-top: 2mm; border-top: 1px solid #d7d7d7; text-align: center; }
+        .title h1 { margin: 0; font-size: 18px; letter-spacing: .02em; color: #666; }
         .title p { margin: 2px 0 0; font-size: 10px; color: #69756d; font-weight: 700; }
         .info { display: grid; grid-template-columns: 1.15fr .85fr; gap: 5mm; margin-bottom: 4mm; }
         .box { border: 1px solid #cfdad2; border-radius: 4px; padding: 2.5mm; font-size: 9.5px; line-height: 1.25; }
@@ -69,6 +74,10 @@
         <button type="button" onclick="window.close()">Kapat</button>
     </div>
     <main class="page">
+        <div class="doc-topline">
+            <span>e-Fatura</span>
+            <span>Page 1 of 1</span>
+        </div>
         <section class="top">
             <div>
                 <div class="brand">
@@ -93,8 +102,8 @@
         </section>
 
         <section class="title">
-            <h1>e-Fatura</h1>
-            <p>İrsaliye Yerine Geçer</p>
+            <h1>e-Arşiv Fatura</h1>
+            <p>(İrsaliye Yerine Geçer)</p>
         </section>
 
         <section class="info">

@@ -121,6 +121,8 @@ class WarehouseShipmentPrintController extends Controller
     private function powersaLogoDataUri(): ?string
     {
         $paths = [
+            base_path('../web/public/brand/apple/powersa-filter-logo-from-pdf.png'),
+            base_path('../web/public/brand/powersa-gucsa-logo-clean.png'),
             base_path('../web/public/brand/powersa-logo-tight.png'),
             base_path('../web/public/brand/powersa-logo.png'),
         ];
