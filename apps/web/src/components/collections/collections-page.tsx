@@ -148,6 +148,114 @@ const COLLECTION_FIELD_LABELS: Record<string, string> = {
 };
 
 const STANDARD_VALOR_DAY_LIMIT = 60;
+const COLLECTION_RECEIPT_CAPTURE_ATTR = "data-collection-receipt-capture";
+
+const html2CanvasSafeColor = (value: string, fallback: string) => {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized.includes("oklab") || normalized.includes("oklch") || normalized.includes("color-mix")) {
+    return fallback;
+  }
+
+  return value;
+};
+
+const makeCollectionReceiptCloneCanvasSafe = (clonedDocument: Document) => {
+  const clonedWindow = clonedDocument.defaultView;
+  const root = clonedDocument.querySelector<HTMLElement>(`[${COLLECTION_RECEIPT_CAPTURE_ATTR}="true"]`);
+
+  if (!clonedWindow || !root) {
+    return;
+  }
+
+  const nodes = [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))];
+  const copiedProperties = [
+    "alignItems",
+    "backgroundColor",
+    "backgroundImage",
+    "borderBottomColor",
+    "borderBottomLeftRadius",
+    "borderBottomRightRadius",
+    "borderBottomStyle",
+    "borderBottomWidth",
+    "borderLeftColor",
+    "borderLeftStyle",
+    "borderLeftWidth",
+    "borderRightColor",
+    "borderRightStyle",
+    "borderRightWidth",
+    "borderTopColor",
+    "borderTopLeftRadius",
+    "borderTopRightRadius",
+    "borderTopStyle",
+    "borderTopWidth",
+    "boxShadow",
+    "color",
+    "display",
+    "flex",
+    "flexBasis",
+    "flexDirection",
+    "flexGrow",
+    "flexShrink",
+    "flexWrap",
+    "fontFamily",
+    "fontSize",
+    "fontStyle",
+    "fontWeight",
+    "gap",
+    "gridTemplateColumns",
+    "height",
+    "justifyContent",
+    "letterSpacing",
+    "lineHeight",
+    "marginBottom",
+    "marginLeft",
+    "marginRight",
+    "marginTop",
+    "maxHeight",
+    "maxWidth",
+    "minHeight",
+    "minWidth",
+    "opacity",
+    "overflow",
+    "paddingBottom",
+    "paddingLeft",
+    "paddingRight",
+    "paddingTop",
+    "textAlign",
+    "textTransform",
+    "verticalAlign",
+    "whiteSpace",
+    "width",
+  ] as const;
+
+  nodes.forEach((node) => {
+    const computed = clonedWindow.getComputedStyle(node);
+
+    copiedProperties.forEach((property) => {
+      const rawValue = computed[property];
+      if (!rawValue) {
+        return;
+      }
+
+      let value = rawValue;
+
+      if (property.toLowerCase().includes("color")) {
+        value = html2CanvasSafeColor(rawValue, property === "color" ? "#e8f1ec" : "rgba(255,255,255,0.12)");
+      }
+
+      if (property === "backgroundImage" || property === "boxShadow") {
+        value = /oklab|oklch|color-mix/i.test(rawValue) ? "none" : rawValue;
+      }
+
+      node.style[property] = value;
+    });
+  });
+
+  root.style.backgroundColor = "#08121b";
+  root.style.color = "#e8f1ec";
+
+  clonedDocument.querySelectorAll("style, link[rel='stylesheet']").forEach((node) => node.remove());
+};
 
 function decimalSeparatorForAmount(value: string): "," | "." | null {
   const lastComma = value.lastIndexOf(",");
@@ -1528,6 +1636,7 @@ export function CollectionsPage() {
       const canvas = await html2canvas(element, {
         backgroundColor: "#08121b",
         logging: false,
+        onclone: makeCollectionReceiptCloneCanvasSafe,
         scale: Math.min(window.devicePixelRatio || 1, 2),
         useCORS: true,
       });
@@ -1996,6 +2105,7 @@ export function CollectionsPage() {
           <CardContent className="space-y-4 p-5 lg:p-6">
             <div
               ref={collectionReceiptCaptureRef}
+              data-collection-receipt-capture="true"
               className="space-y-4 rounded-[20px] bg-[rgba(8,18,27,0.96)]"
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -2050,7 +2160,7 @@ export function CollectionsPage() {
                     return (
                       <div
                         key={row.id}
-                        className="flex flex-col gap-3 rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface)] p-3 shadow-[0_14px_28px_-26px_rgba(0,0,0,0.2)] transition-colors hover:border-[var(--brand-primary)]/50 hover:bg-[color-mix(in_oklab,var(--brand-primary)_7%,var(--surface))] sm:flex-row sm:items-center"
+                        className="flex flex-col gap-3 rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface)] p-3 shadow-[0_14px_28px_-26px_rgba(0,0,0,0.2)] transition-colors hover:border-[var(--brand-primary)]/50 hover:bg-emerald-300/[0.055] sm:flex-row sm:items-center"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-4">
                           {primaryImage ? (
