@@ -2336,7 +2336,7 @@ export function CollectionsPage() {
       </div>
     </div>
     <Dialog open={previewImage !== null} onOpenChange={(open) => !open && setPreviewImage(null)}>
-      <DialogContent className="max-w-4xl border-white/10 bg-[rgba(9,18,27,0.98)] p-0 text-slate-100">
+      <DialogContent hideClose className="max-w-4xl border-white/10 bg-[rgba(9,18,27,0.98)] p-0 text-slate-100">
         <DialogHeader className="flex flex-row items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
           <div className="min-w-0">
             <DialogTitle className="truncate text-base font-black text-amber-100">

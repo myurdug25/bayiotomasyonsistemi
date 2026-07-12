@@ -1691,7 +1691,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     [roleSlugs]
   );
   const customerCountQuery = useQuery({
-    queryKey: ["customers", "count"],
+    queryKey: [
+      "customers",
+      "count",
+      {
+        userId: user?.id ?? null,
+        roleKey: roleSlugs.slice().sort().join("|"),
+      },
+    ],
     queryFn: () => listCustomers({ limit: 1, source_system: "logo", summary: "count" }),
     enabled: Boolean(user) && showCustomerCountBadge,
     staleTime: 60_000,
