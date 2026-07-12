@@ -205,7 +205,7 @@ class ModeratorManagementController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:64', 'regex:/^[a-z0-9._-]+$/', 'unique:users,username'],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:32'],
+            'phone' => ['required', 'string', 'regex:/^05\d{9}$/'],
             'password' => $this->moderatorPasswordRules(required: true),
             'is_active' => ['sometimes', 'boolean'],
             'role_slugs' => ['nullable', 'array'],
@@ -218,6 +218,7 @@ class ModeratorManagementController extends Controller
             'username.unique' => 'Bu kullanıcı adı zaten başka bir hesap tarafından kullanılıyor.',
             'username.regex' => 'Kullanıcı adı boşluk veya Türkçe karakter içeremez. Sadece küçük harf, rakam ve _, -, . kullanabilirsiniz.',
             'email.unique' => 'Bu e-posta adresi zaten kullanılıyor.',
+            'phone.regex' => 'Geçerli telefon numarası giriniz.',
         ]);
 
         $menuPermissions = collect(MenuPermissions::normalize($validated['menu_permissions'] ?? []));
@@ -299,7 +300,7 @@ class ModeratorManagementController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'username' => ['sometimes', 'string', 'max:64', 'regex:/^[a-z0-9._-]+$/', Rule::unique('users', 'username')->ignore($user->id)],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'phone' => ['nullable', 'string', 'max:32'],
+            'phone' => ['nullable', 'string', 'regex:/^05\d{9}$/'],
             'password' => $this->moderatorPasswordRules(required: false),
             'is_active' => ['sometimes', 'boolean'],
             'role_slugs' => ['nullable', 'array'],
@@ -312,6 +313,7 @@ class ModeratorManagementController extends Controller
             'username.unique' => 'Bu kullanıcı adı zaten başka bir hesap tarafından kullanılıyor.',
             'username.regex' => 'Kullanıcı adı boşluk veya Türkçe karakter içeremez. Sadece küçük harf, rakam ve _, -, . kullanabilirsiniz.',
             'email.unique' => 'Bu e-posta adresi zaten kullanılıyor.',
+            'phone.regex' => 'Geçerli telefon numarası giriniz.',
         ]);
 
         $updatedUser = DB::transaction(function () use ($actor, $user, $validated) {

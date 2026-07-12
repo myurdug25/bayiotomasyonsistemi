@@ -19,6 +19,7 @@ import {
   createCustomerCardRequest,
   listCustomerCardSalespeople,
 } from "@/lib/api";
+import { districtsForProvince, TURKEY_PROVINCES } from "@/lib/turkey-locations";
 
 type CustomerKind = "person" | "company";
 type FormState = {
@@ -161,14 +162,15 @@ export function NewCustomerCardPage() {
   const selectedSalespersonId = !canChooseSalesperson
     ? String(ownSalesperson?.id ?? user?.id ?? "")
     : form.salesperson_user_id;
+  const districtOptions = useMemo(() => districtsForProvince(form.city), [form.city]);
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => (key === "city" ? { ...current, city: String(value), district: "" } : { ...current, [key]: value }));
   }
 
   function handleSubmit() {
-    if (!form.company_name.trim() || !form.phone.trim() || !form.city.trim() || !form.address.trim()) {
-      toast.error("Cari ismi, telefon, il ve adres alanları zorunlu.");
+    if (!form.company_name.trim() || !form.phone.trim() || !form.city.trim() || !form.district.trim() || !form.address.trim()) {
+      toast.error("Cari ismi, telefon, il, ilçe ve adres alanları zorunlu.");
       return;
     }
 
@@ -269,21 +271,33 @@ export function NewCustomerCardPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-[var(--brand-primary-strong)]">İl</label>
-              <Input
-                className={FIELD_CLASSNAME}
-                value={form.city}
-                onChange={(event) => updateField("city", event.target.value)}
-                placeholder="İl"
-              />
+              <Select value={form.city} onValueChange={(value) => updateField("city", value)}>
+                <SelectTrigger className={FIELD_CLASSNAME}>
+                  <SelectValue placeholder="İl seç" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TURKEY_PROVINCES.map((province) => (
+                    <SelectItem key={province} value={province}>
+                      {province}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-[var(--brand-primary-strong)]">İlçe</label>
-              <Input
-                className={FIELD_CLASSNAME}
-                value={form.district}
-                onChange={(event) => updateField("district", event.target.value)}
-                placeholder="İlçe"
-              />
+              <Select value={form.district} onValueChange={(value) => updateField("district", value)} disabled={!form.city}>
+                <SelectTrigger className={FIELD_CLASSNAME}>
+                  <SelectValue placeholder={form.city ? "İlçe seç" : "Önce il seç"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {districtOptions.map((district) => (
+                    <SelectItem key={`${form.city}-${district}`} value={district}>
+                      {district}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Plasiyer</label>

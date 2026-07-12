@@ -80,6 +80,7 @@ type UserFormState = {
   username: string;
   phone: string;
   password: string;
+  password_confirmation: string;
   role_slugs: string[];
   menu_permissions: string[];
   feature_permissions: string[];
@@ -125,6 +126,7 @@ const EMPTY_USER_FORM: UserFormState = {
   username: "",
   phone: "",
   password: "",
+  password_confirmation: "",
   role_slugs: [],
   menu_permissions: [],
   feature_permissions: [],
@@ -509,11 +511,20 @@ function userRecordToForm(user: ModeratorUserRecord): UserFormState {
     username: user.username,
     phone: user.phone ?? "",
     password: "",
+    password_confirmation: "",
     role_slugs: user.roles.map((role) => role.slug),
     menu_permissions: user.menu_permissions ?? [],
     feature_permissions: user.feature_permissions ?? [],
     is_active: user.is_active,
   };
+}
+
+function normalizeTurkishMobilePhone(value: string) {
+  return value.replace(/\D/g, "").slice(0, 11);
+}
+
+function isValidTurkishMobilePhone(value: string) {
+  return /^05\d{9}$/.test(value.trim());
 }
 
 function normalizeUserSearch(value: string) {
@@ -786,13 +797,18 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const canCreateUser =
     userForm.name.trim() !== "" &&
     userForm.username.trim() !== "" &&
-    userForm.password.length >= 6;
+    isValidTurkishMobilePhone(userForm.phone.trim()) &&
+    userForm.password.length >= 6 &&
+    userForm.password === userForm.password_confirmation;
   const isEditingUser = editingUser !== null;
   const canSubmitUserModal =
     userForm.name.trim() !== "" &&
     userForm.username.trim() !== "" &&
     (!userMenuRequiresDealer || userForm.dealer_id !== "") &&
-    (isEditingUser ? userForm.password.trim() === "" || userForm.password.trim().length >= 6 : userForm.password.length >= 6);
+    (isEditingUser ? userForm.phone.trim() === "" || isValidTurkishMobilePhone(userForm.phone.trim()) : isValidTurkishMobilePhone(userForm.phone.trim())) &&
+    (isEditingUser
+      ? userForm.password.trim() === "" || (userForm.password.trim().length >= 6 && userForm.password === userForm.password_confirmation)
+      : userForm.password.length >= 6 && userForm.password === userForm.password_confirmation);
   const applyPermissionTemplate = (template: PermissionTemplate) => {
     setUserForm((prev) => ({
       ...prev,
@@ -840,6 +856,16 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
             : "Ad, kullanıcı adı ve şifre (en az 6 karakter) zorunludur."
         );
       }
+      return;
+    }
+
+    if ((!isEditingUser || userForm.phone.trim() !== "") && !isValidTurkishMobilePhone(userForm.phone.trim())) {
+      toast.error("❌ Geçerli telefon numarası giriniz");
+      return;
+    }
+
+    if (userForm.password !== userForm.password_confirmation) {
+      toast.error("Şifre ve şifre tekrar aynı olmalı.");
       return;
     }
 
@@ -1027,8 +1053,12 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                 <Input
                   className={userModalInputClassName}
                   value={userForm.phone}
-                  onChange={(event) => setUserForm((prev) => ({ ...prev, phone: event.target.value }))}
-                  placeholder="05xx..."
+                  onChange={(event) => setUserForm((prev) => ({ ...prev, phone: normalizeTurkishMobilePhone(event.target.value) }))}
+                  placeholder="05XXXXXXXXX"
+                  inputMode="numeric"
+                  maxLength={11}
+                  autoComplete="off"
+                  name="moderator-new-user-phone"
                 />
               </label>
               <label className="space-y-2 text-sm">
@@ -1042,6 +1072,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                     value={userForm.password}
                     onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
                     placeholder={isEditingUser ? "Değişmeyecekse boş bırakın" : "En az 6 karakter"}
+                    autoComplete="new-password"
+                    name="moderator-new-user-password"
                   />
                   <button
                     type="button"
@@ -1057,6 +1089,20 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                     {showUserPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className={cn("font-semibold", isDarkMode ? "text-[#dce9df]" : "text-[var(--brand-primary-strong)]")}>
+                  {isEditingUser ? "Yeni Şifre Tekrar" : "Şifre Tekrar"}
+                </span>
+                <Input
+                  className={userModalInputClassName}
+                  type={showUserPassword ? "text" : "password"}
+                  value={userForm.password_confirmation}
+                  onChange={(event) => setUserForm((prev) => ({ ...prev, password_confirmation: event.target.value }))}
+                  placeholder={isEditingUser ? "Şifre yazdıysanız tekrar edin" : "Şifreyi tekrar girin"}
+                  autoComplete="new-password"
+                  name="moderator-new-user-password-confirmation"
+                />
               </label>
 
               <label className="space-y-2 text-sm">
@@ -1396,8 +1442,12 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
               <span className="font-semibold text-[var(--brand-primary-strong)]">Telefon</span>
               <Input
                 value={userForm.phone}
-                onChange={(event) => setUserForm((prev) => ({ ...prev, phone: event.target.value }))}
-                placeholder="05xx..."
+                onChange={(event) => setUserForm((prev) => ({ ...prev, phone: normalizeTurkishMobilePhone(event.target.value) }))}
+                placeholder="05XXXXXXXXX"
+                inputMode="numeric"
+                maxLength={11}
+                autoComplete="off"
+                name="moderator-inline-new-user-phone"
               />
             </label>
             <label className="space-y-2 text-sm">
@@ -1407,9 +1457,22 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                 value={userForm.password}
                 onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
                 placeholder="En az 6 karakter"
+                autoComplete="new-password"
+                name="moderator-inline-new-user-password"
               />
             </label>
-            <div className="space-y-2 text-sm md:col-span-2">
+            <label className="space-y-2 text-sm">
+              <span className="font-semibold text-[var(--brand-primary-strong)]">Şifre Tekrar</span>
+              <Input
+                type="password"
+                value={userForm.password_confirmation}
+                onChange={(event) => setUserForm((prev) => ({ ...prev, password_confirmation: event.target.value }))}
+                placeholder="Şifreyi tekrar girin"
+                autoComplete="new-password"
+                name="moderator-inline-new-user-password-confirmation"
+              />
+            </label>
+            <div className="space-y-2 text-sm md:col-span-2 xl:col-span-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <span className="font-semibold text-[var(--brand-primary-strong)]">Kullanıcı Tipi</span>
                 <Button
@@ -1693,6 +1756,16 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
               onClick={() => {
                 if (!canCreateUser) {
                   toast.error("Ad, kullanıcı adı, şifre, kullanıcı tipi, menü seçimi ve gerekiyorsa bayi alanını doldurun.");
+                  return;
+                }
+
+                if (!isValidTurkishMobilePhone(userForm.phone.trim())) {
+                  toast.error("❌ Geçerli telefon numarası giriniz");
+                  return;
+                }
+
+                if (userForm.password !== userForm.password_confirmation) {
+                  toast.error("Şifre ve şifre tekrar aynı olmalı.");
                   return;
                 }
 

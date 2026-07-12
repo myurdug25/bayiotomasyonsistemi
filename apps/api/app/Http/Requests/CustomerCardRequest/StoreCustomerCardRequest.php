@@ -29,7 +29,7 @@ class StoreCustomerCardRequest extends FormRequest
             'logo_authorization_code' => ['nullable', 'string', 'max:64'],
             'auto_convert' => ['sometimes', 'boolean'],
             'city' => ['required', 'string', 'max:120'],
-            'district' => ['nullable', 'string', 'max:120'],
+            'district' => ['required', 'string', 'max:120'],
             'tax_office' => ['required_if:customer_kind,company', 'nullable', 'string', 'max:120'],
             'tax_number' => [
                 'required_if:customer_kind,company',
@@ -54,6 +54,7 @@ class StoreCustomerCardRequest extends FormRequest
     {
         return [
             'phone.regex' => 'Telefon numarası hatalı.',
+            'district.required' => 'İlçe seçimi zorunlu.',
             'tax_number.required_if' => 'Vergi no zorunlu.',
         ];
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
-import { CheckCircle2, CreditCard, LockKeyhole, ReceiptText, ShieldCheck, UserRound } from "lucide-react";
+import { CheckCircle2, CreditCard, LockKeyhole, MessageCircle, Printer, ReceiptText, ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSession } from "@/components/auth/session-provider";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-const INSTALLMENT_OPTIONS = ["1", "2", "3", "4", "5", "6"] as const;
+const INSTALLMENT_OPTIONS = ["1", "2", "3"] as const;
 
 function onlyDigits(value: string) {
   return value.replace(/\D/g, "");
@@ -160,6 +160,24 @@ export function VirtualPosPage() {
   const displayExpiry = expiry || "AA/YY";
   const displayCvv = cvv ? "•".repeat(Math.min(cvv.length, 4)) : "CVV";
   const displayCardHolder = cardHolder || "AD SOYAD";
+
+  const handleWhatsAppShare = () => {
+    const message = [
+      "PowerSA Sanal POS",
+      selectedCustomer ? `Cari: ${selectedCustomer.title}` : null,
+      `Tutar: ${formatMoney(numericAmount)}`,
+      `Taksit: ${installment === "1" ? "Tek Çekim" : `${installment} Taksit`}`,
+      description.trim() ? `Açıklama: ${description.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -345,17 +363,33 @@ export function VirtualPosPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] px-4 py-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
                 <p className={cn("text-sm font-bold", validationMessage ? "text-[var(--muted-foreground)]" : "text-emerald-600")}>
                   {validationMessage ?? "Ödeme bilgileri hazır."}
                 </p>
-                <Button
-                  type="submit"
-                  className="gap-2 rounded-[14px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] font-black text-white shadow-[0_14px_34px_rgba(225,29,46,0.28)] hover:brightness-110 md:w-[190px]"
-                  disabled={!canSubmit}
-                >
-                  <CreditCard className="h-4 w-4" /> Ödemeyi Başlat
-                </Button>
+                <div className="grid min-w-0 gap-2 sm:grid-cols-3 lg:min-w-[430px]">
+                  <Button
+                    type="button"
+                    className="h-11 rounded-[14px] border border-emerald-300/45 bg-[linear-gradient(135deg,#2dd36f_0%,#16a34a_52%,#0f6f35_100%)] px-3 text-sm font-black text-white shadow-[0_14px_30px_rgba(22,163,74,0.24)] hover:brightness-110"
+                    onClick={handleWhatsAppShare}
+                  >
+                    <MessageCircle className="h-4 w-4" /> WhatsApp
+                  </Button>
+                  <Button
+                    type="button"
+                    className="h-11 rounded-[14px] border border-white/10 bg-[linear-gradient(135deg,#64748b_0%,#334155_55%,#111827_100%)] px-3 text-sm font-black text-white shadow-[0_14px_28px_rgba(15,23,42,0.20)] hover:brightness-110"
+                    onClick={handlePrint}
+                  >
+                    <Printer className="h-4 w-4" /> Yazdır
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="h-11 gap-2 rounded-[14px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-3 text-sm font-black text-white shadow-[0_14px_34px_rgba(225,29,46,0.28)] hover:brightness-110"
+                    disabled={!canSubmit}
+                  >
+                    <CreditCard className="h-4 w-4" /> Ödemeyi Başlat
+                  </Button>
+                </div>
               </div>
             </form>
           </CardContent>
