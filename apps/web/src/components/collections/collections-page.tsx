@@ -851,10 +851,6 @@ export function CollectionsPage() {
   );
   const isPointUser = roleSlugs.includes("point");
   const isAdminUser = roleSlugs.includes("admin");
-  const visibleMethods = useMemo(
-    () => METHODS.filter((value) => !isPointUser || (value !== "check" && value !== "factory_cc")),
-    [isPointUser]
-  );
 
   const [page, setPage] = useState(1);
 
@@ -944,12 +940,6 @@ export function CollectionsPage() {
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, payload?.data, selectedCustomer?.id]);
-
-  useEffect(() => {
-    if (isPointUser && (method === "check" || method === "factory_cc")) {
-      setMethod("cash");
-    }
-  }, [isPointUser, method]);
 
   const bankOptions = useMemo(
     () => financeDefinitions
@@ -1601,8 +1591,8 @@ export function CollectionsPage() {
 
             <div className="space-y-2">
               <label className={fieldLabelClassName}>Ödeme Yöntemi</label>
-              <div className={cn("grid grid-cols-2 gap-3", isPointUser ? "md:grid-cols-3" : "md:grid-cols-5")}>
-                {visibleMethods.map((value) => (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                {METHODS.map((value) => (
                   <button
                     key={value}
                     type="button"
