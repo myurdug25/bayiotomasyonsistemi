@@ -1038,7 +1038,7 @@ export function WarehouseOrdersPage() {
             </div>
           </div>
 
-          <div className="grid gap-2 lg:grid-cols-[minmax(300px,1fr)_150px_150px_minmax(330px,auto)] lg:items-end">
+          <div className="grid gap-2 lg:grid-cols-[minmax(260px,1fr)_140px_140px_minmax(520px,auto)] lg:items-end">
             <div className="space-y-1">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -1058,47 +1058,47 @@ export function WarehouseOrdersPage() {
             <div className="space-y-1">
               <Input className="h-11 rounded-xl text-sm" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
             </div>
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-hidden lg:justify-end">
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 rounded-xl border-red-300/35 bg-[linear-gradient(135deg,rgba(48,18,18,0.92)_0%,rgba(17,28,23,0.88)_100%)] px-3 text-xs font-black text-red-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_28px_-24px_rgba(248,113,113,0.85)] transition hover:-translate-y-0.5 hover:border-red-200/65 hover:bg-[linear-gradient(135deg,rgba(94,25,25,0.96)_0%,rgba(30,38,30,0.94)_100%)] hover:text-white disabled:translate-y-0 disabled:border-red-900/35 disabled:text-red-200/35 disabled:shadow-none"
+                className="h-11 min-w-0 shrink rounded-xl border-red-300/35 bg-[linear-gradient(135deg,rgba(48,18,18,0.92)_0%,rgba(17,28,23,0.88)_100%)] px-2.5 text-[11px] font-black text-red-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_28px_-24px_rgba(248,113,113,0.85)] transition hover:-translate-y-0.5 hover:border-red-200/65 hover:bg-[linear-gradient(135deg,rgba(94,25,25,0.96)_0%,rgba(30,38,30,0.94)_100%)] hover:text-white disabled:translate-y-0 disabled:border-red-900/35 disabled:text-red-200/35 disabled:shadow-none"
                 disabled={selectedOrderIds.size === 0 || bulkCancelOrdersMutation.isPending}
                 onClick={() => setBulkDeleteMode("selected")}
               >
                 <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-red-300/25 bg-red-500/10 text-red-200">
                   <Trash2 className="h-3.5 w-3.5" />
                 </span>
-                Seçilenleri Sil
+                <span className="truncate">Seçilenleri Sil</span>
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 rounded-xl border-red-200/45 bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.26)_0%,transparent_34%),linear-gradient(135deg,#ef4444_0%,#b91c1c_54%,#6f1010_100%)] px-3 text-xs font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_36px_-24px_rgba(239,68,68,0.95)] transition hover:-translate-y-0.5 hover:border-red-100/70 hover:brightness-110 disabled:translate-y-0 disabled:border-red-900/35 disabled:from-red-950 disabled:to-slate-950 disabled:text-white/35 disabled:shadow-none"
+                className="h-11 shrink-0 rounded-xl border-red-200/45 bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.26)_0%,transparent_34%),linear-gradient(135deg,#ef4444_0%,#b91c1c_54%,#6f1010_100%)] px-2.5 text-[11px] font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_36px_-24px_rgba(239,68,68,0.95)] transition hover:-translate-y-0.5 hover:border-red-100/70 hover:brightness-110 disabled:translate-y-0 disabled:border-red-900/35 disabled:from-red-950 disabled:to-slate-950 disabled:text-white/35 disabled:shadow-none"
                 disabled={visibleOrderIds.length === 0 || bulkCancelOrdersMutation.isPending}
                 onClick={() => setBulkDeleteMode("all")}
               >
                 <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/20 bg-white/12 text-white">
                   <Trash2 className="h-3.5 w-3.5" />
                 </span>
-                Tümünü Sil
+                <span className="whitespace-nowrap">Tümünü Sil</span>
               </Button>
-              <Button className="h-11 rounded-xl px-3 text-sm font-extrabold" onClick={onRefresh} disabled={readyOrdersQuery.isFetching}>
+              <Button className="h-11 shrink-0 rounded-xl px-2.5 text-sm font-extrabold" onClick={onRefresh} disabled={readyOrdersQuery.isFetching}>
                 {readyOrdersQuery.isFetching ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCcw className="h-4 w-4" />
                 )}
-                Yenile
+                <span className="whitespace-nowrap">Yenile</span>
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 rounded-xl border-amber-200/45 bg-[linear-gradient(135deg,rgba(46,39,12,0.92)_0%,rgba(16,39,28,0.9)_100%)] px-3 text-xs font-black text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_32px_-26px_rgba(245,158,11,0.85)] transition hover:-translate-y-0.5 hover:border-amber-100/70 hover:bg-[linear-gradient(135deg,rgba(85,63,10,0.96)_0%,rgba(18,51,36,0.94)_100%)] hover:text-white"
+                className="h-11 shrink-0 rounded-xl border-amber-200/45 bg-[linear-gradient(135deg,rgba(46,39,12,0.92)_0%,rgba(16,39,28,0.9)_100%)] px-2.5 text-[11px] font-black text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_32px_-26px_rgba(245,158,11,0.85)] transition hover:-translate-y-0.5 hover:border-amber-100/70 hover:bg-[linear-gradient(135deg,rgba(85,63,10,0.96)_0%,rgba(18,51,36,0.94)_100%)] hover:text-white"
                 onClick={() => setShelfDialogOpen(true)}
               >
                 <Save className="h-4 w-4" />
-                Raf Adreslerini Güncelle
+                <span className="whitespace-nowrap">Raf Adreslerini Güncelle</span>
               </Button>
             </div>
           </div>
