@@ -3,7 +3,13 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Building2,
+  CheckCircle2,
   Loader2,
+  MapPin,
+  PhoneCall,
+  ShieldCheck,
+  Sparkles,
   Users,
   UserPlus,
 } from "lucide-react";
@@ -40,11 +46,13 @@ type FormState = {
 };
 
 const SHELL_CARD_CLASSNAME =
-  "overflow-hidden bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[0_18px_34px_-28px_rgba(33,52,22,0.28)]";
+  "overflow-hidden rounded-[28px] border border-emerald-300/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_36%),linear-gradient(145deg,rgba(7,22,16,0.96)_0%,rgba(10,31,22,0.94)_48%,rgba(20,22,12,0.92)_100%)] shadow-[0_28px_70px_-52px_rgba(16,185,129,0.75)]";
 const SOFT_PANEL_CLASSNAME =
-  "rounded-2xl bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[0_12px_24px_-22px_rgba(0,0,0,0.14)]";
+  "rounded-[22px] border border-white/10 bg-white/[0.035] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_18px_38px_-34px_rgba(0,0,0,0.72)] backdrop-blur";
 const FIELD_CLASSNAME =
-  "border-[var(--brand-border)] bg-[var(--surface)] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]";
+  "h-11 rounded-[14px] border-emerald-300/20 bg-[#07170f]/70 text-[var(--foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] placeholder:text-[var(--muted-foreground)] focus-visible:ring-2 focus-visible:ring-emerald-300/20";
+const SECTION_TITLE_CLASSNAME = "text-[11px] font-black uppercase tracking-[0.18em] text-emerald-200/85";
+const FIELD_LABEL_CLASSNAME = "text-xs font-black uppercase tracking-[0.12em] text-emerald-100/75";
 
 function createInitialForm(user?: { name?: string | null; email?: string | null; phone?: string | null } | null): FormState {
   return {
@@ -216,212 +224,277 @@ export function NewCustomerCardPage() {
   return (
     <div className="space-y-4">
       <Card className={SHELL_CARD_CLASSNAME}>
-        <CardContent className="p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--brand-border)] bg-[var(--surface-soft)] text-[var(--brand-primary)]">
-              <UserPlus className="h-6 w-6" />
+        <CardContent className="p-0">
+          <div className="relative overflow-hidden border-b border-emerald-300/15 px-4 py-4 sm:px-6">
+            <div className="absolute right-0 top-0 h-28 w-64 rounded-full bg-emerald-300/10 blur-3xl" />
+            <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[18px] border border-emerald-200/25 bg-[linear-gradient(135deg,rgba(52,211,153,0.24),rgba(20,83,45,0.28))] text-emerald-100 shadow-[0_16px_32px_-24px_rgba(16,185,129,0.9)]">
+                  <UserPlus className="h-6 w-6" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-amber-200" />
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-100/80">PowerSA Cari Yönetimi</p>
+                  </div>
+                  <h2 className="mt-1 truncate text-2xl font-black tracking-tight text-white sm:text-3xl">Yeni Cari Oluştur</h2>
+                  <p className="mt-1 text-sm font-semibold text-emerald-100/70">Logo uyumlu il/ilçe, plasiyer ve e-tahsilat bilgileriyle hızlı cari açılışı.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs font-black text-emerald-50">
+                <div className="rounded-[16px] border border-emerald-300/20 bg-emerald-300/10 px-3 py-2">
+                  <CheckCircle2 className="mx-auto mb-1 h-4 w-4 text-emerald-200" />
+                  Logo Hazır
+                </div>
+                <div className="rounded-[16px] border border-sky-300/20 bg-sky-300/10 px-3 py-2">
+                  <MapPin className="mx-auto mb-1 h-4 w-4 text-sky-200" />
+                  81 İl
+                </div>
+                <div className="rounded-[16px] border border-amber-300/20 bg-amber-300/10 px-3 py-2">
+                  <ShieldCheck className="mx-auto mb-1 h-4 w-4 text-amber-200" />
+                  Güvenli
+                </div>
+              </div>
             </div>
-            <h2 className="text-2xl font-extrabold tracking-tight text-[var(--brand-primary-strong)]">Yeni Cari Oluştur</h2>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Cari İsmi</label>
-              <Input
-                className={FIELD_CLASSNAME}
-                value={form.company_name}
-                onChange={(event) => updateField("company_name", event.target.value)}
-                placeholder="Cari adı"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Şahıs / Tüzel</label>
-              <Select value={form.customer_kind} onValueChange={(value) => updateField("customer_kind", value as CustomerKind)}>
-                <SelectTrigger className={FIELD_CLASSNAME}>
-                  <SelectValue placeholder="Cari tipi seç" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CUSTOMER_KIND_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Telefon</label>
-              <Input
-                className={FIELD_CLASSNAME}
-                value={form.phone}
-                onChange={(event) => updateField("phone", digitsOnly(event.target.value, 11))}
-                placeholder="05xx xxx xx xx"
-                inputMode="numeric"
-                maxLength={11}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Mail</label>
-              <Input
-                className={FIELD_CLASSNAME}
-                value={form.email}
-                onChange={(event) => updateField("email", event.target.value)}
-                placeholder="mail zorunlu değil"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">İl</label>
-              <Select value={form.city} onValueChange={(value) => updateField("city", value)}>
-                <SelectTrigger className={FIELD_CLASSNAME}>
-                  <SelectValue placeholder="İl seç" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TURKEY_PROVINCES.map((province) => (
-                    <SelectItem key={province} value={province}>
-                      {province}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">İlçe</label>
-              <Select value={form.district} onValueChange={(value) => updateField("district", value)} disabled={!form.city}>
-                <SelectTrigger className={FIELD_CLASSNAME}>
-                  <SelectValue placeholder={form.city ? "İlçe seç" : "Önce il seç"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {districtOptions.map((district) => (
-                    <SelectItem key={`${form.city}-${district}`} value={district}>
-                      {district}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Plasiyer</label>
-              <Select
-                value={selectedSalespersonId}
-                onValueChange={(value) => updateField("salesperson_user_id", value)}
-                disabled={!canChooseSalesperson || salespeopleQuery.isLoading}
-              >
-                <SelectTrigger className={FIELD_CLASSNAME}>
-                  <SelectValue placeholder={salespeopleQuery.isLoading ? "Plasiyerler yükleniyor" : "Plasiyer seç"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {salespersonOptions.map((salesperson) => (
-                    <SelectItem key={salesperson.id} value={String(salesperson.id)}>
-                      {salesperson.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Özel Kodu</label>
-              <Select value={form.logo_special_code} onValueChange={(value) => updateField("logo_special_code", value)}>
-                <SelectTrigger className={FIELD_CLASSNAME + " font-bold"}>
-                  <SelectValue placeholder="Özel kod seç" />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOGO_SPECIAL_CODE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Yetki Kodu</label>
-              <Select value={form.logo_authorization_code || "none"} onValueChange={(value) => updateField("logo_authorization_code", value === "none" ? "" : value)}>
-                <SelectTrigger className={FIELD_CLASSNAME}>
-                  <SelectValue placeholder="Yetki kodu seç" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Boş</SelectItem>
-                  {LOGO_AUTHORIZATION_CODE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {isCompanyCustomer ? (
-              <>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Vergi Dairesi</label>
+          <div className="grid gap-4 p-4 sm:p-6 xl:grid-cols-[1.25fr_0.95fr]">
+            <section className={SOFT_PANEL_CLASSNAME + " p-4"}>
+              <div className="mb-4 flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-[14px] bg-emerald-300/12 text-emerald-100">
+                  <Building2 className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className={SECTION_TITLE_CLASSNAME}>Cari Bilgileri</p>
+                  <p className="text-xs font-semibold text-emerald-100/55">Temel bilgiler ve vergi bilgileri</p>
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className={FIELD_LABEL_CLASSNAME}>Cari İsmi</label>
                   <Input
                     className={FIELD_CLASSNAME}
-                    value={form.tax_office}
-                    onChange={(event) => updateField("tax_office", event.target.value)}
-                    placeholder="Vergi dairesi"
+                    value={form.company_name}
+                    onChange={(event) => updateField("company_name", event.target.value)}
+                    placeholder="Cari adı"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Vergi No</label>
+                <div className="space-y-1.5">
+                  <label className={FIELD_LABEL_CLASSNAME}>Şahıs / Tüzel</label>
+                  <Select value={form.customer_kind} onValueChange={(value) => updateField("customer_kind", value as CustomerKind)}>
+                    <SelectTrigger className={FIELD_CLASSNAME}>
+                      <SelectValue placeholder="Cari tipi seç" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CUSTOMER_KIND_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className={FIELD_LABEL_CLASSNAME}>Mail</label>
                   <Input
                     className={FIELD_CLASSNAME}
-                    value={form.tax_number}
-                    onChange={(event) => updateField("tax_number", digitsOnly(event.target.value, 10))}
-                    placeholder="10 haneli vergi no"
+                    value={form.email}
+                    onChange={(event) => updateField("email", event.target.value)}
+                    placeholder="mail zorunlu değil"
+                  />
+                </div>
+                {isCompanyCustomer ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className={FIELD_LABEL_CLASSNAME}>Vergi Dairesi</label>
+                      <Input
+                        className={FIELD_CLASSNAME}
+                        value={form.tax_office}
+                        onChange={(event) => updateField("tax_office", event.target.value)}
+                        placeholder="Vergi dairesi"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className={FIELD_LABEL_CLASSNAME}>Vergi No</label>
+                      <Input
+                        className={FIELD_CLASSNAME}
+                        value={form.tax_number}
+                        onChange={(event) => updateField("tax_number", digitsOnly(event.target.value, 10))}
+                        placeholder="10 haneli vergi no"
+                        inputMode="numeric"
+                        maxLength={10}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className={FIELD_LABEL_CLASSNAME}>T.C. Kimlik No</label>
+                    <Input
+                      className={FIELD_CLASSNAME}
+                      value={form.tax_number}
+                      onChange={(event) => updateField("tax_number", digitsOnly(event.target.value, 11))}
+                      placeholder="11 haneli T.C. kimlik no"
+                      inputMode="numeric"
+                      maxLength={11}
+                    />
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className={SOFT_PANEL_CLASSNAME + " p-4"}>
+              <div className="mb-4 flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-[14px] bg-sky-300/12 text-sky-100">
+                  <PhoneCall className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className={SECTION_TITLE_CLASSNAME}>İletişim / Lokasyon</p>
+                  <p className="text-xs font-semibold text-emerald-100/55">Telefon, il ve ilçe seçimi</p>
+                </div>
+              </div>
+              <div className="grid gap-3">
+                <div className="space-y-1.5">
+                  <label className={FIELD_LABEL_CLASSNAME}>Telefon</label>
+                  <Input
+                    className={FIELD_CLASSNAME}
+                    value={form.phone}
+                    onChange={(event) => updateField("phone", digitsOnly(event.target.value, 11))}
+                    placeholder="05xx xxx xx xx"
                     inputMode="numeric"
-                    maxLength={10}
+                    maxLength={11}
                   />
                 </div>
-              </>
-            ) : (
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-[var(--brand-primary-strong)]">T.C. Kimlik No</label>
-                <Input
-                  className={FIELD_CLASSNAME}
-                  value={form.tax_number}
-                  onChange={(event) => updateField("tax_number", digitsOnly(event.target.value, 11))}
-                  placeholder="11 haneli T.C. kimlik no"
-                  inputMode="numeric"
-                  maxLength={11}
-                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className={FIELD_LABEL_CLASSNAME}>İl</label>
+                    <Select value={form.city} onValueChange={(value) => updateField("city", value)}>
+                      <SelectTrigger className={FIELD_CLASSNAME}>
+                        <SelectValue placeholder="İl seç" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TURKEY_PROVINCES.map((province) => (
+                          <SelectItem key={province} value={province}>
+                            {province}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className={FIELD_LABEL_CLASSNAME}>İlçe</label>
+                    <Select value={form.district} onValueChange={(value) => updateField("district", value)} disabled={!form.city}>
+                      <SelectTrigger className={FIELD_CLASSNAME}>
+                        <SelectValue placeholder={form.city ? "İlçe seç" : "Önce il seç"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {districtOptions.map((district) => (
+                          <SelectItem key={`${form.city}-${district}`} value={district}>
+                            {district}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className={FIELD_LABEL_CLASSNAME}>Adres</label>
+                  <Textarea
+                    className={FIELD_CLASSNAME + " min-h-[88px]"}
+                    value={form.address}
+                    onChange={(event) => updateField("address", event.target.value)}
+                    placeholder="Açık adres"
+                  />
+                </div>
               </div>
-            )}
-            <div className="space-y-2 md:col-span-2 xl:col-span-3">
-              <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Adres</label>
-              <Textarea
-                className={FIELD_CLASSNAME + " min-h-[96px]"}
-                value={form.address}
-                onChange={(event) => updateField("address", event.target.value)}
-                placeholder="Açık adres"
-              />
-            </div>
-            <div className={SOFT_PANEL_CLASSNAME + " grid gap-3 p-4 md:col-span-2 md:grid-cols-2 xl:col-span-3"}>
-              <p className="flex items-center gap-2 text-sm font-bold text-[var(--brand-primary-strong)]">
-                <Users className="h-4 w-4" />
-                Logo E-Tahsilat
-              </p>
-              <div className="rounded-xl bg-[var(--surface)] px-3 py-2 text-sm font-black text-[var(--brand-primary-strong)] shadow-[0_10px_18px_-20px_rgba(0,0,0,0.12)]">
-                {eCollectionPreview}
-              </div>
-            </div>
-          </div>
+            </section>
 
-          <div className="mt-5 flex flex-wrap justify-end gap-2">
-            <Button
-              variant="outline"
-              className="border-[var(--brand-border)] bg-[var(--surface)]"
-              onClick={() => setForm(createInitialForm(user))}
-              disabled={createMutation.isPending}
-            >
-              Temizle
-            </Button>
-            <Button
-              className="rounded-[14px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-6 font-black text-white shadow-[0_14px_34px_rgba(225,29,46,0.28)] hover:brightness-110"
-              onClick={handleSubmit}
-              disabled={createMutation.isPending}
-            >
-              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-              Cari Oluştur
-            </Button>
+            <section className={SOFT_PANEL_CLASSNAME + " p-4 xl:col-span-2"}>
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-[14px] bg-amber-300/12 text-amber-100">
+                    <Users className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className={SECTION_TITLE_CLASSNAME}>Logo / Plasiyer Ayarları</p>
+                    <p className="text-xs font-semibold text-emerald-100/55">Seçilen bilgiler cari kartına ve Logo kuyruğuna taşınır</p>
+                  </div>
+                </div>
+                <div className="rounded-[14px] border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs font-black text-amber-100">
+                  {eCollectionPreview}
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-1.5 xl:col-span-2">
+                  <label className={FIELD_LABEL_CLASSNAME}>Plasiyer</label>
+                  <Select
+                    value={selectedSalespersonId}
+                    onValueChange={(value) => updateField("salesperson_user_id", value)}
+                    disabled={!canChooseSalesperson || salespeopleQuery.isLoading}
+                  >
+                    <SelectTrigger className={FIELD_CLASSNAME}>
+                      <SelectValue placeholder={salespeopleQuery.isLoading ? "Plasiyerler yükleniyor" : "Plasiyer seç"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {salespersonOptions.map((salesperson) => (
+                        <SelectItem key={salesperson.id} value={String(salesperson.id)}>
+                          {salesperson.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className={FIELD_LABEL_CLASSNAME}>Özel Kodu</label>
+                  <Select value={form.logo_special_code} onValueChange={(value) => updateField("logo_special_code", value)}>
+                    <SelectTrigger className={FIELD_CLASSNAME + " font-bold"}>
+                      <SelectValue placeholder="Özel kod seç" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOGO_SPECIAL_CODE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className={FIELD_LABEL_CLASSNAME}>Yetki Kodu</label>
+                  <Select value={form.logo_authorization_code || "none"} onValueChange={(value) => updateField("logo_authorization_code", value === "none" ? "" : value)}>
+                    <SelectTrigger className={FIELD_CLASSNAME}>
+                      <SelectValue placeholder="Yetki kodu seç" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Boş</SelectItem>
+                      {LOGO_AUTHORIZATION_CODE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+
+            <div className="flex flex-wrap justify-end gap-2 xl:col-span-2">
+              <Button
+                variant="outline"
+                className="h-12 rounded-[16px] border-emerald-300/20 bg-white/[0.035] px-5 font-black text-emerald-50 hover:bg-white/[0.07]"
+                onClick={() => setForm(createInitialForm(user))}
+                disabled={createMutation.isPending}
+              >
+                Temizle
+              </Button>
+              <Button
+                className="h-12 rounded-[16px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-7 font-black text-white shadow-[0_18px_38px_rgba(225,29,46,0.34)] hover:brightness-110"
+                onClick={handleSubmit}
+                disabled={createMutation.isPending}
+              >
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                Cari Oluştur
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
