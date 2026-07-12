@@ -4579,7 +4579,7 @@ export function PosPage() {
         </section>
 
         <section className="point-panel point-product-panel rounded-[18px] border p-3 xl:p-4">
-          <div className="point-product-entry-grid grid gap-3 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)_96px_118px_132px] xl:items-end 2xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)_128px_150px_160px] 2xl:gap-4">
+          <div className="point-product-entry-grid grid gap-3 xl:grid-cols-[minmax(0,360px)_minmax(420px,1fr)_118px_150px] xl:items-end 2xl:grid-cols-[minmax(0,430px)_minmax(560px,1fr)_142px_170px] 2xl:gap-4">
             <label className="block">
               <span className="mb-1 flex h-4 items-center text-xs font-semibold text-[var(--point-muted-strong)] xl:mb-2 xl:h-5 xl:text-sm">Stok Kodu</span>
               <div className="grid h-12 grid-cols-[minmax(0,1fr)_46px] overflow-hidden rounded-[14px] border border-[var(--point-border)] bg-[var(--point-control)] xl:h-14 xl:grid-cols-[minmax(0,1fr)_52px] 2xl:h-16 2xl:grid-cols-[minmax(0,1fr)_58px]">
