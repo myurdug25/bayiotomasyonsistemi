@@ -2968,66 +2968,9 @@ class ProductSearchController extends Controller
                     $appendIds($this->matchingCodeAliasProductIds($normalizedSearch, $limit));
                 }
 
-                return $this->expandFastCodeProductIdsByLogoGroups(
-                    productIds: array_values($ids),
-                    includeEquivalents: false,
-                    limit: $limit,
-                    search: $search,
-                    normalizedSearch: $normalizedSearch
-                );
+                return array_values($ids);
             }
         );
-    }
-
-    /**
-     * @param  list<int>  $productIds
-     * @return list<int>
-     */
-    private function expandFastCodeProductIdsByLogoGroups(
-        array $productIds,
-        bool $includeEquivalents,
-        int $limit,
-        string $search,
-        ?string $normalizedSearch
-    ): array {
-        if ($productIds === [] || count($productIds) >= $limit) {
-            return $productIds;
-        }
-
-        $groupCodes = Product::query()
-            ->select(['products.id', 'products.meta'])
-            ->whereIn('products.id', $productIds)
-            ->get()
-            ->map(fn (Product $product): ?string => $this->resolveProductGroupCode($this->productMeta($product)))
-            ->filter()
-            ->unique(fn (string $groupCode): string => mb_strtoupper($groupCode, 'UTF-8'))
-            ->values()
-            ->all();
-
-        if ($groupCodes === []) {
-            return $productIds;
-        }
-
-        $groupProductIds = $this->matchingGroupProductIds(
-            $groupCodes,
-            $includeEquivalents,
-            $limit,
-            $search,
-            $normalizedSearch
-        );
-
-        foreach ($groupProductIds as $groupProductId) {
-            if (in_array($groupProductId, $productIds, true)) {
-                continue;
-            }
-
-            $productIds[] = $groupProductId;
-            if (count($productIds) >= $limit) {
-                break;
-            }
-        }
-
-        return $productIds;
     }
 
     /**
