@@ -1595,16 +1595,25 @@ export function WarehouseOrdersPage() {
               ) : (
                 <div className="overflow-hidden rounded-2xl border border-emerald-900/65 bg-[#06100d]">
                   <div className="overflow-x-auto">
-                    <Table className="min-w-[980px] text-[12px]">
+                    <Table className="w-full min-w-[900px] table-fixed text-[12px]">
+                      <colgroup>
+                        <col className="w-[14%]" />
+                        <col className="w-[31%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[18%]" />
+                        <col className="w-[9%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[6%]" />
+                      </colgroup>
                       <TableHeader className="sticky top-0 z-10 bg-[#10241a]">
                         <TableRow className="border-emerald-900/70 hover:bg-transparent">
-                          <TableHead className="h-9 w-[150px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Ürün Kodu</TableHead>
-                          <TableHead className="h-9 min-w-[260px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Ürün</TableHead>
-                          <TableHead className="h-9 w-[170px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">OEM</TableHead>
-                          <TableHead className="h-9 min-w-[220px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Rakip Kod</TableHead>
-                          <TableHead className="h-9 w-[120px] px-3 text-center text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Mevcut Raf</TableHead>
-                          <TableHead className="h-9 w-[230px] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">Yeni Raf</TableHead>
-                          <TableHead className="h-9 w-[104px] px-3 text-center text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100">İşlem</TableHead>
+                          <TableHead className="h-8 px-2 text-[9px] font-black uppercase tracking-[0.06em] text-emerald-100">Ürün Kodu</TableHead>
+                          <TableHead className="h-8 px-2 text-[9px] font-black uppercase tracking-[0.06em] text-emerald-100">Ürün</TableHead>
+                          <TableHead className="h-8 px-2 text-[9px] font-black uppercase tracking-[0.06em] text-emerald-100">OEM</TableHead>
+                          <TableHead className="h-8 px-2 text-[9px] font-black uppercase tracking-[0.06em] text-emerald-100">Rakip Kod</TableHead>
+                          <TableHead className="h-8 px-2 text-center text-[9px] font-black uppercase tracking-[0.06em] text-emerald-100">Mevcut Raf</TableHead>
+                          <TableHead className="h-8 px-2 text-center text-[9px] font-black uppercase tracking-[0.06em] text-emerald-100">Yeni Raf</TableHead>
+                          <TableHead className="sticky right-0 z-20 h-8 bg-[#10241a] px-1.5 text-center text-[9px] font-black uppercase tracking-[0.06em] text-emerald-100 shadow-[-12px_0_18px_-18px_rgba(0,0,0,0.9)]">İşlem</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1620,41 +1629,41 @@ export function WarehouseOrdersPage() {
 
                           return (
                             <TableRow key={product.id} className="border-emerald-950/80 hover:bg-emerald-400/5">
-                              <TableCell className="px-3 py-2 align-middle font-black text-white">
-                                <span className="block max-w-[138px] truncate" title={product.product_code}>
+                              <TableCell className="px-2 py-1.5 align-middle font-black text-white">
+                                <span className="block truncate" title={product.product_code}>
                                   {product.product_code}
                                 </span>
                               </TableCell>
-                              <TableCell className="px-3 py-2 align-middle">
-                                <p className="max-w-[360px] truncate font-black text-white" title={product.product_name}>
+                              <TableCell className="px-2 py-1.5 align-middle">
+                                <p className="truncate font-black text-white" title={product.product_name}>
                                   {product.product_name}
                                 </p>
-                                <p className="mt-0.5 max-w-[220px] truncate text-[10px] font-bold text-[#8aa092]" title={product.brand ?? undefined}>
+                                <p className="mt-0.5 truncate text-[10px] font-bold text-[#8aa092]" title={product.brand ?? undefined}>
                                   {product.brand ?? "-"}
                                 </p>
                               </TableCell>
-                              <TableCell className="px-3 py-2 align-middle font-bold text-[#cfe1d2]">
-                                <span className="block max-w-[160px] truncate" title={product.oem ?? undefined}>
+                              <TableCell className="px-2 py-1.5 align-middle font-bold text-[#cfe1d2]">
+                                <span className="block truncate" title={product.oem ?? undefined}>
                                   {product.oem || "-"}
                                 </span>
                               </TableCell>
-                              <TableCell className="px-3 py-2 align-middle font-bold text-[#cfe1d2]">
-                                <span className="block max-w-[260px] truncate" title={competitorPreview}>
+                              <TableCell className="px-2 py-1.5 align-middle font-bold text-[#cfe1d2]">
+                                <span className="block truncate" title={competitorPreview}>
                                   {competitorPreview}
                                 </span>
                               </TableCell>
-                              <TableCell className="px-3 py-2 text-center align-middle">
+                              <TableCell className="px-2 py-1.5 text-center align-middle">
                                 {product.shelf_address ? (
-                                  <span className="inline-flex min-w-[58px] items-center justify-center rounded-lg border border-sky-200/35 bg-sky-400/12 px-2 py-1 text-xs font-black text-sky-100">
+                                  <span className="inline-flex max-w-full items-center justify-center truncate rounded-lg border border-sky-200/35 bg-sky-400/12 px-2 py-1 text-xs font-black text-sky-100">
                                     {product.shelf_address}
                                   </span>
                                 ) : (
                                   <span className="text-xs font-bold text-[#607267]">-</span>
                                 )}
                               </TableCell>
-                              <TableCell className="px-3 py-2 align-middle">
+                              <TableCell className="px-2 py-1.5 align-middle">
                                 <Input
-                                  className="h-8 rounded-lg border-emerald-800/80 bg-[#020907] px-2 text-center text-xs font-black text-white placeholder:text-[#5f7469]"
+                                  className="h-8 rounded-lg border-emerald-800/80 bg-[#020907] px-1.5 text-center text-xs font-black text-white placeholder:text-[#5f7469]"
                                   value={draft}
                                   onChange={(event) =>
                                     setShelfDrafts((previous) => ({
@@ -1671,16 +1680,17 @@ export function WarehouseOrdersPage() {
                                   disabled={!product.editable || saving}
                                 />
                               </TableCell>
-                              <TableCell className="px-3 py-2 text-center align-middle">
+                              <TableCell className="sticky right-0 z-10 bg-[#06100d] px-1.5 py-1.5 text-center align-middle shadow-[-12px_0_18px_-18px_rgba(0,0,0,0.9)]">
                                 <Button
                                   type="button"
-                                  size="sm"
-                                  className="h-8 rounded-lg border border-amber-200/45 bg-[linear-gradient(135deg,#fff3b0_0%,#f6c44f_45%,#b77810_100%)] px-2.5 text-[11px] font-black text-[#201400] shadow-none hover:brightness-105 disabled:opacity-50"
+                                  size="icon"
+                                  className="h-8 w-8 rounded-lg border border-amber-200/45 bg-[linear-gradient(135deg,#fff3b0_0%,#f6c44f_45%,#b77810_100%)] text-[#201400] shadow-none hover:brightness-105 disabled:opacity-50"
                                   disabled={!product.editable || saving}
+                                  title="Kaydet"
+                                  aria-label={`${product.product_code} raf adresini kaydet`}
                                   onClick={() => updateShelfMutation.mutate({ product, shelfAddress: draft })}
                                 >
                                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                                  Kaydet
                                 </Button>
                               </TableCell>
                             </TableRow>
