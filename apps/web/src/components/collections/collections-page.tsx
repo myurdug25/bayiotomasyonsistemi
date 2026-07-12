@@ -2283,11 +2283,17 @@ export function CollectionsPage() {
                   ].map((card) => (
                     <div
                       key={card.label}
-                      className="grid min-h-[58px] grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-3 gap-y-1 rounded-[12px] border border-white/10 bg-white/[0.035] px-3 py-2"
+                      className="flex min-h-[58px] min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[12px] border border-white/10 bg-white/[0.035] px-3 py-2"
                     >
-                      <span className="whitespace-nowrap text-[9px] font-black uppercase tracking-[0.06em] text-slate-500">{card.label}</span>
-                      <strong className={cn("justify-self-end whitespace-nowrap text-xl font-black leading-none", card.tone)}>{card.value}</strong>
-                      <span className="col-span-2 whitespace-nowrap text-[10px] font-black uppercase tracking-[0.05em] text-[var(--muted-foreground)]">{card.sub}</span>
+                      <span className="min-w-0 shrink truncate whitespace-nowrap text-[clamp(8px,1.15vw,10px)] font-black uppercase tracking-[0.04em] text-slate-500">
+                        {card.label}
+                      </span>
+                      <strong className={cn("ml-auto shrink-0 whitespace-nowrap text-right text-[clamp(18px,2.8vw,26px)] font-black leading-none", card.tone)}>
+                        {card.value}
+                      </strong>
+                      <span className="basis-full truncate whitespace-nowrap text-[clamp(9px,1.2vw,11px)] font-black uppercase tracking-[0.04em] text-[var(--muted-foreground)]">
+                        {card.sub}
+                      </span>
                     </div>
                   ))}
                 </div>
