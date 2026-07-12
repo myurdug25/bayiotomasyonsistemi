@@ -27,6 +27,7 @@ use Illuminate\Validation\ValidationException;
 class PosSaleService
 {
     private const POINT_CURRENCY = 'TRY';
+
     private const BATUM_POINT_CURRENCY = 'GEL';
 
     public function __construct(
@@ -143,6 +144,7 @@ class PosSaleService
                 'status' => 'paid',
                 'created_by' => $user->id,
             ]);
+            $isInvoiceDocument = $sale->document_type === 'invoice';
 
             foreach ($totals['items'] as $item) {
                 PosSaleItem::create([
@@ -170,24 +172,26 @@ class PosSaleService
                 ]);
             }
 
-            $this->ledgerWriter->write([
-                'dealer_id' => $customer->dealer_id,
-                'customer_id' => $customer->id,
-                'order_id' => null,
-                'collection_id' => null,
-                'date' => now()->toDateString(),
-                'type' => 'invoice',
-                'debit' => $this->fromCents($totals['grand_total_cents']),
-                'credit' => 0,
-                'currency' => $pointCurrency,
-                'reference_no' => $sale->receipt_no,
-                'description' => 'POS sale '.$sale->receipt_no,
-                'created_by_user_id' => $user->id,
-                'meta' => [
-                    'source' => 'pos_sale',
-                    'pos_sale_id' => $sale->id,
-                ],
-            ]);
+            if ($isInvoiceDocument) {
+                $this->ledgerWriter->write([
+                    'dealer_id' => $customer->dealer_id,
+                    'customer_id' => $customer->id,
+                    'order_id' => null,
+                    'collection_id' => null,
+                    'date' => now()->toDateString(),
+                    'type' => 'invoice',
+                    'debit' => $this->fromCents($totals['grand_total_cents']),
+                    'credit' => 0,
+                    'currency' => $pointCurrency,
+                    'reference_no' => $sale->receipt_no,
+                    'description' => 'POS sale '.$sale->receipt_no,
+                    'created_by_user_id' => $user->id,
+                    'meta' => [
+                        'source' => 'pos_sale',
+                        'pos_sale_id' => $sale->id,
+                    ],
+                ]);
+            }
 
             foreach ($paymentsPayload as $paymentPayload) {
                 $payment = PosPayment::create([
@@ -196,6 +200,10 @@ class PosSaleService
                     'amount' => number_format((float) $paymentPayload['amount'], 2, '.', ''),
                     'meta_json' => $paymentPayload['meta_json'] ?? null,
                 ]);
+
+                if (! $isInvoiceDocument) {
+                    continue;
+                }
 
                 $collection = Collection::create([
                     'dealer_id' => $customer->dealer_id,

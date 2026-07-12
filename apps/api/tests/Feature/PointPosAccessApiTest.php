@@ -1327,7 +1327,7 @@ class PointPosAccessApiTest extends TestCase
             ->assertJsonPath('records.0.cashbox_name', 'AHMET ARAÇ KASASI');
     }
 
-    public function test_pos_sale_payment_for_exported_customer_is_marked_pending_for_logo_export_with_cashbox(): void
+    public function test_pos_invoice_payment_for_exported_customer_is_marked_pending_for_logo_export_with_cashbox(): void
     {
         $dealer = Dealer::query()->create([
             'code' => 'DLR-POINT-'.Str::upper(Str::random(4)),
@@ -1383,7 +1383,7 @@ class PointPosAccessApiTest extends TestCase
             'pos_session_id' => $sessionId,
             'customer_id' => $customer->id,
             'sale_type' => 'cash',
-            'document_type' => 'delivery',
+            'document_type' => 'invoice',
             'receipt_no' => 'POS-EXPORT-001',
             'items' => [
                 [
@@ -1463,6 +1463,118 @@ class PointPosAccessApiTest extends TestCase
             ->assertJsonPath('records.0.payments.0.currency', 'GEL')
             ->assertJsonPath('records.0.cashbox_code', '100.01.002')
             ->assertJsonPath('records.0.items.0.product_code', 'POS-TEST-001');
+    }
+
+    public function test_pos_delivery_creates_only_sales_dispatch_export_without_customer_ledger_or_collection(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-DELIVERY-'.Str::upper(Str::random(4)),
+            'name' => 'Delivery Dealer',
+            'is_active' => true,
+        ]);
+
+        $user = $this->createUserWithRole('point', $dealer);
+
+        $cashbox = Cashbox::query()->create([
+            'code' => '100.01.002',
+            'name' => 'Ahmet Arac Kasasi',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'b2b',
+            'source_reference' => '120-25-002',
+            'sync_status' => 'synced',
+            'code' => '120-25-002',
+            'name' => 'Logo Cari',
+            'is_active' => true,
+        ]);
+
+        $product = Product::withoutEvents(function (): Product {
+            return Product::query()->create([
+                'sku' => 'POS-DELIVERY-001',
+                'name' => 'POS Delivery Product',
+                'unit' => 'adet',
+                'vat_rate' => 0,
+                'is_active' => true,
+            ]);
+        });
+
+        DB::table('stock_summary')->insert([
+            'product_id' => $product->id,
+            'available_total' => 5,
+            'reserved_total' => 0,
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+
+        $openResponse = $this->postJson('/api/pos/sessions/open', [
+            'cashbox_id' => $cashbox->id,
+            'opening_cash' => 0,
+        ])->assertCreated();
+
+        $this->postJson('/api/pos/sales', [
+            'pos_session_id' => (int) $openResponse->json('data.id'),
+            'customer_id' => $customer->id,
+            'sale_type' => 'cash',
+            'document_type' => 'delivery',
+            'receipt_no' => 'POS-DELIVERY-ONLY-001',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'qty' => 1,
+                    'unit_price' => 100,
+                    'vat_rate' => 0,
+                ],
+            ],
+            'payments' => [
+                [
+                    'method' => 'cash',
+                    'amount' => 100,
+                    'meta_json' => [
+                        'cash_received' => 100,
+                    ],
+                ],
+            ],
+        ])->assertCreated();
+
+        $sale = PosSale::query()->latest('id')->firstOrFail();
+
+        $this->assertDatabaseMissing('ledger_entries', [
+            'customer_id' => $customer->id,
+            'reference_no' => 'POS-DELIVERY-ONLY-001',
+        ]);
+
+        $this->assertDatabaseMissing('collections', [
+            'customer_id' => $customer->id,
+            'reference_no' => 'POS-DELIVERY-ONLY-001',
+        ]);
+
+        $this->assertDatabaseMissing('integration_sync_events', [
+            'domain' => 'collections-write',
+            'entity_type' => Collection::class,
+            'status' => 'queued',
+        ]);
+
+        $this->assertDatabaseHas('integration_sync_states', [
+            'domain' => 'pos-sales',
+            'entity_type' => PosSale::class,
+            'entity_id' => $sale->id,
+            'status' => 'queued',
+        ]);
+
+        config(['integrations.logo.pos_sale_sync_key' => 'test-pos-sale-key']);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-pos-sale-key')
+            ->getJson('/api/integrations/logo/pos-sales/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('records.0.pos_sale_id', $sale->id)
+            ->assertJsonPath('records.0.document_type', 'delivery')
+            ->assertJsonPath('records.0.logo.document_target', 'sales_dispatch_note')
+            ->assertJsonPath('records.0.logo.target_tables', ['STFICHE', 'STLINE']);
     }
 
     public function test_cash_and_card_pos_sales_do_not_add_vat_to_point_total(): void
