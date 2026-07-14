@@ -63,7 +63,7 @@ const PAGE_LIMIT = 25;
 const DEFAULT_WAREHOUSE_CODE = "1";
 const DEFAULT_WAREHOUSE_NAME = "Varsayılan depo";
 const WAREHOUSE_TABLE_ACTION_CLASSNAME =
-  "h-8 min-w-0 flex-1 justify-center rounded-md px-1.5 text-[10px] font-extrabold shadow-[0_10px_18px_-18px_rgba(0,0,0,0.55)]";
+  "h-8 min-w-0 flex-1 justify-center rounded-md px-1 text-[9px] font-extrabold shadow-[0_10px_18px_-18px_rgba(0,0,0,0.55)]";
 const WAREHOUSE_DETAIL_ACTION_CLASSNAME =
   "h-8 justify-center rounded-md border-amber-200/55 [background:linear-gradient(135deg,#fff8db_0%,#f7c948_55%,#b76e00_100%)] px-2 text-[10px] font-extrabold text-[#231500] shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_12px_20px_-20px_rgba(183,110,0,0.9)] hover:-translate-y-0.5 hover:border-amber-100/80 hover:brightness-105";
 const WAREHOUSE_PRINT_ACTION_CLASSNAME =
@@ -980,7 +980,7 @@ export function WarehouseOrdersPage() {
 
   return (
     <div className="space-y-4">
-      <Card className="md:sticky md:top-24 md:z-20">
+      <Card>
         <CardContent className="space-y-2.5 py-3">
           <div className="rounded-xl border border-[var(--brand-border)]/70 bg-[color-mix(in_oklab,var(--surface)_58%,transparent)] px-2.5 py-2">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -1038,7 +1038,7 @@ export function WarehouseOrdersPage() {
             </div>
           </div>
 
-          <div className="grid gap-2 lg:grid-cols-[minmax(260px,1fr)_140px_140px_minmax(520px,auto)] lg:items-end">
+          <div className="grid gap-2 lg:grid-cols-[minmax(260px,1fr)_140px_140px_minmax(470px,auto)] lg:items-end">
             <div className="space-y-1">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -1278,16 +1278,16 @@ export function WarehouseOrdersPage() {
               <Table className="min-w-0 table-fixed text-[11px]">
                 <colgroup>
                   <col className="w-[3%]" />
-                  <col className="w-[6%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[23%]" />
+                  <col className="w-[4%]" />
                   <col className="w-[11%]" />
+                  <col className="w-[22%]" />
                   <col className="w-[10%]" />
-                  <col className="w-[8%]" />
+                  <col className="w-[9%]" />
                   <col className="w-[7%]" />
+                  <col className="w-[6%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[9%]" />
                   <col className="w-[10%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[14%]" />
                 </colgroup>
                 <TableHeader className="bg-[linear-gradient(135deg,rgba(22,128,55,0.96)_0%,rgba(18,90,45,0.98)_52%,rgba(11,64,35,1)_100%)]">
                   <TableRow className="border-b border-emerald-300/35 hover:bg-transparent">
@@ -1408,10 +1408,11 @@ export function WarehouseOrdersPage() {
                           >
                             <Button
                               type="button"
-                              className={cn(WAREHOUSE_DETAIL_ACTION_CLASSNAME, "w-full")}
+                              className={cn(WAREHOUSE_DETAIL_ACTION_CLASSNAME, "mx-auto w-9 px-0")}
+                              title="Detay"
+                              aria-label={`${toDisplayText(order.order_no)} detayını aç`}
                             >
                               <Eye className="h-4 w-4 shrink-0" />
-                              Detay
                             </Button>
                           </TableCell>
                           <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle">
@@ -1476,7 +1477,7 @@ export function WarehouseOrdersPage() {
                             </span>
                           </TableCell>
                           <TableCell className="border-r border-[var(--brand-border)]/80 px-1.5 py-1.5 text-center align-middle">
-                            <span className="inline-flex min-w-[84px] justify-center rounded-md border border-[#c7ddd1] bg-[#eef8f1] px-1.5 py-1 text-[11px] font-black text-[#1f6a43]">
+                            <span className="inline-flex max-w-full justify-center rounded-md border border-[#c7ddd1] bg-[#eef8f1] px-1.5 py-1 text-[10px] font-black text-[#1f6a43]">
                               {formatMoney(order.grand_total, order.currency)}
                             </span>
                           </TableCell>
@@ -1490,7 +1491,7 @@ export function WarehouseOrdersPage() {
                                 onClick={() => printPageInPlace(`/warehouse/orders/${order.id}/print`)}
                               >
                                 <Printer className="h-4 w-4 shrink-0" />
-                                <span className="truncate">Sipariş Formu</span>
+                                <span className="truncate">Form</span>
                               </Button>
                             <Button
                               className={cn(
@@ -1504,7 +1505,7 @@ export function WarehouseOrdersPage() {
                                 }}
                               >
                                 <Truck className="h-4 w-4 shrink-0" />
-                                <span className="truncate">{order.shipment?.id ? "Sevkiyatı Aç" : "Sevkiyat"}</span>
+                                <span className="truncate">{order.shipment?.id ? "Aç" : "Sevk"}</span>
                               </Button>
                             </div>
                           </TableCell>
