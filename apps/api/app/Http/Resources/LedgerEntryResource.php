@@ -23,6 +23,7 @@ class LedgerEntryResource extends JsonResource
         $currency = $this->displayCurrency((string) $this->currency, $request);
         $collectionMethod = $this->collectionMethod();
         $transactionType = $this->transactionType();
+        $returnTypeLabel = $this->returnTypeLabel($transactionType);
 
         return [
             'id' => $this->id,
@@ -51,9 +52,12 @@ class LedgerEntryResource extends JsonResource
                 ? $this->collectionMethodLabel($collectionMethod)
                 : null,
             'transaction_type' => $transactionType,
-            'transaction_type_label' => $this->transactionTypeLabel($transactionType),
+            'transaction_type_label' => $returnTypeLabel ?? $this->transactionTypeLabel($transactionType),
             'document_no' => $this->reference_no,
             'document_date' => $date,
+            'return_quantity' => $this->returnQuantity($transactionType),
+            'return_total' => $this->returnTotal($transactionType),
+            'return_type_label' => $returnTypeLabel,
             'source_document' => $this->sourceDocument(),
             'checkout_summary' => $this->checkoutSummary(),
             'sales_price_type' => $this->salesPriceType(),
@@ -71,6 +75,10 @@ class LedgerEntryResource extends JsonResource
 
     private function transactionType(): string
     {
+        if (data_get($this->meta, 'source') === 'return_request') {
+            return 'return';
+        }
+
         if (data_get($this->meta, 'source') === 'order_visibility') {
             return 'order';
         }
@@ -90,12 +98,52 @@ class LedgerEntryResource extends JsonResource
             'order' => 'Sipariş',
             'invoice' => 'Fatura',
             'payment' => 'Tahsilat',
+            'return' => 'İade',
             'credit' => 'İade / Alacak',
             'transfer' => 'Virman',
             'offset' => 'Mahsup',
             'opening' => 'Devir',
             default => 'Borç',
         };
+    }
+
+    private function returnTypeLabel(string $transactionType): ?string
+    {
+        if ($transactionType !== 'return') {
+            return null;
+        }
+
+        $label = trim((string) data_get($this->meta, 'return_type_label'));
+
+        return $label !== '' ? $label : 'İade';
+    }
+
+    private function returnQuantity(string $transactionType): ?int
+    {
+        if ($transactionType !== 'return') {
+            return null;
+        }
+
+        $quantity = (int) data_get($this->meta, 'return_quantity', 0);
+
+        return $quantity > 0 ? $quantity : null;
+    }
+
+    private function returnTotal(string $transactionType): ?string
+    {
+        if ($transactionType !== 'return') {
+            return null;
+        }
+
+        $total = data_get($this->meta, 'return_total');
+
+        if ($total !== null && trim((string) $total) !== '') {
+            return number_format((float) $total, 2, '.', '');
+        }
+
+        $credit = $this->credit ?? ($this->entry_type === 'credit' ? $this->amount : null);
+
+        return $credit !== null ? number_format((float) $credit, 2, '.', '') : null;
     }
 
     private function looksLikeInvoice(): bool

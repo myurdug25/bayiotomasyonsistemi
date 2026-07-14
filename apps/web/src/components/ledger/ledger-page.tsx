@@ -40,7 +40,7 @@ function formatLedgerDate(value: string): string {
   return LEDGER_DATE_FORMATTER.format(parsed);
 }
 
-function getLedgerTypeMeta(type: LedgerEntryDto["type"]): { label: string; className: string } {
+function getLedgerTypeMeta(type: LedgerEntryDto["type"] | NonNullable<LedgerEntryDto["transaction_type"]>): { label: string; className: string } {
   if (type === "order") {
     return { label: "Sipariş", className: "border-cyan-300/40 bg-cyan-400/15 text-cyan-100" };
   }
@@ -51,6 +51,10 @@ function getLedgerTypeMeta(type: LedgerEntryDto["type"]): { label: string; class
 
   if (type === "payment") {
     return { label: "Tahsilat", className: "border-emerald-400/40 bg-emerald-500/15 text-emerald-200" };
+  }
+
+  if (type === "return") {
+    return { label: "İade", className: "border-fuchsia-300/40 bg-fuchsia-500/15 text-fuchsia-100" };
   }
 
   if (type === "credit") {
@@ -88,6 +92,7 @@ const LEDGER_TYPE_FILTERS: Array<{ value: LedgerEntryType; label: string; classN
   { value: "order", label: "Sipariş", className: "border-cyan-300/40 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/16" },
   { value: "invoice", label: "Fatura", className: "border-amber-300/40 bg-amber-400/10 text-amber-100 hover:bg-amber-400/16" },
   { value: "payment", label: "Tahsilat", className: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/16" },
+  { value: "return", label: "İade", className: "border-fuchsia-300/40 bg-fuchsia-400/10 text-fuchsia-100 hover:bg-fuchsia-400/16" },
   { value: "credit", label: "Alacak", className: "border-blue-300/40 bg-blue-400/10 text-blue-100 hover:bg-blue-400/16" },
   { value: "debit", label: "Borç", className: "border-rose-300/40 bg-rose-400/10 text-rose-100 hover:bg-rose-400/16" },
 ];
@@ -244,12 +249,17 @@ export function LedgerPage() {
         credit: toAmount(payload.summary.total_credit),
         balance: toAmount(payload.summary.balance),
         currency: payload.summary.currency,
+        returnAmount: toAmount(payload.summary.total_return_amount ?? "0"),
+        returnQuantity: Number(payload.summary.total_return_quantity ?? 0),
       };
     }
 
     const rows = displayRows;
     const debit = rows.reduce((sum, row) => sum + toAmount(row.debit), 0);
     const credit = rows.reduce((sum, row) => sum + toAmount(row.credit), 0);
+    const returnRows = rows.filter((row) => row.transaction_type === "return" || row.type === "return");
+    const returnAmount = returnRows.reduce((sum, row) => sum + toAmount(row.return_total ?? row.credit), 0);
+    const returnQuantity = returnRows.reduce((sum, row) => sum + Number(row.return_quantity ?? 0), 0);
     const balance = rows.length > 0 ? toAmount(rows[0].balance_after) : 0;
     const currency = rows[0]?.currency ?? "TRY";
 
@@ -258,6 +268,8 @@ export function LedgerPage() {
       credit,
       balance,
       currency,
+      returnAmount,
+      returnQuantity,
     };
   }, [displayRows, payload?.summary]);
   const detailSummary = detailPayload?.order.origin?.checkout_summary ?? detailLedgerRow?.checkout_summary ?? null;
@@ -476,7 +488,7 @@ export function LedgerPage() {
                   {displayRows.map((row) => (
                     <tr key={row.id} className="border-b border-[var(--brand-border)]/60 transition-colors hover:bg-[var(--surface-soft)]/70">
                       <td className="px-2 py-2.5 text-center">
-                        {row.order_id || row.transaction_type === "invoice" || row.type === "debit" ? (
+                        {row.order_id || row.transaction_type === "invoice" || row.transaction_type === "return" || row.type === "debit" ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -503,6 +515,11 @@ export function LedgerPage() {
                           {row.collection_method_label ? (
                             <span className="rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.08em] text-emerald-100">
                               {row.collection_method_label}
+                            </span>
+                          ) : null}
+                          {row.return_quantity ? (
+                            <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-400/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.08em] text-fuchsia-100">
+                              {row.return_quantity} adet
                             </span>
                           ) : null}
                         </div>
@@ -561,7 +578,7 @@ export function LedgerPage() {
           ) : null}
           {selectedCustomer ? (
             <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-stretch">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[16px] border border-rose-300/16 bg-rose-400/7 p-3 text-center">
                   <p className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-100/58">Toplam Borç</p>
                   <p className="mt-1 text-xl font-black text-rose-100">{formatAmount(summary.debit, summary.currency)}</p>
@@ -569,6 +586,11 @@ export function LedgerPage() {
                 <div className="rounded-[16px] border border-emerald-300/16 bg-emerald-400/7 p-3 text-center">
                   <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/58">Toplam Alacak</p>
                   <p className="mt-1 text-xl font-black text-emerald-100">{formatAmount(summary.credit, summary.currency)}</p>
+                </div>
+                <div className="rounded-[16px] border border-fuchsia-300/16 bg-fuchsia-400/7 p-3 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-100/58">Toplam İade</p>
+                  <p className="mt-1 text-xl font-black text-fuchsia-100">{formatAmount(summary.returnAmount, summary.currency)}</p>
+                  <p className="mt-1 text-[11px] font-bold text-fuchsia-100/68">{summary.returnQuantity.toLocaleString("tr-TR")} adet</p>
                 </div>
               </div>
               <div className="flex min-h-[88px] flex-col items-center justify-center rounded-[18px] border border-red-200/24 bg-[radial-gradient(circle_at_20%_15%,rgba(255,255,255,0.16)_0%,transparent_34%),linear-gradient(135deg,#ff4d4f_0%,#b71c1c_100%)] p-3 text-center shadow-[0_22px_48px_-30px_rgba(255,77,79,0.9)]">

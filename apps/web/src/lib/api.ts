@@ -1103,7 +1103,7 @@ export type CustomerCardRequestListResponse = CursorResponse<CustomerCardRequest
   };
 };
 
-export type LedgerEntryType = "order" | "invoice" | "payment" | "credit" | "debit";
+export type LedgerEntryType = "order" | "invoice" | "payment" | "return" | "credit" | "debit";
 export type CollectionMethodFilter = "cash" | "transfer" | "check" | "note" | "cc" | "factory_cc";
 
 export type LedgerEntryDto = {
@@ -1127,6 +1127,9 @@ export type LedgerEntryDto = {
   transaction_type_label?: string;
   document_no?: string | null;
   document_date?: string | null;
+  return_quantity?: number | null;
+  return_total?: string | null;
+  return_type_label?: string | null;
   source_document?: string | null;
   checkout_summary: {
     mode: "detailed" | "excluded" | "included";
@@ -1146,6 +1149,8 @@ export type LedgerSummaryDto = {
   balance: string;
   total_count: number;
   currency: string;
+  total_return_amount?: string;
+  total_return_quantity?: number;
 };
 
 export type PaginatedResponse<T> = {

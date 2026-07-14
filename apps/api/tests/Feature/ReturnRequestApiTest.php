@@ -208,11 +208,11 @@ class ReturnRequestApiTest extends TestCase
         $approveResponse
             ->assertOk()
             ->assertJsonPath('data.status', 'approved')
-            ->assertJsonPath('data.logo_sync_status', 'queued')
+            ->assertJsonPath('data.logo_sync_status', null)
             ->assertJsonPath('data.scrap_logo_sync_status', 'queued')
             ->assertJsonPath('data.resolution_note', 'İade onaylandı.');
 
-        $this->assertDatabaseHas('integration_sync_states', [
+        $this->assertDatabaseMissing('integration_sync_states', [
             'system' => 'logo',
             'domain' => 'returns',
             'direction' => 'outbound',
@@ -229,9 +229,17 @@ class ReturnRequestApiTest extends TestCase
             'entity_id' => $requestId,
             'status' => 'queued',
         ]);
+
+        $this->assertDatabaseHas('ledger_entries', [
+            'source_system' => 'b2b',
+            'source_reference' => ReturnRequest::query()->findOrFail($requestId)->request_no,
+            'type' => 'credit',
+            'customer_id' => $order->customer_id,
+            'credit' => '50.00',
+        ]);
     }
 
-    public function test_faulty_return_approval_creates_sales_return_and_scrap_fiche_queues(): void
+    public function test_faulty_return_approval_creates_only_scrap_fiche_queue(): void
     {
         [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
 
@@ -255,16 +263,15 @@ class ReturnRequestApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'approved')
             ->assertJsonPath('data.request_type', 'faulty')
-            ->assertJsonPath('data.logo_sync_status', 'queued')
+            ->assertJsonPath('data.logo_sync_status', null)
             ->assertJsonPath('data.scrap_logo_sync_status', 'queued');
 
-        $this->assertDatabaseHas('integration_sync_states', [
+        $this->assertDatabaseMissing('integration_sync_states', [
             'system' => 'logo',
             'domain' => 'returns',
             'direction' => 'outbound',
             'entity_type' => ReturnRequest::class,
             'entity_id' => $requestId,
-            'status' => 'queued',
         ]);
 
         $this->assertDatabaseHas('integration_sync_states', [
@@ -310,6 +317,14 @@ class ReturnRequestApiTest extends TestCase
             'status' => 'queued',
         ]);
 
+        $this->assertDatabaseHas('ledger_entries', [
+            'source_system' => 'b2b',
+            'source_reference' => ReturnRequest::query()->findOrFail($requestId)->request_no,
+            'type' => 'credit',
+            'customer_id' => $order->customer_id,
+            'credit' => '50.00',
+        ]);
+
         $this->assertDatabaseMissing('integration_sync_states', [
             'system' => 'logo',
             'domain' => 'return-scraps',
@@ -343,22 +358,8 @@ class ReturnRequestApiTest extends TestCase
                 'resolution_note' => 'Logo aktarımı için onaylandı.',
             ])
             ->assertOk()
-            ->assertJsonPath('data.logo_sync_status', 'queued')
+            ->assertJsonPath('data.logo_sync_status', null)
             ->assertJsonPath('data.scrap_logo_sync_status', 'queued');
-
-        $this
-            ->withHeader('X-Integration-Key', 'return-sync-key')
-            ->postJson('/api/integrations/logo/returns/ack', [
-                'records' => [
-                    [
-                        'return_request_id' => $requestId,
-                        'status' => 'synced',
-                        'external_ref' => 'RETURN-LOGO-001',
-                    ],
-                ],
-            ])
-            ->assertOk()
-            ->assertJsonPath('summary.synced', 1);
 
         $this
             ->withHeader('X-Integration-Key', 'return-sync-key')
@@ -381,8 +382,8 @@ class ReturnRequestApiTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('data.status', ReturnRequest::STATUS_COMPLETED)
-            ->assertJsonPath('data.logo_sync_status', 'synced')
-            ->assertJsonPath('data.logo_external_ref', 'RETURN-LOGO-001')
+            ->assertJsonPath('data.logo_sync_status', null)
+            ->assertJsonPath('data.logo_external_ref', null)
             ->assertJsonPath('data.scrap_logo_sync_status', 'synced')
             ->assertJsonPath('data.scrap_logo_external_ref', 'SCRAP-LOGO-001');
     }
@@ -418,7 +419,7 @@ class ReturnRequestApiTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('data.status', ReturnRequest::STATUS_COMPLETED)
-            ->assertJsonPath('data.logo_sync_status', 'queued')
+            ->assertJsonPath('data.logo_sync_status', null)
             ->assertJsonPath('data.scrap_logo_sync_status', 'queued');
     }
 

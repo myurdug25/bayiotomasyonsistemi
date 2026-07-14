@@ -78,7 +78,9 @@ class CustomerLedgerController extends Controller
                 ! empty($type),
                 fn ($q) => $type === 'order'
                     ? $q->where('meta->source', 'order_visibility')
-                    : $q->where('type', $type)
+                    : ($type === 'return'
+                        ? $q->where('meta->source', 'return_request')
+                        : $q->where('type', $type))
             )
             ->when(
                 ! empty($collectionMethod),
@@ -188,7 +190,7 @@ class CustomerLedgerController extends Controller
     }
 
     /**
-     * @return array{total_debit: string, total_credit: string, balance: string, total_count: int, currency: string}
+     * @return array{total_debit: string, total_credit: string, balance: string, total_count: int, currency: string, total_return_amount: string, total_return_quantity: int}
      */
     private function ledgerSummary($query, ?User $user): array
     {
@@ -204,6 +206,15 @@ class CustomerLedgerController extends Controller
             ->value('currency') ?? 'TRY'), $user);
         $totalDebit = (float) ($summary?->total_debit ?? 0);
         $totalCredit = (float) ($summary?->total_credit ?? 0);
+        $returnRows = (clone $query)
+            ->where('meta->source', 'return_request')
+            ->get(['credit', 'amount', 'meta']);
+        $totalReturnAmount = $returnRows->sum(
+            static fn (LedgerEntry $entry): float => (float) ($entry->credit ?? $entry->amount ?? 0)
+        );
+        $totalReturnQuantity = $returnRows->sum(
+            static fn (LedgerEntry $entry): int => max(0, (int) data_get($entry->meta, 'return_quantity', 0))
+        );
 
         return [
             'total_debit' => number_format($totalDebit, 2, '.', ''),
@@ -211,6 +222,8 @@ class CustomerLedgerController extends Controller
             'balance' => number_format($totalDebit - $totalCredit, 2, '.', ''),
             'total_count' => (int) ($summary?->total_count ?? 0),
             'currency' => $currency,
+            'total_return_amount' => number_format((float) $totalReturnAmount, 2, '.', ''),
+            'total_return_quantity' => (int) $totalReturnQuantity,
         ];
     }
 

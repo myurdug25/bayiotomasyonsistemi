@@ -8,6 +8,7 @@ use App\Http\Requests\ReturnRequest\StoreReturnRequestRequest;
 use App\Http\Requests\ReturnRequest\UpdateReturnRequestStatusRequest;
 use App\Models\Customer;
 use App\Models\IntegrationSyncState;
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\ReturnRequest;
@@ -231,8 +232,10 @@ class ReturnRequestController extends Controller
         ])->save();
 
         if ($nextStatus === ReturnRequest::STATUS_APPROVED) {
+            $this->writeReturnLedgerEntry($returnRequest->fresh(['customer', 'order', 'orderItem.product.brand', 'requestedBy']) ?? $returnRequest);
             $this->queueReturnForLogoExport($syncState, $returnRequest);
         } elseif ($nextStatus === ReturnRequest::STATUS_COMPLETED) {
+            $this->writeReturnLedgerEntry($returnRequest->fresh(['customer', 'order', 'orderItem.product.brand', 'requestedBy']) ?? $returnRequest);
             $this->queueMissingReturnLogoExports($syncState, $returnRequest);
         }
 
@@ -250,6 +253,12 @@ class ReturnRequestController extends Controller
 
     private function queueReturnForLogoExport(IntegrationSyncStateService $syncState, ReturnRequest $returnRequest): void
     {
+        if (in_array($returnRequest->request_type, [ReturnRequest::TYPE_DAMAGED, ReturnRequest::TYPE_FAULTY], true)) {
+            $this->queueReturnScrapForLogoExport($syncState, $returnRequest);
+
+            return;
+        }
+
         $syncState->record(
             system: 'logo',
             domain: 'returns',
@@ -272,16 +281,14 @@ class ReturnRequestController extends Controller
             ],
         );
 
-        if (! in_array($returnRequest->request_type, [ReturnRequest::TYPE_DAMAGED, ReturnRequest::TYPE_FAULTY], true)) {
-            return;
-        }
-
-        $this->queueReturnScrapForLogoExport($syncState, $returnRequest);
     }
 
     private function queueMissingReturnLogoExports(IntegrationSyncStateService $syncState, ReturnRequest $returnRequest): void
     {
-        if (! ($this->logoSyncState('returns', ReturnRequest::class, (int) $returnRequest->id) instanceof IntegrationSyncState)) {
+        if (
+            ! in_array($returnRequest->request_type, [ReturnRequest::TYPE_DAMAGED, ReturnRequest::TYPE_FAULTY], true)
+            && ! ($this->logoSyncState('returns', ReturnRequest::class, (int) $returnRequest->id) instanceof IntegrationSyncState)
+        ) {
             $this->queueReturnForLogoExport($syncState, $returnRequest);
 
             return;
@@ -293,6 +300,82 @@ class ReturnRequestController extends Controller
         ) {
             $this->queueReturnScrapForLogoExport($syncState, $returnRequest);
         }
+    }
+
+    private function writeReturnLedgerEntry(ReturnRequest $returnRequest): void
+    {
+        $quantity = max(0, (int) $returnRequest->quantity);
+        $lineTotal = round(((float) $returnRequest->unit_price) * $quantity, 2);
+
+        if ($quantity <= 0 || $lineTotal <= 0) {
+            return;
+        }
+
+        $date = optional($returnRequest->reviewed_at ?? $returnRequest->created_at)?->toDateString() ?? now()->toDateString();
+        $productSnapshot = is_array($returnRequest->product_snapshot) ? $returnRequest->product_snapshot : [];
+        $orderSnapshot = is_array($returnRequest->order_snapshot) ? $returnRequest->order_snapshot : [];
+        $requestTypeLabel = match ($returnRequest->request_type) {
+            ReturnRequest::TYPE_DAMAGED => 'Hasarlı İade',
+            ReturnRequest::TYPE_FAULTY => 'Arızalı İade',
+            default => 'İade',
+        };
+
+        LedgerEntry::query()->updateOrCreate(
+            [
+                'source_system' => 'b2b',
+                'source_reference' => $returnRequest->request_no,
+                'type' => 'credit',
+            ],
+            [
+                'dealer_id' => (int) $returnRequest->dealer_id,
+                'customer_id' => (int) $returnRequest->customer_id,
+                'order_id' => $returnRequest->order_id,
+                'collection_id' => null,
+                'last_synced_at' => null,
+                'date' => $date,
+                'debit' => 0,
+                'credit' => number_format($lineTotal, 2, '.', ''),
+                'balance_after' => 0,
+                'entry_date' => $date,
+                'entry_type' => 'credit',
+                'amount' => number_format($lineTotal, 2, '.', ''),
+                'currency' => $returnRequest->currency ?: 'TRY',
+                'reference_no' => $returnRequest->request_no,
+                'description' => sprintf(
+                    '%s · %s · %d adet',
+                    $requestTypeLabel,
+                    $returnRequest->order?->order_no ?? ($orderSnapshot['order_no'] ?? '-'),
+                    $quantity
+                ),
+                'created_by_user_id' => $returnRequest->requested_by_user_id,
+                'meta' => [
+                    'source' => 'return_request',
+                    'source_label' => $requestTypeLabel,
+                    'return_request_id' => (int) $returnRequest->id,
+                    'return_request_no' => $returnRequest->request_no,
+                    'return_type' => $returnRequest->request_type,
+                    'return_type_label' => $requestTypeLabel,
+                    'return_quantity' => $quantity,
+                    'return_unit_price' => number_format((float) $returnRequest->unit_price, 2, '.', ''),
+                    'return_total' => number_format($lineTotal, 2, '.', ''),
+                    'reason_code' => $returnRequest->reason_code,
+                    'reason_note' => $returnRequest->reason_note,
+                    'resolution_note' => $returnRequest->resolution_note,
+                    'order_no' => $returnRequest->order?->order_no ?? ($orderSnapshot['order_no'] ?? null),
+                    'product' => [
+                        'id' => $productSnapshot['product_id'] ?? $returnRequest->orderItem?->product_id,
+                        'sku' => $productSnapshot['sku'] ?? $returnRequest->orderItem?->product?->sku,
+                        'name' => $productSnapshot['name'] ?? $returnRequest->orderItem?->product?->name,
+                        'brand' => $productSnapshot['brand'] ?? $returnRequest->orderItem?->product?->brand?->name,
+                    ],
+                    'logo' => [
+                        'document_type' => in_array($returnRequest->request_type, [ReturnRequest::TYPE_DAMAGED, ReturnRequest::TYPE_FAULTY], true)
+                            ? 'fire_fiche'
+                            : 'wholesale_sales_return_invoice',
+                    ],
+                ],
+            ]
+        );
     }
 
     private function queueReturnScrapForLogoExport(IntegrationSyncStateService $syncState, ReturnRequest $returnRequest): void
