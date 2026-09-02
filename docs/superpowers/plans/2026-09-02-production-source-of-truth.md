@@ -28,7 +28,7 @@
 **Interfaces:**
 - Produces: a JSON report containing production marker files, local commit SHA, dirty status summary, and SHA-256 checksums for selected API/web/logo-sync files.
 
-- [ ] **Step 1: Write the audit script**
+- [x] **Step 1: Write the audit script**
 
 Create `tools/deploy/audit-production-state.mjs` that:
 - Reads SSH settings from the existing deploy credential source without printing them.
@@ -37,7 +37,7 @@ Create `tools/deploy/audit-production-state.mjs` that:
 - Calculates `sha256sum` on production files included in the deploy manifest.
 - Prints a short report: local SHA, production SHA, dirty count, changed file count.
 
-- [ ] **Step 2: Run the audit**
+- [x] **Step 2: Run the audit**
 
 Run:
 
@@ -47,7 +47,7 @@ node tools/deploy/audit-production-state.mjs
 
 Expected: report shows whether live equals local HEAD, local dirty files, and missing production manifest if this is the first run.
 
-- [ ] **Step 3: Save the audit result**
+- [x] **Step 3: Save the audit result**
 
 Save the report under:
 
@@ -65,7 +65,7 @@ Save the report under:
 - Consumes: clean Git worktree and a named commit SHA.
 - Produces: production deployment and `/var/www/bayiotomasyonsistemi.com/.deploy-manifest.json`.
 
-- [ ] **Step 1: Add clean tree guard**
+- [x] **Step 1: Add clean tree guard**
 
 The deploy script must fail before upload when:
 
@@ -75,7 +75,7 @@ git status --porcelain
 
 returns any file unless `--allow-dirty` is explicitly passed.
 
-- [ ] **Step 2: Add branch and commit guard**
+- [x] **Step 2: Add branch and commit guard**
 
 The deploy script must record:
 
@@ -127,7 +127,7 @@ to:
 - Consumes: audit report from Task 1.
 - Produces: a Git commit/tag that matches live production.
 
-- [ ] **Step 1: Compare live against local**
+- [x] **Step 1: Compare live against local**
 
 Use the audit report to list:
 - Files same in live and local.
@@ -143,7 +143,7 @@ For each changed file, decide:
 
 Do not use `git reset --hard`.
 
-- [ ] **Step 3: Commit the reconciled production state**
+- [x] **Step 3: Commit the reconciled production state**
 
 Run:
 
