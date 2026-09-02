@@ -56,6 +56,146 @@ class UserContextApiTest extends TestCase
             ->assertJsonPath('context.customer.last_synced_at', null);
     }
 
+    public function test_context_customer_includes_linked_customer_user_sale_type_permissions(): void
+    {
+        $dealer = $this->createDealer('DLR-CTX-SALE-TYPES');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $customer = $this->createCustomer($dealer, '120-25-777', $salesperson);
+        $this->createUserWithRole('customer', $dealer, [
+            'selected_customer_id' => $customer->id,
+            'customer_scope' => 'assigned',
+            'username' => $customer->code,
+            'feature_permissions' => [
+                'cart.sale_type.detailed',
+                'cart.sale_type.excluded',
+                'cart.sale_type.included',
+            ],
+        ]);
+
+        $this->actingAs($salesperson);
+
+        $this->postJson('/api/context/customer', [
+            'customer_id' => $customer->id,
+        ])->assertOk()
+            ->assertJsonPath('context.customer.customer_user_feature_permissions', [
+                'cart.sale_type.detailed',
+                'cart.sale_type.excluded',
+                'cart.sale_type.included',
+            ]);
+
+        $this->getJson('/api/context')
+            ->assertOk()
+            ->assertJsonPath('context.customer.customer_user_feature_permissions', [
+                'cart.sale_type.detailed',
+                'cart.sale_type.excluded',
+                'cart.sale_type.included',
+            ]);
+    }
+
+    public function test_context_exposes_the_real_branch_manager_name(): void
+    {
+        $dealer = $this->createDealer('DLR-CTX-MGR');
+        $manager = $this->createUserWithRole('dealer_admin', $dealer, [
+            'username' => 'mudur.erzurum',
+            'name' => 'Mehmet Erzurum Müdürü',
+            'phone' => '05550001122',
+        ]);
+        $customer = $this->createCustomer($dealer, 'CTX-CUST-MGR', null, [
+            'branch_code' => 'ERZURUM',
+        ]);
+        $user = $this->createUserWithRole('customer', $dealer, [
+            'selected_customer_id' => $customer->id,
+            'customer_scope' => 'assigned',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/context')
+            ->assertOk()
+            ->assertJsonPath('context.customer.meta.manager_name', $manager->name)
+            ->assertJsonPath('context.customer.meta.manager_phone', $manager->phone);
+    }
+
+    public function test_context_resolves_erzurum_manager_from_salesperson_when_customer_branch_is_blank(): void
+    {
+        $dealer = $this->createDealer('DLR-CTX-MGR-SP');
+        $manager = $this->createUserWithRole('dealer_admin', $dealer, [
+            'username' => 'mudur.erzurum',
+            'name' => 'Mehmet Erzurum Müdürü',
+            'phone' => '05550001122',
+        ]);
+        $salesperson = $this->createUserWithRole('salesperson', $dealer, [
+            'username' => 'huseyin.ozguney',
+            'name' => 'Hüseyin Özgüney',
+            'branch_code' => null,
+            'branch_name' => null,
+            'region_code' => null,
+            'region_name' => null,
+        ]);
+        $customer = $this->createCustomer($dealer, '120-04-017', $salesperson, [
+            'city' => null,
+            'branch_code' => null,
+            'branch_name' => null,
+            'region_code' => null,
+            'region_name' => null,
+        ]);
+        $user = $this->createUserWithRole('customer', $dealer, [
+            'username' => '120-04-017',
+            'selected_customer_id' => $customer->id,
+            'customer_scope' => 'assigned',
+            'menu_permissions' => ['cart'],
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/context')
+            ->assertOk()
+            ->assertJsonPath('context.customer.salesperson.name', $salesperson->name)
+            ->assertJsonPath('context.customer.meta.manager_name', $manager->name)
+            ->assertJsonPath('context.customer.meta.manager_phone', $manager->phone);
+    }
+
+    public function test_customer_with_cart_menu_can_load_locked_context_and_cart(): void
+    {
+        $dealer = $this->createDealer('DLR-CTX-CUSTOMER-CART');
+        $salesperson = $this->createUserWithRole('salesperson', $dealer, [
+            'username' => 'huseyin.ozguney',
+            'name' => 'Hüseyin Özgüney',
+        ]);
+        $customer = $this->createCustomer($dealer, '120-04-017', $salesperson);
+        $user = $this->createUserWithRole('customer', $dealer, [
+            'username' => '120-04-017',
+            'selected_customer_id' => $customer->id,
+            'customer_scope' => 'assigned',
+            'menu_permissions' => ['cart'],
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/context')
+            ->assertOk()
+            ->assertJsonPath('context.customer.id', $customer->id);
+
+        $this->getJson('/api/cart?customer_id='.$customer->id)
+            ->assertOk()
+            ->assertJsonPath('cart', null);
+
+        $this->getJson('/api/finance-definitions?type=shipping_rule')
+            ->assertOk()
+            ->assertJsonStructure(['data']);
+    }
+
+    public function test_point_user_with_only_pos_menu_can_read_context(): void
+    {
+        $dealer = $this->createDealer('DLR-CTX-POINT');
+        $user = $this->createUserWithRole('point', $dealer, [
+            'username' => 'trabzon.point',
+            'menu_permissions' => ['pos'],
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/context')
+            ->assertOk()
+            ->assertJsonPath('context.customer', null);
+    }
+
     public function test_user_cannot_select_customer_outside_own_dealer_scope(): void
     {
         $dealerA = $this->createDealer('DLR-CTX-OWN');
@@ -220,6 +360,53 @@ class UserContextApiTest extends TestCase
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
             'selected_customer_id' => null,
+        ]);
+    }
+
+    public function test_batum_user_can_select_batum_depot_order_customer_without_logo_specode_match(): void
+    {
+        $dealer = $this->createDealer('DLR-CTX-BATUM');
+        $user = $this->createUserWithRole('point', $dealer, [
+            'username' => 'batum',
+            'name' => 'BATUM B2B VE HIZLI SATIŞ',
+            'branch_code' => 'BATUM',
+            'branch_name' => 'Batum',
+            'customer_scope' => 'branch',
+            'logo_customer_specode4' => 'K',
+            'menu_permissions' => ['customers', 'cart'],
+        ]);
+        $customer = $this->createCustomer($dealer, '130-00-000', null, [
+            'name' => 'BATUM DEPO (SIPARIS)',
+            'city' => 'BATUMI',
+            'district' => 'BATUMI',
+            'branch_code' => null,
+            'branch_name' => null,
+            'source_system' => 'logo',
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'raw' => [
+                                'CITY' => 'BATUMI',
+                                'TOWN' => 'BATUMI',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->postJson('/api/context/customer', [
+            'customer_id' => $customer->id,
+        ])->assertOk()
+            ->assertJsonPath('context.customer.id', $customer->id)
+            ->assertJsonPath('context.customer.code', '130-00-000');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'selected_customer_id' => $customer->id,
         ]);
     }
 

@@ -11,8 +11,11 @@
     "sync:pos-expenses-from-logo": "node logo-pos-expenses-sync.mjs",
     "sync:pos-sales": "node logo-pos-sales-export.mjs",
     "sync:pos-expenses": "node logo-pos-expenses-export.mjs",
+    "sync:pos-day-ends": "node logo-pos-day-ends-export.mjs",
     "sync:documents-export": "node logo-documents-export.mjs",
     "sync:product-shelves": "node logo-product-shelves-export.mjs",
+    "sync:previous-purchases": "node logo-previous-purchases-sync.mjs",
+    "sync:eryaz-ledger": "node eryaz-ledger-sync.mjs",
     "discover:product-card": "node logo-product-card-discover.mjs",
     "sync:finance-definitions": "node logo-finance-definitions-sync.mjs",
     "sync:shipment-immediate-bridge": "node logo-shipment-immediate-bridge.mjs",
@@ -26,6 +29,7 @@
   },
   "dependencies": {
     "dotenv": "^16.6.1",
+    "msnodesqlv8": "^4.5.0",
     "mssql": "^11.0.1",
     "sharp": "^0.34.5"
   }

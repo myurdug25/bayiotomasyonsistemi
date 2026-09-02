@@ -43,3 +43,25 @@ test("buildPosSalePayload keeps Logo sales dispatch metadata for POS delivery no
   assert.deepEqual(payload.items, [{ product_code: "POS-TEST-001", qty: "1.000" }]);
   assert.deepEqual(payload.payments, [{ method: "cash", amount: "100.00" }]);
 });
+
+test("buildPosSalePayload carries update metadata for existing Logo delivery notes", () => {
+  const payload = buildPosSalePayload({
+    pos_sale_id: 43,
+    document_type: "delivery",
+    logo: {
+      document_target: "sales_dispatch_note",
+      existing_external_ref: "STFICHE-12345",
+      operation: "update",
+    },
+    items: [],
+    payments: [],
+    meta: {
+      logo_external_ref: "STFICHE-12345",
+      operation: "update",
+    },
+  });
+
+  assert.equal(payload.logo.existing_external_ref, "STFICHE-12345");
+  assert.equal(payload.logo.operation, "update");
+  assert.equal(payload.meta.logo_external_ref, "STFICHE-12345");
+});

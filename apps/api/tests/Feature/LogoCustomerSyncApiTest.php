@@ -82,6 +82,9 @@ class LogoCustomerSyncApiTest extends TestCase
                         'tax_number' => '1234567890',
                         'credit_limit' => 125000.50,
                         'balance_due' => 2450.75,
+                        'balance_debit' => 4200.25,
+                        'balance_credit' => 1749.50,
+                        'balance_direction' => 'debit',
                         'order_due' => 810.25,
                         'currency' => 'TRY',
                         'address' => 'Adres 1',
@@ -131,8 +134,13 @@ class LogoCustomerSyncApiTest extends TestCase
         $this->assertSame('VIP', $existingCustomer->meta['integrations']['logo']['payload']['specode']);
         $this->assertSame('CR-1001', $existingCustomer->meta['integrations']['logo']['payload']['raw']['CODE']);
         $this->assertSame('2450.75', $existingCustomer->meta['integrations']['logo']['financials']['total_due']);
+        $this->assertSame('2450.75', $existingCustomer->meta['integrations']['logo']['financials']['net_balance']);
+        $this->assertSame('4200.25', $existingCustomer->meta['integrations']['logo']['financials']['debit']);
+        $this->assertSame('1749.50', $existingCustomer->meta['integrations']['logo']['financials']['credit']);
+        $this->assertSame('debit', $existingCustomer->meta['integrations']['logo']['financials']['direction']);
         $this->assertSame('810.25', $existingCustomer->meta['integrations']['logo']['financials']['order_due']);
         $this->assertSame('TRY', $existingCustomer->meta['integrations']['logo']['financials']['currency']);
+        $this->assertNotEmpty($existingCustomer->meta['integrations']['logo']['financials']['synced_at']);
         $this->assertNotNull($existingCustomer->last_synced_at);
 
         $this->assertDatabaseHas('customers', [
@@ -164,6 +172,40 @@ class LogoCustomerSyncApiTest extends TestCase
             'external_ref' => '1001',
             'status' => 'synced',
         ]);
+    }
+
+    public function test_logo_customer_sync_marks_e_invoice_users_from_logo_accept_e_invoice_flag(): void
+    {
+        config(['integrations.logo.customer_sync_key' => 'test-sync-key']);
+
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOGO-EINV',
+            'name' => 'Logo E Invoice Dealer',
+            'is_active' => true,
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/customers/sync', [
+                'dealer_id' => $dealer->id,
+                'records' => [
+                    [
+                        'external_ref' => '61031',
+                        'code' => '120-61-031',
+                        'name' => 'E-Fatura Cari',
+                        'meta' => [
+                            'raw' => [
+                                'ACCEPTEINV' => 1,
+                            ],
+                        ],
+                    ],
+                ],
+            ])
+            ->assertOk();
+
+        $customer = Customer::query()->where('code', '120-61-031')->firstOrFail();
+
+        $this->assertTrue(data_get($customer->meta, 'integrations.logo.payload.e_invoice_user'));
     }
 
     public function test_logo_customer_sync_matches_exported_b2b_customer_by_source_reference(): void
@@ -313,6 +355,64 @@ class LogoCustomerSyncApiTest extends TestCase
         $this->assertSame(1, Customer::query()->count());
     }
 
+    public function test_logo_customer_sync_supersedes_stale_source_reference_collision_when_matching_by_code(): void
+    {
+        config(['integrations.logo.customer_sync_key' => 'test-sync-key']);
+
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOGO',
+            'name' => 'Logo Dealer',
+            'is_active' => true,
+        ]);
+
+        $customerWithCurrentCode = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '43',
+            'sync_status' => 'synced',
+            'code' => '120-00-087',
+            'name' => 'Eski Kodlu Cari',
+            'is_active' => true,
+        ]);
+
+        $staleReferenceCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1648',
+            'sync_status' => 'synced',
+            'code' => '120-00-999',
+            'name' => 'Eski Firma Ref Kaydi',
+            'is_active' => true,
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/customers/sync', [
+                'dealer_id' => $dealer->id,
+                'records' => [
+                    [
+                        'external_ref' => '1648',
+                        'code' => '120-00-087',
+                        'name' => 'OTOBUSLAR',
+                    ],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.created', 0)
+            ->assertJsonPath('summary.updated', 1);
+
+        $customerWithCurrentCode->refresh();
+        $staleReferenceCustomer->refresh();
+
+        $this->assertSame('logo', $customerWithCurrentCode->source_system);
+        $this->assertSame('1648', $customerWithCurrentCode->source_reference);
+        $this->assertSame('OTOBUSLAR', $customerWithCurrentCode->name);
+        $this->assertSame('logo-superseded', $staleReferenceCustomer->source_system);
+        $this->assertSame('superseded', $staleReferenceCustomer->sync_status);
+    }
+
     public function test_logo_customer_sync_reads_contact_fields_from_logo_raw_payload_when_flat_fields_are_missing(): void
     {
         config(['integrations.logo.customer_sync_key' => 'test-sync-key']);
@@ -458,5 +558,84 @@ class LogoCustomerSyncApiTest extends TestCase
             'code' => 'CR-D-001',
             'salesperson_user_id' => $salesperson->id,
         ]);
+    }
+
+    public function test_logo_customer_full_sync_inactivates_logo_customers_missing_from_final_snapshot(): void
+    {
+        config(['integrations.logo.customer_sync_key' => 'test-sync-key']);
+
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOGO',
+            'name' => 'Logo Dealer',
+            'is_active' => true,
+        ]);
+
+        $staleCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => 'OLD-003-CUSTOMER',
+            'sync_status' => 'synced',
+            'code' => '120-OLD-003',
+            'name' => 'Eski Logo Carisi',
+            'is_active' => true,
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'external_ref' => 'OLD-003-CUSTOMER',
+                        'sync_run_id' => 'old-run',
+                    ],
+                ],
+            ],
+        ]);
+
+        $manualCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'b2b',
+            'source_reference' => 'LOCAL-1',
+            'sync_status' => 'synced',
+            'code' => 'LOCAL-1',
+            'name' => 'B2B Manuel Cari',
+            'is_active' => true,
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/customers/sync', [
+                'dealer_id' => $dealer->id,
+                'sync_run_id' => 'logo-001-customers-20260902',
+                'is_full_sync' => true,
+                'is_final_batch' => true,
+                'batch_index' => 0,
+                'batch_count' => 1,
+                'source_table' => 'dbo.VW_POWERSA_001_CLCARD_120',
+                'records' => [
+                    [
+                        'external_ref' => 'NEW-001-CUSTOMER',
+                        'code' => '120-36-076',
+                        'name' => 'Yeni Logo Carisi',
+                    ],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.stale_inactivated', 1);
+
+        $staleCustomer->refresh();
+        $manualCustomer->refresh();
+        $currentCustomer = Customer::query()->where('code', '120-36-076')->firstOrFail();
+
+        $this->assertFalse($staleCustomer->is_active);
+        $this->assertSame('stale', $staleCustomer->sync_status);
+        $this->assertTrue($manualCustomer->is_active);
+        $this->assertTrue($currentCustomer->is_active);
+        $this->assertSame(
+            'logo-001-customers-20260902',
+            $currentCustomer->meta['integrations']['logo']['sync_run_id']
+        );
+        $this->assertSame(
+            'dbo.VW_POWERSA_001_CLCARD_120',
+            $currentCustomer->meta['integrations']['logo']['source_table']
+        );
     }
 }

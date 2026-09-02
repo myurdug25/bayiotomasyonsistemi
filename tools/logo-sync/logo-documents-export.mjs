@@ -104,6 +104,10 @@ async function runStep(pool, step) {
     triggerTargetedStockSync(syncedRecords, "shipment_invoice");
   }
 
+  if (step.key === "warehouse-transfers") {
+    triggerTargetedStockSync(syncedRecords, "warehouse_transfer");
+  }
+
   console.log(
     `[logo-sync] ${step.label} completed. exported=${acknowledgements.filter((item) => item.status === "synced").length} failed=${acknowledgements.filter((item) => item.status === "failed").length}`
   );
@@ -151,6 +155,28 @@ export function buildConfig() {
 
 export function buildSteps(currentConfig) {
   return [
+    {
+      key: "warehouse-transfers",
+      envKey: "WAREHOUSE_TRANSFERS",
+      label: "warehouse transfer",
+      idField: "shipment_id",
+      procedure: (process.env.LOGO_WAREHOUSE_TRANSFER_EXPORT_PROCEDURE ?? "").trim(),
+      pendingUrl:
+        nullable(process.env.POWERSA_WAREHOUSE_TRANSFERS_PENDING_URL) ??
+        derivePendingUrl(currentConfig.common.syncUrl, "warehouse-transfers"),
+      ackUrl:
+        nullable(process.env.POWERSA_WAREHOUSE_TRANSFERS_ACK_URL) ??
+        deriveAckUrl(currentConfig.common.syncUrl, "warehouse-transfers"),
+      syncKey: (
+        process.env.POWERSA_WAREHOUSE_TRANSFERS_SYNC_KEY ??
+        process.env.POWERSA_SHIPMENTS_SYNC_KEY ??
+        process.env.POWERSA_ORDERS_SYNC_KEY ??
+        currentConfig.common.fallbackSyncKey ??
+        ""
+      ).trim(),
+      limit: parseInteger(process.env.POWERSA_WAREHOUSE_TRANSFERS_LIMIT, 100),
+      inputs: buildWarehouseTransferInputs,
+    },
     {
       key: "orders",
       label: "order",
@@ -438,6 +464,20 @@ function buildShipmentInputs(record) {
   ];
 }
 
+function buildWarehouseTransferInputs(record) {
+  return [
+    input("TransferDate", "transferDate", sql.Date, toDate(record.transfer_date)),
+    input("TransferNo", "transferNo", sql.NVarChar(64), nullable(record.transfer_no)),
+    input("OrderNo", "orderNo", sql.NVarChar(64), nullable(record.order_no)),
+    input("SourceWarehouseCode", "sourceWarehouseCode", sql.NVarChar(64), nullable(record.source_warehouse_code)),
+    input("SourceWarehouseName", "sourceWarehouseName", sql.NVarChar(160), nullable(record.source_warehouse_name)),
+    input("TargetWarehouseCode", "targetWarehouseCode", sql.NVarChar(64), nullable(record.target_warehouse_code)),
+    input("TargetWarehouseName", "targetWarehouseName", sql.NVarChar(160), nullable(record.target_warehouse_name)),
+    input("ExportKey", "exportKey", sql.NVarChar(128), nullable(record.export_key)),
+    input("PayloadJson", "payloadJson", sql.NVarChar(sql.MAX), JSON.stringify(record)),
+  ];
+}
+
 function buildPurchaseReceiptInputs(record) {
   return [
     input("ReceiptDate", "receiptDate", sql.Date, toDate(record.received_at)),
@@ -459,6 +499,8 @@ function buildReturnInputs(record) {
     input("CustomerCode", "customerCode", sql.NVarChar(64), nullable(record.customer_code)),
     input("ReturnDate", "returnDate", sql.Date, toDate(record.return_date)),
     input("RequestNo", "requestNo", sql.NVarChar(64), nullable(record.request_no)),
+    input("WarehouseCode", "warehouseCode", sql.NVarChar(64), nullable(record.warehouse_code)),
+    input("WarehouseName", "warehouseName", sql.NVarChar(160), nullable(record.warehouse_name)),
     input("ReturnType", "returnType", sql.NVarChar(32), nullable(record.request_type)),
     input("ReasonCode", "reasonCode", sql.NVarChar(64), nullable(record.reason_code)),
     input("Amount", "amount", sql.Decimal(15, 2), toNumber(record.line_total)),
@@ -475,6 +517,8 @@ function buildReturnScrapInputs(record) {
     input("ScrapDate", "scrapDate", sql.Date, toDate(record.scrap_date)),
     input("DocumentNo", "documentNo", sql.NVarChar(64), nullable(record.document_no ?? record.docode)),
     input("RequestNo", "requestNo", sql.NVarChar(64), nullable(record.request_no)),
+    input("WarehouseCode", "warehouseCode", sql.NVarChar(64), nullable(record.warehouse_code)),
+    input("WarehouseName", "warehouseName", sql.NVarChar(160), nullable(record.warehouse_name)),
     input("ReturnType", "returnType", sql.NVarChar(32), nullable(record.request_type)),
     input("ReasonCode", "reasonCode", sql.NVarChar(64), nullable(record.reason_code)),
     input("Amount", "amount", sql.Decimal(15, 2), toNumber(record.line_total)),

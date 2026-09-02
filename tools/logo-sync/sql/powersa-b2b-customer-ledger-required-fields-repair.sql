@@ -1,0 +1,100 @@
+/*
+Repair required Logo customer ledger fields for balance views.
+
+Logo's LV_003_01_CLCARD balance column is calculated from the indexed
+LV_003_01_CLTOTFILV1 view over LG_003_01_CLFLINE. Rows with NULL STATUS,
+MONTH_, YEAR_, BRANCH, DEPARTMENT, or PAIDINCASH do not participate in that
+view, so the Logo customer list can show an empty balance even when movements
+exist. This script is idempotent and does not create new ledger movement rows.
+*/
+
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+IF OBJECT_ID(N'dbo.LG_003_01_CLFLINE', N'U') IS NULL
+BEGIN
+    RAISERROR('LG_003_01_CLFLINE was not found.', 16, 1);
+    RETURN;
+END;
+
+IF OBJECT_ID(N'dbo.LG_003_CLCARD', N'U') IS NULL
+BEGIN
+    RAISERROR('LG_003_CLCARD was not found.', 16, 1);
+    RETURN;
+END;
+
+IF OBJECT_ID(N'dbo.B2B_BACKUP_CLFLINE_REQUIRED_FIELDS_20260826', N'U') IS NULL
+BEGIN
+    SELECT
+        LOGICALREF,
+        CLIENTREF,
+        DATE_,
+        MONTH_,
+        YEAR_,
+        STATUS,
+        CANCELLED,
+        BRANCH,
+        DEPARTMENT,
+        PAIDINCASH,
+        TRNET,
+        REPORTNET
+    INTO dbo.B2B_BACKUP_CLFLINE_REQUIRED_FIELDS_20260826
+    FROM dbo.LG_003_01_CLFLINE
+    WHERE ISNULL(CLIENTREF, 0) > 0;
+END;
+
+IF OBJECT_ID(N'dbo.B2B_BACKUP_CLCARD_LOWLEVEL_20260826', N'U') IS NULL
+BEGIN
+    SELECT
+        LOGICALREF,
+        CODE,
+        DEFINITION_,
+        LOWLEVELCODES1,
+        LOWLEVELCODES2,
+        LOWLEVELCODES3,
+        PARENTCLREF
+    INTO dbo.B2B_BACKUP_CLCARD_LOWLEVEL_20260826
+    FROM dbo.LG_003_CLCARD
+    WHERE CODE LIKE '120-%';
+END;
+
+UPDATE dbo.LG_003_CLCARD
+   SET LOWLEVELCODES1 = ISNULL(LOWLEVELCODES1, 0),
+       LOWLEVELCODES2 = ISNULL(LOWLEVELCODES2, 0),
+       LOWLEVELCODES3 = ISNULL(LOWLEVELCODES3, 0)
+ WHERE CODE LIKE '120-%'
+   AND CARDTYPE NOT IN (4, 22)
+   AND (
+        LOWLEVELCODES1 IS NULL
+        OR LOWLEVELCODES2 IS NULL
+        OR LOWLEVELCODES3 IS NULL
+   );
+
+DECLARE @UpdatedCustomerCards INT = @@ROWCOUNT;
+
+UPDATE dbo.LG_003_01_CLFLINE
+   SET STATUS = ISNULL(STATUS, 0),
+       CANCELLED = ISNULL(CANCELLED, 0),
+       MONTH_ = ISNULL(MONTH_, MONTH(DATE_)),
+       YEAR_ = ISNULL(YEAR_, YEAR(DATE_)),
+       BRANCH = ISNULL(BRANCH, 0),
+       DEPARTMENT = ISNULL(DEPARTMENT, 0),
+       PAIDINCASH = ISNULL(PAIDINCASH, 0),
+       TRNET = ISNULL(TRNET, AMOUNT),
+       REPORTNET = ISNULL(REPORTNET, ISNULL(TRNET, AMOUNT))
+ WHERE ISNULL(CLIENTREF, 0) > 0
+   AND (
+        STATUS IS NULL
+        OR CANCELLED IS NULL
+        OR MONTH_ IS NULL
+        OR YEAR_ IS NULL
+        OR BRANCH IS NULL
+        OR DEPARTMENT IS NULL
+        OR PAIDINCASH IS NULL
+        OR TRNET IS NULL
+        OR REPORTNET IS NULL
+   );
+
+SELECT
+    @UpdatedCustomerCards AS updated_customer_cards,
+    @@ROWCOUNT AS updated_customer_ledger_rows;

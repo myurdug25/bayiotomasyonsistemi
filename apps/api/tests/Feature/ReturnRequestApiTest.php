@@ -84,9 +84,57 @@ class ReturnRequestApiTest extends TestCase
             ->assertJsonPath('data.0.customer.id', $customer->id);
     }
 
+    public function test_batum_point_with_returns_permission_can_review_directly_and_uses_batum_stock(): void
+    {
+        [$user, $order, $orderItem] = $this->createOrderContext('point', [
+            'branch_code' => 'BATUM',
+            'branch_name' => 'Batum',
+            'region_code' => 'BATUM',
+            'region_name' => 'Batum',
+            'menu_permissions' => ['dashboard', 'returns'],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson("/api/orders/{$order->id}")
+            ->assertOk()
+            ->assertJsonPath('order.id', $order->id);
+
+        $requestId = (int) $this->postJson('/api/returns', [
+            'order_id' => $order->id,
+            'order_item_id' => $orderItem->id,
+            'request_type' => 'return',
+            'reason_code' => 'wrong_product_sent',
+            'quantity' => 1,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'submitted')
+            ->json('data.id');
+
+        $this->getJson('/api/returns?limit=10')
+            ->assertOk()
+            ->assertJsonPath('summary.total_count', 1)
+            ->assertJsonPath('data.0.id', $requestId);
+
+        $this->patchJson("/api/returns/{$requestId}/status", [
+            'status' => 'approved',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', ReturnRequest::STATUS_COMPLETED)
+            ->assertJsonPath('data.logo_sync_status', 'queued');
+
+        $snapshot = ReturnRequest::query()->findOrFail($requestId)->order_snapshot;
+        $this->assertSame('4', $snapshot['warehouse_code'] ?? null);
+        $this->assertSame('BATUM DEPO', $snapshot['warehouse_name'] ?? null);
+        $this->assertSame('4', $snapshot['normal_return_stock_warehouse_code'] ?? null);
+    }
+
     public function test_return_request_quantity_cannot_exceed_order_item_quantity(): void
     {
-        [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+        [$user, $order, $orderItem] = $this->createOrderContext('salesperson', [
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum',
+        ]);
 
         $this->actingAs($user);
 
@@ -140,6 +188,7 @@ class ReturnRequestApiTest extends TestCase
     public function test_rejected_return_request_does_not_reduce_returnable_quantity(): void
     {
         [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+        $warehouseUser = $this->createWarehouseApproverForOrder($order);
 
         $this->actingAs($user);
 
@@ -155,12 +204,16 @@ class ReturnRequestApiTest extends TestCase
 
         $requestId = (int) $createResponse->json('data.id');
 
+        $this->actingAs($warehouseUser);
+
         $this
             ->patchJson("/api/returns/{$requestId}/status", [
                 'status' => 'rejected',
                 'resolution_note' => 'Yanlış talep.',
             ])
             ->assertOk();
+
+        $this->actingAs($user);
 
         $this
             ->postJson('/api/returns', [
@@ -173,9 +226,14 @@ class ReturnRequestApiTest extends TestCase
             ->assertCreated();
     }
 
-    public function test_salesperson_can_move_return_request_through_review_flow(): void
+    public function test_warehouse_user_can_move_return_request_through_review_flow(): void
     {
         [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+        $warehouseUser = $this->createUserWithRole('warehouse', $order->dealer, [
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum',
+            'menu_permissions' => ['warehouse', 'returns'],
+        ]);
 
         $this->actingAs($user);
 
@@ -189,6 +247,8 @@ class ReturnRequestApiTest extends TestCase
 
         $requestId = (int) $createResponse->json('data.id');
 
+        $this->actingAs($warehouseUser);
+
         $reviewResponse = $this->patchJson("/api/returns/{$requestId}/status", [
             'status' => 'reviewing',
             'resolution_note' => 'Ürün fiziksel incelemeye alındı.',
@@ -197,7 +257,7 @@ class ReturnRequestApiTest extends TestCase
         $reviewResponse
             ->assertOk()
             ->assertJsonPath('data.status', 'reviewing')
-            ->assertJsonPath('data.reviewed_by.id', $user->id)
+            ->assertJsonPath('data.reviewed_by.id', $warehouseUser->id)
             ->assertJsonPath('data.resolution_note', 'Ürün fiziksel incelemeye alındı.');
 
         $approveResponse = $this->patchJson("/api/returns/{$requestId}/status", [
@@ -242,6 +302,7 @@ class ReturnRequestApiTest extends TestCase
     public function test_faulty_return_approval_creates_only_scrap_fiche_queue(): void
     {
         [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+        $warehouseUser = $this->createWarehouseApproverForOrder($order);
 
         $this->actingAs($user);
 
@@ -254,6 +315,8 @@ class ReturnRequestApiTest extends TestCase
         ]);
 
         $requestId = (int) $createResponse->json('data.id');
+
+        $this->actingAs($warehouseUser);
 
         $this
             ->patchJson("/api/returns/{$requestId}/status", [
@@ -287,6 +350,7 @@ class ReturnRequestApiTest extends TestCase
     public function test_plain_return_approval_does_not_create_scrap_fiche_queue(): void
     {
         [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+        $warehouseUser = $this->createWarehouseApproverForOrder($order);
 
         $this->actingAs($user);
 
@@ -299,6 +363,8 @@ class ReturnRequestApiTest extends TestCase
         ]);
 
         $requestId = (int) $createResponse->json('data.id');
+
+        $this->actingAs($warehouseUser);
 
         $this
             ->patchJson("/api/returns/{$requestId}/status", [
@@ -334,11 +400,51 @@ class ReturnRequestApiTest extends TestCase
         ]);
     }
 
+    public function test_warehouse_review_updates_return_stock_warehouse_to_reviewing_depot(): void
+    {
+        [$user, $order, $orderItem] = $this->createOrderContext('salesperson', [
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ]);
+        $warehouseUser = $this->createUserWithRole('warehouse', $order->dealer, [
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+            'menu_permissions' => ['warehouse', 'returns'],
+        ]);
+
+        $this->actingAs($user);
+
+        $createResponse = $this->postJson('/api/returns', [
+            'order_id' => $order->id,
+            'order_item_id' => $orderItem->id,
+            'request_type' => 'return',
+            'reason_code' => 'wrong_product_sent',
+            'quantity' => 1,
+        ]);
+
+        $requestId = (int) $createResponse->json('data.id');
+
+        $this->actingAs($warehouseUser);
+
+        $this
+            ->patchJson("/api/returns/{$requestId}/status", [
+                'status' => 'approved',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'approved');
+
+        $snapshot = ReturnRequest::query()->findOrFail($requestId)->order_snapshot;
+
+        $this->assertSame('2', $snapshot['warehouse_code'] ?? null);
+        $this->assertSame('TRABZON DEPO', $snapshot['warehouse_name'] ?? null);
+    }
+
     public function test_completed_return_does_not_requeue_synced_logo_exports(): void
     {
         config(['integrations.logo.return_sync_key' => 'return-sync-key']);
 
         [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+        $warehouseUser = $this->createWarehouseApproverForOrder($order);
 
         $this->actingAs($user);
 
@@ -351,6 +457,8 @@ class ReturnRequestApiTest extends TestCase
         ]);
 
         $requestId = (int) $createResponse->json('data.id');
+
+        $this->actingAs($warehouseUser);
 
         $this
             ->patchJson("/api/returns/{$requestId}/status", [
@@ -391,6 +499,7 @@ class ReturnRequestApiTest extends TestCase
     public function test_completed_return_without_existing_logo_state_queues_exports(): void
     {
         [$user, $order, $orderItem] = $this->createOrderContext('salesperson');
+        $warehouseUser = $this->createWarehouseApproverForOrder($order);
 
         $this->actingAs($user);
 
@@ -403,6 +512,8 @@ class ReturnRequestApiTest extends TestCase
         ]);
 
         $requestId = (int) $createResponse->json('data.id');
+
+        $this->actingAs($warehouseUser);
 
         $this
             ->patchJson("/api/returns/{$requestId}/status", [
@@ -453,6 +564,12 @@ class ReturnRequestApiTest extends TestCase
     {
         $dealer = $this->createDealer('DLR-RET-'.Str::upper(Str::random(4)));
         $user = $this->createUserWithRole($roleSlug, $dealer, $userOverrides);
+        if ($roleSlug === 'salesperson' && empty($userOverrides['branch_code']) && empty($userOverrides['branch_name'])) {
+            $user->forceFill([
+                'branch_code' => 'ERZURUM',
+                'branch_name' => 'Erzurum',
+            ])->save();
+        }
         $customer = $this->createCustomer(
             $dealer,
             'RET-001',
@@ -524,6 +641,15 @@ class ReturnRequestApiTest extends TestCase
             'code' => $code,
             'name' => $name,
             'is_active' => true,
+        ]);
+    }
+
+    private function createWarehouseApproverForOrder(Order $order): User
+    {
+        return $this->createUserWithRole('warehouse', Dealer::query()->findOrFail((int) $order->dealer_id), [
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum',
+            'menu_permissions' => ['warehouse', 'returns'],
         ]);
     }
 

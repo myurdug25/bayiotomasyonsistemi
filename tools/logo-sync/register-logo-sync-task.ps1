@@ -1,7 +1,7 @@
 param(
   [string]$TaskName = "Powersa Logo Sync",
   [int]$IntervalMinutes = 5,
-  [ValidateSet("customers", "customers-export", "products", "product-stocks", "product-images", "ledger", "collections", "pos-sales", "pos-expenses", "documents-export", "all")]
+  [ValidateSet("customers", "customers-export", "products", "product-stocks", "product-images", "ledger", "collections", "pos-sales", "pos-expenses", "pos-day-ends", "documents-export", "all")]
   [string]$Mode = "all"
 )
 
@@ -19,6 +19,7 @@ $scriptMap = @{
   collections = "run-sync-collections.cmd"
   "pos-sales" = "run-sync-pos-sales.cmd"
   "pos-expenses" = "run-sync-pos-expenses.cmd"
+  "pos-day-ends" = "run-sync-pos-day-ends.cmd"
   "documents-export" = "run-sync-documents-export.cmd"
   all = "run-sync-all.cmd"
 }

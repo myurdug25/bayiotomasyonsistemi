@@ -12,6 +12,9 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
 const allowedFiles = new Map([
   ["collection", "powersa-b2b-collection-write-procedure.sql"],
+  ["return", "powersa-b2b-return-write-procedure.sql"],
+  ["return-scrap", "powersa-b2b-return-scrap-write-procedure.sql"],
+  ["warehouse-transfer", "powersa-b2b-warehouse-transfer-write-procedure.sql"],
 ]);
 
 dotenv.config({ path: envPath });

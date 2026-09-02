@@ -564,6 +564,86 @@ class ProductMetaFiltersApiTest extends TestCase
         $response->assertJsonPath('data.0.stock_locations.0.stock', 7);
     }
 
+    public function test_trabzon_point_search_sees_all_branch_warehouse_stock_locations(): void
+    {
+        $context = $this->createSalesContext();
+        $product = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'STOCK-TRB-ALL-001',
+            name: 'Trabzon All Branch Stock Product',
+            stock: 100,
+            listPrice: 210.00,
+            meta: [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'logo_stock' => [
+                                'warehouses' => [
+                                    [
+                                        'warehouse_code' => '2',
+                                        'warehouse_name' => 'TRABZON DEPO',
+                                        'available_total' => 40,
+                                    ],
+                                    [
+                                        'warehouse_code' => '1',
+                                        'warehouse_name' => 'ERZURUM DEPO',
+                                        'available_total' => 25,
+                                    ],
+                                    [
+                                        'warehouse_code' => '0',
+                                        'warehouse_name' => 'ERZURUM POINT',
+                                        'available_total' => 10,
+                                    ],
+                                    [
+                                        'warehouse_code' => '3',
+                                        'warehouse_name' => 'SAMSUN DEPO',
+                                        'available_total' => 15,
+                                    ],
+                                    [
+                                        'warehouse_code' => '4',
+                                        'warehouse_name' => 'BATUM DEPO',
+                                        'available_total' => 10,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]
+        );
+
+        $pointRole = Role::query()->firstOrCreate(
+            ['slug' => 'point'],
+            ['name' => 'Point']
+        );
+        $trabzonPoint = User::factory()->create([
+            'dealer_id' => $context['dealer']->id,
+            'username' => 'trabzon.point',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+            'is_active' => true,
+            'menu_permissions' => ['search'],
+        ]);
+        $trabzonPoint->roles()->sync([$pointRole->id]);
+
+        $this->actingAs($trabzonPoint);
+
+        $response = $this->getJson('/api/products/search?limit=20&sort=stock_desc&q=STOCK-TRB-ALL-001');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $product->id);
+        $response->assertJsonPath('data.0.available_total', 100);
+        $response->assertJsonCount(5, 'data.0.stock_locations');
+        $response->assertJsonPath('data.0.stock_locations.0.branch', 'TRABZON DEPO');
+        $response->assertJsonPath('data.0.stock_locations.0.stock', 40);
+        $response->assertJsonPath('data.0.stock_locations.1.branch', 'ERZURUM DEPO');
+        $response->assertJsonPath('data.0.stock_locations.2.branch', 'ERZURUM POINT');
+        $response->assertJsonPath('data.0.stock_locations.3.branch', 'SAMSUN DEPO');
+        $response->assertJsonPath('data.0.stock_locations.4.branch', 'BATUM DEPO');
+    }
+
     public function test_point_user_sees_erzurum_depo_and_point_stock_with_shelf_addresses(): void
     {
         $context = $this->createSalesContext();
@@ -643,7 +723,7 @@ class ProductMetaFiltersApiTest extends TestCase
         $response->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B1.3');
     }
 
-    public function test_batum_user_sees_batum_logo_warehouse_stock(): void
+    public function test_batum_user_respects_explicit_moderator_warehouse_visibility(): void
     {
         $context = $this->createSalesContext();
         $product = $this->createProductWithMeta(
@@ -702,14 +782,11 @@ class ProductMetaFiltersApiTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data.0.id', $product->id);
-        $response->assertJsonPath('data.0.available_total', 14);
-        $response->assertJsonCount(2, 'data.0.stock_locations');
+        $response->assertJsonPath('data.0.available_total', 8);
+        $response->assertJsonCount(1, 'data.0.stock_locations');
         $response->assertJsonPath('data.0.stock_locations.0.warehouse_code', '1');
         $response->assertJsonPath('data.0.stock_locations.0.branch', 'ERZURUM DEPO');
         $response->assertJsonPath('data.0.stock_locations.0.stock', 8);
-        $response->assertJsonPath('data.0.stock_locations.1.warehouse_code', '4');
-        $response->assertJsonPath('data.0.stock_locations.1.branch', 'BATUM DEPO');
-        $response->assertJsonPath('data.0.stock_locations.1.stock', 6);
     }
 
     public function test_salesperson_with_selected_customer_sees_only_customer_branch_stock(): void
@@ -777,6 +854,162 @@ class ProductMetaFiltersApiTest extends TestCase
         $response->assertJsonPath('data.0.stock_locations.0.warehouse_code', 'TRB');
         $response->assertJsonPath('data.0.stock_locations.0.stock', 4);
         $response->assertJsonPath('data.0.stock_locations.0.shelf_address', 'A26.6');
+    }
+
+    public function test_admin_product_search_keeps_all_warehouse_stocks_when_customer_is_selected(): void
+    {
+        $context = $this->createSalesContext();
+        $product = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'POS-ADMIN-BRANCH-001',
+            name: 'Admin POS Branch Product',
+            stock: 19,
+            listPrice: 275.00,
+            meta: [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'logo_stock' => [
+                                'warehouses' => [
+                                    [
+                                        'warehouse_code' => '0',
+                                        'warehouse_name' => 'ERZURUM POINT',
+                                        'available_total' => 12,
+                                    ],
+                                    [
+                                        'warehouse_code' => '2',
+                                        'warehouse_name' => 'TRABZON DEPO',
+                                        'available_total' => 7,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]
+        );
+
+        $trabzonCustomer = Customer::query()->create([
+            'dealer_id' => $context['dealer']->id,
+            'code' => '120-61-901',
+            'name' => 'Admin POS Trabzon Customer',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'TRABZON',
+            'is_active' => true,
+        ]);
+        $adminRole = Role::query()->firstOrCreate(
+            ['slug' => 'admin'],
+            ['name' => 'Admin']
+        );
+        $admin = User::factory()->create([
+            'dealer_id' => null,
+            'is_active' => true,
+        ]);
+        $admin->roles()->sync([$adminRole->id]);
+
+        $this->actingAs($admin);
+
+        $response = $this->getJson(
+            '/api/products/search?limit=50&q=POS-ADMIN-BRANCH-001'
+            .'&dealer_id='.$context['dealer']->id
+            .'&customer_id='.$trabzonCustomer->id
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $product->id);
+        $response->assertJsonPath('data.0.available_total', 19);
+        $response->assertJsonCount(2, 'data.0.stock_locations');
+        $response->assertJsonPath('data.0.stock_locations.0.warehouse_code', '0');
+        $response->assertJsonPath('data.0.stock_locations.0.stock', 12);
+        $response->assertJsonPath('data.0.stock_locations.1.warehouse_code', '2');
+        $response->assertJsonPath('data.0.stock_locations.1.stock', 7);
+    }
+
+    public function test_admin_product_search_switches_between_batum_code_and_erzurum_customer_stock(): void
+    {
+        $context = $this->createSalesContext();
+        $product = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'POS-ADMIN-SWITCH-001',
+            name: 'Admin POS Switch Product',
+            stock: 31,
+            listPrice: 275.00,
+            meta: [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'logo_stock' => [
+                                'warehouses' => [
+                                    [
+                                        'warehouse_code' => '1',
+                                        'warehouse_name' => 'ERZURUM DEPO',
+                                        'available_total' => 23,
+                                        'shelf_address' => 'E25.1',
+                                    ],
+                                    [
+                                        'warehouse_code' => '4',
+                                        'warehouse_name' => 'BATUM DEPO',
+                                        'available_total' => 8,
+                                        'shelf_address' => 'B995.1',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]
+        );
+        $batumCustomer = Customer::query()->create([
+            'dealer_id' => $context['dealer']->id,
+            'code' => '120-00-901',
+            'name' => 'Branch Fields Missing Batum Customer',
+            'is_active' => true,
+        ]);
+        $erzurumCustomer = Customer::query()->create([
+            'dealer_id' => $context['dealer']->id,
+            'code' => '120-04-901',
+            'name' => 'Erzurum Customer',
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'ERZURUM',
+            'is_active' => true,
+        ]);
+        $adminRole = Role::query()->firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+        $admin = User::factory()->create(['dealer_id' => null, 'is_active' => true]);
+        $admin->roles()->sync([$adminRole->id]);
+
+        $this->actingAs($admin)
+            ->getJson(
+                '/api/products/search?limit=20&q=POS-ADMIN-SWITCH-001'
+                .'&dealer_id='.$context['dealer']->id
+                .'&customer_id='.$batumCustomer->id
+            )
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $product->id)
+            ->assertJsonPath('data.0.available_total', 31)
+            ->assertJsonCount(2, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.0.warehouse_code', '1')
+            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'E25.1')
+            ->assertJsonPath('data.0.stock_locations.1.warehouse_code', '4')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B995.1');
+
+        $this->actingAs($admin)
+            ->getJson(
+                '/api/products/search?limit=20&q=POS-ADMIN-SWITCH-001'
+                .'&dealer_id='.$context['dealer']->id
+                .'&customer_id='.$erzurumCustomer->id
+            )
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $product->id)
+            ->assertJsonPath('data.0.available_total', 31)
+            ->assertJsonCount(2, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.0.warehouse_code', '1')
+            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'E25.1')
+            ->assertJsonPath('data.0.stock_locations.1.warehouse_code', '4')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B995.1');
     }
 
     public function test_products_search_returns_products_by_brand_name_and_applies_sort(): void
@@ -1091,13 +1324,22 @@ class ProductMetaFiltersApiTest extends TestCase
         $response->assertJsonPath('data.0.package_quantity', '24');
     }
 
-    public function test_code_like_product_search_uses_normalized_database_path_when_meili_is_enabled(): void
+    public function test_compact_code_like_product_search_can_use_meilisearch_when_enabled(): void
     {
         config()->set('meilisearch.enabled', true);
 
-        $this->mock(ProductSearchService::class, function ($mock): void {
-            $mock->shouldNotReceive('shouldAttemptSearch');
-            $mock->shouldNotReceive('searchProductIds');
+        $meiliProductId = null;
+        $this->mock(ProductSearchService::class, function ($mock) use (&$meiliProductId): void {
+            $mock->shouldReceive('shouldAttemptSearch')->once()->andReturnTrue();
+            $mock->shouldReceive('searchProductIds')
+                ->once()
+                ->withArgs(fn (string $query): bool => $query === 'WY403')
+                ->andReturnUsing(function () use (&$meiliProductId): array {
+                    return [
+                        'ids' => [(int) $meiliProductId],
+                        'estimated_total' => 1,
+                    ];
+                });
         });
 
         $context = $this->createSalesContext();
@@ -1117,6 +1359,7 @@ class ProductMetaFiltersApiTest extends TestCase
                 'stok_turu' => 'T',
             ]
         );
+        $meiliProductId = $product->id;
 
         $this->actingAs($context['user']);
 
@@ -1126,7 +1369,99 @@ class ProductMetaFiltersApiTest extends TestCase
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', $product->id);
         $response->assertJsonPath('data.0.sku', 'WY 403');
-        $response->assertJsonPath('search_backend', 'db_code_fast');
+        $response->assertJsonPath('search_backend', 'meili');
+    }
+
+    public function test_code_like_product_search_with_equivalents_can_use_meilisearch_when_enabled(): void
+    {
+        config()->set('meilisearch.enabled', true);
+
+        $meiliProductId = null;
+        $this->mock(ProductSearchService::class, function ($mock) use (&$meiliProductId): void {
+            $mock->shouldReceive('shouldAttemptSearch')->once()->andReturnTrue();
+            $mock->shouldReceive('searchProductIds')
+                ->once()
+                ->withArgs(fn (string $query): bool => $query === 'CS0040')
+                ->andReturnUsing(function () use (&$meiliProductId): array {
+                    return [
+                        'ids' => [(int) $meiliProductId],
+                        'estimated_total' => 1,
+                    ];
+                });
+        });
+
+        $context = $this->createSalesContext();
+
+        $product = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'CS 0040',
+            name: 'Meili Equivalent Code Product',
+            stock: 10,
+            listPrice: 210.00,
+            meta: [
+                'specode4' => 'H',
+                'kod1' => 'FILTRE',
+                'kod2' => 'YAG',
+                'kod3' => 'ELEMENT',
+                'stok_turu' => 'T',
+            ]
+        );
+        $meiliProductId = $product->id;
+
+        $this->actingAs($context['user']);
+
+        $response = $this->getJson('/api/products/search?limit=20&q=cs0040&include_equivalents=1');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $product->id);
+        $response->assertJsonPath('search_backend', 'meili');
+    }
+
+    public function test_punctuated_code_like_search_uses_normalized_meilisearch_query(): void
+    {
+        config()->set('meilisearch.enabled', true);
+
+        $meiliProductId = null;
+        $this->mock(ProductSearchService::class, function ($mock) use (&$meiliProductId): void {
+            $mock->shouldReceive('shouldAttemptSearch')->once()->andReturnTrue();
+            $mock->shouldReceive('searchProductIds')
+                ->once()
+                ->withArgs(fn (string $query): bool => $query === '10W40')
+                ->andReturnUsing(function () use (&$meiliProductId): array {
+                    return [
+                        'ids' => [(int) $meiliProductId],
+                        'estimated_total' => 1,
+                    ];
+                });
+        });
+
+        $context = $this->createSalesContext();
+        $product = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'PWS-OIL-010',
+            name: '10W-40 Extra Synthetic',
+            stock: 10,
+            listPrice: 210.00,
+            meta: [
+                'kod1' => 'MADENI-YAG',
+                'kod2' => '10W-40',
+            ]
+        );
+        $meiliProductId = $product->id;
+
+        $this->actingAs($context['user']);
+
+        $response = $this->getJson('/api/products/search?limit=20&q=10w-40');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $product->id);
+        $response->assertJsonPath('search_backend', 'meili');
     }
 
     public function test_products_search_limits_exact_code_lookup_to_same_logo_group(): void

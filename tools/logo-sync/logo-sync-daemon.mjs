@@ -12,32 +12,45 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
 const statusPath = path.join(scriptDir, "sync-daemon-status.json");
 const priorityStatusPath = path.join(scriptDir, "sync-daemon-priority-status.json");
+const criticalStatusPath = path.join(scriptDir, "sync-daemon-critical-status.json");
 const lockPath = path.join(scriptDir, "sync-daemon.lock");
 const defaultCustomerExportProcedure = "dbo.PowersaB2B_ExportCustomer";
 const defaultPrioritySteps = [
+  "pos-expenses",
+  "pos-day-ends",
   "customers-export",
   "collections",
   "pos-sales",
-  "pos-expenses",
+  "pos-delivery-balances",
   "documents-export",
   "product-shelves",
-  "product-stocks",
+];
+const requiredPrioritySteps = [
+  "collections",
+  "pos-sales",
+  "pos-delivery-balances",
+  "pos-expenses",
+  "pos-day-ends",
+  "documents-export",
+  "product-shelves",
 ];
 const defaultFastSteps = [
   "documents-export",
   "product-shelves",
-  "product-stocks",
   "ledger",
   "collections",
   "pos-sales",
+  "pos-delivery-balances",
   "pos-expenses",
+  "pos-day-ends",
 ];
-const defaultSlowSteps = ["customers"];
+const defaultSlowSteps = ["customers", "product-stocks"];
 const defaultMaintenanceSteps = [
   "product-catalog",
   "pos-expenses-import",
   "finance-definitions",
   "campaigns",
+  "previous-purchases",
 ];
 
 if (fs.existsSync(envPath)) {
@@ -47,6 +60,7 @@ if (fs.existsSync(envPath)) {
 const config = buildConfig();
 let stopping = false;
 let lockAcquired = false;
+const activeSteps = new Set();
 
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
@@ -61,10 +75,10 @@ main()
 async function main() {
   acquireLock();
   log(
-    `daemon started priorityIntervalMs=${config.priorityIntervalMs} fastIntervalMs=${config.fastIntervalMs} slowIntervalMs=${config.slowIntervalMs} maintenanceIntervalMs=${config.maintenanceIntervalMs} prioritySteps=${config.prioritySteps.join(",") || "none"} fastSteps=${config.fastSteps.join(",")} slowSteps=${config.slowSteps.join(",") || "none"} maintenanceSteps=${config.maintenanceSteps.join(",") || "none"}`
+    `daemon started priorityIntervalMs=${config.priorityIntervalMs} fastIntervalMs=${config.fastIntervalMs} slowIntervalMs=${config.slowIntervalMs} maintenanceIntervalMs=${config.maintenanceIntervalMs} campaignIntervalMs=${config.campaignIntervalMs} prioritySteps=${config.prioritySteps.join(",") || "none"} fastSteps=${config.fastSteps.join(",")} slowSteps=${config.slowSteps.join(",") || "none"} maintenanceSteps=${config.maintenanceSteps.join(",") || "none"}`
   );
 
-  await Promise.all([runGeneralLoop(), runPriorityLoop()]);
+  await Promise.all([runGeneralLoop(), runPriorityLoop(), runCriticalLoop(), runCampaignLoop()]);
   log("daemon stopped");
 }
 
@@ -95,15 +109,45 @@ async function runGeneralLoop() {
 }
 
 async function runPriorityLoop() {
-  if (config.prioritySteps.length === 0) {
+  const steps = config.prioritySteps.filter((step) => !config.criticalSteps.includes(step));
+
+  if (steps.length === 0) {
     return;
   }
 
   while (!stopping) {
-    const summary = await runLoop(config.prioritySteps);
+    const summary = await runLoop(steps);
     writeStatusFile(priorityStatusPath, summary, "priority status");
 
     const delayMs = summary.failed > 0 ? config.errorBackoffMs : config.priorityIntervalMs;
+    await delay(delayMs, () => stopping);
+  }
+}
+
+async function runCriticalLoop() {
+  if (config.criticalSteps.length === 0) {
+    return;
+  }
+
+  while (!stopping) {
+    const summary = await runLoop(config.criticalSteps);
+    writeStatusFile(criticalStatusPath, summary, "critical status");
+
+    const delayMs = summary.failed > 0 ? config.errorBackoffMs : config.criticalIntervalMs;
+    await delay(delayMs, () => stopping);
+  }
+}
+
+async function runCampaignLoop() {
+  const steps = ["campaigns"];
+
+  if (!config.campaignLoopEnabled) {
+    return;
+  }
+
+  while (!stopping) {
+    const summary = await runLoop(steps);
+    const delayMs = summary.failed > 0 ? config.errorBackoffMs : config.campaignIntervalMs;
     await delay(delayMs, () => stopping);
   }
 }
@@ -141,18 +185,31 @@ async function runStep(stepName) {
     return { name: stepName, ok: true, skipped: true, reason: "not configured" };
   }
 
+  // Critical, priority and general loops run independently. Never allow the
+  // same exporter to read the same pending records concurrently.
+  if (activeSteps.has(stepName)) {
+    return { name: stepName, ok: true, skipped: true, reason: "already running" };
+  }
+
   const startedAt = Date.now();
-  log(`step started ${stepName}`);
+  activeSteps.add(stepName);
+  if (config.verboseSteps) {
+    log(`step started ${stepName}`);
+  }
 
   try {
     await runNodeScript(step.script, step.env);
     const durationMs = Date.now() - startedAt;
-    log(`step finished ${stepName} duration=${durationMs}ms`);
+    if (config.verboseSteps) {
+      log(`step finished ${stepName} duration=${durationMs}ms`);
+    }
     return { name: stepName, ok: true, skipped: false, duration_ms: durationMs };
   } catch (error) {
     const durationMs = Date.now() - startedAt;
     log(`step failed ${stepName} duration=${durationMs}ms error=${formatError(error)}`);
     return { name: stepName, ok: false, skipped: false, duration_ms: durationMs, error: formatError(error) };
+  } finally {
+    activeSteps.delete(stepName);
   }
 }
 
@@ -175,6 +232,12 @@ function resolveStep(name) {
         SYNC_PRODUCTS_STOCK_SKIP_MOVEMENT_FALLBACK: "true",
         SYNC_PRODUCTS_STOCK_REQUIRE_SUMMARY_ROW: "true",
         SYNC_PRODUCTS_STOCK_INCLUDE_PRICE: "false",
+        SYNC_PRODUCTS_STOCK_FAST_LIMIT: process.env.SYNC_PRODUCTS_STOCK_FAST_LIMIT ?? "150",
+        SYNC_PRODUCTS_STOCK_LOOKBACK_MINUTES: process.env.SYNC_PRODUCTS_STOCK_LOOKBACK_MINUTES ?? "5",
+        SYNC_API_REQUEST_MAX_RECORDS:
+          process.env.SYNC_PRODUCTS_STOCK_API_REQUEST_MAX_RECORDS ??
+          process.env.SYNC_API_REQUEST_MAX_RECORDS ??
+          "50",
       },
       when: () => hasAny("POWERSA_PRODUCTS_SYNC_URL"),
     },
@@ -205,9 +268,27 @@ function resolveStep(name) {
       script: "logo-pos-sales-export.mjs",
       when: () => hasAny("LOGO_POS_SALE_EXPORT_PROCEDURE") && hasAny("POWERSA_POS_SALES_PENDING_URL", "POWERSA_SYNC_URL"),
     },
+    "pos-delivery-balances": {
+      script: "logo-pos-delivery-balances-sync.mjs",
+      when: () => hasAny("POWERSA_POS_DELIVERY_BALANCES_SYNC_URL", "POWERSA_SYNC_URL"),
+    },
+    "previous-purchases": {
+      script: "logo-previous-purchases-sync.mjs",
+      when: () => hasAny("POWERSA_PREVIOUS_PURCHASES_SYNC_URL", "POWERSA_SYNC_URL"),
+    },
+    "eryaz-ledger": {
+      script: "eryaz-ledger-sync.mjs",
+      when: () =>
+        parseBoolean(process.env.ERYAZ_LEDGER_SYNC_ENABLED, false) &&
+        hasAny("POWERSA_ERYAZ_LEDGER_SYNC_URL"),
+    },
     "pos-expenses": {
       script: "logo-pos-expenses-export.mjs",
       when: () => hasAny("LOGO_POS_EXPENSE_EXPORT_PROCEDURE") && hasAny("POWERSA_POS_EXPENSES_PENDING_URL", "POWERSA_SYNC_URL"),
+    },
+    "pos-day-ends": {
+      script: "logo-pos-day-ends-export.mjs",
+      when: () => hasAny("LOGO_POS_DAY_END_EXPORT_PROCEDURE") && hasAny("POWERSA_POS_DAY_ENDS_PENDING_URL", "POWERSA_SYNC_URL"),
     },
     "pos-expenses-import": {
       script: "logo-pos-expenses-sync.mjs",
@@ -222,13 +303,15 @@ function resolveStep(name) {
           "LOGO_ORDER_EXPORT_PROCEDURE",
           "LOGO_SHIPMENT_EXPORT_PROCEDURE",
           "LOGO_RETURN_EXPORT_PROCEDURE",
-          "LOGO_RETURN_SCRAP_EXPORT_PROCEDURE"
+          "LOGO_RETURN_SCRAP_EXPORT_PROCEDURE",
+          "LOGO_WAREHOUSE_TRANSFER_EXPORT_PROCEDURE"
         ) &&
         hasAny(
           "POWERSA_ORDERS_PENDING_URL",
           "POWERSA_SHIPMENTS_PENDING_URL",
           "POWERSA_RETURNS_PENDING_URL",
           "POWERSA_RETURN_SCRAPS_PENDING_URL",
+          "POWERSA_WAREHOUSE_TRANSFERS_PENDING_URL",
         ),
     },
     "product-shelves": {
@@ -252,9 +335,21 @@ function runNodeScript(scriptName, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(scriptDir, scriptName)], {
       cwd: scriptDir,
-      stdio: "inherit",
+      stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, ...extraEnv },
     });
+
+    let outputTail = "";
+    const capture = (chunk, stream) => {
+      const text = chunk.toString();
+      if (config.verboseSteps) {
+        stream.write(text);
+      }
+      outputTail = `${outputTail}${text}`.slice(-65_536);
+    };
+
+    child.stdout.on("data", (chunk) => capture(chunk, process.stdout));
+    child.stderr.on("data", (chunk) => capture(chunk, process.stderr));
 
     child.on("error", reject);
     child.on("exit", (code) => {
@@ -262,19 +357,28 @@ function runNodeScript(scriptName, extraEnv = {}) {
         resolve();
         return;
       }
-      reject(new Error(`${scriptName} exited with code ${code}`));
+      const detail = outputTail.trim();
+      reject(new Error(`${scriptName} exited with code ${code}${detail ? `: ${detail}` : ""}`));
     });
   });
 }
 
 function buildConfig() {
   return {
+    criticalIntervalMs: parseIntEnv("SYNC_DAEMON_CRITICAL_INTERVAL_MS", 5_000, 2_000, 60_000),
     priorityIntervalMs: parseIntEnv("SYNC_DAEMON_PRIORITY_INTERVAL_MS", 3_000, 1_000, 60_000),
     fastIntervalMs: parseIntEnv("SYNC_DAEMON_FAST_INTERVAL_MS", 3_000, 1_000, 300_000),
     slowIntervalMs: parseIntEnv("SYNC_DAEMON_SLOW_INTERVAL_MS", 60_000, 10_000, 3_600_000),
-    maintenanceIntervalMs: parseIntEnv("SYNC_DAEMON_MAINTENANCE_INTERVAL_MS", 300_000, 60_000, 86_400_000),
+    maintenanceIntervalMs: parseIntEnv("SYNC_DAEMON_MAINTENANCE_INTERVAL_MS", 60_000, 60_000, 86_400_000),
+    campaignIntervalMs: parseIntEnv("SYNC_DAEMON_CAMPAIGN_INTERVAL_MS", 60_000, 30_000, 3_600_000),
+    campaignLoopEnabled: parseBoolean(process.env.SYNC_DAEMON_CAMPAIGN_LOOP_ENABLED, true),
     errorBackoffMs: parseIntEnv("SYNC_DAEMON_ERROR_BACKOFF_MS", 30_000, 5_000, 600_000),
-    prioritySteps: parseStepList(process.env.SYNC_DAEMON_PRIORITY_STEPS, defaultPrioritySteps),
+    verboseSteps: parseBoolean(process.env.SYNC_DAEMON_VERBOSE_STEPS, false),
+    prioritySteps: withRequiredPrioritySteps(parseStepList(process.env.SYNC_DAEMON_PRIORITY_STEPS, defaultPrioritySteps)),
+    criticalSteps: parseStepList(
+      process.env.SYNC_DAEMON_CRITICAL_STEPS,
+      ["collections", "pos-expenses", "documents-export"]
+    ),
     fastSteps: parseStepList(process.env.SYNC_DAEMON_FAST_STEPS, defaultFastSteps),
     slowSteps: parseStepList(process.env.SYNC_DAEMON_SLOW_STEPS, defaultSlowSteps),
     maintenanceSteps: [
@@ -363,6 +467,10 @@ function customerExportProcedure() {
 
 function writeStatus(summary) {
   writeStatusFile(statusPath, summary, "status");
+}
+
+function withRequiredPrioritySteps(steps) {
+  return [...new Set([...steps, ...requiredPrioritySteps])];
 }
 
 function writeStatusFile(targetPath, summary, label) {

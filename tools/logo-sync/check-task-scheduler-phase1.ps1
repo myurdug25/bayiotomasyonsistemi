@@ -50,6 +50,11 @@ $Tasks = @(
     LockPath = ".sync-pos-expenses.lock"
   },
   @{
+    Name = "Powersa Logo POS Day Ends Export"
+    LogFile = "sync-pos-day-ends.log"
+    LockPath = ".sync-pos-day-ends.lock"
+  },
+  @{
     Name = "Powersa Logo Documents Export"
     LogFile = "sync-documents-export.log"
     LockPath = ".sync-documents-export.lock"

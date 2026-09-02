@@ -59,6 +59,10 @@ function buildConfig() {
   const returnScrapsKey = (process.env.POWERSA_RETURN_SCRAPS_SYNC_KEY ?? returnsKey).trim();
   const posSalesKey = (process.env.POWERSA_POS_SALES_SYNC_KEY ?? collectionsKey).trim();
   const posExpensesKey = (process.env.POWERSA_POS_EXPENSES_SYNC_KEY ?? collectionsKey).trim();
+  const posDayEndsKey = (process.env.POWERSA_POS_DAY_ENDS_SYNC_KEY ?? posExpensesKey).trim();
+  const warehouseTransfersKey = (process.env.POWERSA_WAREHOUSE_TRANSFERS_SYNC_KEY ?? shipmentsKey).trim();
+  const productShelvesKey = (process.env.POWERSA_PRODUCT_SHELVES_SYNC_KEY ?? fallbackKey).trim();
+  const purchaseReceiptsKey = (process.env.POWERSA_PURCHASE_RECEIPTS_SYNC_KEY ?? shipmentsKey).trim();
   const customersKey = (process.env.POWERSA_CUSTOMERS_SYNC_KEY ?? fallbackKey).trim();
 
   return {
@@ -75,6 +79,10 @@ function buildConfig() {
       returnScraps: returnScrapsKey,
       posSales: posSalesKey,
       posExpenses: posExpensesKey,
+      posDayEnds: posDayEndsKey,
+      warehouseTransfers: warehouseTransfersKey,
+      productShelves: productShelvesKey,
+      purchaseReceipts: purchaseReceiptsKey,
     },
   };
 }
@@ -145,6 +153,39 @@ function buildSteps(currentConfig) {
       syncKey: currentConfig.keys.posExpenses,
       summarize: summarizePosExpense,
     },
+    {
+      key: "pos-day-ends",
+      label: "POS day end",
+      idField: "pos_session_id",
+      pendingUrl: nullable(process.env.POWERSA_POS_DAY_ENDS_PENDING_URL) ?? deriveUrl(currentConfig.syncUrl, "pos-day-ends", "pending"),
+      syncKey: currentConfig.keys.posDayEnds,
+      statuses: ["queued", "failed"],
+      summarize: summarizeQueueState,
+    },
+    {
+      key: "warehouse-transfers",
+      label: "warehouse transfer",
+      idField: "shipment_id",
+      pendingUrl: nullable(process.env.POWERSA_WAREHOUSE_TRANSFERS_PENDING_URL) ?? deriveUrl(currentConfig.syncUrl, "warehouse-transfers", "pending"),
+      syncKey: currentConfig.keys.warehouseTransfers,
+      summarize: summarizeShipment,
+    },
+    {
+      key: "product-shelves",
+      label: "product shelf",
+      idField: "product_id",
+      pendingUrl: nullable(process.env.POWERSA_PRODUCT_SHELVES_PENDING_URL) ?? deriveUrl(currentConfig.syncUrl, "product-shelves", "pending"),
+      syncKey: currentConfig.keys.productShelves,
+      summarize: summarizeQueueState,
+    },
+    {
+      key: "purchase-receipts",
+      label: "purchase receipt",
+      idField: "purchase_receipt_id",
+      pendingUrl: nullable(process.env.POWERSA_PURCHASE_RECEIPTS_PENDING_URL) ?? deriveUrl(currentConfig.syncUrl, "purchase-receipts", "pending"),
+      syncKey: currentConfig.keys.purchaseReceipts,
+      summarize: summarizeDocument,
+    },
   ].map((step) => ({
     ...step,
     dealerId: currentConfig.dealerId,
@@ -161,6 +202,10 @@ async function fetchPending(step) {
     query.set("dealer_id", String(step.dealerId));
   } else if (step.dealerCode) {
     query.set("dealer_code", step.dealerCode);
+  }
+
+  for (const status of step.statuses ?? []) {
+    query.append("statuses[]", status);
   }
 
   const url = `${step.pendingUrl}${step.pendingUrl.includes("?") ? "&" : "?"}${query.toString()}`;
@@ -190,7 +235,23 @@ function summarize(step, records) {
   return {
     received: records.length,
     ids: records.map((record) => record[step.idField]).filter((value) => value !== undefined),
+    status_counts: statusCounts(records),
     ...details,
+  };
+}
+
+function summarizeQueueState(records) {
+  return {
+    failed_records: failedRecords(records).map((record) => ({
+      id:
+        record.pos_session_id ??
+        record.shipment_id ??
+        record.purchase_receipt_id ??
+        record.product_id ??
+        record.id ??
+        null,
+      error: record.sync_error ?? record.error ?? record.meta?.sync_error ?? null,
+    })),
   };
 }
 
@@ -255,7 +316,55 @@ function summarizePosExpense(records) {
     missing_amount: count(records, (record) => Number(record.amount ?? 0) <= 0),
     missing_category: count(records, (record) => blank(record.category)),
     missing_cashbox: count(records, (record) => blank(record.cashbox_code) && blank(record.cashbox_name)),
+    missing_expense_account: count(
+      records,
+      (record) =>
+        blank(record.logo?.account_code) &&
+        blank(record.account_code) &&
+        blank(record.expense_account_code) &&
+        blank(record.logo_expense_account_code) &&
+        blank(record.meta?.source_meta?.logo_expense_account_code)
+    ),
+    failed_records: failedRecords(records)
+      .map((record) => ({
+        pos_expense_id: record.pos_expense_id ?? null,
+        category: record.category ?? null,
+        created_by: record.created_by_name ?? record.created_by_user_id ?? null,
+        expense_account_code:
+          record.logo?.account_code ??
+          record.account_code ??
+          record.expense_account_code ??
+          record.logo_expense_account_code ??
+          record.meta?.source_meta?.logo_expense_account_code ??
+          null,
+        expense_account_name:
+          record.logo?.account_name ??
+          record.logo_expense_account_name ??
+          record.meta?.source_meta?.logo_expense_account_name ??
+          null,
+        cashbox_code:
+          record.cashbox_code ??
+          record.meta?.source_meta?.cashbox_code ??
+          record.meta?.cashbox?.code ??
+          null,
+        error: record.sync_error ?? record.error ?? record.meta?.sync_error ?? null,
+      })),
   };
+}
+
+function statusCounts(records) {
+  return records.reduce((result, record) => {
+    const status = String(record.sync_status ?? record.status ?? "unknown").toLowerCase();
+    result[status] = (result[status] ?? 0) + 1;
+
+    return result;
+  }, {});
+}
+
+function failedRecords(records) {
+  return records.filter(
+    (record) => String(record.sync_status ?? record.status ?? "").toLowerCase() === "failed"
+  );
 }
 
 function missingCustomerReference(record) {

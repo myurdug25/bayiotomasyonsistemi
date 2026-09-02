@@ -23,6 +23,33 @@ class ModeratorManagementApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_global_admin_can_update_complaint_recipient_for_all_dealers(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $firstDealer = $this->createDealer('DLR-MAIL-001');
+        $secondDealer = $this->createDealer('DLR-MAIL-002');
+        $admin = $this->createUserWithRole('admin', null, [
+            'menu_permissions' => ['moderator'],
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson('/api/moderator/system-settings', [
+                'complaint_mail_to' => 'farukcelik@gucsa.com.tr',
+            ])
+            ->assertOk()
+            ->assertJsonPath('system_settings.complaint_mail_to', 'farukcelik@gucsa.com.tr');
+
+        $this->assertSame(
+            'farukcelik@gucsa.com.tr',
+            data_get($firstDealer->fresh()->meta, 'system_settings.complaint_mail_to')
+        );
+        $this->assertSame(
+            'farukcelik@gucsa.com.tr',
+            data_get($secondDealer->fresh()->meta, 'system_settings.complaint_mail_to')
+        );
+    }
+
     public function test_moderator_can_read_overview_and_manage_users_and_customers(): void
     {
         $this->seed(RoleSeeder::class);
@@ -348,6 +375,7 @@ class ModeratorManagementApiTest extends TestCase
             ->assertJsonPath('data.feature_permissions', []);
 
         $this->assertSame([], $pointUser->fresh()->feature_permissions);
+        $this->assertNotNull($pointUser->fresh()->permissions_updated_at);
     }
 
     public function test_branch_scoped_user_sees_only_customers_in_own_branch(): void

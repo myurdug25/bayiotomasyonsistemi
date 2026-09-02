@@ -338,6 +338,111 @@ class LogoProductSyncApiTest extends TestCase
         ]);
     }
 
+    public function test_logo_product_sync_persists_all_f_group_prices_in_one_pass(): void
+    {
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'price_list_code' => 'A',
+                'records' => [[
+                    'external_ref' => 'PRICE-GROUP-AY1439',
+                    'sku' => 'AY 1439',
+                    'name' => 'Fiyat Grubu Test Urunu',
+                    'list_price' => 112.69,
+                    'currency' => 'TRY',
+                    'price_entries' => [
+                        [
+                            'price_list_code' => 'F1',
+                            'list_price' => 190.50,
+                            'currency' => 'TRY',
+                        ],
+                        [
+                            'price_list_code' => 'F3',
+                            'list_price' => 210.90,
+                            'currency' => 'TRY',
+                        ],
+                    ],
+                ]],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.prices_synced', 3);
+
+        $productId = (int) Product::query()->where('sku', 'AY 1439')->value('id');
+        $f1PriceListId = (int) DB::table('price_lists')->where('code', 'F1')->value('id');
+        $f3PriceListId = (int) DB::table('price_lists')->where('code', 'F3')->value('id');
+
+        $this->assertDatabaseHas('base_prices', [
+            'product_id' => $productId,
+            'price_list_id' => $f1PriceListId,
+            'list_price' => 190.50,
+        ]);
+        $this->assertDatabaseHas('base_prices', [
+            'product_id' => $productId,
+            'price_list_id' => $f3PriceListId,
+            'list_price' => 210.90,
+        ]);
+    }
+
+    public function test_logo_product_sync_removes_stale_f_group_prices_when_logo_no_longer_sends_them(): void
+    {
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'price_list_code' => 'A',
+                'records' => [[
+                    'external_ref' => 'PRICE-GROUP-CS0040',
+                    'sku' => 'CS 0040',
+                    'name' => 'Clio Yag Filtresi',
+                    'list_price' => 101.88,
+                    'currency' => 'TRY',
+                    'price_entries' => [
+                        [
+                            'price_list_code' => 'F3',
+                            'list_price' => 175.74,
+                            'currency' => 'TRY',
+                        ],
+                    ],
+                ]],
+            ])
+            ->assertOk();
+
+        $productId = (int) Product::query()->where('sku', 'CS 0040')->value('id');
+        $f3PriceListId = (int) DB::table('price_lists')->where('code', 'F3')->value('id');
+
+        $this->assertDatabaseHas('base_prices', [
+            'product_id' => $productId,
+            'price_list_id' => $f3PriceListId,
+            'list_price' => 175.74,
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'price_list_code' => 'A',
+                'records' => [[
+                    'external_ref' => 'PRICE-GROUP-CS0040',
+                    'sku' => 'CS 0040',
+                    'name' => 'Clio Yag Filtresi',
+                    'list_price' => 101.88,
+                    'currency' => 'TRY',
+                ]],
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('base_prices', [
+            'product_id' => $productId,
+            'price_list_id' => (int) DB::table('price_lists')->where('code', 'A')->value('id'),
+            'list_price' => 101.88,
+        ]);
+
+        $this->assertDatabaseMissing('base_prices', [
+            'product_id' => $productId,
+            'price_list_id' => $f3PriceListId,
+        ]);
+    }
+
     public function test_logo_product_sync_uses_specode5_as_brand_even_when_marka_kodu_is_different(): void
     {
         $response = $this
@@ -427,6 +532,72 @@ class LogoProductSyncApiTest extends TestCase
         $this->assertSame('NEW-CS0040', $product->sku);
         $this->assertSame('Guncel Logo Urunu', $product->name);
         $this->assertSame(1, Product::query()->count());
+    }
+
+    public function test_logo_product_full_sync_inactivates_logo_products_missing_from_final_snapshot(): void
+    {
+        $staleProduct = Product::query()->create([
+            'sku' => 'CS0040 DENEME',
+            'name' => 'Eski Logo Deneme Urunu',
+            'unit' => 'adet',
+            'vat_rate' => 20,
+            'is_active' => true,
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'external_ref' => 'OLD-003-REF',
+                        'sync_run_id' => 'old-run',
+                    ],
+                ],
+            ],
+        ]);
+
+        $manualProduct = Product::query()->create([
+            'sku' => 'LOCAL-MANUAL',
+            'name' => 'B2B Manuel Urun',
+            'unit' => 'adet',
+            'vat_rate' => 20,
+            'is_active' => true,
+            'meta' => [],
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'sync_run_id' => 'logo-001-full-20260902',
+                'is_full_sync' => true,
+                'is_final_batch' => true,
+                'batch_index' => 0,
+                'batch_count' => 1,
+                'source_table' => 'dbo.LG_001_ITEMS',
+                'records' => [
+                    [
+                        'external_ref' => 'NEW-001-REF',
+                        'sku' => 'CS 0040',
+                        'name' => 'Yeni Logo Urunu',
+                    ],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.stale_inactivated', 1);
+
+        $staleProduct->refresh();
+        $manualProduct->refresh();
+        $currentProduct = Product::query()->where('sku', 'CS 0040')->firstOrFail();
+
+        $this->assertFalse($staleProduct->is_active);
+        $this->assertTrue($manualProduct->is_active);
+        $this->assertTrue($currentProduct->is_active);
+        $this->assertSame(
+            'logo-001-full-20260902',
+            $currentProduct->meta['integrations']['logo']['sync_run_id']
+        );
+        $this->assertSame(
+            'dbo.LG_001_ITEMS',
+            $currentProduct->meta['integrations']['logo']['source_table']
+        );
     }
 
     public function test_logo_product_sync_clamps_negative_real_stock_to_zero(): void

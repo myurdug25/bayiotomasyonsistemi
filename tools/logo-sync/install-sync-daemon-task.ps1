@@ -33,6 +33,16 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "[logo-sync-daemon] task kaydedildi: $TaskName (ONSTART / $RunAs)"
 
+$taskSettings = New-ScheduledTaskSettingsSet `
+  -StartWhenAvailable `
+  -RestartCount 999 `
+  -RestartInterval (New-TimeSpan -Minutes 1) `
+  -ExecutionTimeLimit ([TimeSpan]::Zero) `
+  -MultipleInstances IgnoreNew
+
+Set-ScheduledTask -TaskName $TaskName -Settings $taskSettings | Out-Null
+Write-Host "[logo-sync-daemon] otomatik yeniden baslatma etkin: 1 dakika aralikla"
+
 if (-not $NoStart) {
   & schtasks.exe /Run /TN $TaskName
 

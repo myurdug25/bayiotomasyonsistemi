@@ -91,6 +91,10 @@ tools/**/obj/
 tools/logo-sync/.sync-state/
 tools/logo-sync/apps/
 tools/logo-sync/.sync-source-manifest.json
+tools/logo-sync/deploy-*.mjs
+tools/logo-sync/rollback-*.mjs
+tools/logo-sync/check_orders.mjs
+tools/logo-sync/truncate*.mjs
 tools/print-bridge/**/*.apk
 tools/print-bridge/android/.gradle/
 tools/print-bridge/android/local.properties

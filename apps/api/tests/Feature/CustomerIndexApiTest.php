@@ -72,6 +72,58 @@ class CustomerIndexApiTest extends TestCase
         $response->assertJsonCount(1, 'data');
     }
 
+    public function test_admin_customer_cursor_pages_do_not_repeat_rows(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-ADMIN-CURSOR',
+            'name' => 'Admin Cursor Dealer',
+            'is_active' => true,
+        ]);
+
+        $adminRole = Role::query()->firstOrCreate(
+            ['slug' => 'admin'],
+            ['name' => 'Admin']
+        );
+
+        $admin = User::factory()->create([
+            'dealer_id' => $dealer->id,
+            'is_active' => true,
+        ]);
+        $admin->roles()->sync([$adminRole->id]);
+
+        foreach (range(1, 7) as $index) {
+            Customer::query()->create([
+                'dealer_id' => $dealer->id,
+                'source_system' => $index <= 2 ? 'b2b' : 'logo',
+                'sync_status' => $index <= 2 ? 'pending' : null,
+                'code' => sprintf('CURSOR-%02d', $index),
+                'name' => "Cursor Customer {$index}",
+                'is_active' => true,
+            ]);
+        }
+
+        $this->actingAs($admin);
+
+        $firstPage = $this->getJson('/api/customers?fast=1&limit=3')
+            ->assertOk()
+            ->assertJsonCount(3, 'data')
+            ->json();
+
+        $this->assertNotEmpty($firstPage['next_cursor']);
+
+        $secondPage = $this->getJson(
+            '/api/customers?fast=1&limit=3&cursor='.urlencode($firstPage['next_cursor'])
+        )
+            ->assertOk()
+            ->assertJsonCount(3, 'data')
+            ->json();
+
+        $firstPageIds = collect($firstPage['data'])->pluck('id');
+        $secondPageIds = collect($secondPage['data'])->pluck('id');
+
+        $this->assertCount(0, $firstPageIds->intersect($secondPageIds));
+    }
+
     public function test_point_user_can_list_customers_from_customer_page_route(): void
     {
         $dealer = Dealer::query()->create([
@@ -124,6 +176,52 @@ class CustomerIndexApiTest extends TestCase
             ->assertJsonPath('data.0.code', 'POINT-CUSTOMER-1');
     }
 
+    public function test_customer_search_ignores_spaces_and_turkish_character_differences(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOOSE-CUSTOMER-SEARCH',
+            'name' => 'Loose Customer Search Dealer',
+            'is_active' => true,
+        ]);
+
+        $adminRole = Role::query()->firstOrCreate(
+            ['slug' => 'admin'],
+            ['name' => 'Admin']
+        );
+
+        $admin = User::factory()->create([
+            'dealer_id' => $dealer->id,
+            'is_active' => true,
+        ]);
+        $admin->roles()->sync([$adminRole->id]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'code' => '120-OTO-POLAT',
+            'name' => 'Oto Polat',
+            'is_active' => true,
+        ]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'code' => '120-MIRAC',
+            'name' => 'Miraç Oto',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($admin);
+
+        $this->getJson('/api/customers?fast=1&q=otop&limit=10')
+            ->assertOk()
+            ->assertJsonPath('data.0.title', 'Oto Polat');
+
+        $this->getJson('/api/customers?fast=1&q=mır&limit=10')
+            ->assertOk()
+            ->assertJsonPath('data.0.title', 'Miraç Oto');
+    }
+
     public function test_customer_index_summary_count_skips_listing_rows(): void
     {
         $dealer = Dealer::query()->create([
@@ -166,6 +264,78 @@ class CustomerIndexApiTest extends TestCase
             ->assertJsonPath('total_count', 1)
             ->assertJsonPath('next_cursor', null)
             ->assertJsonCount(0, 'data');
+    }
+
+    public function test_customer_index_filters_by_dynamic_logo_price_group_options(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-PRICE-GROUPS',
+            'name' => 'Price Group Dealer',
+            'is_active' => true,
+        ]);
+
+        $role = Role::query()->firstOrCreate(
+            ['slug' => 'admin'],
+            ['name' => 'Admin']
+        );
+
+        $user = User::factory()->create([
+            'dealer_id' => $dealer->id,
+            'is_active' => true,
+        ]);
+        $user->roles()->sync([$role->id]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'code' => 'F13-CUSTOMER',
+            'name' => 'Future F13 Customer',
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode' => 'F13',
+                        ],
+                    ],
+                ],
+            ],
+            'is_active' => true,
+        ]);
+
+        Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'code' => 'F3-CUSTOMER',
+            'name' => 'F3 Customer',
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'raw' => [
+                                'SPECODE2' => 'f3',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/customers?limit=50')
+            ->assertOk()
+            ->assertJsonPath('meta.price_groups.0.code', 'F3')
+            ->assertJsonPath('meta.price_groups.1.code', 'F13');
+
+        $this->getJson('/api/customers?price_group=F13&limit=50')
+            ->assertOk()
+            ->assertJsonPath('total_count', 1)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.code', 'F13-CUSTOMER')
+            ->assertJsonPath('data.0.price_group', 'F13')
+            ->assertJsonPath('meta.price_groups.1.code', 'F13')
+            ->assertJsonMissing(['code' => 'F3-CUSTOMER']);
     }
 
     public function test_customer_index_prioritizes_logo_records_and_uses_logo_balance_fallback(): void

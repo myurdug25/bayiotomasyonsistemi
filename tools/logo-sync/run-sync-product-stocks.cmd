@@ -22,7 +22,7 @@ if "%SYNC_RETRY_MAX%"=="" set "SYNC_RETRY_MAX=3"
 if "%SYNC_RETRY_BASE_DELAY_MS%"=="" set "SYNC_RETRY_BASE_DELAY_MS=3000"
 if "%SYNC_CONTINUE_ON_ERROR%"=="" set "SYNC_CONTINUE_ON_ERROR=false"
 if "%LOGO_STOCK_TABLE%"=="" set "LOGO_STOCK_TABLE=dbo.LV_003_01_STINVTOT"
-if "%POWERSA_PRODUCTS_SYNC_URL%"=="" set "POWERSA_PRODUCTS_SYNC_URL=https://powersab2b.com/backend/api/integrations/logo/products/sync"
+if "%POWERSA_PRODUCTS_SYNC_URL%"=="" set "POWERSA_PRODUCTS_SYNC_URL=https://bayiotomasyonsistemi.com/backend/api/integrations/logo/products/sync"
 
 call npm run sync:products >> "%~dp0sync-products.log" 2>&1
 set "EXITCODE=%ERRORLEVEL%"

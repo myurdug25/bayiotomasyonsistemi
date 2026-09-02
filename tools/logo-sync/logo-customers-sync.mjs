@@ -8,7 +8,12 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import sql from "mssql";
 
-import { logoFirmTable } from "./logo-table-names.mjs";
+import {
+  logoFirmCode,
+  logoFirmTable,
+  logoPeriodCode,
+  logoPeriodTable,
+} from "./logo-table-names.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
@@ -59,6 +64,7 @@ async function main() {
 
     const records = rows.map((row) => mapCustomerRow(row, config.logo.customerTable, schema));
     const chunks = chunk(records, config.sync.batchSize);
+    const syncRunId = syncPlan.mode === "full" ? buildCustomerSyncRunId(config) : null;
 
     let sent = 0;
     for (let index = 0; index < chunks.length; index += 1) {
@@ -71,7 +77,14 @@ async function main() {
         `[logo-sync] sending batch ${index + 1}/${chunks.length} with ${currentChunk.length} record(s)`
       );
 
-      await pushBatch(currentChunk, config);
+      await pushBatch(currentChunk, config, {
+        syncRunId,
+        isFullSync: syncPlan.mode === "full",
+        isFinalBatch: syncRunId !== null && index === chunks.length - 1,
+        batchIndex: index,
+        batchCount: chunks.length,
+        sourceTable: config.logo.customerTable,
+      });
       sent += currentChunk.length;
     }
 
@@ -118,6 +131,8 @@ function buildConfig() {
       ),
       requestTimeoutMs: timeoutMs,
       customerTable: nullable(process.env.LOGO_CUSTOMER_TABLE) ?? logoFirmTable("CLCARD"),
+      customerLedgerTable:
+        nullable(process.env.LOGO_CUSTOMER_LEDGER_TABLE) ?? logoPeriodTable("CLFLINE"),
       customerCardTypes: cardTypes,
       connection: {
         server: (process.env.LOGO_SQL_SERVER ?? "").trim(),
@@ -172,6 +187,10 @@ function validateConfig(currentConfig) {
 
   if (!/^[A-Za-z0-9_.\[\]]+$/.test(currentConfig.logo.customerTable)) {
     throw new Error("LOGO_CUSTOMER_TABLE contains unsupported characters");
+  }
+
+  if (!/^[A-Za-z0-9_.\[\]]+$/.test(currentConfig.logo.customerLedgerTable)) {
+    throw new Error("LOGO_CUSTOMER_LEDGER_TABLE contains unsupported characters");
   }
 
   if (currentConfig.sync.batchSize < 1 || currentConfig.sync.batchSize > 1000) {
@@ -257,10 +276,91 @@ function resolveSyncPlan(currentConfig, schema, syncState) {
 
 async function fetchCustomers(pool, currentConfig, schema, syncPlan) {
   const request = pool.request();
+  const paymentPlanTable = logoFirmTable("PAYPLANS");
+  const riskTable = logoPeriodTable("CLCOLLATRLRISK");
+  const riskNumbersTable = logoPeriodTable("CLRNUMS");
+  const canJoinPaymentPlan = schema.columnSet.has("PAYMENTREF");
+  const paymentPlanSelect = canJoinPaymentPlan
+    ? `
+      pp.LOGICALREF AS PAYMENT_PLAN_REF,
+      pp.CODE AS PAYMENT_CODE,
+      pp.DEFINITION_ AS PAYMENT_DESCRIPTION,`
+    : `
+      NULL AS PAYMENT_PLAN_REF,
+      NULL AS PAYMENT_CODE,
+      NULL AS PAYMENT_DESCRIPTION,`;
+  const paymentPlanJoin = canJoinPaymentPlan
+    ? `
+    LEFT JOIN ${paymentPlanTable} pp ON pp.LOGICALREF = c.PAYMENTREF`
+    : "";
   let query = `
-    SELECT *
-    FROM ${currentConfig.logo.customerTable}
-    WHERE CARDTYPE IN (${currentConfig.logo.customerCardTypes.join(", ")})
+    SELECT
+      c.*,
+      ${paymentPlanSelect}
+      risks.OPEN_ACCOUNT_RISK_LIMIT,
+      risks.OPEN_ACCOUNT_RISK_OVER,
+      risks.OPEN_ACCOUNT_ORDER_RISK_OVER,
+      risks.OPEN_ACCOUNT_RISK_TOTAL,
+      balances.BALANCE_DEBIT,
+      balances.BALANCE_CREDIT,
+      balances.BALANCE_DUE
+    FROM ${currentConfig.logo.customerTable} c
+    ${paymentPlanJoin}
+    LEFT JOIN (
+      SELECT
+        CLCARDREF,
+        COALESCE(
+          MAX(NULLIF(ACCRISKLIMIT, 0)),
+          MAX(CASE WHEN RISKTYPE IN (0, 1) THEN NULLIF(RISKLIMIT, 0) END),
+          MAX(NULLIF(RISKLIMIT, 0)),
+          0
+        ) AS OPEN_ACCOUNT_RISK_LIMIT,
+        MAX(COALESCE(ACCRISKOVER, CASE WHEN RISKTYPE IN (0, 1) THEN RISKOVER END)) AS OPEN_ACCOUNT_RISK_OVER,
+        MAX(CASE WHEN RISKTYPE IN (0, 1) THEN ORDRISKOVER END) AS OPEN_ACCOUNT_ORDER_RISK_OVER,
+        COALESCE(
+          MAX(NULLIF(ACCRISKTOTAL, 0)),
+          MAX(CASE WHEN RISKTYPE IN (0, 1) THEN NULLIF(RISKTOTAL, 0) END),
+          MAX(NULLIF(RISKTOTAL, 0)),
+          0
+        ) AS OPEN_ACCOUNT_RISK_TOTAL
+      FROM (
+        SELECT
+          CLCARDREF,
+          RISKTYPE,
+          RISKLIMIT,
+          RISKTOTAL,
+          RISKOVER,
+          ORDRISKOVER,
+          CAST(NULL AS FLOAT) AS ACCRISKLIMIT,
+          CAST(NULL AS FLOAT) AS ACCRISKTOTAL,
+          CAST(NULL AS SMALLINT) AS ACCRISKOVER
+        FROM ${riskTable}
+        UNION ALL
+        SELECT
+          CLCARDREF,
+          RISKTYPE,
+          RISKLIMIT,
+          RISKTOTAL,
+          RISKOVER,
+          ORDRISKOVER,
+          ACCRISKLIMIT,
+          ACCRISKTOTAL,
+          ACCRISKOVER
+        FROM ${riskNumbersTable}
+      ) risk_union
+      GROUP BY CLCARDREF
+    ) risks ON risks.CLCARDREF = c.LOGICALREF
+    LEFT JOIN (
+      SELECT
+        CLIENTREF,
+        SUM(CASE WHEN ISNULL(SIGN, 0) = 0 THEN COALESCE(TRNET, AMOUNT, 0) ELSE 0 END) AS BALANCE_DEBIT,
+        SUM(CASE WHEN ISNULL(SIGN, 0) = 1 THEN COALESCE(TRNET, AMOUNT, 0) ELSE 0 END) AS BALANCE_CREDIT,
+        SUM(CASE WHEN ISNULL(SIGN, 0) = 0 THEN COALESCE(TRNET, AMOUNT, 0) ELSE -COALESCE(TRNET, AMOUNT, 0) END) AS BALANCE_DUE
+      FROM ${currentConfig.logo.customerLedgerTable}
+      WHERE ISNULL(CANCELLED, 0) = 0
+      GROUP BY CLIENTREF
+    ) balances ON balances.CLIENTREF = c.LOGICALREF
+    WHERE c.CARDTYPE IN (${currentConfig.logo.customerCardTypes.join(", ")})
   `;
 
   if (syncPlan.mode === "delta") {
@@ -270,23 +370,23 @@ async function fetchCustomers(pool, currentConfig, schema, syncPlan) {
     request.input("lookbackStart", sql.DateTime2, lookbackStart);
     request.input("lastLogicalRef", sql.Int, syncPlan.cursor.last_logicalref);
     query += `
-      AND CAPIBLOCK_MODIFIEDDATE IS NOT NULL
+      AND c.CAPIBLOCK_MODIFIEDDATE IS NOT NULL
       AND (
-        CAPIBLOCK_MODIFIEDDATE >= @lookbackStart
-        OR (CAPIBLOCK_MODIFIEDDATE = @lookbackStart AND LOGICALREF > @lastLogicalRef)
+        c.CAPIBLOCK_MODIFIEDDATE >= @lookbackStart
+        OR (c.CAPIBLOCK_MODIFIEDDATE = @lookbackStart AND c.LOGICALREF > @lastLogicalRef)
       )
-      ORDER BY CAPIBLOCK_MODIFIEDDATE ASC, LOGICALREF ASC
+      ORDER BY c.CAPIBLOCK_MODIFIEDDATE ASC, c.LOGICALREF ASC
     `;
   } else if (schema.columnSet.has("CAPIBLOCK_MODIFIEDDATE")) {
     query += `
       ORDER BY
-        CASE WHEN CAPIBLOCK_MODIFIEDDATE IS NULL THEN 0 ELSE 1 END ASC,
-        CAPIBLOCK_MODIFIEDDATE ASC,
-        LOGICALREF ASC
+        CASE WHEN c.CAPIBLOCK_MODIFIEDDATE IS NULL THEN 0 ELSE 1 END ASC,
+        c.CAPIBLOCK_MODIFIEDDATE ASC,
+        c.LOGICALREF ASC
     `;
   } else {
     query += `
-      ORDER BY LOGICALREF ASC
+      ORDER BY c.LOGICALREF ASC
     `;
   }
 
@@ -303,6 +403,40 @@ function mapCustomerRow(row, customerTable, schema) {
   const rawRecord = extractRawLogoRecord(row, schema.columns);
   const code = normalizeString(readFirst(row, ["code", "CODE"]));
   const name = resolveCustomerTitle(row, code);
+  const creditLimit = normalizeDecimal(readFirst(row, [
+    "credit_limit",
+    "CREDIT_LIMIT",
+    "open_account_risk_limit",
+    "OPEN_ACCOUNT_RISK_LIMIT",
+    "openaccountrisklimit",
+    "OPENACCOUNTRISKLIMIT",
+    "risk_limit_open_account",
+    "RISK_LIMIT_OPEN_ACCOUNT",
+    "risk_limit",
+    "RISK_LIMIT",
+    "risklimit",
+    "RISKLIMIT",
+    "RISKLIMIT1",
+    "RISK_LIMIT1",
+    "accrisklimit",
+    "ACCRISKLIMIT",
+    "openaccrisklimit",
+    "OPENACCRISKLIMIT",
+  ]));
+  const paymentTermDays = normalizeInteger(readFirst(row, [
+    "payment_term_days",
+    "PAYMENT_TERM_DAYS",
+    "payment_terms_days",
+    "PAYMENT_TERMS_DAYS",
+    "payment_plan_days",
+    "PAYMENT_PLAN_DAYS",
+    "payment_code",
+    "PAYMENT_CODE",
+    "paymentplan_code",
+    "PAYMENTPLAN_CODE",
+    "payplan_code",
+    "PAYPLAN_CODE",
+  ]));
 
   return {
     external_ref: normalizeString(readFirst(row, ["external_ref", "LOGICALREF"])),
@@ -316,7 +450,11 @@ function mapCustomerRow(row, customerTable, schema) {
     tax_office: normalizeString(readFirst(row, ["tax_office", "taxoffice", "TAXOFFICE"])),
     tax_number: normalizeString(readFirst(row, ["tax_number", "taxnr", "tckno", "TAXNR", "TCKNO"])),
     balance_due: normalizeDecimal(readFirst(row, ["balance_due", "BALANCE_DUE", "total_due", "TOTAL_DUE"])),
+    balance_debit: normalizeDecimal(readFirst(row, ["balance_debit", "BALANCE_DEBIT"])),
+    balance_credit: normalizeDecimal(readFirst(row, ["balance_credit", "BALANCE_CREDIT"])),
+    balance_direction: resolveBalanceDirection(readFirst(row, ["balance_direction", "BALANCE_DIRECTION"]), readFirst(row, ["balance_due", "BALANCE_DUE", "total_due", "TOTAL_DUE"])),
     order_due: normalizeDecimal(readFirst(row, ["order_due", "ORDER_DUE", "open_order_due", "OPEN_ORDER_DUE"])),
+    credit_limit: creditLimit ?? undefined,
     currency: normalizeString(readFirst(row, ["currency", "CURRENCY"])) ?? "TRY",
     address: address || null,
     is_active: Number(readFirst(row, ["active", "ACTIVE"]) ?? 0) === 0,
@@ -341,6 +479,14 @@ function mapCustomerRow(row, customerTable, schema) {
       specode5: normalizeString(readFirst(row, ["specode5", "SPECODE5"])),
       cyphcode: normalizeString(readFirst(row, ["cyphcode", "CYPHCODE"])),
       payment_ref: normalizeString(readFirst(row, ["payment_ref", "paymentref", "PAYMENTREF"])),
+      payment_plan_ref: normalizeString(readFirst(row, ["payment_plan_ref", "PAYMENT_PLAN_REF"])),
+      payment_code: normalizeString(readFirst(row, ["payment_code", "PAYMENT_CODE"])),
+      payment_description: normalizeString(readFirst(row, ["payment_description", "PAYMENT_DESCRIPTION"])),
+      payment_term_days: paymentTermDays ?? undefined,
+      open_account_risk_limit: creditLimit ?? undefined,
+      open_account_risk_total: normalizeDecimal(readFirst(row, ["open_account_risk_total", "OPEN_ACCOUNT_RISK_TOTAL"])) ?? undefined,
+      open_account_risk_over: normalizeInteger(readFirst(row, ["open_account_risk_over", "OPEN_ACCOUNT_RISK_OVER"])) ?? undefined,
+      open_account_order_risk_over: normalizeInteger(readFirst(row, ["open_account_order_risk_over", "OPEN_ACCOUNT_ORDER_RISK_OVER"])) ?? undefined,
       discount_rate: normalizeDecimal(readFirst(row, ["discount_rate", "DISCRATE"])),
       exten_ref: normalizeString(readFirst(row, ["exten_ref", "EXTENREF"])),
       vat_number: normalizeString(readFirst(row, ["vat_number", "VATNR"])),
@@ -356,6 +502,19 @@ function mapCustomerRow(row, customerTable, schema) {
       site_id: normalizeString(readFirst(row, ["site_id", "SITEID"])),
       org_logic_ref: normalizeString(readFirst(row, ["org_logic_ref", "ORGLOGICREF"])),
       edino: normalizeString(readFirst(row, ["edino", "EDINO"])),
+      e_invoice_user: normalizeLogoFlag(readFirst(row, [
+        "e_invoice_user",
+        "E_INVOICE_USER",
+        "e_invoice",
+        "E_INVOICE",
+        "e_fatura",
+        "E_FATURA",
+        "einvoice",
+        "EINVOICE",
+        "EINVOICEUSER",
+        "ACCEPTEINV",
+        "EFATURA",
+      ])),
       bank_branches: collectSequentialValues(row, "BANKBRANCHS", 7),
       bank_accounts: collectSequentialValues(row, "BANKACCOUNTS", 7),
       source_created_date: readFirst(row, ["source_created_date", "capiblock_createddate", "CAPIBLOCK_CREATEDDATE"]) ?? null,
@@ -413,6 +572,20 @@ function collectSequentialValues(row, prefix, count) {
   }
 
   return values;
+}
+
+function resolveBalanceDirection(direction, balance) {
+  const explicitDirection = normalizeString(direction);
+  if (explicitDirection !== null) {
+    return explicitDirection.toLowerCase();
+  }
+
+  const numericBalance = Number(balance ?? 0);
+  if (!Number.isFinite(numericBalance) || Math.abs(numericBalance) < 0.00001) {
+    return "zero";
+  }
+
+  return numericBalance > 0 ? "debit" : "credit";
 }
 
 function splitTableName(tableName) {
@@ -507,6 +680,13 @@ function buildSyncState(currentConfig, rows) {
   };
 }
 
+function buildCustomerSyncRunId(currentConfig) {
+  const firmCode = logoFirmCode();
+  const periodCode = logoPeriodCode();
+  const tableName = normalizeString(currentConfig.logo.customerTable)?.replace(/[^\w.-]+/g, "_") ?? "customers";
+  return `${firmCode}-${periodCode}-${tableName}-${new Date().toISOString()}`;
+}
+
 function normalizeValue(value) {
   if (value === null || value === undefined) {
     return null;
@@ -528,7 +708,7 @@ function normalizeValue(value) {
   return value;
 }
 
-async function pushBatch(records, currentConfig) {
+async function pushBatch(records, currentConfig, syncMeta = {}) {
   const payload = {
     records,
   };
@@ -537,6 +717,15 @@ async function pushBatch(records, currentConfig) {
     payload.dealer_id = currentConfig.sync.dealerId;
   } else if (currentConfig.sync.dealerCode) {
     payload.dealer_code = currentConfig.sync.dealerCode;
+  }
+
+  if (syncMeta.syncRunId) {
+    payload.sync_run_id = syncMeta.syncRunId;
+    payload.is_full_sync = Boolean(syncMeta.isFullSync);
+    payload.is_final_batch = Boolean(syncMeta.isFinalBatch);
+    payload.batch_index = Number.isInteger(syncMeta.batchIndex) ? syncMeta.batchIndex : null;
+    payload.batch_count = Number.isInteger(syncMeta.batchCount) ? syncMeta.batchCount : null;
+    payload.source_table = syncMeta.sourceTable ?? currentConfig.logo.customerTable;
   }
 
   const response = await fetch(currentConfig.sync.url, {
@@ -593,6 +782,22 @@ function normalizeString(value) {
 function normalizeComparable(value) {
   const normalized = normalizeString(value);
   return normalized === null ? null : normalized.toLocaleUpperCase("tr-TR");
+}
+
+function normalizeLogoFlag(value) {
+  const normalized = normalizeString(value);
+  if (normalized === null) {
+    return false;
+  }
+
+  const numeric = Number.parseFloat(normalized.replace(",", "."));
+  if (Number.isFinite(numeric)) {
+    return numeric !== 0;
+  }
+
+  return ["TRUE", "YES", "EVET", "E", "ON", "AKTIF", "AKTİF"].includes(
+    normalized.toLocaleUpperCase("tr-TR")
+  );
 }
 
 function normalizeEmail(value) {

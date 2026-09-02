@@ -89,6 +89,23 @@ function buildSteps() {
   }
 
   if (
+    String(process.env.POWERSA_POS_DELIVERY_BALANCES_SYNC_URL ?? "").trim() !== "" ||
+    String(process.env.POWERSA_SYNC_URL ?? "").trim() !== ""
+  ) {
+    steps.push({
+      name: "pos-delivery-balances",
+      script: path.join(scriptDir, "logo-pos-delivery-balances-sync.mjs"),
+    });
+  }
+
+  if (String(process.env.LOGO_POS_DAY_END_EXPORT_PROCEDURE ?? "").trim() !== "") {
+    steps.push({
+      name: "pos-day-ends",
+      script: path.join(scriptDir, "logo-pos-day-ends-export.mjs"),
+    });
+  }
+
+  if (
     String(process.env.LOGO_ORDER_EXPORT_PROCEDURE ?? "").trim() !== "" ||
     String(process.env.LOGO_SHIPMENT_EXPORT_PROCEDURE ?? "").trim() !== "" ||
     String(process.env.LOGO_RETURN_EXPORT_PROCEDURE ?? "").trim() !== "" ||

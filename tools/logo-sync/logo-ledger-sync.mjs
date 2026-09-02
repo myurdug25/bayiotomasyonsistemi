@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import sql from "mssql";
 
-import { logoPeriodTable } from "./logo-table-names.mjs";
+import { logoFirmTable, logoPeriodTable } from "./logo-table-names.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
@@ -47,24 +47,39 @@ async function main() {
 
     const rows = await fetchLedgerRows(pool, config, schema, syncPlan);
     console.log(`[logo-sync] fetched ${rows.length} ledger row(s) from ${config.logo.ledgerTable}`);
+    const invoiceRows = await fetchInvoiceFallbackRows(pool, config, syncState);
+    if (invoiceRows.length > 0) {
+      console.log(`[logo-sync] fetched ${invoiceRows.length} invoice fallback row(s) from ${config.logo.invoiceTable}`);
+    }
 
-    const chunks = chunk(rows, config.sync.batchSize);
+    const payloadRows = [
+      ...rows.map((row) => ({ kind: "ledger", row })),
+      ...invoiceRows.map((row) => ({ kind: "invoice", row })),
+    ];
+    const chunks = chunk(payloadRows, config.sync.batchSize);
     let sent = 0;
     let skipped = 0;
     let mappedRows = [];
+    let mappedInvoiceRows = [];
 
     for (let index = 0; index < chunks.length; index += 1) {
       const currentChunk = chunks[index];
       const records = [];
 
-      for (const row of currentChunk) {
-        const record = mapLedgerRow(row, config.logo.ledgerTable, schema);
+      for (const item of currentChunk) {
+        const record = item.kind === "invoice"
+          ? mapInvoiceFallbackRow(item.row, config.logo.invoiceTable)
+          : mapLedgerRow(item.row, config.logo.ledgerTable, schema);
         if (!record) {
           skipped += 1;
           continue;
         }
 
-        mappedRows.push(row);
+        if (item.kind === "invoice") {
+          mappedInvoiceRows.push(item.row);
+        } else {
+          mappedRows.push(item.row);
+        }
         records.push(record);
       }
 
@@ -80,8 +95,8 @@ async function main() {
       sent += records.length;
     }
 
-    if (schema.columnSet.has("CAPIBLOCK_MODIFIEDDATE") && schema.columnSet.has("LOGICALREF") && mappedRows.length > 0) {
-      saveSyncState(config.sync.stateFile, buildSyncState(config, mappedRows));
+    if (mappedRows.length > 0 || mappedInvoiceRows.length > 0) {
+      saveSyncState(config.sync.stateFile, buildSyncState(config, mappedRows, mappedInvoiceRows, syncState));
     }
 
     const durationMs = Date.now() - startedAt;
@@ -111,6 +126,10 @@ function buildConfig() {
       user: (process.env.LOGO_SQL_USER ?? "").trim(),
       password: process.env.LOGO_SQL_PASSWORD ?? "",
       ledgerTable: nullable(process.env.LOGO_LEDGER_TABLE) ?? logoPeriodTable("CLFLINE"),
+      invoiceTable: nullable(process.env.LOGO_INVOICE_TABLE) ?? logoPeriodTable("INVOICE"),
+      invoiceLineTable: nullable(process.env.LOGO_STOCK_LINE_TABLE) ?? logoPeriodTable("STLINE"),
+      productTable: nullable(process.env.LOGO_PRODUCT_TABLE) ?? logoFirmTable("ITEMS"),
+      unitTable: nullable(process.env.LOGO_UNIT_TABLE) ?? logoFirmTable("UNITSETL"),
       connection: {
         server: (process.env.LOGO_SQL_SERVER ?? "").trim(),
         database: (process.env.LOGO_SQL_DATABASE ?? "").trim(),
@@ -139,6 +158,8 @@ function buildConfig() {
       dealerId,
       dealerCode: nullable(process.env.POWERSA_DEALER_CODE),
       forceFull: parseBoolean(process.env.SYNC_FORCE_FULL, false),
+      includeInvoiceFallback: parseBoolean(process.env.LOGO_LEDGER_INCLUDE_INVOICE_FALLBACK, true),
+      invoiceFallbackLookbackDays: parseInteger(process.env.LOGO_LEDGER_INVOICE_FALLBACK_LOOKBACK_DAYS, 30),
       modifiedLookbackMs: Math.max(60_000, modifiedLookbackMs),
       stateFile: path.resolve(scriptDir, process.env.SYNC_LEDGER_STATE_FILE ?? ".ledger-sync-state.json"),
     },
@@ -165,6 +186,18 @@ function validateConfig(currentConfig) {
 
   if (!/^[A-Za-z0-9_.\[\]]+$/.test(currentConfig.logo.ledgerTable)) {
     throw new Error("LOGO_LEDGER_TABLE contains unsupported characters");
+  }
+  if (!/^[A-Za-z0-9_.\[\]]+$/.test(currentConfig.logo.invoiceTable)) {
+    throw new Error("LOGO_INVOICE_TABLE contains unsupported characters");
+  }
+  for (const [key, tableName] of [
+    ["LOGO_STOCK_LINE_TABLE", currentConfig.logo.invoiceLineTable],
+    ["LOGO_PRODUCT_TABLE", currentConfig.logo.productTable],
+    ["LOGO_UNIT_TABLE", currentConfig.logo.unitTable],
+  ]) {
+    if (!/^[A-Za-z0-9_.\[\]]+$/.test(tableName)) {
+      throw new Error(`${key} contains unsupported characters`);
+    }
   }
 
   if (currentConfig.sync.batchSize < 1 || currentConfig.sync.batchSize > 1000) {
@@ -318,6 +351,254 @@ async function fetchLedgerRows(pool, currentConfig, schema, syncPlan) {
   return result.recordset ?? [];
 }
 
+async function fetchInvoiceFallbackRows(pool, currentConfig, syncState) {
+  if (!currentConfig.sync.includeInvoiceFallback) {
+    return [];
+  }
+
+  let schema;
+  try {
+    schema = await inspectTable(pool, currentConfig.logo.invoiceTable);
+  } catch (error) {
+    console.warn(
+      `[logo-sync] invoice fallback skipped: ${error instanceof Error ? error.message : error}`
+    );
+    return [];
+  }
+
+  const logicalRefColumn = findColumn(schema.columns, ["LOGICALREF"]);
+  const clientRefColumn = findColumn(schema.columns, ["CLIENTREF", "CLCARDREF"]);
+  const dateColumn = findColumn(schema.columns, ["DATE_", "DATE"]);
+  const amountColumn = findColumn(schema.columns, [
+    "NETTOTAL",
+    "GROSSTOTAL",
+    "TOTAL",
+    "TOTALDISCOUNTS",
+    "TOTALDISCOUNTED",
+  ]);
+  const trcodeColumn = findColumn(schema.columns, ["TRCODE"]);
+  const grpcodeColumn = findColumn(schema.columns, ["GRPCODE"]);
+  const cancelledColumn = findColumn(schema.columns, ["CANCELLED"]);
+  const modifiedColumn = findColumn(schema.columns, [
+    "CAPIBLOCK_MODIFIEDDATE",
+    "CAPIBLOK_MODIFIEDDATE",
+  ]);
+
+  if (!logicalRefColumn || !clientRefColumn || !dateColumn || !amountColumn) {
+    console.warn(
+      `[logo-sync] invoice fallback skipped: ${currentConfig.logo.invoiceTable} is missing required columns`
+    );
+    return [];
+  }
+
+  const request = pool.request();
+  const logicalRefIdentifier = quoteIdentifier(logicalRefColumn);
+  const clientRefIdentifier = quoteIdentifier(clientRefColumn);
+  const dateIdentifier = quoteIdentifier(dateColumn);
+  const amountIdentifier = quoteIdentifier(amountColumn);
+  let query = `
+    SELECT *
+    FROM ${currentConfig.logo.invoiceTable}
+    WHERE ${clientRefIdentifier} IS NOT NULL
+      AND ${clientRefIdentifier} <> 0
+      AND ${amountIdentifier} IS NOT NULL
+      AND ${amountIdentifier} > 0
+  `;
+
+  if (cancelledColumn) {
+    query += `
+      AND (${quoteIdentifier(cancelledColumn)} IS NULL OR ${quoteIdentifier(cancelledColumn)} = 0)
+    `;
+  }
+
+  if (trcodeColumn && grpcodeColumn) {
+    query += `
+      AND (${quoteIdentifier(grpcodeColumn)} = 2 OR ${quoteIdentifier(trcodeColumn)} IN (2, 3, 7, 8, 9))
+    `;
+  } else if (trcodeColumn) {
+    query += `
+      AND ${quoteIdentifier(trcodeColumn)} IN (2, 3, 7, 8, 9)
+    `;
+  } else if (grpcodeColumn) {
+    query += `
+      AND ${quoteIdentifier(grpcodeColumn)} = 2
+    `;
+  }
+
+  const hasInvoiceCursor =
+    syncState &&
+    syncState.database === currentConfig.logo.database &&
+    syncState.invoice_table === currentConfig.logo.invoiceTable &&
+    Number.isFinite(Number(syncState.last_invoice_logicalref));
+
+  if (!currentConfig.sync.forceFull && hasInvoiceCursor) {
+    request.input("lastInvoiceLogicalRef", sql.Int, Number(syncState.last_invoice_logicalref));
+
+    if (modifiedColumn) {
+      const lastCheckedAt =
+        normalizeString(syncState.invoice_saved_at) ??
+        normalizeString(syncState.last_invoice_modified_at) ??
+        normalizeString(syncState.saved_at);
+      const modifiedSince = lastCheckedAt
+        ? new Date(new Date(lastCheckedAt).getTime() - currentConfig.sync.modifiedLookbackMs)
+        : null;
+
+      if (modifiedSince && !Number.isNaN(modifiedSince.getTime())) {
+        request.input("invoiceModifiedSince", sql.DateTime2, modifiedSince);
+        query += `
+          AND (
+            ${logicalRefIdentifier} > @lastInvoiceLogicalRef
+            OR (${quoteIdentifier(modifiedColumn)} IS NOT NULL AND ${quoteIdentifier(modifiedColumn)} >= @invoiceModifiedSince)
+          )
+        `;
+      } else {
+        query += `
+          AND ${logicalRefIdentifier} > @lastInvoiceLogicalRef
+        `;
+      }
+    } else {
+      query += `
+        AND ${logicalRefIdentifier} > @lastInvoiceLogicalRef
+      `;
+    }
+  } else if (!currentConfig.sync.forceFull) {
+    const lookbackDays = Math.max(1, currentConfig.sync.invoiceFallbackLookbackDays);
+    const invoiceSince = new Date(Date.now() - lookbackDays * 86_400_000);
+    request.input("invoiceSince", sql.DateTime2, invoiceSince);
+    query += `
+      AND ${dateIdentifier} >= @invoiceSince
+    `;
+  }
+
+  query += `
+    ORDER BY ${logicalRefIdentifier} ASC
+  `;
+
+  const result = await request.query(query);
+  const invoiceRows = result.recordset ?? [];
+  await attachInvoiceLines(pool, currentConfig, invoiceRows);
+
+  return invoiceRows;
+}
+
+async function attachInvoiceLines(pool, currentConfig, invoiceRows) {
+  if (!Array.isArray(invoiceRows) || invoiceRows.length === 0) {
+    return;
+  }
+
+  let lineSchema;
+  try {
+    lineSchema = await inspectTable(pool, currentConfig.logo.invoiceLineTable);
+  } catch (error) {
+    console.warn(`[logo-sync] invoice lines skipped: ${error instanceof Error ? error.message : error}`);
+    return;
+  }
+
+  const invoiceRefColumn = findColumn(lineSchema.columns, ["INVOICEREF"]);
+  const cancelledColumn = findColumn(lineSchema.columns, ["CANCELLED"]);
+  const lineTypeColumn = findColumn(lineSchema.columns, ["LINETYPE"]);
+  const uomRefColumn = findColumn(lineSchema.columns, ["UOMREF", "UNITREF"]);
+  const lineNoColumn = findColumn(lineSchema.columns, ["LINENO_", "LINENO", "LINE_NO", "ORDERNR"]);
+
+  if (!invoiceRefColumn) {
+    console.warn(`[logo-sync] invoice lines skipped: ${currentConfig.logo.invoiceLineTable} is missing INVOICEREF`);
+    return;
+  }
+
+  const invoiceRefs = Array.from(new Set(
+    invoiceRows
+      .map((row) => Number(readFirst(row, ["LOGICALREF", "logicalref"])))
+      .filter((value) => Number.isFinite(value) && value > 0)
+  ));
+
+  if (invoiceRefs.length === 0) {
+    return;
+  }
+
+  const productExists = await tableExists(pool, currentConfig.logo.productTable);
+  const unitExists = uomRefColumn ? await tableExists(pool, currentConfig.logo.unitTable) : false;
+  const lineChunks = chunk(invoiceRefs, 500);
+  const linesByInvoice = new Map();
+
+  for (const refs of lineChunks) {
+    const request = pool.request();
+    const placeholders = refs.map((ref, index) => {
+      const key = `invoiceRef${index}`;
+      request.input(key, sql.Int, ref);
+      return `@${key}`;
+    });
+
+    let query = `
+      SELECT
+        line.LOGICALREF,
+        line.INVOICEREF,
+        line.STOCKREF,
+        ${lineNoColumn ? `line.${quoteIdentifier(lineNoColumn)} AS LINENO_,` : "CAST(NULL AS int) AS LINENO_,"}
+        line.AMOUNT,
+        line.PRICE,
+        line.TOTAL,
+        line.DISTDISC,
+        line.VAT,
+        line.VATAMNT,
+        line.VATMATRAH,
+        line.LINEEXP,
+        ${uomRefColumn ? `line.${quoteIdentifier(uomRefColumn)} AS UOMREF` : "NULL AS UOMREF"},
+        line.USREF
+        ${productExists ? ", item.CODE AS ITEM_CODE, item.NAME AS ITEM_NAME" : ""}
+        ${unitExists ? ", unitLine.CODE AS UNIT_CODE, unitLine.NAME AS UNIT_NAME" : ""}
+      FROM ${currentConfig.logo.invoiceLineTable} AS line WITH (NOLOCK)
+      ${productExists ? `LEFT JOIN ${currentConfig.logo.productTable} AS item WITH (NOLOCK) ON item.LOGICALREF = line.STOCKREF` : ""}
+      ${unitExists ? `LEFT JOIN ${currentConfig.logo.unitTable} AS unitLine WITH (NOLOCK) ON unitLine.LOGICALREF = line.${quoteIdentifier(uomRefColumn)}` : ""}
+      WHERE line.${quoteIdentifier(invoiceRefColumn)} IN (${placeholders.join(", ")})
+        ${lineTypeColumn ? `AND ISNULL(line.${quoteIdentifier(lineTypeColumn)}, 0) = 0` : ""}
+    `;
+
+    if (cancelledColumn) {
+      query += `
+        AND (line.${quoteIdentifier(cancelledColumn)} IS NULL OR line.${quoteIdentifier(cancelledColumn)} = 0)
+      `;
+    }
+
+    query += `
+      ORDER BY line.${quoteIdentifier(invoiceRefColumn)} ASC${lineNoColumn ? `, line.${quoteIdentifier(lineNoColumn)} ASC` : ""}, line.LOGICALREF ASC
+    `;
+
+    const result = await request.query(query);
+    for (const row of result.recordset ?? []) {
+      const invoiceRef = Number(readFirst(row, ["INVOICEREF", "invoiceref"]));
+      if (!Number.isFinite(invoiceRef)) {
+        continue;
+      }
+
+      if (!linesByInvoice.has(invoiceRef)) {
+        linesByInvoice.set(invoiceRef, []);
+      }
+
+      linesByInvoice.get(invoiceRef).push(mapInvoiceLineRow(row));
+    }
+  }
+
+  for (const invoiceRow of invoiceRows) {
+    const logicalRef = Number(readFirst(invoiceRow, ["LOGICALREF", "logicalref"]));
+    invoiceRow.__invoice_lines = linesByInvoice.get(logicalRef) ?? [];
+  }
+}
+
+async function tableExists(pool, tableName) {
+  const [schemaName, objectName] = splitTableName(tableName);
+  const result = await pool.request()
+    .input("schemaName", sql.NVarChar(128), schemaName)
+    .input("tableName", sql.NVarChar(128), objectName)
+    .query(`
+      SELECT 1 AS found
+      FROM INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_SCHEMA = @schemaName
+        AND TABLE_NAME = @tableName
+    `);
+
+  return (result.recordset ?? []).length > 0;
+}
+
 function mapLedgerRow(row, ledgerTable, schema) {
   const externalRef = normalizeString(readFirst(row, ["external_ref", "LOGICALREF", "logicalref"]));
   const customerExternalRef = normalizeString(
@@ -399,6 +680,85 @@ function mapLedgerRow(row, ledgerTable, schema) {
   };
 }
 
+function mapInvoiceFallbackRow(row, invoiceTable) {
+  const externalRef = normalizeString(readFirst(row, ["LOGICALREF", "logicalref"]));
+  const customerExternalRef = normalizeString(readFirst(row, ["CLIENTREF", "clientref", "CLCARDREF", "clcardref"]));
+  const customerCode = normalizeString(readFirst(row, ["CLIENT_CODE", "client_code", "CARI_CODE", "cari_code"]));
+  const date = normalizeDate(readFirst(row, ["DATE_", "DATE", "date"]));
+  const amount = normalizeDecimal(readFirst(row, ["NETTOTAL", "GROSSTOTAL", "TOTALDISCOUNTED", "TOTAL"]));
+  const trcode = normalizeInteger(readFirst(row, ["TRCODE", "trcode"]));
+  const isReturnInvoice = [2, 3].includes(trcode ?? 0);
+
+  if (!externalRef || !date || (!customerExternalRef && !customerCode) || amount === null || amount <= 0) {
+    return null;
+  }
+
+  const rawRecord = extractRawLogoRecord(row, Object.keys(row));
+  const referenceNo = normalizeString(readFirst(row, [
+    "FICHENO",
+    "ficheno",
+    "DOCODE",
+    "docode",
+    "GENEXP1",
+    "genexp1",
+  ]));
+
+  return {
+    external_ref: `INVOICE-${externalRef}`,
+    customer_external_ref: customerExternalRef,
+    customer_code: customerCode,
+    date,
+    type: isReturnInvoice ? "credit" : "invoice",
+    debit: isReturnInvoice ? 0 : amount,
+    credit: isReturnInvoice ? amount : 0,
+    balance_after: null,
+    currency: normalizeString(readFirst(row, ["currency", "CURRENCY"])) ?? "TRY",
+    reference_no: referenceNo,
+    description: normalizeString(readFirst(row, [
+      "GENEXP1",
+      "genexp1",
+      "FICHENO",
+      "ficheno",
+      "DOCODE",
+      "docode",
+    ])),
+    meta: {
+      logo_table: invoiceTable,
+      logo_source: "invoice_fallback",
+      logo_invoice_ref: externalRef,
+      logo_invoice_trcode: trcode,
+      logo_document_kind: isReturnInvoice ? "sales_return_invoice" : "sales_invoice",
+      logo_invoice_lines: Array.isArray(row.__invoice_lines) ? row.__invoice_lines : [],
+      source_modified_date: readFirst(row, [
+        "CAPIBLOCK_MODIFIEDDATE",
+        "capiblock_modifieddate",
+        "CAPIBLOK_MODIFIEDDATE",
+        "capiblok_modifieddate",
+      ]) ?? null,
+      raw: rawRecord,
+    },
+  };
+}
+
+function mapInvoiceLineRow(row) {
+  return {
+    logo_line_ref: normalizeString(readFirst(row, ["LOGICALREF", "logicalref"])),
+    line_no: normalizeInteger(readFirst(row, ["LINENO_", "lineno_"])),
+    product_ref: normalizeString(readFirst(row, ["STOCKREF", "stockref"])),
+    product_code: normalizeString(readFirst(row, ["ITEM_CODE", "item_code"])),
+    product_name: normalizeString(readFirst(row, ["ITEM_NAME", "item_name", "LINEEXP", "lineexp"])),
+    quantity: normalizeDecimal(readFirst(row, ["AMOUNT", "amount"])) ?? 0,
+    unit: normalizeString(readFirst(row, ["UNIT_CODE", "unit_code", "UNIT_NAME", "unit_name"])),
+    unit_price: normalizeDecimal(readFirst(row, ["PRICE", "price"])) ?? 0,
+    discount_total: normalizeDecimal(readFirst(row, ["DISTDISC", "distdisc"])) ?? 0,
+    vat_rate: normalizeDecimal(readFirst(row, ["VAT", "vat"])) ?? 0,
+    vat_amount: normalizeDecimal(readFirst(row, ["VATAMNT", "vatamnt"])) ?? 0,
+    vat_base: normalizeDecimal(readFirst(row, ["VATMATRAH", "vatmatrah"])) ?? 0,
+    line_total: normalizeDecimal(readFirst(row, ["TOTAL", "total"])) ?? 0,
+    description: normalizeString(readFirst(row, ["LINEEXP", "lineexp"])),
+  };
+}
+
 function normalizeLedgerType(value, debit, credit) {
   const normalized = normalizeString(value)?.toLowerCase();
 
@@ -412,12 +772,13 @@ function normalizeLedgerType(value, debit, credit) {
   return (debit ?? 0) > 0 ? "invoice" : "payment";
 }
 
-function buildSyncState(currentConfig, rows) {
+function buildSyncState(currentConfig, rows, invoiceRows, previousState = null) {
+  const previousLedgerRef = Number(previousState?.last_logicalref ?? 0);
   const lastLogicalRef = rows.reduce((highest, row) => {
     const logicalRef = Number(readFirst(row, ["LOGICALREF", "logicalref", "external_ref"]) ?? 0);
 
     return Number.isFinite(logicalRef) ? Math.max(highest, logicalRef) : highest;
-  }, 0);
+  }, Number.isFinite(previousLedgerRef) ? previousLedgerRef : 0);
   const modifiedValues = rows
     .map((row) => normalizeValue(readFirst(row, [
       "CAPIBLOCK_MODIFIEDDATE",
@@ -428,13 +789,39 @@ function buildSyncState(currentConfig, rows) {
     .filter(Boolean)
     .sort();
 
-  return {
+  const state = {
     database: currentConfig.logo.database,
     ledger_table: currentConfig.logo.ledgerTable,
-    last_modified_at: modifiedValues.at(-1) ?? null,
+    last_modified_at: modifiedValues.at(-1) ?? previousState?.last_modified_at ?? null,
     last_logicalref: Number.isFinite(lastLogicalRef) ? lastLogicalRef : 0,
     saved_at: new Date().toISOString(),
   };
+
+  if (invoiceRows.length > 0 || previousState?.invoice_table) {
+    const previousInvoiceRef = Number(previousState?.last_invoice_logicalref ?? 0);
+    const lastInvoiceLogicalRef = invoiceRows.reduce((highest, row) => {
+      const logicalRef = Number(readFirst(row, ["LOGICALREF", "logicalref"]) ?? 0);
+
+      return Number.isFinite(logicalRef) ? Math.max(highest, logicalRef) : highest;
+    }, Number.isFinite(previousInvoiceRef) ? previousInvoiceRef : 0);
+    const invoiceModifiedValues = invoiceRows
+      .map((row) => normalizeValue(readFirst(row, [
+        "CAPIBLOCK_MODIFIEDDATE",
+        "capiblock_modifieddate",
+        "CAPIBLOK_MODIFIEDDATE",
+        "capiblok_modifieddate",
+      ])))
+      .filter(Boolean)
+      .sort();
+
+    state.invoice_table = currentConfig.logo.invoiceTable;
+    state.last_invoice_logicalref = Number.isFinite(lastInvoiceLogicalRef) ? lastInvoiceLogicalRef : 0;
+    state.last_invoice_modified_at =
+      invoiceModifiedValues.at(-1) ?? previousState?.last_invoice_modified_at ?? null;
+    state.invoice_saved_at = new Date().toISOString();
+  }
+
+  return state;
 }
 
 async function pushBatch(records, currentConfig) {
@@ -619,6 +1006,15 @@ function normalizeDecimal(value) {
 
   const normalized = Number.parseFloat(String(value).replace(",", "."));
   return Number.isFinite(normalized) ? normalized : null;
+}
+
+function normalizeInteger(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value).replace(",", "."), 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeDate(value) {

@@ -268,9 +268,13 @@ class CustomerCardRequestApiTest extends TestCase
         $user = $this->createUserWithRole('salesperson', $dealer);
         $user->forceFill([
             'logo_customer_specode4' => 'A',
+            'region_code' => 'ERZURUM',
+            'region_name' => 'Erzurum',
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum Depo',
         ])->save();
         $otherSalesperson = $this->createUserWithRole('salesperson', $dealer);
-        $this->createCustomer($dealer, '120-06-001', 'Existing Ankara Customer');
+        $this->createCustomer($dealer, '120-25-001', 'Existing Erzurum Customer');
 
         $this->actingAs($user);
 
@@ -294,11 +298,12 @@ class CustomerCardRequestApiTest extends TestCase
             ->assertJsonPath('data.salesperson.id', $user->id)
             ->assertJsonPath('data.logo_special_code', 'F1')
             ->assertJsonPath('data.logo_authorization_code', 'A')
-            ->assertJsonPath('customer.code', '120-06-002');
+            ->assertJsonPath('customer.code', '120-06-001');
 
-        $customer = Customer::query()->where('code', '120-06-002')->firstOrFail();
+        $customer = Customer::query()->where('code', '120-06-001')->firstOrFail();
 
         $this->assertSame($user->id, $customer->salesperson_user_id);
+        $this->assertSame('ERZURUM', $customer->branch_code);
         $this->assertSame('b2b', $customer->source_system);
         $this->assertSame('pending', $customer->sync_status);
         $this->assertSame('F1', data_get($customer->meta, 'integrations.logo.payload.specode'));

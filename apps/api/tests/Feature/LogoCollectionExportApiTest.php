@@ -7,6 +7,7 @@ use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\Dealer;
 use App\Models\LedgerEntry;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -139,6 +140,42 @@ class LogoCollectionExportApiTest extends TestCase
             ->assertJsonPath('records.1.sync_status', 'failed');
     }
 
+    public function test_duplicate_cscard_failure_is_not_blindly_retried(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-LOGO',
+            'name' => 'Logo Dealer',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1001',
+            'code' => 'CR-1001',
+            'name' => 'Logo Cari',
+            'is_active' => true,
+        ]);
+
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'failed',
+            'sync_error' => "Cannot insert duplicate key row in object 'dbo.LG_003_01_CSCARD' with unique index 'I003_01_CSCARD_I2'.",
+            'date' => '2026-07-31',
+            'collection_date' => '2026-07-31',
+            'method' => 'check',
+            'amount' => 100,
+            'currency' => 'TRY',
+        ]);
+
+        $this->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('received', 0)
+            ->assertJsonCount(0, 'records');
+    }
+
     public function test_logo_collection_pending_supports_customer_code_fallback_when_external_ref_is_missing(): void
     {
         $dealer = Dealer::query()->create([
@@ -179,6 +216,221 @@ class LogoCollectionExportApiTest extends TestCase
             ->assertJsonPath('records.0.customer_code', 'CR-1002')
             ->assertJsonPath('records.0.customer_external_ref', null)
             ->assertJsonPath('records.0.export_key', $collection->logoExportKey());
+    }
+
+    public function test_logo_collection_pending_includes_customer_title_and_salesperson_code_for_logo_write(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-SALESPERSON',
+            'name' => 'Salesperson Dealer',
+            'is_active' => true,
+        ]);
+        $salesperson = User::query()->create([
+            'dealer_id' => $dealer->id,
+            'name' => 'Ahmet Arac',
+            'username' => 'AHMET.ARAC',
+            'logo_customer_specode4' => 'A',
+            'email' => 'ahmet@example.test',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $salesperson->id,
+            'source_system' => 'logo',
+            'source_reference' => '1001',
+            'code' => 'CR-SALESPERSON',
+            'name' => 'Logo Unvanli Cari',
+            'is_active' => true,
+        ]);
+
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'date' => '2026-08-25',
+            'collection_date' => '2026-08-25',
+            'method' => 'cash',
+            'amount' => 2000,
+            'currency' => 'TRY',
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('records.0.customer_name', 'Logo Unvanli Cari')
+            ->assertJsonPath('records.0.salesperson_code', 'A')
+            ->assertJsonPath('records.0.salesperson.username', 'AHMET.ARAC')
+            ->assertJsonPath('records.0.salesperson.logo_code', 'A')
+            ->assertJsonPath('records.0.logo.salesperson_code', 'A');
+    }
+
+    public function test_logo_collection_salesperson_uses_collector_before_customer_salesperson(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-COLLECTOR',
+            'name' => 'Collector Dealer',
+            'is_active' => true,
+        ]);
+        $customerSalesperson = User::query()->create([
+            'dealer_id' => $dealer->id,
+            'name' => 'Cari Plasiyer',
+            'username' => 'CARI.PLASIYER',
+            'logo_customer_specode4' => 'C',
+            'email' => 'cari-plasiyer@example.test',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+        $collector = User::query()->create([
+            'dealer_id' => $dealer->id,
+            'name' => 'Ahmet Arac',
+            'username' => 'AHMET.ARAC',
+            'logo_customer_specode4' => 'A',
+            'email' => 'collector-ahmet@example.test',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $customerSalesperson->id,
+            'source_system' => 'logo',
+            'source_reference' => '1002',
+            'code' => 'CR-COLLECTOR',
+            'name' => 'Collector Customer',
+            'is_active' => true,
+        ]);
+
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'collected_by_user_id' => $collector->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'date' => '2026-08-26',
+            'collection_date' => '2026-08-26',
+            'method' => 'cash',
+            'amount' => 456,
+            'currency' => 'TRY',
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('records.0.salesperson_code', 'A')
+            ->assertJsonPath('records.0.salesperson.username', 'AHMET.ARAC')
+            ->assertJsonPath('records.0.salesperson.logo_code', 'A')
+            ->assertJsonPath('records.0.logo.salesperson_code', 'A');
+    }
+
+    public function test_logo_collection_salesperson_falls_back_to_customer_when_actor_has_multiple_logo_codes(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-MANAGER',
+            'name' => 'Manager Dealer',
+            'is_active' => true,
+        ]);
+        $customerSalesperson = User::query()->create([
+            'dealer_id' => $dealer->id,
+            'name' => 'Ahmet Arac',
+            'username' => 'AHMET.ARAC',
+            'logo_customer_specode4' => 'A',
+            'email' => 'assigned-ahmet@example.test',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+        $manager = User::query()->create([
+            'dealer_id' => $dealer->id,
+            'name' => 'Erzurum Mudur',
+            'username' => 'MUDUR.ERZURUM',
+            'logo_customer_specode4' => 'A,B,C,D',
+            'email' => 'manager@example.test',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $customerSalesperson->id,
+            'source_system' => 'logo',
+            'source_reference' => '1003',
+            'code' => 'CR-MANAGER',
+            'name' => 'Manager Customer',
+            'is_active' => true,
+        ]);
+
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'created_by_user_id' => $manager->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'date' => '2026-08-26',
+            'collection_date' => '2026-08-26',
+            'method' => 'check',
+            'amount' => 1222.22,
+            'currency' => 'TRY',
+            'reference_fields' => [
+                'check_no' => '6235353',
+                'due_date' => '2026-12-12',
+            ],
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('records.0.salesperson_code', 'A')
+            ->assertJsonPath('records.0.salesperson.username', 'AHMET.ARAC')
+            ->assertJsonPath('records.0.salesperson.logo_code', 'A')
+            ->assertJsonPath('records.0.logo.salesperson_code', 'A');
+    }
+
+    public function test_note_export_always_uses_a_logo_safe_portfolio_number(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-NOTE-PORTFOLIO',
+            'name' => 'Note Portfolio Dealer',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1009',
+            'code' => 'CR-NOTE-PORTFOLIO',
+            'name' => 'Note Portfolio Customer',
+            'is_active' => true,
+        ]);
+        $collection = Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'date' => '2026-07-27',
+            'collection_date' => '2026-07-27',
+            'method' => 'note',
+            'amount' => 900,
+            'currency' => 'TRY',
+            'reference_no' => 'B2B-COL-192-20260',
+            'reference_fields' => [
+                'note_no' => 'B2B-COL-192-20260',
+                'due_date' => '2026-10-27',
+            ],
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('received', 1);
+
+        $portfolioNo = (string) $response->json('records.0.reference_fields.portfolio_no');
+
+        $this->assertLessThanOrEqual(16, strlen($portfolioNo));
+        $this->assertSame('B2B-COL-192-20260', $response->json('records.0.reference_fields.note_no'));
+        $this->assertSame('B2B-COL-192-20260', $response->json('records.0.logo.document_no'));
+        $this->assertSame($collection->id, $response->json('records.0.collection_id'));
     }
 
     public function test_logo_collection_pending_maps_local_point_cashbox_to_logo_cashbox(): void
@@ -278,6 +530,54 @@ class LogoCollectionExportApiTest extends TestCase
             ->assertJsonPath('records.0.cashbox_code', '100.01.007')
             ->assertJsonPath('records.0.cashbox_name', 'ERZURUM POINT KASASI')
             ->assertJsonPath('records.0.meta.cashbox.code', '100.01.007');
+    }
+
+    public function test_logo_collection_pending_routes_physical_pos_to_customer_credit_card_fiche(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-POS-COL',
+            'name' => 'Physical POS Collection Dealer',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'source_reference' => '1001',
+            'code' => 'CR-POS-COL',
+            'name' => 'Physical POS Cari',
+            'is_active' => true,
+        ]);
+
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'b2b',
+            'sync_status' => 'pending',
+            'date' => '2026-07-15',
+            'collection_date' => '2026-07-15',
+            'method' => 'cc',
+            'amount' => 500,
+            'currency' => 'TRY',
+            'reference_fields' => [
+                'collection_channel' => 'physical_pos',
+                'pos_bank' => 'ziraat',
+                'bank_name' => 'Ziraat Bankası',
+                'bank_logo_code' => 'ZRT',
+            ],
+        ]);
+
+        $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->getJson('/api/integrations/logo/collections/pending?limit=10')
+            ->assertOk()
+            ->assertJsonPath('records.0.method', 'cc')
+            ->assertJsonPath('records.0.reference_fields.bank_logo_code', 'ZRT')
+            ->assertJsonPath('records.0.logo.bank_code', 'ZRT')
+            ->assertJsonPath('records.0.logo.target_tables.0', 'CLFICHE')
+            ->assertJsonPath('records.0.logo.target_tables.1', 'CLFLINE')
+            ->assertJsonPath('records.0.logo.target_tables.2', 'PAYTRANS')
+            ->assertJsonMissingPath('records.0.logo.target_tables.3');
     }
 
     public function test_logo_collection_ack_updates_sync_status_and_logo_metadata(): void

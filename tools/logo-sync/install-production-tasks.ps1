@@ -7,6 +7,7 @@ param(
   [int]$CollectionIntervalMinutes = 1,
   [int]$PosSalesIntervalMinutes = 1,
   [int]$PosExpensesIntervalMinutes = 1,
+  [int]$PosDayEndsIntervalMinutes = 1,
   [int]$DocumentsIntervalMinutes = 1,
   [string]$ProductsFullAt = "01:00",
   [string]$ProductImagesAt = "02:30",
@@ -86,6 +87,7 @@ Assert-Interval -Name "LedgerIntervalMinutes" -Value $LedgerIntervalMinutes
 Assert-Interval -Name "CollectionIntervalMinutes" -Value $CollectionIntervalMinutes
 Assert-Interval -Name "PosSalesIntervalMinutes" -Value $PosSalesIntervalMinutes
 Assert-Interval -Name "PosExpensesIntervalMinutes" -Value $PosExpensesIntervalMinutes
+Assert-Interval -Name "PosDayEndsIntervalMinutes" -Value $PosDayEndsIntervalMinutes
 Assert-Interval -Name "DocumentsIntervalMinutes" -Value $DocumentsIntervalMinutes
 
 Register-LogoTask -Name "$TaskPrefix Product Stocks" -ScriptName "run-sync-product-stocks.cmd" -Trigger (New-RepeatingTrigger -Minutes $StockIntervalMinutes) -ExecutionTimeLimit (New-TimeSpan -Hours 2)
@@ -95,6 +97,7 @@ Register-LogoTask -Name "$TaskPrefix Ledger Sync" -ScriptName "run-sync-ledger.c
 Register-LogoTask -Name "$TaskPrefix Collections Export" -ScriptName "run-sync-collections.cmd" -Trigger (New-RepeatingTrigger -Minutes $CollectionIntervalMinutes) -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 Register-LogoTask -Name "$TaskPrefix POS Sales Export" -ScriptName "run-sync-pos-sales.cmd" -Trigger (New-RepeatingTrigger -Minutes $PosSalesIntervalMinutes) -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 Register-LogoTask -Name "$TaskPrefix POS Expenses Export" -ScriptName "run-sync-pos-expenses.cmd" -Trigger (New-RepeatingTrigger -Minutes $PosExpensesIntervalMinutes) -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+Register-LogoTask -Name "$TaskPrefix POS Day Ends Export" -ScriptName "run-sync-pos-day-ends.cmd" -Trigger (New-RepeatingTrigger -Minutes $PosDayEndsIntervalMinutes) -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 Register-LogoTask -Name "$TaskPrefix Documents Export" -ScriptName "run-sync-documents-export.cmd" -Trigger (New-RepeatingTrigger -Minutes $DocumentsIntervalMinutes) -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 
 if (-not $SkipNightlyProducts) {

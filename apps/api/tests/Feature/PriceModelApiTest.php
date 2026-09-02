@@ -6,6 +6,7 @@ use App\Models\Campaign;
 use App\Models\CampaignProduct;
 use App\Models\Customer;
 use App\Models\Dealer;
+use App\Models\LedgerEntry;
 use App\Models\Product;
 use App\Models\ProductCampaignPrice;
 use App\Models\Role;
@@ -78,6 +79,121 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('items.0.unit_price', '123.45');
     }
 
+    public function test_search_and_cart_use_selected_customers_logo_f_price_group(): void
+    {
+        $dealer = $this->createDealer('DLR-PRC-F3');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+
+        $defaultPriceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $f3PriceListId = (int) DB::table('price_lists')->insertGetId([
+            'code' => 'F3',
+            'name' => 'Logo F3',
+            'discount_rate' => 0,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $dealer->update(['price_list_id' => $defaultPriceListId]);
+        $customer->update([
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode2' => 'F3',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        DB::table('base_prices')->insert([
+            [
+                'price_list_id' => $defaultPriceListId,
+                'product_id' => $product->id,
+                'list_price' => 112.69,
+                'currency' => 'TRY',
+                'updated_at' => now(),
+            ],
+            [
+                'price_list_id' => $f3PriceListId,
+                'product_id' => $product->id,
+                'list_price' => 210.90,
+                'currency' => 'TRY',
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson("/api/products/search?q={$product->sku}&limit=20&customer_id={$customer->id}")
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $product->id)
+            ->assertJsonPath('data.0.net_price', '210.90')
+            ->assertJsonPath('data.0.list_price', '421.80');
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk()
+            ->assertJsonPath('items.0.unit_price', '210.90');
+    }
+
+    public function test_customer_price_group_falls_back_to_dealer_price_until_grouped_product_price_is_synced(): void
+    {
+        $dealer = $this->createDealer('DLR-PRC-F3-FALLBACK');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+
+        $defaultPriceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        DB::table('price_lists')->insert([
+            'code' => 'F3',
+            'name' => 'Logo F3',
+            'discount_rate' => 0,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $dealer->update(['price_list_id' => $defaultPriceListId]);
+        $customer->update([
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'specode' => 'F3',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        DB::table('base_prices')->insert([
+            'price_list_id' => $defaultPriceListId,
+            'product_id' => $product->id,
+            'list_price' => 112.69,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson("/api/products/search?q={$product->sku}&limit=20&customer_id={$customer->id}")
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $product->id)
+            ->assertJsonPath('data.0.net_price', '112.69')
+            ->assertJsonPath('data.0.list_price', '225.38');
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk()
+            ->assertJsonPath('items.0.unit_price', '112.69');
+    }
+
     public function test_logo_campaign_uses_single_price_for_nine_and_ten_plus_price_for_ten(): void
     {
         $dealer = $this->createDealer('DLR-CAMPAIGN-001');
@@ -117,6 +233,12 @@ class PriceModelApiTest extends TestCase
         $this->actingAs($user);
 
         $this->getJson('/api/products/search?limit=20&q='.$product->sku)
+            ->assertOk()
+            ->assertJsonPath('data.0.campaigns.0.name', 'PWS FİLTRE KAMPANYASI')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 1)
+            ->assertJsonPath('data.0.campaigns.0.tiers.1.min_quantity', 10);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$customer->id)
             ->assertOk()
             ->assertJsonPath('data.0.campaigns.0.name', 'PWS FİLTRE KAMPANYASI')
             ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 1)
@@ -240,6 +362,42 @@ class PriceModelApiTest extends TestCase
             ->assertJsonCount(0, 'data');
     }
 
+    public function test_logo_group_campaign_matches_new_customer_price_group_metadata(): void
+    {
+        $dealer = $this->createDealer('DLR-CAMPAIGN-PRICE-GROUP');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $customer->update([
+            'meta' => [
+                'price_group' => 'F1',
+                'price_list_code' => 'F1',
+            ],
+        ]);
+
+        $campaign = Campaign::query()->create([
+            'source_reference' => 'LOGO-CAMPAIGN-F1-NEW-CUSTOMER',
+            'code' => 'F1-NEW-CUSTOMER',
+            'name' => 'F1 Yeni Cari Kampanyasi',
+            'customer_group' => 'F1',
+            'target_quantity' => 1,
+            'discount_percent' => 10,
+            'group_field' => 'price_group',
+            'is_active' => true,
+        ]);
+        CampaignProduct::query()->create([
+            'campaign_id' => $campaign->id,
+            'product_id' => $product->id,
+            'product_sku' => $product->sku,
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson("/api/customers/{$customer->id}/campaign-progress")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.code', 'F1-NEW-CUSTOMER');
+    }
+
     public function test_logo_campaign_sync_requires_integration_key(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');
@@ -269,6 +427,38 @@ class PriceModelApiTest extends TestCase
             ->postJson('/api/integrations/logo/campaigns/sync', $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['campaigns.0.products']);
+    }
+
+    public function test_logo_campaign_sync_accepts_passive_snapshot_without_products_and_deactivates_campaign(): void
+    {
+        config()->set('integrations.logo.product_sync_key', 'campaign-test-key');
+
+        $campaign = Campaign::query()->create([
+            'source_reference' => 'SYNC-PASSIVE-1',
+            'code' => 'F1-PASSIVE',
+            'name' => 'F1 Passive Test',
+            'customer_group' => 'F1',
+            'target_quantity' => 1,
+            'discount_percent' => 10,
+            'is_active' => true,
+        ]);
+
+        $this->withHeader('X-Integration-Key', 'campaign-test-key')
+            ->postJson('/api/integrations/logo/campaigns/sync', ['campaigns' => [[
+                'source_reference' => 'SYNC-PASSIVE-1',
+                'code' => 'F1-PASSIVE',
+                'name' => 'F1 Passive Test',
+                'customer_group' => 'F1',
+                'target_quantity' => 1,
+                'discount_percent' => 10,
+                'is_active' => false,
+                'products' => [],
+            ]]])
+            ->assertOk()
+            ->assertJsonPath('synced', 1)
+            ->assertJsonPath('deactivated', 1);
+
+        $this->assertFalse($campaign->refresh()->is_active);
     }
 
     public function test_cart_item_allows_zero_stock_when_price_exists(): void
@@ -400,6 +590,228 @@ class PriceModelApiTest extends TestCase
         ]);
     }
 
+    public function test_order_is_blocked_when_overdue_open_account_exceeds_logo_risk_limit(): void
+    {
+        $dealer = $this->createDealer('DLR-RISK-001');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $customer->forceFill([
+            'credit_limit' => 50000,
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'payment_term_days' => 40,
+                            'open_account_risk_limit' => 50000,
+                            'raw' => [
+                                'PAYMENT_CODE' => '40',
+                                'RISKLIMIT' => '50000',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ])->save();
+
+        LedgerEntry::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'logo',
+            'source_reference' => 'RISK-OLD-INVOICE',
+            'date' => now()->subDays(45)->toDateString(),
+            'type' => 'invoice',
+            'debit' => 49000,
+            'credit' => 0,
+            'balance_after' => 49000,
+            'entry_date' => now()->subDays(45)->toDateString(),
+            'entry_type' => 'debit',
+            'amount' => 49000,
+            'currency' => 'TRY',
+            'reference_no' => 'RISK-OLD-INVOICE',
+            'description' => 'Vadesi gecmis acik hesap',
+        ]);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 2000.00,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+
+        $cartResponse = $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk();
+
+        $this->postJson('/api/orders', [
+            'cart_id' => $cartResponse->json('cart.id'),
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['customer_id']);
+    }
+
+    public function test_order_is_blocked_when_zero_day_payment_term_order_exceeds_logo_risk_limit(): void
+    {
+        $dealer = $this->createDealer('DLR-RISK-ZERO');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $customer->forceFill([
+            'credit_limit' => 0,
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'payment_term_days' => 0,
+                            'raw' => [
+                                'PAYMENT_CODE' => '0',
+                                'OPEN_ACCOUNT_RISK_LIMIT' => '50000',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ])->save();
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 58000.00,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+
+        $cartResponse = $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk();
+
+        $this->postJson('/api/orders', [
+            'cart_id' => $cartResponse->json('cart.id'),
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['customer_id']);
+    }
+
+    public function test_order_is_allowed_when_overdue_open_account_stays_within_logo_risk_limit(): void
+    {
+        $dealer = $this->createDealer('DLR-RISK-002');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $customer->forceFill([
+            'credit_limit' => 50000,
+            'meta' => [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'payment_term_days' => 40,
+                        ],
+                    ],
+                ],
+            ],
+        ])->save();
+
+        LedgerEntry::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'source_system' => 'logo',
+            'source_reference' => 'RISK-SMALL-INVOICE',
+            'date' => now()->subDays(45)->toDateString(),
+            'type' => 'invoice',
+            'debit' => 49000,
+            'credit' => 0,
+            'balance_after' => 49000,
+            'entry_date' => now()->subDays(45)->toDateString(),
+            'entry_type' => 'debit',
+            'amount' => 49000,
+            'currency' => 'TRY',
+            'reference_no' => 'RISK-SMALL-INVOICE',
+            'description' => 'Vadesi gecmis acik hesap',
+        ]);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 500.00,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+
+        $cartResponse = $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk();
+
+        $this->postJson('/api/orders', [
+            'cart_id' => $cartResponse->json('cart.id'),
+        ])->assertCreated()
+            ->assertJsonPath('order.customer.id', $customer->id);
+    }
+
+    public function test_admin_order_is_approved_for_the_selected_customers_branch_warehouse(): void
+    {
+        $dealer = $this->createDealer('DLR-ADMIN-WAREHOUSE');
+        $admin = $this->createUserWithRole('admin', $dealer);
+        $salesperson = $this->createUserWithRole('salesperson', $dealer);
+        $salesperson->forceFill([
+            'username' => 'trabzon.salesperson',
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $salesperson);
+        $customer->forceFill([
+            'branch_code' => 'TRABZON',
+            'branch_name' => 'Trabzon',
+        ])->save();
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 100.00,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($admin);
+        $cart = $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'shipping_method' => 'depo_teslim',
+        ])->assertOk();
+
+        $order = $this->postJson('/api/orders', [
+            'cart_id' => $cart->json('cart.id'),
+            'customer_id' => $customer->id,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('order.status', 'approved');
+
+        $this->getJson('/api/warehouse/orders/ready?q='.$order->json('order.order_no'))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.origin.target_warehouse_code', '2')
+            ->assertJsonPath('data.0.origin.target_warehouse_name', 'TRABZON DEPO');
+    }
+
     public function test_batum_cart_item_converts_try_price_to_lari(): void
     {
         $dealer = $this->createDealer('DLR-PRC-BATUM');
@@ -483,7 +895,7 @@ class PriceModelApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.id', $product->id)
             ->assertJsonPath('data.0.net_price', '10.00')
-            ->assertJsonPath('data.0.list_price', '10.00')
+            ->assertJsonPath('data.0.list_price', '20.00')
             ->assertJsonPath('data.0.currency', 'GEL');
     }
 

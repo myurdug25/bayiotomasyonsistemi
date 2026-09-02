@@ -18,10 +18,17 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import sql from "mssql";
 
+import { postCampaignSync } from "./campaign-sync-http.mjs";
+import { resolveCampaignCustomerGroup } from "./campaign-customer-group.mjs";
+import {
+  isLogoCampaignActive,
+  normalizeLogoDate,
+} from "./campaign-date.mjs";
 import { logoFirmTable } from "./logo-table-names.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
+const statusPath = path.join(scriptDir, "campaign-sync-status.json");
 
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
@@ -30,6 +37,10 @@ if (fs.existsSync(envPath)) {
 const DRY_RUN = process.argv.includes("--dry-run");
 
 main().catch((error) => {
+  writeCampaignStatus({
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+  });
   console.error(
     "[logo-campaigns-sync] failed:",
     error instanceof Error ? error.message : error
@@ -38,6 +49,7 @@ main().catch((error) => {
 });
 
 async function main() {
+  const startedAt = new Date();
   const config = buildConfig();
   validateConfig(config);
 
@@ -76,21 +88,22 @@ async function main() {
       `[logo-campaigns-sync] ${campaignTable} → sütunlar: ${campaignColumns.join(", ")}`
     );
 
-    // Aktif kampanyaları çek
+    // Kampanya snapshot'ını çek. Pasif Logo kartları da B2B'ye is_active=false
+    // olarak gitmeli; yoksa eski aktif kayıt yeni siparişlerde yaşamaya devam eder.
     const campaignRows = await pool.request().query(`
       SELECT *
       FROM ${campaignTable} WITH (NOLOCK)
-      WHERE ISNULL(ACTIVE, 0) = 0
       ORDER BY LOGICALREF
     `);
 
     console.log(
-      `[logo-campaigns-sync] ${campaignRows.recordset.length} aktif kampanya bulundu`
+      `[logo-campaigns-sync] ${campaignRows.recordset.length} kampanya kartı bulundu`
     );
 
     if (campaignRows.recordset.length === 0) {
-      console.log("[logo-campaigns-sync] Gönderilecek kampanya yok. Çıkılıyor.");
-      return;
+      console.log(
+        "[logo-campaigns-sync] Kampanya kartı yok; eski B2B kampanyalarını pasife almak için boş snapshot gönderilecek."
+      );
     }
 
     // Kampanya satır sütunlarını keşfet
@@ -101,6 +114,7 @@ async function main() {
 
     // Her kampanya için ürün kodlarını çek
     const campaigns = [];
+    let skipped = 0;
 
     for (const row of campaignRows.recordset) {
       const ref = String(row.LOGICALREF ?? row.logicalref ?? "");
@@ -120,31 +134,11 @@ async function main() {
           `Kampanya-${ref}`
       );
 
-      // Cari grup bilgisi: farklı sürümlerde farklı alan adı olabilir
-      let customerGroup = normalizeString(
-        row.CLTYPE ??          // cari tipi
-        row.CLCARD_TYPE ??
-        row.CARGROUPCODE ??
-        row.CARDGRPCODE ??
-        row.CUSTGROUP ??
-        row.CLSPECODE ??
-        row.TRADINGGRP ??
-        row.SPECODE ??         // özel kod
-        null
-      );
-      let groupField = row.CLSPECODE
-        ? "clspecode"
-        : row.TRADINGGRP
-          ? "tradinggrp"
-          : "specode";
-
-      if (!customerGroup) {
-        const groupMatch = `${code ?? ""} ${name ?? ""}`.match(/(?:^|[^A-Z0-9])(F\d+)(?:[^A-Z0-9]|$)/i);
-        if (groupMatch) {
-          customerGroup = groupMatch[1].toUpperCase();
-          groupField = "campaign_code";
-        }
-      }
+      // Logo'nun sayısal CLTYPE alanı gerçek F1-F12 grubunu maskelemesin.
+      // Tüm olası grup alanlarını tarayıp somut F grubunu önceliklendiririz.
+      const resolvedCustomerGroup = resolveCampaignCustomerGroup(row, code, name);
+      const customerGroup = resolvedCustomerGroup.group;
+      const groupField = resolvedCustomerGroup.source;
 
       // Hedef adet / koşul
       const targetQty = parseInt(
@@ -160,17 +154,15 @@ async function main() {
       ) || 1;
 
       // Tarihler
-      const startsAt = normalizeDate(
+      const startsAt = normalizeLogoDate(
         row.BGNDATE ?? row.BEGINDATE ?? row.STARTDATE ?? row.BEGINS_AT ?? null
       );
-      const endsAt = normalizeDate(
+      const endsAt = normalizeLogoDate(
         row.ENDDATE ?? row.FINDATE ?? row.ENDS_AT ?? null
       );
 
       // Aktif mi? (Logo'da 0 = Kullanımda, 1 = Kullanım Dışı)
-      const isActive =
-        Number(row.ACTIVE ?? row.active ?? 0) === 0 &&
-        (!endsAt || new Date(endsAt) >= new Date());
+      const isActive = isLogoCampaignActive(row);
 
       // Kampanya ürün kodlarını ve formülü çek
       let productSkus = [];
@@ -265,13 +257,15 @@ async function main() {
         console.warn(
           `[logo-campaigns-sync] Kampanya atlandı: ${code || ref} için cari grubu çözülemedi.`
         );
+        skipped++;
         continue;
       }
 
-      if (productSkus.length === 0) {
+      if (productSkus.length === 0 && isActive) {
         console.warn(
           `[logo-campaigns-sync] Kampanya atlandı: ${code || ref} için ürün bulunamadı.`
         );
+        skipped++;
         continue;
       }
 
@@ -295,13 +289,21 @@ async function main() {
       });
 
       console.log(
-        `[logo-campaigns-sync] Kampanya: ${code} (grup: ${customerGroup ?? "hepsi"}, hedef: ${parsedTargetQty}, indirim: %${discountPercent ?? 0}, ürün: ${productSkus.length})`
+        `[logo-campaigns-sync] Kampanya: ${code} (grup: ${customerGroup ?? "hepsi"}, hedef: ${parsedTargetQty}, indirim: %${discountPercent ?? 0}, ürün: ${productSkus.length}, tarih: ${startsAt ?? "-"}..${endsAt ?? "-"}, Logo aktif: ${isActive ? "evet" : "hayır"})`
       );
     }
 
     if (DRY_RUN) {
       console.log("[logo-campaigns-sync] DRY RUN — gönderilecek veri:");
       console.log(JSON.stringify({ campaigns }, null, 2));
+      writeCampaignStatus({
+        ok: true,
+        dryRun: true,
+        startedAt,
+        logoReadCount: campaignRows.recordset.length,
+        payloadCount: campaigns.length,
+        skipped,
+      });
       return;
     }
 
@@ -311,31 +313,28 @@ async function main() {
 
     console.log(`[logo-campaigns-sync] API'ye gönderiliyor: ${apiBase}/api/integrations/logo/campaigns/sync`);
 
-    const response = await fetch(
-      `${apiBase}/api/integrations/logo/campaigns/sync`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          ...(apiKey ? { "X-Integration-Key": apiKey } : {}),
-        },
-        body: JSON.stringify({ campaigns }),
-        signal: AbortSignal.timeout(config.requestTimeoutMs),
-      }
-    );
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "(body okunamadı)");
-      throw new Error(
-        `API yanıtı başarısız: HTTP ${response.status} — ${body}`
-      );
-    }
-
-    const result = await response.json();
+    const result = await postCampaignSync({
+      endpoint: `${apiBase}/api/integrations/logo/campaigns/sync`,
+      apiKey,
+      campaigns,
+      timeoutMs: config.requestTimeoutMs,
+      onRetry: ({ attempt, maxAttempts, delayMs, status }) => {
+        console.warn(
+          `[logo-campaigns-sync] HTTP ${status}; ${delayMs} ms sonra yeniden denenecek (${attempt + 1}/${maxAttempts}).`
+        );
+      },
+    });
     console.log(
       `[logo-campaigns-sync] Tamamlandı: ${result.synced ?? 0} kampanya güncellendi.`
     );
+    writeCampaignStatus({
+      ok: true,
+      startedAt,
+      logoReadCount: campaignRows.recordset.length,
+      payloadCount: campaigns.length,
+      skipped,
+      result,
+    });
   } finally {
     await pool.close();
   }
@@ -415,7 +414,7 @@ function buildConfig() {
     itemTable:
       nullable(process.env.LOGO_PRODUCT_TABLE) ?? logoFirmTable("ITEMS"),
     apiBase: String(
-      process.env.B2B_API_BASE ?? process.env.API_BASE ?? "https://powersab2b.com"
+      process.env.B2B_API_BASE ?? process.env.API_BASE ?? "https://bayiotomasyonsistemi.com"
     ).replace(/\/$/, ""),
     apiKey: nullable(
       process.env.POWERSA_PRODUCTS_SYNC_KEY ??
@@ -448,17 +447,6 @@ function normalizeString(value) {
   return s === "" ? null : s;
 }
 
-function normalizeDate(value) {
-  if (!value) return null;
-  try {
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return null;
-    return d.toISOString().slice(0, 10);
-  } catch {
-    return null;
-  }
-}
-
 function nullable(value) {
   const s = String(value ?? "").trim();
   return s === "" ? null : s;
@@ -478,4 +466,50 @@ function parseBoolean(value, fallback) {
   const s = String(value ?? "").trim().toLowerCase();
   if (s === "") return fallback;
   return ["1", "true", "yes", "on"].includes(s);
+}
+
+function writeCampaignStatus({
+  ok,
+  dryRun = false,
+  startedAt = new Date(),
+  logoReadCount = null,
+  payloadCount = null,
+  skipped = null,
+  result = null,
+  error = null,
+}) {
+  const finishedAt = new Date();
+  const previous = readJson(statusPath) ?? {};
+  const payload = {
+    task: "campaigns-read",
+    ok,
+    dry_run: dryRun,
+    last_run_at: finishedAt.toISOString(),
+    last_success_at: ok ? finishedAt.toISOString() : previous.last_success_at ?? null,
+    next_run_hint: "Logo sync daemon maintenance loop; default every 60 seconds.",
+    duration_ms: finishedAt.getTime() - startedAt.getTime(),
+    logo_read_count: logoReadCount,
+    payload_count: payloadCount,
+    synced_count: result?.synced ?? null,
+    created_count: result?.created ?? null,
+    updated_count: result?.updated ?? null,
+    deactivated_count: result?.deactivated ?? null,
+    skipped_count: skipped,
+    error_count: ok ? 0 : 1,
+    last_error: ok ? null : error,
+  };
+
+  try {
+    fs.writeFileSync(statusPath, JSON.stringify(payload, null, 2));
+  } catch {
+    // Status yazılamasa bile kampanya sync başarısını bozma.
+  }
+}
+
+function readJson(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
 }

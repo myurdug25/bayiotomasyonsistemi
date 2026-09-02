@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import sql from "mssql";
 
-import { logoFirmTable } from "./logo-table-names.mjs";
+import { logoFirmTable, logoPeriodTable } from "./logo-table-names.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
@@ -107,6 +107,21 @@ async function main() {
       );
     }
 
+    const cashboxSnapshot = await readActiveCashboxDefinitions(
+      pool,
+      config.cashboxTable,
+      config.cashLineTable,
+    );
+    if (cashboxSnapshot.available) {
+      fullSnapshotTypes.push("cashbox");
+      records.push(...cashboxSnapshot.records);
+      console.log(
+        `[logo-finance-definitions-sync] cashbox: ${cashboxSnapshot.records.length} aktif kasa okundu (${config.cashboxTable}).`,
+      );
+    } else {
+      console.warn(`[logo-finance-definitions-sync] Logo kasa tablosu bulunamadı: ${config.cashboxTable}`);
+    }
+
     const uniqueRecords = [
       ...new Map(
         records.map((record) => [`${record.type}:${record.code}`, record]),
@@ -171,17 +186,7 @@ async function readActiveLogoDefinitions(pool, tableName, type) {
     return { available: false, records: [] };
   }
 
-  const columnsResult = await pool
-    .request()
-    .input("tableName", sql.NVarChar(128), plainTableName(tableName))
-    .query(`
-      SELECT COLUMN_NAME
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_NAME = @tableName
-    `);
-  const columns = new Set(
-    columnsResult.recordset.map((row) => String(row.COLUMN_NAME).toUpperCase()),
-  );
+  const columns = await tableColumns(pool, tableName);
   const nameColumn = ["DEFINITION_", "DEFINITION", "NAME"]
     .find((column) => columns.has(column));
 
@@ -226,6 +231,110 @@ async function readActiveLogoDefinitions(pool, tableName, type) {
       })
       .filter(Boolean),
   };
+}
+
+async function readActiveCashboxDefinitions(pool, tableName, lineTableName) {
+  if (!await tableExists(pool, tableName)) {
+    return { available: false, records: [] };
+  }
+
+  const columns = await tableColumns(pool, tableName);
+  const nameColumn = ["DEFINITION_", "DEFINITION", "NAME"]
+    .find((column) => columns.has(column));
+
+  if (!columns.has("CODE") || !nameColumn || !columns.has("LOGICALREF")) {
+    throw new Error(`${tableName} tablosunda LOGICALREF, CODE ve ad sütunu bulunamadı.`);
+  }
+
+  const activeFilter = columns.has("ACTIVE")
+    ? "WHERE ISNULL(ACTIVE, 0) = 0"
+    : "";
+  const cards = await pool.request().query(`
+    SELECT LOGICALREF, CODE, ${quoteIdentifier(nameColumn)} AS NAME
+    FROM ${tableName} WITH (NOLOCK)
+    ${activeFilter}
+    ORDER BY CODE
+  `);
+
+  const balances = await readCashboxBalances(pool, lineTableName);
+
+  return {
+    available: true,
+    records: cards.recordset
+      .map((row) => {
+        const code = normalizeString(row.CODE);
+        const name = normalizeString(row.NAME);
+        if (!code || !name) {
+          return null;
+        }
+
+        const balance = balances.get(Number(row.LOGICALREF)) ?? {
+          debit: 0,
+          credit: 0,
+          balance: 0,
+        };
+        const direction = balance.balance > 0
+          ? "debit"
+          : (balance.balance < 0 ? "credit" : "zero");
+
+        return {
+          type: "cashbox",
+          code,
+          logo_code: code,
+          name,
+          source_table: tableName,
+          is_active: true,
+          balance: roundMoney(balance.balance),
+          balance_debit: roundMoney(balance.debit),
+          balance_credit: roundMoney(balance.credit),
+          balance_direction: direction,
+          currency: "TRY",
+          meta: {
+            logical_ref: row.LOGICALREF ?? null,
+          },
+        };
+      })
+      .filter(Boolean),
+  };
+}
+
+async function readCashboxBalances(pool, lineTableName) {
+  const empty = new Map();
+  if (!await tableExists(pool, lineTableName)) {
+    return empty;
+  }
+
+  const columns = await tableColumns(pool, lineTableName);
+  if (!columns.has("CARDREF") || !columns.has("AMOUNT") || !columns.has("SIGN")) {
+    return empty;
+  }
+
+  const cancelledFilter = columns.has("CANCELLED")
+    ? "WHERE ISNULL(CANCELLED, 0) = 0"
+    : "";
+  const result = await pool.request().query(`
+    SELECT
+      CARDREF,
+      SUM(CASE WHEN ISNULL(SIGN, 0) = 0 THEN ISNULL(AMOUNT, 0) ELSE 0 END) AS DEBIT,
+      SUM(CASE WHEN ISNULL(SIGN, 0) = 1 THEN ISNULL(AMOUNT, 0) ELSE 0 END) AS CREDIT
+    FROM ${lineTableName} WITH (NOLOCK)
+    ${cancelledFilter}
+    GROUP BY CARDREF
+  `);
+
+  return new Map(result.recordset.map((row) => {
+    const debit = Number(row.DEBIT ?? 0);
+    const credit = Number(row.CREDIT ?? 0);
+
+    return [
+      Number(row.CARDREF),
+      {
+        debit,
+        credit,
+        balance: debit - credit,
+      },
+    ];
+  }));
 }
 
 async function discoverCandidateTables(pool) {
@@ -282,6 +391,19 @@ async function tableExists(pool, qualifiedTable) {
   return Number(result.recordset[0]?.count ?? 0) > 0;
 }
 
+async function tableColumns(pool, qualifiedTable) {
+  const result = await pool
+    .request()
+    .input("tableName", sql.NVarChar(128), plainTableName(qualifiedTable))
+    .query(`
+      SELECT COLUMN_NAME
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = @tableName
+    `);
+
+  return new Set(result.recordset.map((row) => String(row.COLUMN_NAME).toUpperCase()));
+}
+
 function plainTableName(qualifiedTable) {
   return qualifiedTable.split(".").at(-1)?.replaceAll("[", "").replaceAll("]", "");
 }
@@ -331,7 +453,7 @@ function buildConfig() {
   return {
     connection,
     apiBase: String(
-      process.env.B2B_API_BASE ?? process.env.API_BASE ?? "https://powersab2b.com",
+      process.env.B2B_API_BASE ?? process.env.API_BASE ?? "https://bayiotomasyonsistemi.com",
     ).replace(/\/+$/, ""),
     apiKey: normalizeString(
       process.env.POWERSA_PRODUCTS_SYNC_KEY
@@ -353,6 +475,10 @@ function buildConfig() {
       normalizeString(process.env.LOGO_BANK_CARD_TABLE) ?? logoFirmTable("BNCARD"),
     posDeviceTable:
       normalizeString(process.env.LOGO_POS_ACCOUNT_TABLE) ?? logoFirmTable("BANKACC"),
+    cashboxTable:
+      normalizeString(process.env.LOGO_CASHBOX_TABLE) ?? logoFirmTable("KSCARD"),
+    cashLineTable:
+      normalizeString(process.env.LOGO_CASH_LINE_TABLE) ?? logoPeriodTable("KSLINES"),
   };
 }
 
@@ -387,4 +513,8 @@ function parseBoolean(value, fallback) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized === "") return fallback;
   return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+function roundMoney(value) {
+  return Math.round(Number(value ?? 0) * 100) / 100;
 }

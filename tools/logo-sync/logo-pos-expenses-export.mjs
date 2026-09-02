@@ -61,15 +61,17 @@ async function main() {
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        const diagnostic = expenseDiagnostic(record);
+        const detailedMessage = `${message} [${diagnostic}]`;
         acknowledgements.push({
           pos_expense_id: record.pos_expense_id,
           status: "failed",
-          error: message.slice(0, 2000),
+          error: detailedMessage.slice(0, 2000),
           meta: {
             export_key: record.export_key,
           },
         });
-        console.warn(`[logo-sync] POS expense export failed id=${record.pos_expense_id}: ${message}`);
+        console.warn(`[logo-sync] POS expense export failed id=${record.pos_expense_id}: ${detailedMessage}`);
       }
     }
 
@@ -81,6 +83,33 @@ async function main() {
   } finally {
     await pool.close();
   }
+}
+
+function expenseDiagnostic(record) {
+  const sourceMeta = record.meta?.source_meta ?? {};
+  const accountCode =
+    nullable(record.logo?.account_code) ??
+    nullable(record.account_code) ??
+    nullable(record.expense_account_code) ??
+    nullable(record.logo_expense_account_code) ??
+    nullable(sourceMeta.logo_expense_account_code) ??
+    "missing";
+  const accountName =
+    nullable(record.logo?.account_name) ??
+    nullable(record.logo_expense_account_name) ??
+    nullable(sourceMeta.logo_expense_account_name) ??
+    "missing";
+  const cashboxCode =
+    nullable(record.cashbox_code) ??
+    nullable(sourceMeta.cashbox_code) ??
+    nullable(record.meta?.cashbox?.code) ??
+    "missing";
+  const user =
+    nullable(record.created_by_name) ??
+    nullable(record.created_by_user_id) ??
+    "unknown";
+
+  return `expense_id=${record.pos_expense_id ?? "unknown"} account_code=${accountCode} account_name=${accountName} cashbox_code=${cashboxCode} user=${user}`;
 }
 
 function buildConfig() {
@@ -196,14 +225,52 @@ async function fetchPendingExpenses(currentConfig) {
 }
 
 async function exportExpense(pool, currentConfig, record) {
+  const accountCode =
+    nullable(record.logo?.account_code) ??
+    nullable(record.account_code) ??
+    nullable(record.expense_account_code) ??
+    nullable(record.logo_expense_account_code) ??
+    nullable(record.meta?.source_meta?.logo_expense_account_code);
+  const accountName =
+    nullable(record.logo?.account_name) ??
+    nullable(record.logo_expense_account_name) ??
+    nullable(record.meta?.source_meta?.logo_expense_account_name);
+  const cashboxCode =
+    nullable(record.cashbox_code) ??
+    nullable(record.meta?.source_meta?.cashbox_code) ??
+    nullable(record.meta?.cashbox?.code);
+  const cashboxName =
+    nullable(record.cashbox_name) ??
+    nullable(record.meta?.source_meta?.cashbox_name) ??
+    nullable(record.meta?.cashbox?.name);
+  const paymentSourceType =
+    nullable(record.payment_source_type) ??
+    nullable(record.meta?.source_meta?.payment_source_type) ??
+    nullable(record.meta?.payment_source?.type) ??
+    "cash";
+  const bankAccountCode =
+    nullable(record.bank_account_logo_code) ??
+    nullable(record.payment_source_logo_code) ??
+    nullable(record.bank_account_code) ??
+    nullable(record.meta?.source_meta?.bank_account_logo_code) ??
+    nullable(record.meta?.source_meta?.payment_source_logo_code) ??
+    nullable(record.meta?.bank_account?.logo_code) ??
+    nullable(record.meta?.payment_source?.logo_code);
+  const bankAccountName =
+    nullable(record.bank_account_name) ??
+    nullable(record.payment_source_name) ??
+    nullable(record.meta?.source_meta?.bank_account_name) ??
+    nullable(record.meta?.source_meta?.payment_source_name) ??
+    nullable(record.meta?.bank_account?.name) ??
+    nullable(record.meta?.payment_source?.name);
   const request = pool.request();
   request.input("expenseDate", sql.Date, new Date(record.expense_date));
   request.input("category", sql.NVarChar(80), nullable(record.category));
   request.input("amount", sql.Decimal(15, 2), Number.parseFloat(String(record.amount ?? 0)));
   request.input("currency", sql.NVarChar(3), nullable(record.currency) ?? "TRY");
   request.input("note", sql.NVarChar(sql.MAX), nullable(record.note));
-  request.input("cashboxCode", sql.NVarChar(64), nullable(record.cashbox_code));
-  request.input("accountCode", sql.NVarChar(64), nullable(record.logo?.account_code));
+  request.input("cashboxCode", sql.NVarChar(64), cashboxCode);
+  request.input("accountCode", sql.NVarChar(64), accountCode);
   request.input("exportKey", sql.NVarChar(128), nullable(record.export_key));
   request.input(
     "payloadJson",
@@ -212,8 +279,26 @@ async function exportExpense(pool, currentConfig, record) {
       pos_expense_id: record.pos_expense_id,
       pos_session_id: record.pos_session_id ?? null,
       cashbox_id: record.cashbox_id ?? null,
-      cashbox_code: record.cashbox_code ?? null,
-      cashbox_name: record.cashbox_name ?? null,
+      cashbox_code: cashboxCode,
+      cashbox_name: cashboxName,
+      payment_source_type: paymentSourceType,
+      payment_source_code: record.payment_source_code ?? null,
+      payment_source_name: record.payment_source_name ?? null,
+      payment_source_logo_code: record.payment_source_logo_code ?? null,
+      bank_account_code: record.bank_account_code ?? null,
+      bank_account_name: bankAccountName,
+      bank_account_logo_code: bankAccountCode,
+      operation_type: record.operation_type ?? record.meta?.source_meta?.operation_type ?? null,
+      bank_transfer_mode: Boolean(record.bank_transfer_mode ?? record.meta?.source_meta?.bank_transfer_mode),
+      bank_expense_mode: Boolean(record.bank_expense_mode),
+      bank_expense_account_code: record.bank_expense_account_code ?? null,
+      bank_expense_account_name: record.bank_expense_account_name ?? null,
+      account_code: accountCode,
+      expense_account_code: record.expense_account_code ?? record.logo_expense_account_code ?? null,
+      logo_account_code: record.logo?.account_code ?? null,
+      account_name: accountName,
+      expense_account_name: accountName,
+      logo_expense_account_name: accountName,
       created_by_user_id: record.created_by_user_id ?? null,
       created_by_name: record.created_by_name ?? null,
       meta: record.meta ?? {},
