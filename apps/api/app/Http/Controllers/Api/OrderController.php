@@ -19,6 +19,14 @@ use App\Models\StockSummary;
 use App\Models\User;
 use App\Services\Customers\CustomerAccessScopeService;
 use App\Services\Integrations\IntegrationSyncStateService;
+use App\Services\Notifications\UserNotificationService;
+use App\Services\Orders\CustomerOrderRiskGuard;
+use App\Services\Orders\ShippingChargeService;
+use App\Services\Users\UserPermissionService;
+use App\Support\Cart\CheckoutNoteCleaner;
+use App\Support\CustomerFeaturePermissions;
+use App\Support\Pricing\DealerNetPriceExpression;
+use App\Support\Pricing\DisplayCurrency;
 use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -111,6 +119,17 @@ class OrderController extends Controller
                         $customerQuery
                             ->whereLike('code', "{$q}%", caseSensitive: false)
                             ->orWhereLike('name', "%{$q}%", caseSensitive: false);
+                    })
+                    ->orWhereHas('items.product', function (Builder $productQuery) use ($q): void {
+                        $productQuery
+                            ->whereLike('sku', "%{$q}%", caseSensitive: false)
+                            ->orWhereLike('name', "%{$q}%", caseSensitive: false)
+                            ->orWhereLike('oem_code', "%{$q}%", caseSensitive: false)
+                            ->orWhereHas('codeAliases', function (Builder $aliasQuery) use ($q): void {
+                                $aliasQuery
+                                    ->whereLike('code', "%{$q}%", caseSensitive: false)
+                                    ->orWhereLike('brand_name', "%{$q}%", caseSensitive: false);
+                            });
                     });
             });
         }
@@ -145,13 +164,13 @@ class OrderController extends Controller
 
         $order->loadMissing([
             'dealer',
-            'customer.salesperson:id,name',
+            'customer.salesperson:id,name,username,email,branch_code,branch_name',
             'cart:id,shipping_method,note,order_note',
             'ledgerEntries' => fn ($ledgerQuery) => $ledgerQuery
                 ->where('type', 'invoice')
                 ->orderByDesc('id')
                 ->with('createdBy:id,name'),
-            'user:id,name',
+            'user:id,name,username,email,branch_code,branch_name',
             'user.roles:id,slug,name',
             'items.product.brand',
             'items.product.stockSummary',
@@ -266,7 +285,10 @@ class OrderController extends Controller
 
     public function store(
         CreateOrderRequest $request,
-        IntegrationSyncStateService $syncState
+        IntegrationSyncStateService $syncState,
+        UserNotificationService $notifications,
+        ShippingChargeService $shippingCharges,
+        CustomerOrderRiskGuard $riskGuard
     ): JsonResponse {
         $user = $request->user();
         $this->ensureOrderRole($user);
@@ -286,15 +308,32 @@ class OrderController extends Controller
 
         $forceWarehouseTransfer = $user->hasRole('salesperson');
 
-        $order = DB::transaction(function () use ($validated, $dealerId, $user, $syncState, $forceWarehouseTransfer) {
+        $order = DB::transaction(function () use ($validated, $dealerId, $user, $syncState, $forceWarehouseTransfer, $shippingCharges, $riskGuard) {
             $cart = $this->resolveDraftCartForOrder($user, $dealerId, $validated);
             $cart->loadMissing('customer.salesperson');
             $items = $cart->items()->with('product')->lockForUpdate()->get();
+            $selectedProductIds = collect($validated['selected_product_ids'] ?? [])
+                ->map(fn ($value): int => (int) $value)
+                ->filter(fn (int $value): bool => $value > 0)
+                ->unique()
+                ->values();
 
             if ($items->isEmpty()) {
                 throw ValidationException::withMessages([
                     'cart' => ['Cannot create order from an empty cart.'],
                 ]);
+            }
+
+            if ($selectedProductIds->isNotEmpty()) {
+                $items = $items
+                    ->filter(fn ($item): bool => $selectedProductIds->contains((int) $item->product_id))
+                    ->values();
+
+                if ($items->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'selected_product_ids' => ['Seçili ürünler sepette bulunamadı.'],
+                    ]);
+                }
             }
 
             $stocks = StockSummary::query()
@@ -306,11 +345,44 @@ class OrderController extends Controller
             $subtotalCents = 0;
             $discountTotalCents = 0;
             $taxTotalCents = 0;
-            $checkoutSummaryMode = $this->normalizeCheckoutSummaryMode($validated['checkout_summary_mode'] ?? null);
+            $requestedCheckoutSummaryMode = array_key_exists('checkout_summary_mode', $validated)
+                ? $this->normalizeCheckoutSummaryMode($validated['checkout_summary_mode'])
+                : null;
+            $requestedItemCheckoutSummaryModes = $this->normalizeItemCheckoutSummaryModes($validated['item_checkout_summary_modes'] ?? []);
+            $checkoutSummaryMode = $requestedCheckoutSummaryMode ?? 'detailed';
+            $itemCheckoutSummaryModes = $requestedItemCheckoutSummaryModes;
             $paymentMethod = $this->nullableString($validated['payment_method'] ?? null);
             $salesPriceType = $this->nullableString($validated['sales_price_type'] ?? null);
-            $taxAsSeparateLine = $checkoutSummaryMode === 'detailed';
-            $pricesIncludeTax = $checkoutSummaryMode === 'included';
+            $isWarehouseTransfer = $forceWarehouseTransfer || (bool) $cart->is_warehouse_transfer;
+            $isDepotTransferRequest = (bool) ($validated['warehouse_transfer_request'] ?? false);
+            if (! $isDepotTransferRequest) {
+                [$checkoutSummaryMode, $itemCheckoutSummaryModes] = $this->normalizeCheckoutSummaryModesForCheckout(
+                    $user,
+                    $cart->customer,
+                    $checkoutSummaryMode,
+                    $itemCheckoutSummaryModes
+                );
+                $this->ensureAllowedCheckoutSummaryModes($user, $cart->customer, $checkoutSummaryMode, $itemCheckoutSummaryModes);
+                $this->ensureLogoEInvoiceCustomerUsesDetailedMode(
+                    $cart->customer,
+                    $requestedCheckoutSummaryMode ?? $checkoutSummaryMode,
+                    $requestedItemCheckoutSummaryModes
+                );
+            }
+            if ($isDepotTransferRequest && ! $this->canCreateDepotTransfer($user)) {
+                throw ValidationException::withMessages([
+                    'warehouse_transfer_request' => ['Depolar arası transfer için depocu yetkisi gerekir.'],
+                ]);
+            }
+            $requestingWarehouse = $isDepotTransferRequest
+                ? $this->resolveDepotTransferRequestingWarehouse($user, $cart->customer, $cart->shipping_method)
+                : null;
+            $sourceWarehouse = $isDepotTransferRequest
+                ? $this->resolveTransferTargetWarehouse($validated, $requestingWarehouse)
+                : null;
+            $targetWarehouse = $isDepotTransferRequest
+                ? $requestingWarehouse
+                : $this->resolveOrderTargetWarehouseForCheckout($user, $cart->customer, $cart->shipping_method, $validated);
             $orderItemRows = [];
 
             foreach ($items as $item) {
@@ -337,11 +409,21 @@ class OrderController extends Controller
                 }
 
                 $quantity = (int) $item->quantity;
+                $itemCheckoutSummaryMode = $itemCheckoutSummaryModes[(string) $item->product_id] ?? $checkoutSummaryMode;
+                $taxAsSeparateLine = ! $isDepotTransferRequest && $itemCheckoutSummaryMode === 'detailed';
+                $pricesIncludeTax = ! $isDepotTransferRequest && $itemCheckoutSummaryMode === 'included';
+                // A warehouse transfer is not a sale. The cart row is the
+                // authoritative commercial snapshot and must not be repriced
+                // with the current product/customer price at checkout time.
                 $lineCents = $this->toCents($this->cartItemLineTotal($item));
-                $grossCents = $this->toCents(round((float) $item->unit_net_price, 2) * $quantity);
-                $sourceTaxRate = (float) ($item->vat_rate ?? $item->product?->vat_rate ?? 0);
-                $lineTaxCents = (int) round($lineCents * ($sourceTaxRate / 100));
-                $grossTaxCents = (int) round($grossCents * ($sourceTaxRate / 100));
+                $unitNetPrice = $quantity > 0
+                    ? $this->fromCents((int) round($lineCents / $quantity))
+                    : round((float) $item->unit_net_price, 2);
+                $lineCurrency = (string) $item->currency;
+                $grossCents = $this->toCents($unitNetPrice * $quantity);
+                $sourceTaxRate = $isDepotTransferRequest ? 0.0 : (float) ($item->vat_rate ?? $item->product?->vat_rate ?? 0);
+                $lineTaxCents = $isDepotTransferRequest ? 0 : (int) round($lineCents * ($sourceTaxRate / 100));
+                $grossTaxCents = $isDepotTransferRequest ? 0 : (int) round($grossCents * ($sourceTaxRate / 100));
                 $orderLineCents = $pricesIncludeTax ? $lineCents + $lineTaxCents : $lineCents;
                 $orderGrossCents = $pricesIncludeTax ? $grossCents + $grossTaxCents : $grossCents;
                 $orderUnitCents = $quantity > 0
@@ -357,11 +439,12 @@ class OrderController extends Controller
                     'product_id' => $item->product_id,
                     'quantity' => $quantity,
                     'unit_net_price' => $this->fromCents($orderUnitCents),
-                    'discount_rate' => $item->discount_rate,
+                    'discount_rate' => $isDepotTransferRequest ? 0 : $item->discount_rate,
                     'tax_rate' => $orderTaxRate,
                     'line_total' => $this->fromCents($orderLineCents),
-                    'currency' => $item->currency,
-                    'campaign_key' => $item->campaign_key,
+                    'currency' => $lineCurrency,
+                    'campaign_key' => $isDepotTransferRequest ? null : $item->campaign_key,
+                    'checkout_summary_mode' => $itemCheckoutSummaryMode,
                 ];
 
             }
@@ -369,11 +452,42 @@ class OrderController extends Controller
             $subtotal = $this->fromCents($subtotalCents);
             $discountTotal = $this->fromCents($discountTotalCents);
             $taxTotal = $this->fromCents($taxTotalCents);
-            $grandTotal = $this->fromCents($subtotalCents + $taxTotalCents);
-            $isWarehouseTransfer = $forceWarehouseTransfer || (bool) $cart->is_warehouse_transfer;
-            $initialStatus = $isWarehouseTransfer ? 'approved' : 'pending';
-            $orderNote = $this->resolveOrderNote($validated['note'] ?? null, $cart->order_note, $cart->note);
-            $targetWarehouse = $this->resolveTargetWarehouseForCheckout($user, $cart->customer, $cart->shipping_method);
+            $calculatedGrandTotalCents = $subtotalCents + $taxTotalCents;
+            $shippingCharge = $shippingCharges->resolve(
+                $cart->shipping_method,
+                $this->fromCents($calculatedGrandTotalCents),
+                $isDepotTransferRequest
+            );
+            $shippingFeeCents = $this->toCents($shippingCharge['amount']);
+            $submittedCheckoutGrandTotalCents = (! $isDepotTransferRequest && array_key_exists('checkout_grand_total', $validated))
+                ? max(0, $this->toCents($validated['checkout_grand_total']))
+                : null;
+            $submittedShippingFeeCents = min(
+                $submittedCheckoutGrandTotalCents ?? 0,
+                max(0, $this->toCents($validated['shipping_fee_amount'] ?? 0))
+            );
+            $checkoutBaseGrandTotalCents = $submittedCheckoutGrandTotalCents !== null
+                ? max(0, $submittedCheckoutGrandTotalCents - $submittedShippingFeeCents)
+                : $calculatedGrandTotalCents;
+            $checkoutGrandTotalCents = $checkoutBaseGrandTotalCents + $shippingFeeCents;
+            $grandTotal = $this->fromCents($checkoutGrandTotalCents);
+            if (! $isDepotTransferRequest && $cart->customer instanceof Customer) {
+                $riskGuard->assertCanPlaceOrder($cart->customer, $grandTotal);
+            }
+            if ($checkoutBaseGrandTotalCents < $calculatedGrandTotalCents) {
+                $discountTotal = $this->fromCents(
+                    $discountTotalCents + ($calculatedGrandTotalCents - $checkoutBaseGrandTotalCents)
+                );
+            }
+            $sourcePanel = $this->resolveSourcePanel($user);
+            $autoApproveWarehouseCheckout = in_array($sourcePanel, ['warehouse', 'point'], true);
+            $autoApproveCustomerCheckout = $this->isCustomerCheckoutUser($user);
+            $autoApproveAdminCheckout = $user->hasAnyRole(['admin', 'dealer_admin']);
+            $initialStatus = ($isWarehouseTransfer || $autoApproveWarehouseCheckout || $autoApproveCustomerCheckout || $autoApproveAdminCheckout) ? 'approved' : 'pending';
+            $orderNote = CheckoutNoteCleaner::clean(
+                $this->resolveOrderNote($validated['note'] ?? null, $cart->order_note, $cart->note)
+            );
+            $transferSourceWarehouse = $isDepotTransferRequest ? $sourceWarehouse : null;
             $timestamp = now();
 
             $order = Order::create([
@@ -389,7 +503,7 @@ class OrderController extends Controller
                 'tax_total' => $taxTotal,
                 'grand_total' => $grandTotal,
                 'ordered_at' => $timestamp,
-                'approved_at' => $isWarehouseTransfer ? $timestamp : null,
+                'approved_at' => $initialStatus === 'approved' ? $timestamp : null,
                 'note' => $orderNote,
             ]);
 
@@ -418,44 +532,105 @@ class OrderController extends Controller
                 'created_at' => $timestamp,
             ]);
 
-            $sourcePanel = $this->resolveSourcePanel($user);
             $cart->status = 'ordered';
+            $cart->items()
+                ->whereIn('product_id', $items->pluck('product_id')->unique()->values())
+                ->delete();
+            if ($cart->items()->exists()) {
+                $cart->status = 'draft';
+            }
             $cart->save();
 
-            $syncState->record(
-                system: 'logo',
-                domain: 'orders',
-                direction: 'outbound',
-                entity: $order,
-                externalRef: null,
-                status: 'queued',
-                error: null,
-                meta: [
-                    'export_key' => 'B2B-ORDER-'.$order->id,
-                    'order_no' => $order->order_no,
-                    'status' => $order->status,
-                    'source_panel' => $sourcePanel,
-                    'checkout_summary_mode' => $checkoutSummaryMode,
-                    'payment_method' => $paymentMethod,
-                    'sales_price_type' => $salesPriceType,
-                    'shipping_method' => $cart->shipping_method,
-                    'target_warehouse_code' => $targetWarehouse['code'] ?? null,
-                    'target_warehouse_name' => $targetWarehouse['name'] ?? null,
-                    'target_warehouse_reason' => $targetWarehouse['reason'] ?? null,
+            $baseSyncMeta = [
+                'export_key' => 'B2B-ORDER-'.$order->id,
+                'order_no' => $order->order_no,
+                'status' => $order->status,
+                'source_panel' => $sourcePanel,
+                'checkout_summary_mode' => $isDepotTransferRequest ? 'excluded' : $checkoutSummaryMode,
+                'item_checkout_summary_modes' => $itemCheckoutSummaryModes,
+                'payment_method' => $isDepotTransferRequest ? null : $paymentMethod,
+                'sales_price_type' => $isDepotTransferRequest ? null : $salesPriceType,
+                'checkout_grand_total' => $isDepotTransferRequest || $checkoutGrandTotalCents === null
+                    ? null
+                    : $this->fromCents($checkoutGrandTotalCents),
+                'shipping_fee_amount' => $this->fromCents($shippingFeeCents),
+                'shipping_fee_applied' => $shippingCharge['applied'],
+                'shipping_rules' => [
+                    'cargo_limit' => $shippingCharge['cargo_limit'],
+                    'cargo_fee' => $shippingCharge['cargo_fee'],
+                    'bus_fee' => $shippingCharge['bus_fee'],
                 ],
-                payload: [
-                    'order_id' => $order->id,
-                    'order_no' => $order->order_no,
-                    'grand_total' => $order->grand_total,
-                    'checkout_summary_mode' => $checkoutSummaryMode,
-                    'payment_method' => $paymentMethod,
-                    'sales_price_type' => $salesPriceType,
-                    'shipping_method' => $cart->shipping_method,
-                    'target_warehouse_code' => $targetWarehouse['code'] ?? null,
-                    'target_warehouse_name' => $targetWarehouse['name'] ?? null,
-                    'target_warehouse_reason' => $targetWarehouse['reason'] ?? null,
+                'shipping_method' => $cart->shipping_method,
+                'target_warehouse_code' => $targetWarehouse['code'] ?? null,
+                'target_warehouse_name' => $targetWarehouse['name'] ?? null,
+                'target_warehouse_reason' => $targetWarehouse['reason'] ?? null,
+            ];
+            $baseSyncPayload = [
+                'order_id' => $order->id,
+                'order_no' => $order->order_no,
+                'grand_total' => $order->grand_total,
+                'checkout_summary_mode' => $isDepotTransferRequest ? 'excluded' : $checkoutSummaryMode,
+                'item_checkout_summary_modes' => $itemCheckoutSummaryModes,
+                'payment_method' => $isDepotTransferRequest ? null : $paymentMethod,
+                'sales_price_type' => $isDepotTransferRequest ? null : $salesPriceType,
+                'checkout_grand_total' => $isDepotTransferRequest || $checkoutGrandTotalCents === null
+                    ? null
+                    : $this->fromCents($checkoutGrandTotalCents),
+                'shipping_fee_amount' => $this->fromCents($shippingFeeCents),
+                'shipping_fee_applied' => $shippingCharge['applied'],
+                'shipping_rules' => [
+                    'cargo_limit' => $shippingCharge['cargo_limit'],
+                    'cargo_fee' => $shippingCharge['cargo_fee'],
+                    'bus_fee' => $shippingCharge['bus_fee'],
                 ],
-            );
+                'shipping_method' => $cart->shipping_method,
+                'target_warehouse_code' => $targetWarehouse['code'] ?? null,
+                'target_warehouse_name' => $targetWarehouse['name'] ?? null,
+                'target_warehouse_reason' => $targetWarehouse['reason'] ?? null,
+            ];
+
+            if ($isDepotTransferRequest) {
+                $syncState->record(
+                    system: 'logo',
+                    domain: 'warehouse-transfer-orders',
+                    direction: 'outbound',
+                    entity: $order,
+                    externalRef: null,
+                    status: 'queued',
+                    error: null,
+                    meta: [
+                        ...$baseSyncMeta,
+                        'document_type' => 'warehouse_transfer',
+                        'document_label' => 'Depolar Arası Transfer Talebi',
+                        'transfer_status' => 'Talep Oluşturuldu',
+                        'transfer_source_warehouse_code' => $transferSourceWarehouse['code'] ?? null,
+                        'transfer_source_warehouse_name' => $transferSourceWarehouse['name'] ?? null,
+                        'transfer_target_warehouse_code' => $targetWarehouse['code'] ?? null,
+                        'transfer_target_warehouse_name' => $targetWarehouse['name'] ?? null,
+                    ],
+                    payload: [
+                        ...$baseSyncPayload,
+                        'document_type' => 'warehouse_transfer',
+                        'document_label' => 'Depolar Arası Transfer Talebi',
+                        'transfer_source_warehouse_code' => $transferSourceWarehouse['code'] ?? null,
+                        'transfer_source_warehouse_name' => $transferSourceWarehouse['name'] ?? null,
+                        'transfer_target_warehouse_code' => $targetWarehouse['code'] ?? null,
+                        'transfer_target_warehouse_name' => $targetWarehouse['name'] ?? null,
+                    ],
+                );
+            } else {
+                $syncState->record(
+                    system: 'logo',
+                    domain: 'orders',
+                    direction: 'outbound',
+                    entity: $order,
+                    externalRef: null,
+                    status: 'queued',
+                    error: null,
+                    meta: $baseSyncMeta,
+                    payload: $baseSyncPayload,
+                );
+            }
 
             return $order->fresh([
                 'dealer',
@@ -469,7 +644,49 @@ class OrderController extends Controller
             ]);
         });
 
+        $this->notifyOrderCreated($notifications, $order);
+
         return response()->json($this->serializeOrderDetail($order), Response::HTTP_CREATED);
+    }
+
+    private function notifyOrderCreated(UserNotificationService $notifications, Order $order): void
+    {
+        $state = IntegrationSyncState::query()
+            ->where('system', 'logo')
+            ->whereIn('domain', ['warehouse-transfer-orders', 'orders'])
+            ->where('direction', 'outbound')
+            ->where('entity_type', Order::class)
+            ->where('entity_id', (int) $order->id)
+            ->orderByDesc('id')
+            ->first();
+
+        $meta = is_array($state?->meta) ? $state->meta : [];
+        $isTransfer = (string) data_get($meta, 'document_type') === 'warehouse_transfer';
+        $warehouseCode = $isTransfer
+            ? data_get($meta, 'transfer_source_warehouse_code')
+            : data_get($meta, 'target_warehouse_code');
+        $warehouseName = $isTransfer
+            ? data_get($meta, 'transfer_source_warehouse_name')
+            : data_get($meta, 'target_warehouse_name');
+        $customerName = $order->customer?->name ?? 'Yeni müşteri';
+
+        $notifications->notifyBranch(
+            dealerId: $order->dealer_id !== null ? (int) $order->dealer_id : null,
+            warehouseCode: $warehouseCode,
+            warehouseName: $warehouseName,
+            type: $isTransfer ? 'warehouse_transfer_request' : 'warehouse_order',
+            title: $isTransfer ? 'Yeni Depo Transfer Talebi' : 'Yeni Sipariş',
+            body: $isTransfer
+                ? sprintf('%s sizden ürün talep etti. Sipariş: %s', data_get($meta, 'transfer_target_warehouse_name', $customerName), $order->order_no)
+                : sprintf('%s için hazırlanması gereken yeni sipariş geldi. Sipariş: %s', $customerName, $order->order_no),
+            url: '/warehouse',
+            meta: [
+                'order_id' => $order->id,
+                'order_no' => $order->order_no,
+                'is_warehouse_transfer' => $isTransfer,
+            ],
+            permissionKeys: ['warehouse']
+        );
     }
 
     /**
@@ -562,6 +779,9 @@ class OrderController extends Controller
         $sourcePanel = $this->nullableString(data_get($invoiceMeta, 'source_panel'))
             ?? $this->resolveSourcePanelFromRoleSlugs($createdByRoleSlugs);
         $salesperson = $this->resolveOrderSalesperson($order, $createdByRoleSlugs);
+        $printWarehouse = $this->resolveOrderPrintWarehouse($order, $invoiceMeta, $orderSyncMeta);
+        $printWarehouseCode = (string) $printWarehouse['code'];
+        $printWarehouseName = $this->nullableString($printWarehouse['name'] ?? null);
 
         return [
             'order' => [
@@ -606,6 +826,8 @@ class OrderController extends Controller
                     'payment_method' => $this->nullableString(data_get($invoiceMeta, 'payment_method'))
                         ?? $this->nullableString(data_get($orderSyncMeta, 'payment_method')),
                     'shipping_method' => $order->cart?->shipping_method,
+                    'target_warehouse_code' => $printWarehouseCode,
+                    'target_warehouse_name' => $printWarehouseName,
                     'note' => $order->note ?? $order->cart?->order_note ?? $order->cart?->note,
                 ],
                 'invoice' => [
@@ -629,9 +851,10 @@ class OrderController extends Controller
                     'tax_office' => $order->customer?->tax_office,
                     'tax_number' => $order->customer?->tax_number,
                 ],
-                'items' => $order->items->map(function ($item) {
+                'items' => $order->items->map(function ($item) use ($printWarehouseCode, $printWarehouseName) {
                     $returnedQuantity = $this->resolveReturnedQuantity($item);
                     $returnableQuantity = $this->resolveReturnableQuantity($item, $returnedQuantity);
+                    $printWarehouseAvailableTotal = $this->resolveProductLogoWarehouseStockTotal($item, $printWarehouseCode);
 
                     return [
                         'id' => $item->id,
@@ -649,11 +872,15 @@ class OrderController extends Controller
                         'line_total' => $item->line_total,
                         'currency' => $item->currency,
                         'barcode' => $this->resolveProductBarcode($item),
-                        'shelf_address' => $this->resolveProductLogoWarehouseShelfAddress($item, '1')
+                        'shelf_address' => $this->resolveProductLogoWarehouseShelfAddress($item, $printWarehouseCode)
+                            ?? $this->resolveProductLogoWarehouseShelfAddress($item, '1')
                             ?? $this->resolveProductShelfAddress($item->product?->meta),
                         'logo_stock' => [
                             'available_total' => $this->resolveProductLogoStockTotal($item),
                             'erzurum_depo_available_total' => $this->resolveProductLogoWarehouseStockTotal($item, '1'),
+                            'print_warehouse_code' => $printWarehouseCode,
+                            'print_warehouse_name' => $printWarehouseName,
+                            'print_warehouse_available_total' => $printWarehouseAvailableTotal,
                             'reserved_total' => $this->resolveProductReservedStockTotal($item),
                             'updated_at' => $this->resolveProductLogoStockUpdatedAt($item),
                         ],
@@ -690,12 +917,299 @@ class OrderController extends Controller
         return null;
     }
 
+    /**
+     * @param  array<string, mixed>  $invoiceMeta
+     * @param  array<string, mixed>  $orderSyncMeta
+     * @return array{code:string,name:string|null}
+     */
+    private function resolveOrderPrintWarehouse(Order $order, array $invoiceMeta, array $orderSyncMeta): array
+    {
+        $metaCode = $this->nullableString(data_get($invoiceMeta, 'target_warehouse_code'))
+            ?? $this->nullableString(data_get($orderSyncMeta, 'target_warehouse_code'));
+        $metaName = $this->nullableString(data_get($invoiceMeta, 'target_warehouse_name'))
+            ?? $this->nullableString(data_get($orderSyncMeta, 'target_warehouse_name'));
+
+        if ($metaCode !== null) {
+            return [
+                'code' => $metaCode,
+                'name' => $metaName,
+            ];
+        }
+
+        $resolved = app(WarehouseBranchResolver::class)->targetWarehouse(
+            $order->user,
+            $order->customer,
+            $order->cart?->shipping_method
+        );
+
+        return [
+            'code' => (string) ($resolved['code'] ?? '1'),
+            'name' => $metaName ?? $this->nullableString($resolved['name'] ?? null),
+        ];
+    }
+
     private function normalizeCheckoutSummaryMode(mixed $value): string
     {
         return match ((string) $value) {
             'excluded', 'included' => (string) $value,
             default => 'detailed',
         };
+    }
+
+    /**
+     * @param  array<string, string>  $itemModes
+     */
+    private function ensureLogoEInvoiceCustomerUsesDetailedMode(?Customer $customer, string $mode, array $itemModes): void
+    {
+        if (! $customer instanceof Customer || ! $this->customerRequiresLogoDetailedInvoice($customer)) {
+            return;
+        }
+
+        if ($mode !== 'detailed' || in_array('excluded', $itemModes, true) || in_array('included', $itemModes, true)) {
+            throw ValidationException::withMessages([
+                'checkout_summary_mode' => ['Logo e-Fatura kullanıcısı carilerde sadece 1-F fatura kesilebilir.'],
+            ]);
+        }
+    }
+
+    private function customerRequiresLogoDetailedInvoice(Customer $customer): bool
+    {
+        $meta = is_array($customer->meta) ? $customer->meta : [];
+
+        foreach ($this->logoEInvoiceUserPaths() as $path) {
+            $value = data_get($meta, $path);
+
+            if ($value !== null && $this->truthyLogoFlag($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function logoEInvoiceUserPaths(): array
+    {
+        return [
+            'integrations.logo.payload.e_invoice_user',
+            'integrations.logo.payload.e_invoice',
+            'integrations.logo.payload.e_fatura',
+            'integrations.logo.payload.raw.EINVOICE',
+            'integrations.logo.payload.raw.EINVOICEUSER',
+            'integrations.logo.payload.raw.EINVOICE_USER',
+            'integrations.logo.payload.raw.ACCEPTEINV',
+            'integrations.logo.payload.raw.EFATURA',
+            'integrations.logo.payload.raw.E_FATURA',
+        ];
+    }
+
+    private function truthyLogoFlag(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (float) $value !== 0.0;
+        }
+
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return false;
+        }
+
+        return in_array(mb_strtoupper($normalized, 'UTF-8'), [
+            '1',
+            'TRUE',
+            'YES',
+            'EVET',
+            'E',
+            'ON',
+            'AKTIF',
+            'AKTİF',
+        ], true);
+    }
+
+    /**
+     * @param  array<string, string>  $itemModes
+     */
+    private function ensureAllowedCheckoutSummaryModes(User $user, ?Customer $customer, string $mode, array $itemModes): void
+    {
+        $allowedModes = $this->checkoutSummaryModesForOrder($user, $customer);
+
+        if (! in_array($mode, $allowedModes, true)) {
+            throw ValidationException::withMessages([
+                'checkout_summary_mode' => ['Bu kullanıcı için seçilen satış tipi yetkisi yok.'],
+            ]);
+        }
+
+        foreach ($itemModes as $itemMode) {
+            if (! in_array($itemMode, $allowedModes, true)) {
+                throw ValidationException::withMessages([
+                    'item_checkout_summary_modes' => ['Bu kullanıcı için seçilen ürün satış tipi yetkisi yok.'],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $itemModes
+     * @return array{0:string,1:array<string,string>}
+     */
+    private function normalizeCheckoutSummaryModesForCheckout(User $user, ?Customer $customer, string $mode, array $itemModes): array
+    {
+        $allowedModes = $this->checkoutSummaryModesForOrder($user, $customer);
+
+        if ($allowedModes === []) {
+            $allowedModes = ['detailed'];
+        }
+
+        $fallbackMode = $allowedModes[0] ?? 'detailed';
+        if (! in_array($mode, $allowedModes, true)) {
+            $mode = $fallbackMode;
+        }
+
+        foreach ($itemModes as $productId => $itemMode) {
+            if (! in_array($itemMode, $allowedModes, true)) {
+                $itemModes[$productId] = $mode;
+            }
+        }
+
+        return [$mode, $itemModes];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function checkoutSummaryModesForOrder(User $user, ?Customer $customer): array
+    {
+        if ($customer instanceof Customer) {
+            $customerUser = $this->customerUserForCustomer($customer);
+
+            if ($customerUser instanceof User && $this->hasExplicitCheckoutSummaryModePermissions($customerUser)) {
+                return app(UserPermissionService::class)->checkoutSummaryModes($customerUser);
+            }
+        }
+
+        if ($user->hasRole('customer')) {
+            $modes = app(UserPermissionService::class)->checkoutSummaryModes($user);
+
+            return $modes === [] ? ['detailed'] : $modes;
+        }
+
+        if ($user->hasRole('salesperson')) {
+            return ['detailed', 'included'];
+        }
+
+        $modes = app(UserPermissionService::class)->checkoutSummaryModes($user);
+
+        return $modes === [] ? ['detailed'] : $modes;
+    }
+
+    private function isCustomerCheckoutUser(User $user): bool
+    {
+        return $user->hasRole('customer')
+            || ($user->selected_customer_id !== null && ! $user->hasAnyRole(['salesperson', 'warehouse', 'point', 'admin', 'dealer_admin']));
+    }
+
+    private function customerUserForCustomer(Customer $customer): ?User
+    {
+        $username = $this->usernameFromCustomerCode($customer->code);
+
+        return User::query()
+            ->select(['id', 'selected_customer_id', 'username', 'feature_permissions'])
+            ->whereHas('roles', fn (Builder $query) => $query->where('slug', 'customer'))
+            ->where(function (Builder $query) use ($customer, $username): void {
+                $query->where('selected_customer_id', $customer->id);
+
+                if ($username !== '') {
+                    $query->orWhereRaw('LOWER(username) = ?', [$username]);
+                }
+            })
+            ->orderByRaw('CASE WHEN selected_customer_id = ? THEN 0 ELSE 1 END', [$customer->id])
+            ->first();
+    }
+
+    private function hasExplicitCheckoutSummaryModePermissions(User $user): bool
+    {
+        $permissions = is_array($user->feature_permissions) ? $user->feature_permissions : [];
+        $permissionSet = array_flip($permissions);
+
+        return isset($permissionSet['cart.sale_type.detailed'])
+            || isset($permissionSet['cart.sale_type.excluded'])
+            || isset($permissionSet['cart.sale_type.included']);
+    }
+
+    private function usernameFromCustomerCode(?string $code): string
+    {
+        $username = mb_strtolower(trim((string) $code));
+        $username = preg_replace('/\s+/', '-', $username) ?? '';
+        $username = preg_replace('/[^a-z0-9._-]+/', '-', $username) ?? '';
+        $username = trim($username, '.-_');
+
+        return $username;
+    }
+
+    /**
+     * Transfer satış değildir; sepet satırı kampanyalı oluşturulmuş olsa bile
+     * depolar arası transfer baz/net fiyatla ve KDV/iskonto olmadan taşınır.
+     *
+     * @return array{net_price:string,currency:string}|null
+     */
+    private function resolveBaseUnitPrice(int $dealerId, int $productId, User $user): ?array
+    {
+        $netPriceSql = DealerNetPriceExpression::sql();
+
+        $price = DB::table('dealers as d')
+            ->leftJoin('price_lists as pl', 'pl.id', '=', 'd.price_list_id')
+            ->leftJoin('dealer_price_overrides as dpo', function ($join) use ($productId): void {
+                $join->on('dpo.dealer_id', '=', 'd.id')
+                    ->where('dpo.product_id', '=', $productId);
+            })
+            ->leftJoin('base_prices as bp', function ($join) use ($productId): void {
+                $join->on('bp.price_list_id', '=', 'd.price_list_id')
+                    ->where('bp.product_id', '=', $productId);
+            })
+            ->where('d.id', $dealerId)
+            ->selectRaw("{$netPriceSql} as net_price")
+            ->selectRaw("COALESCE(dpo.currency, bp.currency, 'TRY') as currency")
+            ->first();
+
+        if ($price === null || $price->net_price === null) {
+            return null;
+        }
+
+        $currency = (string) $price->currency;
+        $netPrice = number_format((float) $price->net_price, 2, '.', '');
+
+        return [
+            'net_price' => DisplayCurrency::formatPrice($netPrice, $currency, $user) ?? $netPrice,
+            'currency' => DisplayCurrency::normalize($currency, $user),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function normalizeItemCheckoutSummaryModes(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $modes = [];
+        foreach ($value as $productId => $mode) {
+            $productKey = trim((string) $productId);
+            if ($productKey === '' || ! ctype_digit($productKey)) {
+                continue;
+            }
+
+            $modes[$productKey] = $this->normalizeCheckoutSummaryMode($mode);
+        }
+
+        return $modes;
     }
 
     private function resolveReturnedQuantity(OrderItem $item): int
@@ -1248,6 +1762,120 @@ class OrderController extends Controller
         return app(WarehouseBranchResolver::class)->targetWarehouse($user, $customer, $shippingMethod);
     }
 
+    /**
+     * Depocu normal cari satışı yapıyorsa sipariş kendi deposuna düşer.
+     * Cari/plasiyer bölgesi sadece plasiyer ve müşteri kullanıcı akışlarında belirleyici olur.
+     *
+     * @return array{code:string,name:string,reason:string}|null
+     */
+    private function resolveOrderTargetWarehouseForCheckout(User $user, ?Customer $customer, ?string $shippingMethod, array $validated = []): ?array
+    {
+        $explicitShippingWarehouse = $this->resolveShippingTargetWarehouse($validated);
+        if ($explicitShippingWarehouse !== null && mb_strtolower(trim((string) $shippingMethod), 'UTF-8') === 'kargo') {
+            return $explicitShippingWarehouse;
+        }
+
+        if ($user->hasAnyRole(['warehouse', 'point']) && ! $user->hasRole('admin')) {
+            return $this->resolveTargetWarehouseForCheckout($user, null, null);
+        }
+
+        return $this->resolveTargetWarehouseForCheckout($user, $customer, $shippingMethod);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array{code:string,name:string,reason:string}|null
+     */
+    private function resolveShippingTargetWarehouse(array $validated): ?array
+    {
+        $targetCode = $this->nullableString($validated['shipping_target_warehouse_code'] ?? null);
+        $targetName = $this->nullableString($validated['shipping_target_warehouse_name'] ?? null);
+
+        if ($targetCode === null && $targetName === null) {
+            return null;
+        }
+
+        $allowed = [
+            '1' => 'ERZURUM DEPO',
+            '2' => 'TRABZON DEPO',
+            '3' => 'SAMSUN DEPO',
+        ];
+
+        if ($targetCode !== null && isset($allowed[$targetCode])) {
+            return [
+                'code' => $targetCode,
+                'name' => $allowed[$targetCode],
+                'reason' => 'SHIPPING_KARGO_SELECTED',
+            ];
+        }
+
+        $normalizedName = preg_replace('/[^A-Z0-9]+/', '', mb_strtoupper(trim((string) $targetName), 'UTF-8')) ?? '';
+        foreach ($allowed as $code => $name) {
+            $normalizedAllowedName = preg_replace('/[^A-Z0-9]+/', '', mb_strtoupper($name, 'UTF-8')) ?? '';
+            if ($normalizedName !== '' && str_contains($normalizedName, $normalizedAllowedName)) {
+                return [
+                    'code' => $code,
+                    'name' => $name,
+                    'reason' => 'SHIPPING_KARGO_SELECTED',
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Depolar arası transferde "talep eden / mal kabul yapacak" depo tek kaynak olmalı.
+     * Önce giriş yapan depocunun bölgesini kullanırız; generic/eksik hesaplarda seçili
+     * depo carisinin bölgesine düşerek Erzurum Point gibi sessiz yanlış hedef üretmeyiz.
+     *
+     * @return array{code:string,name:string,reason:string}|null
+     */
+    private function resolveDepotTransferRequestingWarehouse(User $user, ?Customer $customer, ?string $shippingMethod): ?array
+    {
+        $userWarehouse = $this->resolveTargetWarehouseForCheckout($user, null, null);
+        if ($userWarehouse !== null) {
+            return $userWarehouse;
+        }
+
+        return $this->resolveTargetWarehouseForCheckout($user, $customer, $shippingMethod);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @param  array{code:string,name:string,reason:string}|null  $sourceWarehouse
+     * @return array{code:string,name:string}
+     */
+    private function resolveTransferTargetWarehouse(array $validated, ?array $sourceWarehouse): array
+    {
+        $targetCode = $this->nullableString($validated['transfer_target_warehouse_code'] ?? null);
+        $targetName = $this->nullableString($validated['transfer_target_warehouse_name'] ?? null);
+
+        if ($targetCode === null && $targetName === null) {
+            throw ValidationException::withMessages([
+                'transfer_target_warehouse_code' => ['Depolar arasi transfer icin hedef depo secilmelidir.'],
+            ]);
+        }
+
+        $sourceCode = $this->nullableString($sourceWarehouse['code'] ?? null);
+        if ($targetCode !== null && $sourceCode !== null && $targetCode === $sourceCode) {
+            throw ValidationException::withMessages([
+                'transfer_target_warehouse_code' => ['Kullanici kendi deposuna transfer talebi olusturamaz. Farkli depo secin.'],
+            ]);
+        }
+
+        if ($sourceCode === null) {
+            throw ValidationException::withMessages([
+                'transfer_source_warehouse_code' => ['Depolar arasi transfer icin kullanicinin kaynak deposu bulunamadi.'],
+            ]);
+        }
+
+        return [
+            'code' => $targetCode ?? '',
+            'name' => $targetName ?? ($targetCode !== null ? "Logo Ambar {$targetCode}" : 'Logo Ambar'),
+        ];
+    }
+
     private function normalizeBranchCode(mixed $value): ?string
     {
         $normalized = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(trim((string) $value)))) ?? '';
@@ -1404,6 +2032,14 @@ class OrderController extends Controller
         }
     }
 
+    private function canCreateDepotTransfer(User $user): bool
+    {
+        $featurePermissions = is_array($user->feature_permissions) ? $user->feature_permissions : [];
+
+        return $user->hasAnyRole(['warehouse', 'point'])
+            || in_array('cart.warehouse_transfer', $featurePermissions, true);
+    }
+
     private function ensureCanViewOrder(User $user, Order $order): void
     {
         if ($user->hasRole('admin')) {
@@ -1421,6 +2057,11 @@ class OrderController extends Controller
         }
 
         if (! $user->canAccessCustomer($customer)) {
+            $meta = is_array($customer->meta) ? $customer->meta : [];
+            if (($meta['system_purpose'] ?? null) === 'warehouse_transfer') {
+                return;
+            }
+
             abort(Response::HTTP_FORBIDDEN, 'You can only access orders for customers in your scope.');
         }
     }
@@ -1449,6 +2090,11 @@ class OrderController extends Controller
 
     private function cartItemLineTotal($item): float
     {
+        $storedLineTotal = (float) ($item->line_total ?? 0);
+        if ($storedLineTotal > 0) {
+            return round($storedLineTotal, 2);
+        }
+
         $quantity = max(1, (int) $item->quantity);
         $unitPrice = round((float) $item->unit_net_price, 2);
         $gross = $unitPrice * $quantity;

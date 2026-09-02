@@ -2,8 +2,8 @@
 
 namespace App\Http\Resources\Warehouse;
 
-use App\Models\LedgerEntry;
 use App\Models\IntegrationSyncState;
+use App\Models\LedgerEntry;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Support\Warehouse\WarehouseBranchResolver;
@@ -53,28 +53,62 @@ class ReadyOrderResource extends JsonResource
         $invoice = $this->invoiceLedgerEntry();
         $invoiceMeta = is_array($invoice?->meta) ? $invoice->meta : [];
         $orderSyncMeta = $this->orderLogoSyncMeta();
+        $transferSyncMeta = $this->orderWarehouseTransferMeta();
+        $isDepotTransfer = $this->nullableString(data_get($transferSyncMeta, 'document_type')) === 'warehouse_transfer';
         $checkoutSummary = $this->checkoutSummaryFromMeta($invoiceMeta)
             ?? $this->checkoutSummaryFromMeta($orderSyncMeta);
         $salesPriceType = $this->nullableString(data_get($invoiceMeta, 'sales_price_type'))
             ?? $this->nullableString(data_get($orderSyncMeta, 'sales_price_type'));
+        if ($isDepotTransfer) {
+            $checkoutSummary = null;
+            $salesPriceType = null;
+        }
         $paymentMethod = $this->nullableString(data_get($invoiceMeta, 'payment_method'))
             ?? $this->nullableString(data_get($orderSyncMeta, 'payment_method'));
         $createdBy = $this->user;
         $createdByRoleSlugs = $this->userRoleSlugs($createdBy);
-        $fallbackTargetWarehouse = $this->targetWarehouseForContext($createdBy, $this->customer, $this->cart?->shipping_method);
-        $targetWarehouseCode = $this->nullableString(data_get($fallbackTargetWarehouse, 'code'))
-            ?? $this->nullableString(data_get($invoiceMeta, 'target_warehouse_code'))
+        $isCreatedByWarehouseUser = in_array('warehouse', $createdByRoleSlugs, true)
+            || in_array('point', $createdByRoleSlugs, true);
+        $fallbackTargetWarehouse = $this->targetWarehouseForContext(
+            $createdBy,
+            $isCreatedByWarehouseUser ? null : $this->customer,
+            $isCreatedByWarehouseUser ? null : $this->cart?->shipping_method
+        );
+        $transferSourceWarehouseCode = $this->nullableString(data_get($transferSyncMeta, 'transfer_source_warehouse_code'));
+        $transferSourceWarehouseName = $this->nullableString(data_get($transferSyncMeta, 'transfer_source_warehouse_name'));
+        $transferTargetWarehouseCode = $this->nullableString(data_get($transferSyncMeta, 'transfer_target_warehouse_code'));
+        $transferTargetWarehouseName = $this->nullableString(data_get($transferSyncMeta, 'transfer_target_warehouse_name'));
+        $storedTargetWarehouseCode = $this->nullableString(data_get($invoiceMeta, 'target_warehouse_code'))
             ?? $this->nullableString(data_get($orderSyncMeta, 'target_warehouse_code'));
-        $targetWarehouseName = $this->nullableString(data_get($fallbackTargetWarehouse, 'name'))
-            ?? $this->nullableString(data_get($invoiceMeta, 'target_warehouse_name'))
+        $storedTargetWarehouseName = $this->nullableString(data_get($invoiceMeta, 'target_warehouse_name'))
             ?? $this->nullableString(data_get($orderSyncMeta, 'target_warehouse_name'));
-        $targetWarehouseReason = $this->nullableString(data_get($fallbackTargetWarehouse, 'reason'))
-            ?? $this->nullableString(data_get($invoiceMeta, 'target_warehouse_reason'))
+        $storedTargetWarehouseReason = $this->nullableString(data_get($invoiceMeta, 'target_warehouse_reason'))
             ?? $this->nullableString(data_get($orderSyncMeta, 'target_warehouse_reason'));
+        $fallbackTargetWarehouseCode = $this->nullableString(data_get($fallbackTargetWarehouse, 'code'));
+        $fallbackTargetWarehouseName = $this->nullableString(data_get($fallbackTargetWarehouse, 'name'));
+        $fallbackTargetWarehouseReason = $this->nullableString(data_get($fallbackTargetWarehouse, 'reason'));
+
+        $targetWarehouseCode = ($isDepotTransfer ? $transferTargetWarehouseCode : null)
+            ?? ($isCreatedByWarehouseUser ? $storedTargetWarehouseCode : $fallbackTargetWarehouseCode)
+            ?? ($isCreatedByWarehouseUser ? $fallbackTargetWarehouseCode : $storedTargetWarehouseCode);
+        $targetWarehouseName = ($isDepotTransfer ? $transferTargetWarehouseName : null)
+            ?? ($isCreatedByWarehouseUser ? $storedTargetWarehouseName : $fallbackTargetWarehouseName)
+            ?? ($isCreatedByWarehouseUser ? $fallbackTargetWarehouseName : $storedTargetWarehouseName);
+        $targetWarehouseReason = ($isCreatedByWarehouseUser ? $storedTargetWarehouseReason : $fallbackTargetWarehouseReason)
+            ?? ($isCreatedByWarehouseUser ? $fallbackTargetWarehouseReason : $storedTargetWarehouseReason);
         $sourcePanel = $this->nullableString(data_get($invoiceMeta, 'source_panel'))
             ?? $this->resolveSourcePanel($createdByRoleSlugs);
         $salesperson = $this->resolveSalesperson($createdBy, $createdByRoleSlugs);
-        $preferredWarehouseCode = $targetWarehouseCode
+        $salespersonId = $salesperson?->id;
+        $salespersonName = $salesperson?->name;
+
+        if ($createdBy instanceof User && in_array('customer', $createdByRoleSlugs, true)) {
+            $salespersonId = $createdBy->id;
+            $salespersonName = $this->customer?->name ?? $createdBy->name;
+        }
+
+        $preferredWarehouseCode = ($isDepotTransfer ? $transferSourceWarehouseCode : null)
+            ?? $targetWarehouseCode
             ?? $this->preferredWarehouseCode($this->note ?? $this->cart?->order_note ?? $this->cart?->note);
 
         return [
@@ -98,12 +132,14 @@ class ReadyOrderResource extends JsonResource
                 'role_slugs' => $createdByRoleSlugs,
             ],
             'salesperson' => [
-                'id' => $salesperson?->id,
-                'name' => $salesperson?->name,
+                'id' => $isDepotTransfer ? null : $salespersonId,
+                'name' => $isDepotTransfer ? null : $salespersonName,
             ],
             'origin' => [
                 'source' => $this->nullableString(data_get($invoiceMeta, 'source')) ?? 'order_checkout',
-                'source_label' => $this->nullableString(data_get($invoiceMeta, 'source_label')) ?? 'Sipariş faturası',
+                'source_label' => $isDepotTransfer
+                    ? 'Depolar Arası Transfer'
+                    : ($this->nullableString(data_get($invoiceMeta, 'source_label')) ?? 'Sipariş faturası'),
                 'panel' => $sourcePanel,
                 'panel_label' => $this->nullableString(data_get($invoiceMeta, 'source_panel_label'))
                     ?? $this->sourcePanelLabel($sourcePanel),
@@ -117,6 +153,13 @@ class ReadyOrderResource extends JsonResource
                 'target_warehouse_reason' => $targetWarehouseReason,
                 'shipping_method' => $this->cart?->shipping_method,
                 'note' => $this->note ?? $this->cart?->order_note ?? $this->cart?->note,
+                'document_type' => $isDepotTransfer ? 'warehouse_transfer' : null,
+                'document_label' => $isDepotTransfer ? 'DEPO TRANSFERİ' : null,
+                'transfer_status' => $this->nullableString(data_get($transferSyncMeta, 'transfer_status')),
+                'transfer_source_warehouse_code' => $transferSourceWarehouseCode,
+                'transfer_source_warehouse_name' => $transferSourceWarehouseName,
+                'transfer_target_warehouse_code' => $transferTargetWarehouseCode,
+                'transfer_target_warehouse_name' => $transferTargetWarehouseName,
             ],
             'invoice' => [
                 'id' => $invoice?->id,
@@ -252,7 +295,8 @@ class ReadyOrderResource extends JsonResource
             }
         }
 
-        $mode = trim((string) data_get($meta, 'checkout_summary_mode', ''));
+        $mode = $this->consistentItemCheckoutSummaryMode($meta)
+            ?? trim((string) data_get($meta, 'checkout_summary_mode', ''));
 
         return match ($mode) {
             'excluded' => ['mode' => 'excluded', 'code' => '2-0', 'label' => '2 - 0'],
@@ -260,6 +304,29 @@ class ReadyOrderResource extends JsonResource
             'detailed' => ['mode' => 'detailed', 'code' => '1-F', 'label' => '1 - F'],
             default => null,
         };
+    }
+
+    /**
+     * If every selected/order item was explicitly assigned the same VAT display
+     * mode, that row-level choice is more accurate than the stale global mode.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    private function consistentItemCheckoutSummaryMode(array $meta): ?string
+    {
+        $itemModes = data_get($meta, 'item_checkout_summary_modes');
+
+        if (! is_array($itemModes) || $itemModes === []) {
+            return null;
+        }
+
+        $modes = collect($itemModes)
+            ->map(fn (mixed $mode): string => trim((string) $mode))
+            ->filter(fn (string $mode): bool => in_array($mode, ['detailed', 'excluded', 'included'], true))
+            ->unique()
+            ->values();
+
+        return $modes->count() === 1 ? $modes->first() : null;
     }
 
     private function salesPriceTypeLabel(?string $value): ?string
@@ -285,6 +352,23 @@ class ReadyOrderResource extends JsonResource
             ->where('direction', 'outbound')
             ->where('entity_type', $this->resource::class)
             ->where('entity_id', (int) $this->id)
+            ->first();
+
+        return is_array($state?->meta) ? $state->meta : [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function orderWarehouseTransferMeta(): array
+    {
+        $state = IntegrationSyncState::query()
+            ->where('system', 'logo')
+            ->where('domain', 'warehouse-transfer-orders')
+            ->where('direction', 'outbound')
+            ->where('entity_type', $this->resource::class)
+            ->where('entity_id', (int) $this->id)
+            ->latest('id')
             ->first();
 
         return is_array($state?->meta) ? $state->meta : [];

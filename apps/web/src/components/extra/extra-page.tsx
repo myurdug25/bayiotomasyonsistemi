@@ -9,13 +9,14 @@ import {
   Building2,
   CreditCard,
   LifeBuoy,
+  Landmark,
   Mail,
   MapPin,
   Phone,
+  ReceiptText,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-
 import { useSession } from "@/components/auth/session-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -88,6 +89,30 @@ const SUPPORT_LINKS = [
   },
 ] as const;
 
+const BATUM_OPERATION_LINKS = [
+  {
+    href: "/collections",
+    title: "Tahsilat",
+    description: "Batum tahsilat işlemleri ve cari hareket kayıtları.",
+    icon: CreditCard,
+    className: "from-[#f2d36f] via-[#e3a947] to-[#b16a1f]",
+  },
+  {
+    href: "/pos/expenses",
+    title: "Masraflar",
+    description: "Batum masraf girişi ve gider takip ekranı.",
+    icon: ReceiptText,
+    className: "from-[#f2a3a3] via-[#d94a3d] to-[#8f1d1d]",
+  },
+  {
+    href: "/pos/expenses?mode=bank",
+    title: "Banka Para Çıkışı",
+    description: "Kasadaki nakdi Batum banka hesaplarına aktarın.",
+    icon: Landmark,
+    className: "from-[#d3ad4e] via-[#806018] to-[#332405]",
+  },
+] as const;
+
 const panelClass =
   "border-[var(--brand-border)] bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[0_18px_34px_-28px_rgba(33,52,22,0.28)]";
 
@@ -117,10 +142,40 @@ function InfoTile({
   );
 }
 
+function isBatumOperationsScope(
+  user?: {
+    branch_code?: string | null;
+    branch_name?: string | null;
+    username?: string | null;
+  } | null,
+  selectedCustomer?: {
+    code?: string | null;
+    title?: string | null;
+    branch_code?: string | null;
+    branch_name?: string | null;
+  } | null
+) {
+  const values = [
+    user?.branch_code,
+    user?.branch_name,
+    user?.username,
+    selectedCustomer?.branch_code,
+    selectedCustomer?.branch_name,
+    selectedCustomer?.code,
+    selectedCustomer?.title,
+  ];
+
+  return values.some((value) => String(value ?? "").toLocaleUpperCase("tr-TR").includes("BATUM"));
+}
+
 export function ExtraPage() {
   const { user, selectedCustomer } = useSession();
   const roleSlugs = useMemo(() => user?.roles.map((role) => role.slug) ?? [], [user?.roles]);
   const menuPermissions = useMemo(() => new Set(user?.menu_permissions ?? []), [user?.menu_permissions]);
+  const batumOperationsScope = useMemo(
+    () => isBatumOperationsScope(user, selectedCustomer),
+    [selectedCustomer, user]
+  );
   const canAccess = useCallback(
     (permissionKey: string) =>
       roleSlugs.includes("admin") || menuPermissions.size === 0 || menuPermissions.has(permissionKey),
@@ -138,7 +193,7 @@ export function ExtraPage() {
   const filterOptionsQuery = useQuery({
     queryKey: ["extra", "brands"],
     queryFn: () => getProductFilterOptions({ scope: "brands" }),
-    enabled: Boolean(user),
+    enabled: Boolean(user) && !batumOperationsScope,
     staleTime: 300_000,
   });
 
@@ -147,6 +202,58 @@ export function ExtraPage() {
     [filterOptionsQuery.data?.brands]
   );
   const brandCount = filterOptionsQuery.data?.brands.length ?? 0;
+
+  if (batumOperationsScope) {
+    return (
+      <div className="space-y-5">
+        <section className="overflow-hidden rounded-[30px] border border-[var(--brand-border)] bg-[radial-gradient(circle_at_top_left,rgba(250,223,112,0.18),transparent_34%),linear-gradient(135deg,var(--surface)_0%,var(--surface-soft)_100%)] p-6 shadow-[0_22px_48px_-36px_rgba(0,0,0,0.5)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--brand-primary)]">
+                Batum
+              </p>
+              <h1 className="mt-2 text-3xl font-black tracking-tight text-[var(--brand-primary-strong)]">
+                İşlemler
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-[var(--muted-foreground)]">
+                Batum hesabında tahsilat ve masraf ekranları tek noktadan yönetilir.
+              </p>
+            </div>
+            <span className="inline-flex w-fit items-center rounded-full border border-[var(--brand-border)] bg-[var(--brand-primary-soft)] px-4 py-2 text-sm font-black text-[var(--brand-primary-strong)]">
+              3 işlem
+            </span>
+          </div>
+        </section>
+
+        <div className="grid gap-4 xl:grid-cols-3">
+          {BATUM_OPERATION_LINKS.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`group min-h-[190px] overflow-hidden rounded-[28px] border border-white/15 bg-gradient-to-br ${item.className} p-6 text-white shadow-[0_22px_44px_-28px_rgba(0,0,0,0.55)] transition hover:-translate-y-0.5 hover:shadow-[0_28px_54px_-30px_rgba(0,0,0,0.62)]`}
+              >
+                <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-white/25 bg-white/18 shadow-inner">
+                  <Icon className="h-7 w-7" />
+                </span>
+                <div className="mt-8 flex items-end justify-between gap-4">
+                  <div>
+                    <h2 className="text-3xl font-black tracking-tight">{item.title}</h2>
+                    <p className="mt-2 max-w-sm text-sm font-bold leading-6 text-white/82">
+                      {item.description}
+                    </p>
+                  </div>
+                  <ArrowRight className="h-7 w-7 shrink-0 transition group-hover:translate-x-1" />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

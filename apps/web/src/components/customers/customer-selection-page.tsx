@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import {
   Activity,
@@ -11,6 +11,7 @@ import {
   ReceiptText,
   Search,
   ShoppingBasket,
+  Tags,
   Wallet,
   X,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
@@ -36,6 +38,7 @@ import { Toggle } from "@/components/ui/toggle";
 
 const PAGE_LIMIT = 25;
 const SEARCH_DEBOUNCE_MS = 500;
+const ALL_PRICE_GROUPS = "__all_price_groups__";
 
 function toAmount(value: string): number {
   const normalized = value.replace(",", ".");
@@ -104,9 +107,23 @@ function getAmountTone(value: string, darkMode: boolean) {
     : "border-[#dce7de] bg-[#f8fbf8] text-[#5c7160]";
 }
 
+function getSafeCustomerSelectionNext(requestedNext: string | null): string | null {
+  if (!requestedNext?.startsWith("/") || requestedNext.startsWith("//")) {
+    return null;
+  }
+
+  if (requestedNext === "/customers" || requestedNext.startsWith("/customers?") || requestedNext.startsWith("/customers/")) {
+    return null;
+  }
+
+  return requestedNext;
+}
+
 export function CustomerSelectionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { selectedCustomer, selectCustomer, user } = useAuth();
+  const hadCustomerOnOpenRef = useRef(Boolean(selectedCustomer));
   const roleSlugs = useMemo(() => user?.roles.map((role) => role.slug) ?? [], [user?.roles]);
   const isSalesperson = roleSlugs.includes("salesperson");
   const isSalespersonSelectionMode = isSalesperson && !selectedCustomer;
@@ -116,7 +133,9 @@ export function CustomerSelectionPage() {
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [hasCart, setHasCart] = useState(false);
   const [hasOrderBalance, setHasOrderBalance] = useState(false);
+  const [priceGroup, setPriceGroup] = useState(ALL_PRICE_GROUPS);
   const infiniteScrollMarkerRef = useRef<HTMLDivElement | null>(null);
+  const selectedPriceGroup = priceGroup === ALL_PRICE_GROUPS ? "" : priceGroup;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -147,6 +166,7 @@ export function CustomerSelectionPage() {
         q: submittedQuery,
         hasCart,
         hasOrderBalance,
+        priceGroup: selectedPriceGroup,
         limit: PAGE_LIMIT,
       },
     ],
@@ -157,8 +177,9 @@ export function CustomerSelectionPage() {
         q: submittedQuery || undefined,
         has_cart: hasCart ? true : undefined,
         has_order_balance: hasOrderBalance ? true : undefined,
+        price_group: selectedPriceGroup || undefined,
         selection_mode: isSalesperson ? true : undefined,
-        fast: !hasCart && !hasOrderBalance ? true : undefined,
+        fast: !hasCart && !hasOrderBalance && !selectedPriceGroup ? true : undefined,
         cursor: pageParam ?? undefined,
         limit: PAGE_LIMIT,
       }),
@@ -178,6 +199,7 @@ export function CustomerSelectionPage() {
         q: submittedQuery,
         hasCart,
         hasOrderBalance,
+        priceGroup: selectedPriceGroup,
       },
     ],
     enabled: typeof user?.id === "number",
@@ -186,6 +208,7 @@ export function CustomerSelectionPage() {
         q: submittedQuery || undefined,
         has_cart: hasCart ? true : undefined,
         has_order_balance: hasOrderBalance ? true : undefined,
+        price_group: selectedPriceGroup || undefined,
         selection_mode: isSalesperson ? true : undefined,
         summary: "count",
         limit: 1,
@@ -195,11 +218,30 @@ export function CustomerSelectionPage() {
     staleTime: 30_000,
   });
 
-  const customers = useMemo(
-    () => customersQuery.data?.pages.flatMap((page) => page.data) ?? [],
-    [customersQuery.data?.pages]
-  );
-  const hasActiveFilters = Boolean(submittedQuery) || hasCart || hasOrderBalance;
+  const customers = useMemo(() => {
+    const seenCustomerIds = new Set<number>();
+
+    return (customersQuery.data?.pages ?? [])
+      .flatMap((page) => page.data)
+      .filter((customer) => {
+        if (seenCustomerIds.has(customer.id)) {
+          return false;
+        }
+
+        seenCustomerIds.add(customer.id);
+
+        return true;
+      });
+  }, [customersQuery.data?.pages]);
+  const priceGroupOptions = useMemo(() => {
+    const options = customersQuery.data?.pages[0]?.meta?.price_groups ?? [];
+    const hasSelectedOption = selectedPriceGroup === "" || options.some((option) => option.code === selectedPriceGroup);
+
+    return hasSelectedOption
+      ? options
+      : [{ code: selectedPriceGroup, label: selectedPriceGroup }, ...options];
+  }, [customersQuery.data?.pages, selectedPriceGroup]);
+  const hasActiveFilters = Boolean(submittedQuery) || hasCart || hasOrderBalance || Boolean(selectedPriceGroup);
   const displayCustomers = customers;
   const loadedCustomerCount = displayCustomers.length;
   const totalCustomerCount = customerCountQuery.data?.total_count ?? customersQuery.data?.pages[0]?.total_count ?? null;
@@ -207,7 +249,8 @@ export function CustomerSelectionPage() {
   const activeFilterCount =
     Number(Boolean(submittedQuery)) +
     Number(hasCart) +
-    Number(hasOrderBalance);
+    Number(hasOrderBalance) +
+    Number(Boolean(selectedPriceGroup));
   const selectMutation = useMutation({
     mutationFn: async (customer: CustomerListItem) => {
       await selectCustomer(customer.id);
@@ -215,6 +258,18 @@ export function CustomerSelectionPage() {
     },
     onSuccess: (customer) => {
       toast.success(`${customer.code} - ${customer.title} seçildi`);
+      const safeNext = getSafeCustomerSelectionNext(searchParams.get("next"));
+
+      if (hadCustomerOnOpenRef.current) {
+        if (safeNext) {
+          router.replace(safeNext);
+          return;
+        }
+
+        router.back();
+        return;
+      }
+
       router.replace("/search");
     },
   });
@@ -266,6 +321,7 @@ export function CustomerSelectionPage() {
     setSubmittedQuery("");
     setHasCart(false);
     setHasOrderBalance(false);
+    setPriceGroup(ALL_PRICE_GROUPS);
   };
 
   return (
@@ -294,8 +350,8 @@ export function CustomerSelectionPage() {
               className={cn(
                 "grid gap-2 lg:items-center",
                 isSalesperson
-                  ? "lg:grid-cols-[minmax(260px,1fr)_96px_92px_150px_150px_120px]"
-                  : "lg:grid-cols-[minmax(300px,1fr)_96px_92px_150px_150px]"
+                  ? "lg:grid-cols-[minmax(240px,1fr)_92px_88px_142px_142px_130px_112px]"
+                  : "lg:grid-cols-[minmax(280px,1fr)_92px_88px_142px_142px_130px]"
               )}
             >
               <div>
@@ -338,7 +394,7 @@ export function CustomerSelectionPage() {
                 Sil
               </Button>
 
-              <div className="col-span-full flex flex-row items-stretch justify-center gap-2 lg:contents">
+              <div className="customer-filter-actions col-span-full grid grid-cols-2 items-stretch gap-2 lg:contents">
               <Toggle
                 pressed={hasCart}
                 onPressedChange={setHasCart}
@@ -374,6 +430,37 @@ export function CustomerSelectionPage() {
                 <Wallet className="h-4 w-4" />
                 Bakiye Siparişi
               </Toggle>
+
+              <Select
+                value={priceGroup}
+                onValueChange={setPriceGroup}
+                disabled={filtersDisabled || priceGroupOptions.length === 0}
+              >
+                <SelectTrigger
+                  aria-label="Cari fiyat grubu filtresi"
+                  className={cn(
+                    "h-12 rounded-[13px] border px-3 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(20,54,34,0.7)] sm:text-[13px]",
+                    selectedPriceGroup
+                      ? "border-[#3f8f54] bg-[#2f7f56] text-white"
+                      : isDarkMode
+                        ? "border-[#345b40] bg-[#14251a] text-[#8bd19f]"
+                        : "border-[#b9dec4] bg-[#eef9f1] text-[#2f7f56]"
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Tags className="h-4 w-4 shrink-0" />
+                    <SelectValue placeholder="F Grubu" />
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_PRICE_GROUPS}>Tüm F Grupları</SelectItem>
+                  {priceGroupOptions.map((option) => (
+                    <SelectItem key={option.code} value={option.code}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
               {isSalesperson ? (
                 <Button
@@ -428,6 +515,18 @@ export function CustomerSelectionPage() {
                     </button>
                   </Badge>
                 ) : null}
+                {selectedPriceGroup ? (
+                  <Badge variant="secondary" className="gap-1">
+                    F Grubu: {selectedPriceGroup}
+                    <button
+                      type="button"
+                      onClick={() => setPriceGroup(ALL_PRICE_GROUPS)}
+                      aria-label="Clear price group"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ) : null}
                 <Button
                   variant="ghost"
                   size="default"
@@ -452,13 +551,14 @@ export function CustomerSelectionPage() {
             <div className="overflow-hidden px-4 pb-1 pt-3 lg:px-5">
               <Table className="min-w-0 table-fixed text-[12px]">
                   <colgroup>
-                    <col className="w-[8.5%]" />
-                    <col className="w-[31.5%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[29%]" />
                     <col className="w-[10.5%]" />
                     <col className="w-[9.5%]" />
                     <col className="w-[10%]" />
-                    <col className="w-[8.5%]" />
-                    <col className="w-[11%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[10.5%]" />
+                    <col className="w-[6.5%]" />
                     <col className="w-[10.5%]" />
                   </colgroup>
                   <TableHeader className="bg-[linear-gradient(135deg,rgba(22,128,55,0.96)_0%,rgba(18,90,45,0.98)_52%,rgba(11,64,35,1)_100%)]">
@@ -484,6 +584,9 @@ export function CustomerSelectionPage() {
                       <TableHead className="h-9 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Bakiye Siparişi
                       </TableHead>
+                      <TableHead className="h-9 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
+                        F Kodu
+                      </TableHead>
                       <TableHead className="h-9 px-2 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                         Aksiyon
                       </TableHead>
@@ -501,6 +604,7 @@ export function CustomerSelectionPage() {
                           <TableCell className="py-4 text-right"><Skeleton className="ml-auto h-12 w-28 rounded-2xl" /></TableCell>
                           <TableCell className="py-4 text-center"><Skeleton className="mx-auto h-9 w-24 rounded-full" /></TableCell>
                           <TableCell className="py-4 text-right"><Skeleton className="ml-auto h-12 w-32 rounded-2xl" /></TableCell>
+                          <TableCell className="py-4 text-center"><Skeleton className="mx-auto h-9 w-14 rounded-xl" /></TableCell>
                           <TableCell className="px-5 py-4 text-right"><Skeleton className="ml-auto h-10 w-24 rounded-xl" /></TableCell>
                         </TableRow>
                       ))
@@ -508,7 +612,7 @@ export function CustomerSelectionPage() {
 
                     {customersQuery.isError ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-8 text-center text-base text-red-600">
+                        <TableCell colSpan={9} className="py-8 text-center text-base text-red-600">
                           {(customersQuery.error as Error).message}
                         </TableCell>
                       </TableRow>
@@ -516,7 +620,7 @@ export function CustomerSelectionPage() {
 
                     {!customersQuery.isLoading && !customersQuery.isError && displayCustomers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-10 text-center text-[var(--muted-foreground)]">
+                        <TableCell colSpan={9} className="py-10 text-center text-[var(--muted-foreground)]">
                           <p>Sonuç bulunamadı.</p>
                           {hasActiveFilters ? (
                             <Button variant="outline" size="sm" className="mt-3" onClick={clearFilters}>
@@ -658,14 +762,31 @@ export function CustomerSelectionPage() {
                                 </span>
                               </div>
                             </TableCell>
+                            <TableCell className="py-1.5 text-center align-middle">
+                              <span
+                                className={cn(
+                                  "inline-flex min-w-[54px] items-center justify-center rounded-lg border px-2 py-1.5 text-[11px] font-black",
+                                  customer.price_group
+                                    ? isDarkMode
+                                      ? "border-[#4d7c5d] bg-[#173523] text-[#a8e063]"
+                                      : "border-[#b9dec4] bg-[#eef9f1] text-[#176b3a]"
+                                    : isDarkMode
+                                      ? "border-[var(--brand-border)] bg-[var(--surface-soft)] text-[var(--muted-foreground)]"
+                                      : "border-[#dce7de] bg-[#f8fbf8] text-[#5c7160]"
+                                )}
+                              >
+                                {customer.price_group ?? "-"}
+                              </span>
+                            </TableCell>
                             <TableCell className="px-2 py-1.5 text-center align-middle">
                               <Button
                                 size="default"
                                 variant={isSelected ? "secondary" : "default"}
                                 className={cn(
-                                  "h-8 min-w-[66px] rounded-lg px-2.5 text-xs font-semibold",
-                                  isSelected &&
-                                    "border border-[#2f7f56] bg-[#2f7f56] text-white shadow-[0_10px_20px_-16px_rgba(47,127,86,0.85)] hover:bg-[#276d49] hover:text-white"
+                                  "h-8 min-w-[78px] rounded-lg px-3 text-xs font-black",
+                                  isSelected
+                                    ? "border border-[#2f7f56] bg-[#2f7f56] text-white shadow-[0_10px_20px_-16px_rgba(47,127,86,0.85)] hover:bg-[#276d49] hover:text-white"
+                                    : "border border-red-200/45 bg-gradient-to-b from-[#ef3340] via-[#d71920] to-[#b30824] text-white shadow-[0_12px_22px_-16px_rgba(239,51,64,0.95),inset_0_1px_0_rgba(255,255,255,0.42)] hover:from-[#ff4d57] hover:via-[#e31d28] hover:to-[#b30824] hover:text-white"
                                 )}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -682,7 +803,7 @@ export function CustomerSelectionPage() {
                                     <Check className="h-4 w-4" /> Seçili
                                   </>
                                 ) : (
-                                  "Seç"
+                                  "Cari Seç"
                                 )}
                               </Button>
                             </TableCell>
@@ -692,7 +813,7 @@ export function CustomerSelectionPage() {
 
                     {customersQuery.isFetchingNextPage ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-5 text-center text-base text-[var(--muted-foreground)]">
+                        <TableCell colSpan={9} className="py-5 text-center text-base text-[var(--muted-foreground)]">
                           <span className="inline-flex items-center gap-2">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             Devamı yükleniyor...

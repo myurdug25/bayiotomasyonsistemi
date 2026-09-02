@@ -325,11 +325,11 @@ export function OrdersPage() {
   );
   const detailIsBalance = detailPayload?.order.status === "balance";
   const detailBalanceItems = useMemo(
-    () => detailPayload?.order.items.filter((item) => item.remaining_quantity > 0) ?? [],
+    () => detailPayload?.order.items.filter((item) => (item.remaining_quantity ?? 0) > 0) ?? [],
     [detailPayload?.order.items]
   );
   const detailBalanceQuantity = useMemo(
-    () => detailBalanceItems.reduce((sum, item) => sum + item.remaining_quantity, 0),
+    () => detailBalanceItems.reduce((sum, item) => sum + (item.remaining_quantity ?? 0), 0),
     [detailBalanceItems]
   );
 
@@ -364,32 +364,32 @@ export function OrdersPage() {
   };
 
   return (
-    <div className="space-y-4 text-slate-100">
-      <div className="grid gap-3 rounded-[20px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,29,38,0.76)_0%,rgba(9,19,28,0.84)_100%)] p-3 shadow-[0_18px_34px_-30px_rgba(0,0,0,0.48)] sm:grid-cols-3">
-        <div className="px-3 py-2">
+    <div className="space-y-3 text-slate-100">
+      <div className="grid gap-2 rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,29,38,0.76)_0%,rgba(9,19,28,0.84)_100%)] p-2 shadow-[0_16px_30px_-30px_rgba(0,0,0,0.48)] sm:grid-cols-3">
+        <div className="px-3 py-1.5">
           <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Açık Sipariş</p>
-          <p className="mt-1 text-2xl font-black text-white">{summaryOpenOrderCount}</p>
+          <p className="text-xl font-black text-white">{summaryOpenOrderCount}</p>
         </div>
-        <div className="border-t border-white/10 px-3 py-2 sm:border-l sm:border-t-0">
+        <div className="border-t border-white/10 px-3 py-1.5 sm:border-l sm:border-t-0">
           <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Açık Tutar</p>
-          <p className="mt-1 text-2xl font-black text-emerald-300">{formatCompactTry(toAmount(summaryOpenGrandTotal))}</p>
+          <p className="text-xl font-black text-emerald-300">{formatCompactTry(toAmount(summaryOpenGrandTotal))}</p>
         </div>
-        <div className="border-t border-white/10 px-3 py-2 sm:border-l sm:border-t-0">
+        <div className="border-t border-white/10 px-3 py-1.5 sm:border-l sm:border-t-0">
           <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Listelenen</p>
-          <p className="mt-1 text-2xl font-black text-white">{listedOrderCount}</p>
+          <p className="text-xl font-black text-white">{listedOrderCount}</p>
         </div>
       </div>
 
       <Card className="overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(15,29,38,0.76)_0%,rgba(9,19,28,0.84)_100%)] shadow-[0_18px_34px_-30px_rgba(0,0,0,0.48)]">
-        <CardContent className="space-y-3 p-4">
-          <div className="grid gap-3 xl:grid-cols-[1.25fr_0.9fr_0.9fr_auto] xl:items-end">
+        <CardContent className="space-y-2 p-3">
+          <div className="grid gap-2 xl:grid-cols-[1.25fr_0.9fr_0.9fr_auto] xl:items-end">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Sipariş no / müşteri ara"
-                className="h-12 rounded-[14px] border-white/10 bg-white/[0.035] pl-11 text-base font-semibold text-slate-100 placeholder:text-slate-500"
+                className="h-10 rounded-[12px] border-white/10 bg-white/[0.035] pl-10 text-sm font-semibold text-slate-100 placeholder:text-slate-500"
               />
             </div>
             <div>
@@ -402,7 +402,7 @@ export function OrdersPage() {
                 value={dateFrom}
                 disabled={loading}
                 onChange={(event) => setDateFrom(event.target.value)}
-                className="h-12 rounded-[14px] border-white/10 bg-white/[0.035] text-base font-semibold text-slate-100"
+                className="h-10 rounded-[12px] border-white/10 bg-white/[0.035] text-sm font-semibold text-slate-100"
               />
             </div>
             <div>
@@ -415,11 +415,11 @@ export function OrdersPage() {
                 value={dateTo}
                 disabled={loading}
                 onChange={(event) => setDateTo(event.target.value)}
-                className="h-12 rounded-[14px] border-white/10 bg-white/[0.035] text-base font-semibold text-slate-100"
+                className="h-10 rounded-[12px] border-white/10 bg-white/[0.035] text-sm font-semibold text-slate-100"
               />
             </div>
             <Button
-              className="h-12 rounded-[14px] bg-slate-200 px-5 font-black text-slate-950 hover:bg-white"
+              className="h-10 rounded-[12px] bg-slate-200 px-4 font-black text-slate-950 hover:bg-white"
               onClick={() => {
                 setPage(1);
                 fetchReport(1);
@@ -441,7 +441,7 @@ export function OrdersPage() {
                     variant={selected ? "default" : "outline"}
                     disabled={loading}
                     onClick={() => toggleStatus(option.value)}
-                    className={selected ? "rounded-full bg-emerald-400 px-4 font-black text-slate-950 hover:bg-emerald-300" : "rounded-full border-white/10 bg-white/[0.035] px-4 font-black text-slate-300 hover:bg-white/[0.07] hover:text-white"}
+                    className={selected ? "h-8 rounded-full bg-emerald-400 px-3 text-xs font-black text-slate-950 hover:bg-emerald-300" : "h-8 rounded-full border-white/10 bg-white/[0.035] px-3 text-xs font-black text-slate-300 hover:bg-white/[0.07] hover:text-white"}
                   >
                     {option.label}
                   </Button>
@@ -697,7 +697,7 @@ export function OrdersPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 px-5 py-4">
+          <div className="space-y-2 px-4 py-3">
             {detailLoading ? (
               <div className="space-y-3">
                 <Skeleton className="h-20 w-full bg-white/10" />
@@ -716,30 +716,30 @@ export function OrdersPage() {
                     <p className="text-2xl font-black text-yellow-100">{detailBalanceQuantity}</p>
                   </div>
                 ) : (
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2 text-center">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-[12px] border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center">
                       <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Kalem</p>
-                      <p className="text-xl font-black text-white">{detailPayload.order.items.length}</p>
+                      <p className="text-lg font-black leading-5 text-white">{detailPayload.order.items.length}</p>
                     </div>
-                    <div className="rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2 text-center">
+                    <div className="rounded-[12px] border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center">
                       <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Toplam Adet</p>
-                      <p className="text-xl font-black text-white">
+                      <p className="text-lg font-black leading-5 text-white">
                         {detailPayload.order.items.reduce((sum, item) => sum + item.quantity, 0)}
                       </p>
                     </div>
-                    <div className="rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2 text-center">
+                    <div className="rounded-[12px] border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center">
                       <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Stok Eksik</p>
-                      <p className="text-xl font-black text-white">{detailStockShortageCount}</p>
+                      <p className="text-lg font-black leading-5 text-white">{detailStockShortageCount}</p>
                     </div>
                   </div>
                 )}
 
                 <Card className="border-white/10 bg-white/[0.035] text-slate-100 shadow-none">
-                  <CardContent className="p-3 text-sm">
+                  <CardContent className="p-2.5 text-sm">
                     <div className="grid gap-2 md:grid-cols-3">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.1em] text-slate-500">Durum</p>
-                        <div className="mt-1">
+                        <div className="mt-0.5">
                           <OrderStatusBadge status={detailPayload.order.status} />
                         </div>
                       </div>
@@ -748,7 +748,7 @@ export function OrdersPage() {
                         <p className="font-black text-white">{formatOrderDateTime(detailPayload.order.ordered_at)}</p>
                       </div>
                       {!detailIsBalance ? (
-                        <div className="rounded-[12px] border border-emerald-300/16 bg-emerald-300/8 px-3 py-2 text-right">
+                          <div className="rounded-[10px] border border-emerald-300/16 bg-emerald-300/8 px-2.5 py-1.5 text-right">
                           <p className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-100/62">Genel Toplam</p>
                           <p className="text-lg font-black text-emerald-100">{formatTry(detailPayload.order.grand_total, detailPayload.order.currency)}</p>
                         </div>
@@ -782,25 +782,25 @@ export function OrdersPage() {
                 </Card>
 
                 <Card className="border-white/10 bg-white/[0.035] text-slate-100 shadow-none">
-                  <CardHeader className="border-b border-white/10 px-4 py-3">
+                    <CardHeader className="border-b border-white/10 px-3 py-2">
                     <CardTitle className="text-base font-black text-white">
                       {detailIsBalance ? "Bakiye Ürünleri" : "Sipariş Kalemleri"}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-3">
+                  <CardContent className="p-2.5">
                     <div className="overflow-x-auto">
                       <table className={`w-full text-left text-sm ${detailIsBalance ? "min-w-[460px]" : "min-w-[760px]"}`}>
                         <thead>
                           <tr className="border-b border-white/10 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
-                            <th className="py-2">Ürün</th>
-                            <th className="py-2">Marka</th>
-                            <th className="py-2 text-right">{detailIsBalance ? "Bakiye Adedi" : "Adet"}</th>
+                            <th className="py-1.5">Ürün</th>
+                            <th className="py-1.5">Marka</th>
+                            <th className="py-1.5 text-right">{detailIsBalance ? "Bakiye Adedi" : "Adet"}</th>
                             {!detailIsBalance ? (
                               <>
-                                <th className="py-2 text-right">Stok</th>
-                                <th className="py-2 text-right">Durum</th>
-                                <th className="py-2 text-right">Birim</th>
-                                <th className="py-2 text-right">Tutar</th>
+                                <th className="py-1.5 text-right">Stok</th>
+                                <th className="py-1.5 text-right">Durum</th>
+                                <th className="py-1.5 text-right">Birim</th>
+                                <th className="py-1.5 text-right">Tutar</th>
                               </>
                             ) : null}
                           </tr>

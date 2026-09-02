@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { ExtraPage } from "@/components/extra/extra-page";
 
 export default function ExtraRoutePage() {
-  redirect("/mal-kabul");
+  return <ExtraPage />;
 }

@@ -6,6 +6,7 @@ use App\Models\CampaignProduct;
 use App\Models\Customer;
 use App\Models\ProductCampaignPrice;
 use App\Models\User;
+use App\Services\Campaign\CampaignWindowSelector;
 use App\Services\Campaign\CustomerCampaignGroupResolver;
 use App\Support\Pricing\DisplayCurrency;
 use Illuminate\Support\Collection;
@@ -13,7 +14,8 @@ use Illuminate\Support\Collection;
 class ProductCampaignPricing
 {
     public function __construct(
-        private readonly CustomerCampaignGroupResolver $groupResolver
+        private readonly CustomerCampaignGroupResolver $groupResolver,
+        private readonly CampaignWindowSelector $windowSelector
     ) {}
 
     /**
@@ -29,20 +31,21 @@ class ProductCampaignPricing
         $customer = $selectedCustomerId ? Customer::find($selectedCustomerId) : null;
         $customerGroups = $customer instanceof Customer ? $this->groupResolver->resolveAll($customer) : [];
 
-        $existing = $selectedCustomerId === null
-            ? $this->activeQuery()
-                ->whereIn('product_id', $productIds)
-                ->orderBy('campaign_key')
-                ->orderBy('min_quantity')
-                ->orderByDesc('priority')
-                ->get()
-                ->groupBy('product_id')
-                ->map(fn (Collection $prices): array => $prices
-                    ->groupBy('campaign_key')
-                    ->map(fn (Collection $tiers): array => $this->campaignPayload($tiers, $user))
-                    ->values()
-                    ->all())
-            : collect();
+        // Logo campaign price tiers are product campaigns, not customer-specific
+        // campaign assignments. Selecting a customer must not make those tiers
+        // disappear; customer-group campaigns are merged below after scope checks.
+        $existing = $this->activeQuery()
+            ->whereIn('product_id', $productIds)
+            ->orderBy('campaign_key')
+            ->orderBy('min_quantity')
+            ->orderByDesc('priority')
+            ->get()
+            ->groupBy('product_id')
+            ->map(fn (Collection $prices): array => $this->windowSelector->select($prices)
+                ->groupBy('campaign_key')
+                ->map(fn (Collection $tiers): array => $this->campaignPayload($tiers, $user))
+                ->values()
+                ->all());
 
         $newCampaignProducts = CampaignProduct::with('campaign')
             ->whereIn('product_id', $productIds)
@@ -56,8 +59,14 @@ class ProductCampaignPricing
             ->groupBy('product_id');
 
         $newCampaignProducts->each(function (Collection $campaignProducts, $productId) use (&$existing) {
+            $selectedCampaigns = $this->windowSelector->select(
+                $campaignProducts->pluck('campaign')->unique('id')->values()
+            );
+            $selectedCampaignIds = $selectedCampaigns->pluck('id')->all();
+
             // Group by campaign code in case a product is in multiple campaigns
             $formattedCampaigns = $campaignProducts
+                ->filter(fn ($cp): bool => in_array($cp->campaign_id, $selectedCampaignIds, true))
                 ->groupBy(fn ($cp) => $cp->campaign->code)
                 ->map(function (Collection $cps) {
                     $campaign = $cps->first()->campaign;
@@ -95,12 +104,13 @@ class ProductCampaignPricing
         User $user,
         ?int $customerId = null
     ): ?array {
-        $tier = $this->activeQuery()
+        $tiers = $this->activeQuery()
             ->where('product_id', $productId)
+            ->get();
+        $tier = $this->windowSelector->select($tiers)
             ->where('campaign_key', $campaignKey)
             ->where('min_quantity', '<=', max(1, $quantity))
-            ->orderByDesc('min_quantity')
-            ->orderByDesc('priority')
+            ->sortByDesc(fn (ProductCampaignPrice $price): string => sprintf('%010d|%010d', $price->min_quantity, $price->priority))
             ->first();
 
         if ($tier instanceof ProductCampaignPrice) {
@@ -121,13 +131,20 @@ class ProductCampaignPricing
             return null;
         }
 
-        $campaignProduct = CampaignProduct::query()
+        $campaignProducts = CampaignProduct::query()
             ->with('campaign')
             ->where('product_id', $productId)
-            ->whereHas('campaign', fn ($query) => $query
-                ->active()
-                ->where('code', $campaignKey))
-            ->first();
+            ->whereHas('campaign', fn ($query) => $query->active())
+            ->get()
+            ->filter(fn (CampaignProduct $cp): bool => $cp->campaign
+                && $cp->campaign->matchesAnyGroup($this->groupResolver->resolveAll($customer)));
+        $selectedCampaignIds = $this->windowSelector
+            ->select($campaignProducts->pluck('campaign')->unique('id')->values())
+            ->pluck('id')
+            ->all();
+        $campaignProduct = $campaignProducts
+            ->first(fn (CampaignProduct $cp): bool => $cp->campaign->code === $campaignKey
+                && in_array($cp->campaign_id, $selectedCampaignIds, true));
         $campaign = $campaignProduct?->campaign;
 
         if (
@@ -151,9 +168,7 @@ class ProductCampaignPricing
     private function activeQuery()
     {
         return ProductCampaignPrice::query()
-            ->where('is_active', true)
-            ->where(fn ($query) => $query->whereNull('starts_at')->orWhereDate('starts_at', '<=', today()))
-            ->where(fn ($query) => $query->whereNull('ends_at')->orWhereDate('ends_at', '>=', today()));
+            ->where('is_active', true);
     }
 
     /**

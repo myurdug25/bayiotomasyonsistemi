@@ -35,12 +35,15 @@ const uiThemeScript = `
 
       return "#3f7b58";
     };
-    const theme = "dark";
+    const storedTheme = window.localStorage.getItem(themeStorageKey);
+    const theme = storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark";
     const accent = normalizeAccent(storedAccent ?? storedLegacyColor);
     document.documentElement.dataset.uiTheme = theme;
     document.documentElement.dataset.uiColor = "custom";
     document.documentElement.style.setProperty("--ui-accent-base", accent);
-    window.localStorage.setItem(themeStorageKey, theme);
+    if (!storedTheme) {
+      window.localStorage.setItem(themeStorageKey, theme);
+    }
   } catch (error) {
     document.documentElement.dataset.uiTheme = "dark";
     document.documentElement.dataset.uiColor = "custom";
@@ -68,14 +71,14 @@ const robotoCondensed = Roboto_Condensed({
 });
 
 export const metadata: Metadata = {
-  applicationName: "PowerSA B2B",
-  title: "PowerSA B2B",
-  description: "PowerSA B2B bayi ve operasyon paneli",
-  manifest: "/manifest.json",
+  applicationName: "BOS - Bayi Otomasyon Sistemi",
+  title: "BOS - Bayi Otomasyon Sistemi",
+  description: "BOS bayi ve operasyon paneli",
+  manifest: "/manifest.json?v=20260825-mobile-pwa",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "PowerSA B2B",
+    title: "BOS",
   },
   formatDetection: {
     telephone: false,
@@ -90,13 +93,13 @@ export const metadata: Metadata = {
   other: {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-title": "PowerSA B2B",
+    "apple-mobile-web-app-title": "BOS",
     "apple-mobile-web-app-status-bar-style": "black-translucent",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#12362f",
+  themeColor: "#07150f",
 };
 
 export default function RootLayout({
@@ -107,7 +110,7 @@ export default function RootLayout({
   return (
     <html lang="tr" suppressHydrationWarning data-ui-theme="dark" data-ui-color="custom">
       <head>
-        <link rel="manifest" href="/manifest.json" />
+        <link rel="manifest" href="/manifest.json?v=20260825-mobile-pwa" />
         <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png" />
         <script dangerouslySetInnerHTML={{ __html: uiThemeScript }} />
       </head>

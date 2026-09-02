@@ -11,10 +11,15 @@ use App\Models\IntegrationSyncState;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Product;
 use App\Models\ReturnRequest;
+use App\Models\StockSummary;
 use App\Models\User;
 use App\Services\Customers\CustomerAccessScopeService;
 use App\Services\Integrations\IntegrationSyncStateService;
+use App\Services\Notifications\UserNotificationService;
+use App\Support\MenuPermissions;
+use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
@@ -76,7 +81,16 @@ class ReturnRequestController extends Controller
             $query->where('dealer_id', (int) $validated['dealer_id']);
         }
 
-        $customerAccessScope->applyToCustomerOwnedQuery($query, $user, 'customer_id');
+        if (($user->hasRole('warehouse') || $this->isBatumReturnOperator($user)) && ! $user->hasRole('admin')) {
+            $targetWarehouse = app(WarehouseBranchResolver::class)->targetWarehouse($user);
+            $targetWarehouseCode = trim((string) ($targetWarehouse['code'] ?? ''));
+
+            if (in_array($targetWarehouseCode, ['1', '2', '3', '4'], true)) {
+                $this->applyReturnWarehouseScope($query, $targetWarehouseCode);
+            }
+        } else {
+            $customerAccessScope->applyToCustomerOwnedQuery($query, $user, 'customer_id');
+        }
 
         if (! empty($validated['customer_id'])) {
             $query->where('customer_id', (int) $validated['customer_id']);
@@ -127,7 +141,7 @@ class ReturnRequestController extends Controller
         ]);
     }
 
-    public function store(StoreReturnRequestRequest $request): JsonResponse
+    public function store(StoreReturnRequestRequest $request, UserNotificationService $notifications): JsonResponse
     {
         $user = $request->user();
         $this->ensureReturnRole($user);
@@ -135,7 +149,13 @@ class ReturnRequestController extends Controller
         $validated = $request->validated();
 
         $order = Order::query()
-            ->with(['customer:id,code,name', 'dealer:id,code,name'])
+            ->with([
+                'cart:id,shipping_method',
+                'customer:id,code,name,salesperson_user_id,branch_code,branch_name',
+                'customer.salesperson:id,username,email,name,branch_code,branch_name',
+                'dealer:id,code,name',
+                'user:id,username,email,name,branch_code,branch_name',
+            ])
             ->findOrFail((int) $validated['order_id']);
         $this->ensureCanAccessOrder($user, $order);
 
@@ -168,6 +188,12 @@ class ReturnRequestController extends Controller
                 ]);
             }
 
+            $targetWarehouse = app(WarehouseBranchResolver::class)->targetWarehouse(
+                $order->customer?->salesperson ?? $order->user,
+                $order->customer,
+                $order->cart?->shipping_method
+            );
+
             return ReturnRequest::create([
                 'dealer_id' => (int) $order->dealer_id,
                 'customer_id' => (int) $order->customer_id,
@@ -194,6 +220,9 @@ class ReturnRequestController extends Controller
                     'ordered_at' => $order->ordered_at?->toJSON(),
                     'customer_code' => $order->customer?->code,
                     'customer_name' => $order->customer?->name,
+                    'warehouse_code' => $targetWarehouse['code'] ?? null,
+                    'warehouse_name' => $targetWarehouse['name'] ?? null,
+                    'warehouse_reason' => $targetWarehouse['reason'] ?? null,
                 ],
                 'resolution_note' => null,
                 'reviewed_at' => null,
@@ -207,9 +236,42 @@ class ReturnRequestController extends Controller
             'reviewedBy:id,name',
         ]);
 
+        $this->notifyReturnCreated($notifications, $returnRequest);
+
         return response()->json([
             'data' => $this->serializeReturnRequest($returnRequest),
         ], Response::HTTP_CREATED);
+    }
+
+    private function notifyReturnCreated(UserNotificationService $notifications, ReturnRequest $returnRequest): void
+    {
+        $snapshot = is_array($returnRequest->order_snapshot) ? $returnRequest->order_snapshot : [];
+        $typeLabel = match ($returnRequest->request_type) {
+            ReturnRequest::TYPE_DAMAGED => 'hasarlı ürün',
+            ReturnRequest::TYPE_FAULTY => 'arızalı ürün',
+            default => 'iade',
+        };
+
+        $notifications->notifyBranch(
+            dealerId: $returnRequest->dealer_id !== null ? (int) $returnRequest->dealer_id : null,
+            warehouseCode: data_get($snapshot, 'warehouse_code'),
+            warehouseName: data_get($snapshot, 'warehouse_name'),
+            type: 'return_request',
+            title: 'Yeni İade Talebi',
+            body: sprintf(
+                '%s tarafından %d adet %s talebi gönderildi.',
+                $returnRequest->requestedBy?->name ?? $returnRequest->customer?->name ?? 'Kullanıcı',
+                (int) $returnRequest->quantity,
+                $typeLabel
+            ),
+            url: '/returns',
+            meta: [
+                'return_request_id' => $returnRequest->id,
+                'request_no' => $returnRequest->request_no,
+                'request_type' => $returnRequest->request_type,
+            ],
+            permissionKeys: ['returns', 'warehouse']
+        );
     }
 
     public function updateStatus(
@@ -221,20 +283,27 @@ class ReturnRequestController extends Controller
         $this->ensureCanReviewReturnRequest($user, $returnRequest);
 
         $validated = $request->validated();
-        $nextStatus = (string) $validated['status'];
-        $this->ensureValidStatusTransition($returnRequest, $nextStatus);
+        $requestedStatus = (string) $validated['status'];
+        $this->ensureValidStatusTransition($returnRequest, $requestedStatus);
+        $nextStatus = $requestedStatus === ReturnRequest::STATUS_APPROVED
+            ? ReturnRequest::STATUS_COMPLETED
+            : $requestedStatus;
+        $orderSnapshot = $this->orderSnapshotForReviewingWarehouse($user, $returnRequest);
 
         $returnRequest->forceFill([
             'status' => $nextStatus,
             'resolution_note' => $validated['resolution_note'] ?? $returnRequest->resolution_note,
+            'order_snapshot' => $orderSnapshot,
             'reviewed_by_user_id' => $user->id,
             'reviewed_at' => now(),
         ])->save();
 
-        if ($nextStatus === ReturnRequest::STATUS_APPROVED) {
+        if ($requestedStatus === ReturnRequest::STATUS_APPROVED) {
+            $this->applyNormalReturnStockEntry($returnRequest);
             $this->writeReturnLedgerEntry($returnRequest->fresh(['customer', 'order', 'orderItem.product.brand', 'requestedBy']) ?? $returnRequest);
             $this->queueReturnForLogoExport($syncState, $returnRequest);
         } elseif ($nextStatus === ReturnRequest::STATUS_COMPLETED) {
+            $this->applyNormalReturnStockEntry($returnRequest);
             $this->writeReturnLedgerEntry($returnRequest->fresh(['customer', 'order', 'orderItem.product.brand', 'requestedBy']) ?? $returnRequest);
             $this->queueMissingReturnLogoExports($syncState, $returnRequest);
         }
@@ -249,6 +318,117 @@ class ReturnRequestController extends Controller
         return response()->json([
             'data' => $this->serializeReturnRequest($returnRequest),
         ]);
+    }
+
+    private function applyNormalReturnStockEntry(ReturnRequest $returnRequest): void
+    {
+        if ($returnRequest->request_type !== ReturnRequest::TYPE_RETURN) {
+            return;
+        }
+
+        $snapshot = is_array($returnRequest->order_snapshot) ? $returnRequest->order_snapshot : [];
+        if (! empty($snapshot['return_stock_applied_at']) || ! empty($snapshot['normal_return_stock_applied_at'])) {
+            return;
+        }
+
+        $quantity = max(0, (int) $returnRequest->quantity);
+        if ($quantity <= 0) {
+            return;
+        }
+
+        $product = Product::query()->find($returnRequest->orderItem?->product_id ?? data_get($returnRequest->product_snapshot, 'product_id'));
+        if (! $product instanceof Product) {
+            return;
+        }
+
+        $warehouseCode = trim((string) data_get($snapshot, 'warehouse_code'));
+
+        $syncedTotal = $this->adjustProductLogoWarehouseStock($product, $warehouseCode, $quantity);
+
+        if ($syncedTotal !== null) {
+            StockSummary::query()->updateOrCreate(
+                ['product_id' => (int) $product->id],
+                [
+                    'available_total' => $syncedTotal,
+                    'updated_at' => now(),
+                ]
+            );
+        } else {
+            StockSummary::query()->updateOrCreate(
+                ['product_id' => (int) $product->id],
+                ['updated_at' => now()]
+            );
+
+            StockSummary::query()
+                ->whereKey((int) $product->id)
+                ->increment('available_total', $quantity, ['updated_at' => now()]);
+        }
+
+        $appliedAt = now()->toIso8601String();
+        $snapshot['return_stock_applied_at'] = $appliedAt;
+        $snapshot['return_stock_quantity'] = $quantity;
+        $snapshot['return_stock_warehouse_code'] = $warehouseCode !== '' ? $warehouseCode : null;
+        $snapshot['return_stock_request_type'] = $returnRequest->request_type;
+
+        if ($returnRequest->request_type === ReturnRequest::TYPE_RETURN) {
+            $snapshot['normal_return_stock_applied_at'] = $appliedAt;
+            $snapshot['normal_return_stock_quantity'] = $quantity;
+            $snapshot['normal_return_stock_warehouse_code'] = $warehouseCode !== '' ? $warehouseCode : null;
+        }
+
+        $returnRequest->forceFill(['order_snapshot' => $snapshot])->save();
+    }
+
+    private function adjustProductLogoWarehouseStock(Product $product, ?string $warehouseCode, int $delta): ?int
+    {
+        $warehouseCode = trim((string) $warehouseCode);
+        if ($warehouseCode === '' || $delta === 0) {
+            return null;
+        }
+
+        $meta = is_array($product->meta) ? $product->meta : [];
+        $warehouses = data_get($meta, 'integrations.logo.payload.logo_stock.warehouses');
+        if (! is_array($warehouses)) {
+            return null;
+        }
+
+        $changed = false;
+        foreach ($warehouses as $index => $warehouse) {
+            if (! is_array($warehouse)) {
+                continue;
+            }
+
+            $candidateCode = trim((string) ($warehouse['warehouse_code'] ?? $warehouse['branch_code'] ?? $warehouse['code'] ?? $warehouse['invenno'] ?? $warehouse['warehouse_no'] ?? ''));
+            if ($candidateCode !== $warehouseCode) {
+                continue;
+            }
+
+            $current = (int) ($warehouse['available_total'] ?? $warehouse['available'] ?? $warehouse['onhand_total'] ?? $warehouse['onhand'] ?? $warehouse['stock'] ?? $warehouse['quantity'] ?? 0);
+            $next = max(0, $current + $delta);
+            foreach (['available_total', 'available', 'onhand_total', 'onhand', 'stock', 'quantity'] as $stockKey) {
+                if (array_key_exists($stockKey, $warehouses[$index])) {
+                    $warehouses[$index][$stockKey] = $next;
+                }
+            }
+            $warehouses[$index]['available_total'] = $next;
+            $warehouses[$index]['onhand_total'] = $next;
+            $changed = true;
+            break;
+        }
+
+        if (! $changed) {
+            return null;
+        }
+
+        data_set($meta, 'integrations.logo.payload.logo_stock.warehouses', $warehouses);
+        $availableTotal = collect($warehouses)
+            ->filter(fn (mixed $warehouse): bool => is_array($warehouse))
+            ->sum(fn (array $warehouse): int => max(0, (int) ($warehouse['available_total'] ?? $warehouse['available'] ?? $warehouse['onhand_total'] ?? $warehouse['onhand'] ?? $warehouse['stock'] ?? $warehouse['quantity'] ?? 0)));
+        data_set($meta, 'integrations.logo.payload.logo_stock.available_total', $availableTotal);
+        data_set($meta, 'integrations.logo.payload.logo_stock.onhand_total', $availableTotal);
+        $product->forceFill(['meta' => $meta])->save();
+
+        return $availableTotal;
     }
 
     private function queueReturnForLogoExport(IntegrationSyncStateService $syncState, ReturnRequest $returnRequest): void
@@ -281,6 +461,40 @@ class ReturnRequestController extends Controller
             ],
         );
 
+    }
+
+    /**
+     * Logo stock movement must follow the warehouse that actually approved the
+     * return. The original order snapshot can be stale or salesperson-derived;
+     * for return stock entry, the reviewing warehouse is the source of truth.
+     *
+     * @return array<string, mixed>
+     */
+    private function orderSnapshotForReviewingWarehouse(User $user, ReturnRequest $returnRequest): array
+    {
+        $orderSnapshot = is_array($returnRequest->order_snapshot) ? $returnRequest->order_snapshot : [];
+
+        if (! $user->hasRole('warehouse') && ! $this->isBatumReturnOperator($user)) {
+            return $orderSnapshot;
+        }
+
+        $targetWarehouse = app(WarehouseBranchResolver::class)->targetWarehouse($user);
+        $targetWarehouseCode = trim((string) ($targetWarehouse['code'] ?? ''));
+
+        if (! in_array($targetWarehouseCode, ['1', '2', '3', '4'], true)) {
+            return $orderSnapshot;
+        }
+
+        $orderSnapshot['warehouse_code'] = $targetWarehouseCode;
+        $orderSnapshot['warehouse_name'] = $targetWarehouse['name'] ?? match ($targetWarehouseCode) {
+            '2' => 'TRABZON DEPO',
+            '3' => 'SAMSUN DEPO',
+            '4' => 'BATUM DEPO',
+            default => 'ERZURUM DEPO',
+        };
+        $orderSnapshot['warehouse_reason'] = $targetWarehouse['reason'] ?? 'return_reviewing_warehouse';
+
+        return $orderSnapshot;
     }
 
     private function queueMissingReturnLogoExports(IntegrationSyncStateService $syncState, ReturnRequest $returnRequest): void
@@ -413,7 +627,7 @@ class ReturnRequestController extends Controller
 
     private function ensureReturnRole(User $user): void
     {
-        if (! $user->hasAnyRole(['admin', 'dealer_admin', 'salesperson', 'cashier', 'point'])) {
+        if (! in_array('returns', MenuPermissions::forUser($user), true)) {
             abort(Response::HTTP_FORBIDDEN, 'You are not allowed to access return flow.');
         }
     }
@@ -461,7 +675,7 @@ class ReturnRequestController extends Controller
 
     private function ensureCanReviewReturnRequest(User $user, ReturnRequest $returnRequest): void
     {
-        if (! $user->hasAnyRole(['admin', 'salesperson'])) {
+        if (! $user->hasAnyRole(['admin', 'warehouse']) && ! $this->isBatumReturnOperator($user)) {
             abort(Response::HTTP_FORBIDDEN, 'You are not allowed to review return requests.');
         }
 
@@ -473,11 +687,39 @@ class ReturnRequestController extends Controller
             abort(Response::HTTP_FORBIDDEN, 'You can only review return requests for your dealer.');
         }
 
-        $customer = Customer::query()->find((int) $returnRequest->customer_id);
+        if ($user->hasRole('warehouse') || $this->isBatumReturnOperator($user)) {
+            $targetWarehouse = app(WarehouseBranchResolver::class)->targetWarehouse($user);
+            $targetWarehouseCode = trim((string) ($targetWarehouse['code'] ?? ''));
 
-        if (! $customer instanceof Customer || ! $user->canAccessCustomer($customer)) {
-            abort(Response::HTTP_FORBIDDEN, 'You can only review return requests for customers in your scope.');
+            if (! in_array($targetWarehouseCode, ['1', '2', '3', '4'], true)) {
+                abort(Response::HTTP_FORBIDDEN, 'Warehouse scope could not be resolved.');
+            }
+
+            $visibilityQuery = ReturnRequest::query()
+                ->whereKey((int) $returnRequest->id)
+                ->where('dealer_id', (int) $user->dealer_id);
+            $this->applyReturnWarehouseScope($visibilityQuery, $targetWarehouseCode);
+
+            $visible = $visibilityQuery->exists();
+
+            if (! $visible) {
+                abort(Response::HTTP_FORBIDDEN, 'You can only review return requests for your warehouse scope.');
+            }
         }
+    }
+
+    /**
+     * Batum'da plasiyer/depo arası ikinci bir rol aşaması yoktur. Moderator
+     * tarafından iade menüsü verilen, Batum şubesindeki operasyon kullanıcısı
+     * doğrudan Batum taleplerini görür ve onaylar.
+     */
+    private function isBatumReturnOperator(User $user): bool
+    {
+        if ($user->hasRole('salesperson') || ! in_array('returns', MenuPermissions::forUser($user), true)) {
+            return false;
+        }
+
+        return data_get(app(WarehouseBranchResolver::class)->targetWarehouse($user), 'code') === '4';
     }
 
     private function ensureValidStatusTransition(ReturnRequest $returnRequest, string $nextStatus): void
@@ -504,6 +746,135 @@ class ReturnRequestController extends Controller
                 'status' => ['Seçilen durum geçişi bu talep için geçerli değil.'],
             ]);
         }
+    }
+
+    private function applyReturnWarehouseScope(Builder $query, string $warehouseCode): void
+    {
+        $query->where(function (Builder $returnQuery) use ($warehouseCode): void {
+            $returnQuery
+                ->where('order_snapshot->warehouse_code', $warehouseCode)
+                ->orWhereHas('order', function (Builder $orderQuery) use ($warehouseCode): void {
+                    $orderQuery->where(function (Builder $builder) use ($warehouseCode): void {
+                        if ($warehouseCode === '1') {
+                            $builder->where(function (Builder $normalBuilder): void {
+                                $this->whereOrderBranch($normalBuilder, ['ERZURUM']);
+                                $normalBuilder->orWhere(function (Builder $cargoBuilder): void {
+                                    $this->whereShippingMethod($cargoBuilder, 'kargo');
+                                    $this->whereOrderBranch($cargoBuilder, ['TRABZON', 'SAMSUN']);
+                                });
+                            });
+
+                            return;
+                        }
+
+                        if ($warehouseCode === '2') {
+                            $builder->where(function (Builder $normalBuilder): void {
+                                $this->whereOrderBranch($normalBuilder, ['TRABZON']);
+                                $this->whereNotShippingMethod($normalBuilder, 'kargo');
+                            });
+
+                            return;
+                        }
+
+                        if ($warehouseCode === '3') {
+                            $builder->where(function (Builder $normalBuilder): void {
+                                $this->whereOrderBranch($normalBuilder, ['SAMSUN']);
+                                $this->whereNotShippingMethod($normalBuilder, 'kargo');
+                            });
+
+                            return;
+                        }
+
+                        if ($warehouseCode === '4') {
+                            $builder->where(function (Builder $normalBuilder): void {
+                                $this->whereOrderBranch($normalBuilder, ['BATUM']);
+                                $this->whereNotShippingMethod($normalBuilder, 'kargo');
+                            });
+                        }
+                    });
+                });
+        });
+    }
+
+    /**
+     * @param  list<string>  $branches
+     */
+    private function whereOrderBranch(Builder $query, array $branches): void
+    {
+        $query->where(function (Builder $branchBuilder) use ($branches): void {
+            $branchBuilder
+                ->whereHas('customer.salesperson', function (Builder $salespersonQuery) use ($branches): void {
+                    $this->whereUserBranch($salespersonQuery, $branches);
+                })
+                ->orWhere(function (Builder $fallbackBuilder) use ($branches): void {
+                    $fallbackBuilder
+                        ->where(function (Builder $missingSalespersonQuery): void {
+                            $missingSalespersonQuery
+                                ->whereDoesntHave('customer')
+                                ->orWhereHas('customer', function (Builder $customerQuery): void {
+                                    $customerQuery->whereNull('salesperson_user_id');
+                                });
+                        })
+                        ->whereHas('user', function (Builder $userQuery) use ($branches): void {
+                            $userQuery
+                                ->whereHas('roles', fn (Builder $roleQuery): Builder => $roleQuery->where('slug', 'salesperson'));
+                            $this->whereUserBranch($userQuery, $branches);
+                        });
+                });
+        });
+    }
+
+    /**
+     * @param  list<string>  $branches
+     */
+    private function whereUserBranch(Builder $query, array $branches): void
+    {
+        $branchNeedles = collect($branches)
+            ->map(fn (string $branch): string => mb_strtolower($branch, 'UTF-8'))
+            ->values()
+            ->all();
+
+        $explicitUsernames = [
+            'ERZURUM' => ['ahmet.arac', 'erzurum.merkez', 'mudur.erzurum', 'erz.depo', 'erzurum.depo'],
+            'TRABZON' => ['trabzon.point', 'trabzon.depo'],
+            'SAMSUN' => ['samsun.point', 'samsun.depo'],
+            'BATUM' => ['batum', 'batum.depo'],
+        ];
+
+        $usernames = collect($branches)
+            ->flatMap(fn (string $branch): array => $explicitUsernames[$branch] ?? [])
+            ->values()
+            ->all();
+
+        $query->where(function (Builder $userBranchQuery) use ($branchNeedles, $usernames): void {
+            foreach ($branchNeedles as $needle) {
+                $userBranchQuery
+                    ->orWhereRaw('LOWER(COALESCE(branch_code, ?)) LIKE ?', ['', "%{$needle}%"])
+                    ->orWhereRaw('LOWER(COALESCE(branch_name, ?)) LIKE ?', ['', "%{$needle}%"]);
+            }
+
+            if ($usernames !== []) {
+                $userBranchQuery->orWhereIn('username', $usernames);
+            }
+        });
+    }
+
+    private function whereShippingMethod(Builder $query, string $method): void
+    {
+        $query->whereHas('cart', function (Builder $cartQuery) use ($method): void {
+            $cartQuery->whereRaw('LOWER(COALESCE(shipping_method, ?)) = ?', ['', mb_strtolower($method, 'UTF-8')]);
+        });
+    }
+
+    private function whereNotShippingMethod(Builder $query, string $method): void
+    {
+        $query->where(function (Builder $methodQuery) use ($method): void {
+            $methodQuery
+                ->whereDoesntHave('cart')
+                ->orWhereHas('cart', function (Builder $cartQuery) use ($method): void {
+                    $cartQuery->whereRaw('LOWER(COALESCE(shipping_method, ?)) <> ?', ['', mb_strtolower($method, 'UTF-8')]);
+                });
+        });
     }
 
     private function generateRequestNo(): string

@@ -7,10 +7,14 @@ use App\Http\Requests\Cart\UpsertCartItemRequest;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Customer;
+use App\Models\Dealer;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\Pricing\ProductCampaignPricing;
 use App\Support\Cart\CartLogoIntegrationSummary;
+use App\Support\Cart\CheckoutNoteCleaner;
+use App\Support\CustomerFeaturePermissions;
+use App\Support\Pricing\CustomerPriceListResolver;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
 use App\Support\Products\ProductCodeNormalizer;
@@ -71,6 +75,7 @@ class CartItemController extends Controller
                     'status' => 'not_found',
                     'message' => 'Ürün bulunamadı.',
                 ];
+
                 continue;
             }
 
@@ -82,7 +87,7 @@ class CartItemController extends Controller
                     'dealer_id' => $validated['dealer_id'] ?? null,
                     'shipping_method' => $validated['shipping_method'] ?? null,
                     'warehouse_transfer' => $validated['warehouse_transfer'] ?? null,
-                    'order_note' => $validated['order_note'] ?? null,
+                    'order_note' => CheckoutNoteCleaner::clean($validated['order_note'] ?? null),
                 ]);
 
                 $added++;
@@ -133,12 +138,6 @@ class CartItemController extends Controller
             ? (int) $validated['customer_id']
             : ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
 
-        if ($customerId === null) {
-            throw ValidationException::withMessages([
-                'customer_id' => ['No selected customer. Choose a customer via /api/context/customer first.'],
-            ]);
-        }
-
         $dealerId = $this->resolveDealerId(
             user: $user,
             requestedDealerId: $validated['dealer_id'] ?? null,
@@ -151,17 +150,28 @@ class CartItemController extends Controller
         }
 
         $forceWarehouseTransfer = $user->hasRole('salesperson');
+        $isWarehouseTransfer = $forceWarehouseTransfer || (bool) ($validated['warehouse_transfer'] ?? false);
 
-        return DB::transaction(function () use ($validated, $dealerId, $user, $forceWarehouseTransfer) {
+        if ($customerId === null) {
+            if ($isWarehouseTransfer && $this->canUseWarehouseTransferCustomer($user)) {
+                $customerId = (int) $this->warehouseTransferCustomer($dealerId)->id;
+            } else {
+                throw ValidationException::withMessages([
+                    'customer_id' => ['No selected customer. Choose a customer via /api/context/customer first.'],
+                ]);
+            }
+        }
+
+        return DB::transaction(function () use ($validated, $dealerId, $user, $forceWarehouseTransfer, $customerId) {
             $productId = (int) $validated['product_id'];
             $quantity = (int) $validated['quantity'];
-            $customerId = isset($validated['customer_id'])
-                ? (int) $validated['customer_id']
-                : (int) $user->selected_customer_id;
             $this->assertCustomerBelongsToDealer($user, $customerId, $dealerId);
-            $discountRate = array_key_exists('discount', $validated)
-                ? (float) ($validated['discount'] ?? 0)
-                : $this->customerSpecialDiscountRate($customerId);
+            $isDepotTransferSystemCart = $this->isWarehouseTransferSystemCustomer($customerId);
+            $discountRate = $isDepotTransferSystemCart
+                ? 0.0
+                : (array_key_exists('discount', $validated)
+                    ? (float) ($validated['discount'] ?? 0)
+                    : $this->customerSpecialDiscountRate($customerId));
             $cart = Cart::query()
                 ->where('status', 'draft')
                 ->where('dealer_id', $dealerId)
@@ -180,7 +190,7 @@ class CartItemController extends Controller
                     'currency' => 'TRY',
                     'shipping_method' => $validated['shipping_method'] ?? null,
                     'is_warehouse_transfer' => $forceWarehouseTransfer || (bool) ($validated['warehouse_transfer'] ?? false),
-                    'order_note' => $validated['order_note'] ?? null,
+                    'order_note' => CheckoutNoteCleaner::clean($validated['order_note'] ?? null),
                 ]);
             } else {
                 $cart->fill([
@@ -188,13 +198,15 @@ class CartItemController extends Controller
                     'is_warehouse_transfer' => $forceWarehouseTransfer || (array_key_exists('warehouse_transfer', $validated)
                         ? (bool) $validated['warehouse_transfer']
                         : $cart->is_warehouse_transfer),
-                    'order_note' => $validated['order_note'] ?? $cart->order_note,
+                    'order_note' => array_key_exists('order_note', $validated)
+                        ? CheckoutNoteCleaner::clean($validated['order_note'])
+                        : $cart->order_note,
                 ])->save();
             }
 
             $this->assertCustomerBelongsToDealer($user, $cart->customer_id, $dealerId);
 
-            $price = $this->resolveUnitPrice($dealerId, $productId, $user);
+            $price = $this->resolveUnitPrice($dealerId, $customerId, $productId, $user);
 
             if ($price === null) {
                 throw ValidationException::withMessages([
@@ -203,9 +215,11 @@ class CartItemController extends Controller
             }
 
             $product = Product::query()
-                ->select(['id', 'vat_rate'])
+                ->select(['id', 'vat_rate', 'brand_id'])
                 ->with('stockSummary')
                 ->find($productId);
+
+            $this->assertCustomerBrandAllowed($user, $customerId, $product?->brand_id);
 
             if ($product && $product->stockSummary) {
                 $physicalStock = max(0, (int) $product->stockSummary->available_total);
@@ -225,9 +239,15 @@ class CartItemController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            $campaignKey = isset($validated['campaign_key'])
+            $campaignKey = $isDepotTransferSystemCart ? null : (isset($validated['campaign_key'])
                 ? trim((string) $validated['campaign_key'])
-                : null;
+                : null);
+            if ($campaignKey !== null && $campaignKey !== '' && $user->hasRole('customer')
+                && ! in_array('search.campaigns', CustomerFeaturePermissions::forUser($user), true)) {
+                throw ValidationException::withMessages([
+                    'campaign_key' => ['Bu kullanıcı için kampanya kullanımı yetkili değil.'],
+                ]);
+            }
             $campaignPrice = $campaignKey !== null && $campaignKey !== ''
                 ? app(ProductCampaignPricing::class)->resolve(
                     $productId,
@@ -246,6 +266,16 @@ class CartItemController extends Controller
 
             $unitPrice = round((float) ($campaignPrice['unit_price'] ?? $price['net_price']), 2);
             $priceCurrency = (string) ($campaignPrice['currency'] ?? $price['currency']);
+            $brandDiscounts = $campaignPrice === null
+                ? $this->customerBrandDiscountChain($customerId, $product?->brand_id)
+                : [];
+            if ($brandDiscounts !== []) {
+                foreach ($brandDiscounts as $brandDiscount) {
+                    $unitPrice *= 1 - ($brandDiscount / 100);
+                }
+                $unitPrice = round($unitPrice, 2);
+                $discountRate = 0.0;
+            }
             if ($campaignPrice !== null) {
                 $discountRate = $campaignPrice['discount_percent'] !== null
                     ? (float) $campaignPrice['discount_percent']
@@ -258,7 +288,7 @@ class CartItemController extends Controller
                 ? 0.0
                 : $grossTotal * ($discountRate / 100);
             $lineTotal = number_format(round($grossTotal - $discountAmount, 2), 2, '.', '');
-            $vatRate = (float) ($product?->vat_rate ?? 20.00);
+            $vatRate = $isDepotTransferSystemCart ? 0.0 : (float) ($product?->vat_rate ?? 20.00);
             $cart->fill(['currency' => $priceCurrency])->save();
 
             if ($item !== null) {
@@ -325,10 +355,6 @@ class CartItemController extends Controller
             ? (int) $validated['customer_id']
             : ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
 
-        if ($customerId === null) {
-            return null;
-        }
-
         $dealerId = $this->resolveDealerId(
             user: $user,
             requestedDealerId: $validated['dealer_id'] ?? null,
@@ -337,6 +363,14 @@ class CartItemController extends Controller
 
         if ($dealerId === null) {
             return null;
+        }
+
+        if ($customerId === null) {
+            if (! $this->canUseWarehouseTransferCustomer($user)) {
+                return null;
+            }
+
+            $customerId = (int) $this->warehouseTransferCustomer($dealerId)->id;
         }
 
         return Cart::query()
@@ -388,10 +422,41 @@ class CartItemController extends Controller
         }
 
         if (! $user->canAccessCustomer($customer)) {
+            $meta = is_array($customer->meta) ? $customer->meta : [];
+            if (($meta['system_purpose'] ?? null) === 'warehouse_transfer') {
+                return;
+            }
+
             throw ValidationException::withMessages([
                 'customer_id' => ['You can only use assigned customers in cart flow.'],
             ]);
         }
+    }
+
+    private function warehouseTransferCustomer(int $dealerId): Customer
+    {
+        return Customer::query()->firstOrCreate(
+            [
+                'dealer_id' => $dealerId,
+                'code' => 'B2B-DEPO-TRANSFER',
+            ],
+            [
+                'name' => 'DEPOLAR ARASI TRANSFER',
+                'source_system' => 'powersa',
+                'source_reference' => 'warehouse-transfer',
+                'sync_status' => 'ignored',
+                'is_active' => true,
+                'meta' => [
+                    'system_purpose' => 'warehouse_transfer',
+                    'logo_export' => false,
+                ],
+            ],
+        );
+    }
+
+    private function canUseWarehouseTransferCustomer(User $user): bool
+    {
+        return $user->hasAnyRole(['admin', 'dealer_admin', 'warehouse', 'point']);
     }
 
     private function cartPayload(Cart $cart): array
@@ -435,7 +500,7 @@ class CartItemController extends Controller
                 'note' => $cart->note,
                 'shipping_method' => $cart->shipping_method,
                 'warehouse_transfer' => (bool) $cart->is_warehouse_transfer,
-                'order_note' => $cart->order_note,
+                'order_note' => CheckoutNoteCleaner::clean($cart->order_note),
                 'updated_at' => $cart->updated_at,
             ],
             'items' => $items,
@@ -509,9 +574,20 @@ class CartItemController extends Controller
     /**
      * @return array{net_price:string, currency:string}|null
      */
-    private function resolveUnitPrice(int $dealerId, int $productId, User $user): ?array
+    private function resolveUnitPrice(int $dealerId, int $customerId, int $productId, User $user): ?array
     {
-        $cacheKey = "cart-price:dealer:{$dealerId}:product:{$productId}";
+        $fallbackPriceListId = Dealer::query()
+            ->whereKey($dealerId)
+            ->value('price_list_id');
+        $priceListId = app(CustomerPriceListResolver::class)->resolve(
+            $customerId,
+            $fallbackPriceListId !== null ? (int) $fallbackPriceListId : null
+        );
+        if ($priceListId === null) {
+            return null;
+        }
+
+        $cacheKey = "cart-price:dealer:{$dealerId}:customer:{$customerId}:list:{$priceListId}:product:{$productId}";
         $cached = $this->cacheStore()->get($cacheKey);
         if (is_array($cached) && isset($cached['net_price'], $cached['currency'])) {
             return [
@@ -520,21 +596,29 @@ class CartItemController extends Controller
             ];
         }
 
-        $netPriceSql = DealerNetPriceExpression::sql();
+        $netPriceSql = DealerNetPriceExpression::sql(
+            basePriceColumn: 'COALESCE(bp.list_price, fallback_bp.list_price)',
+            discountRateColumn: 'CASE WHEN bp.list_price IS NOT NULL THEN pl.discount_rate ELSE fallback_pl.discount_rate END',
+        );
 
         $price = DB::table('dealers as d')
             ->leftJoin('dealer_price_overrides as dpo', function ($join) use ($productId) {
                 $join->on('dpo.dealer_id', '=', 'd.id')
                     ->where('dpo.product_id', '=', $productId);
             })
-            ->leftJoin('base_prices as bp', function ($join) use ($productId) {
-                $join->on('bp.price_list_id', '=', 'd.price_list_id')
+            ->leftJoin('base_prices as bp', function ($join) use ($productId, $priceListId) {
+                $join->where('bp.price_list_id', '=', $priceListId)
                     ->where('bp.product_id', '=', $productId);
             })
             ->leftJoin('price_lists as pl', 'pl.id', '=', 'bp.price_list_id')
+            ->leftJoin('base_prices as fallback_bp', function ($join) use ($productId, $fallbackPriceListId) {
+                $join->where('fallback_bp.price_list_id', '=', $fallbackPriceListId)
+                    ->where('fallback_bp.product_id', '=', $productId);
+            })
+            ->leftJoin('price_lists as fallback_pl', 'fallback_pl.id', '=', 'fallback_bp.price_list_id')
             ->where('d.id', $dealerId)
             ->selectRaw("{$netPriceSql} as net_price")
-            ->selectRaw("COALESCE(dpo.currency, bp.currency, 'TRY') as currency")
+            ->selectRaw("COALESCE(dpo.currency, bp.currency, fallback_bp.currency, 'TRY') as currency")
             ->first();
 
         if ($price === null || $price->net_price === null) {
@@ -574,6 +658,68 @@ class CartItemController extends Controller
     }
 
     /**
+     * @return list<float>
+     */
+    private function customerBrandDiscountChain(int $customerId, mixed $brandId): array
+    {
+        if ($brandId === null) {
+            return [];
+        }
+
+        $rows = data_get(Customer::query()->find($customerId)?->meta, 'customer_user.brand_discounts', []);
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            if (! is_array($row) || (int) ($row['brand_id'] ?? 0) !== (int) $brandId) {
+                continue;
+            }
+
+            return array_map(
+                fn (mixed $value): float => max(0.0, min(100.0, (float) $value)),
+                [$row['discount_1'] ?? 0, $row['discount_2'] ?? 0, $row['discount_3'] ?? 0]
+            );
+        }
+
+        return [];
+    }
+
+    private function assertCustomerBrandAllowed(User $user, int $customerId, mixed $brandId): void
+    {
+        if (! $user->hasRole('customer')) {
+            return;
+        }
+
+        $allowedBrandIds = data_get(
+            Customer::query()->find($customerId)?->meta,
+            'customer_user.allowed_brand_ids'
+        );
+
+        if (! is_array($allowedBrandIds)) {
+            return;
+        }
+
+        $allowed = array_map('intval', $allowedBrandIds);
+        if ($brandId === null || ! in_array((int) $brandId, $allowed, true)) {
+            throw ValidationException::withMessages([
+                'product_id' => ['Bu ürünün markası kullanıcı için yetkili değil.'],
+            ]);
+        }
+    }
+
+    private function isWarehouseTransferSystemCustomer(int $customerId): bool
+    {
+        $customer = Customer::query()
+            ->select(['id', 'meta'])
+            ->find($customerId);
+
+        if (! $customer instanceof Customer) {
+            return false;
+        }
+
+        $meta = is_array($customer->meta) ? $customer->meta : [];
+
+        return ($meta['system_purpose'] ?? null) === 'warehouse_transfer';
+    }
+
+    /**
      * @param  int|string|null  $requestedDealerId
      */
     private function resolveDealerId(User $user, $requestedDealerId, ?int $customerId = null): ?int
@@ -594,7 +740,29 @@ class CartItemController extends Controller
             return $dealerId !== null ? (int) $dealerId : null;
         }
 
+        if ($user->hasRole('admin') && $this->canUseWarehouseTransferCustomer($user)) {
+            return $this->defaultDealerId();
+        }
+
         return null;
+    }
+
+    private function defaultDealerId(): ?int
+    {
+        $dealerId = Dealer::query()
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->value('id');
+
+        if ($dealerId !== null) {
+            return (int) $dealerId;
+        }
+
+        $dealerId = Dealer::query()
+            ->orderBy('id')
+            ->value('id');
+
+        return $dealerId !== null ? (int) $dealerId : null;
     }
 
     private function ensureOrderRole(User $user): void

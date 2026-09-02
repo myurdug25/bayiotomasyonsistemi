@@ -1185,9 +1185,9 @@ export function ControlPanelPage() {
           <div className="relative z-10 max-w-[390px]">
             <p className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-lime-200">Powersa Filter</p>
             <h2 className="mt-3 max-w-[370px] text-[clamp(1.55rem,2vw,2.25rem)] font-black leading-[1.03] tracking-tight text-white">
-              Bayi Otomasyon Satış Sistemi
+              Bayi Otomasyon Sistemi
               <span className="mt-2 block text-[clamp(2.25rem,3.2vw,3.55rem)] leading-none tracking-[0.08em] text-lime-200">
-                BOSS
+                BOS
               </span>
             </h2>
             <Button

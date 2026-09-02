@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Brand;
 use App\Models\Customer;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Users\UserPermissionService;
 use App\Support\CustomerFeaturePermissions;
 use App\Support\MenuPermissions;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -30,20 +33,10 @@ class CustomerUserController extends Controller
         'ledger',
     ];
 
-    private const CUSTOMER_MANAGED_MENU_PERMISSIONS = [
-        'dashboard',
-        'notes',
-        'search',
-        'catalogs',
-        'cart',
-        'orders',
-        'ledger',
-        'reports',
-        'returns',
-    ];
-
     public function index(Request $request): JsonResponse
     {
+        $this->ensureCampaignVisibilityForCustomerUsers();
+
         $validated = $request->validate([
             'q' => ['nullable', 'string', 'max:120'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -53,11 +46,17 @@ class CustomerUserController extends Controller
         $limit = min((int) ($validated['limit'] ?? 50), 100);
 
         $customerUsers = User::query()
-            ->select(['id', 'selected_customer_id', 'username', 'is_active', 'menu_permissions', 'feature_permissions'])
+            ->select(['id', 'selected_customer_id', 'username', 'is_active', 'menu_permissions', 'feature_permissions', 'permissions_updated_at'])
             ->whereNotNull('selected_customer_id')
             ->whereHas('roles', fn (Builder $query) => $query->where('slug', 'customer'))
             ->get()
             ->keyBy('selected_customer_id');
+
+        $customerUsersByUsername = User::query()
+            ->select(['id', 'selected_customer_id', 'username', 'is_active', 'menu_permissions', 'feature_permissions', 'permissions_updated_at'])
+            ->whereHas('roles', fn (Builder $query) => $query->where('slug', 'customer'))
+            ->get()
+            ->keyBy(fn (User $user): string => mb_strtolower((string) $user->username));
 
         $query = Customer::query()
             ->select(['id', 'dealer_id', 'code', 'name', 'is_active', 'meta'])
@@ -81,13 +80,26 @@ class CustomerUserController extends Controller
 
         return response()->json([
             'data' => $customers
-                ->map(fn (Customer $customer): array => $this->serializeCustomerUserRow($customer, $customerUsers->get($customer->id)))
+                ->map(function (Customer $customer) use ($customerUsers, $customerUsersByUsername): array {
+                    $username = $this->usernameFromCustomerCode($customer->code);
+
+                    return $this->serializeCustomerUserRow(
+                        $customer,
+                        $customerUsers->get($customer->id) ?? $customerUsersByUsername->get(mb_strtolower($username))
+                    );
+                })
                 ->values(),
             'total_count' => $totalCount,
             'limit' => $limit,
             'menu_permissions' => $this->customerMenuPermissionOptions(),
             'feature_permissions' => CustomerFeaturePermissions::definitions(),
             'default_menu_permissions' => self::CUSTOMER_DEFAULT_MENU_PERMISSIONS,
+            'brands' => Brand::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Brand $brand): array => ['id' => (int) $brand->id, 'name' => (string) $brand->name])
+                ->values(),
         ]);
     }
 
@@ -99,14 +111,23 @@ class CustomerUserController extends Controller
             ]);
         }
 
+        $managedMenuPermissions = $this->customerManagedMenuPermissions();
+
         $validated = $request->validate([
             'password' => ['nullable', 'string', 'max:255', Password::min(6)],
             'is_active' => ['sometimes', 'boolean'],
-            'menu_permissions' => ['nullable', 'array', 'min:1'],
-            'menu_permissions.*' => ['string', Rule::in(self::CUSTOMER_MANAGED_MENU_PERMISSIONS)],
+            'menu_permissions' => ['nullable', 'array'],
+            'menu_permissions.*' => ['string', Rule::in($managedMenuPermissions)],
             'feature_permissions' => ['nullable', 'array'],
             'feature_permissions.*' => ['string', Rule::in(CustomerFeaturePermissions::keys())],
             'special_discount_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'allowed_brand_ids' => ['nullable', 'array'],
+            'allowed_brand_ids.*' => ['integer', 'distinct', Rule::exists('brands', 'id')->where('is_active', true)],
+            'brand_discounts' => ['nullable', 'array'],
+            'brand_discounts.*.brand_id' => ['required', 'integer', 'distinct', Rule::exists('brands', 'id')->where('is_active', true)],
+            'brand_discounts.*.discount_1' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'brand_discounts.*.discount_2' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'brand_discounts.*.discount_3' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $username = $this->usernameFromCustomerCode($customer->code);
@@ -135,6 +156,13 @@ class CustomerUserController extends Controller
                 ->whereHas('roles', fn (Builder $query) => $query->where('slug', 'customer'))
                 ->first();
 
+            if (! ($existingUser instanceof User)) {
+                $existingUser = User::query()
+                    ->whereRaw('LOWER(username) = ?', [mb_strtolower($username)])
+                    ->whereHas('roles', fn (Builder $query) => $query->where('slug', 'customer'))
+                    ->first();
+            }
+
             $duplicateUsername = User::query()
                 ->whereRaw('LOWER(username) = ?', [mb_strtolower($username)])
                 ->when($existingUser instanceof User, fn (Builder $query) => $query->whereKeyNot($existingUser->id))
@@ -149,9 +177,7 @@ class CustomerUserController extends Controller
             $user = $existingUser instanceof User ? $existingUser : new User;
             $password = trim((string) ($validated['password'] ?? ''));
             if ($password === '' && ! ($existingUser instanceof User)) {
-                throw ValidationException::withMessages([
-                    'password' => ['Yeni müşteri kullanıcısı için şifre zorunlu.'],
-                ]);
+                $password = Str::password(10, symbols: false);
             }
 
             $attributes = [
@@ -169,6 +195,9 @@ class CustomerUserController extends Controller
                 'is_active' => (bool) ($validated['is_active'] ?? true),
                 'menu_permissions' => $menuPermissions,
                 'feature_permissions' => $featurePermissions,
+                'last_activity_at' => (bool) ($validated['is_active'] ?? true)
+                    ? now()
+                    : $user->last_activity_at,
             ];
 
             if ($password !== '') {
@@ -178,10 +207,18 @@ class CustomerUserController extends Controller
             $user->fill($attributes);
             $user->save();
             $user->roles()->sync([$customerRole->id]);
+            app(UserPermissionService::class)->markChanged($user);
 
             if (array_key_exists('special_discount_rate', $validated)) {
                 $this->updateCustomerDiscount($customer, $validated['special_discount_rate']);
             }
+            $this->updateCustomerBrandSettings(
+                $customer,
+                $validated['allowed_brand_ids'] ?? null,
+                $validated['brand_discounts'] ?? null,
+                array_key_exists('allowed_brand_ids', $validated),
+                array_key_exists('brand_discounts', $validated),
+            );
 
             return $user->fresh(['selectedCustomer:id,code,name']) ?? $user;
         });
@@ -199,14 +236,55 @@ class CustomerUserController extends Controller
             'name' => $customer->name,
             'username' => $this->usernameFromCustomerCode($customer->code),
             'special_discount_rate' => $this->specialDiscountRate($customer),
+            'allowed_brand_ids' => data_get($customer->meta, 'customer_user.allowed_brand_ids'),
+            'brand_discounts' => data_get($customer->meta, 'customer_user.brand_discounts', []),
             'user' => $user instanceof User ? [
                 'id' => $user->id,
                 'username' => $user->username,
                 'is_active' => (bool) $user->is_active,
-                'menu_permissions' => MenuPermissions::forUser($user),
-                'feature_permissions' => CustomerFeaturePermissions::forUser($user),
+                'menu_permissions' => app(UserPermissionService::class)->menuPermissions($user),
+                'feature_permissions' => app(UserPermissionService::class)->featurePermissions($user),
+                'permissions_updated_at' => $user->permissions_updated_at?->toJSON(),
             ] : null,
         ];
+    }
+
+    private function ensureCampaignVisibilityForCustomerUsers(): void
+    {
+        User::query()
+            ->select(['id', 'menu_permissions', 'feature_permissions', 'permissions_updated_at'])
+            ->whereHas('roles', fn (Builder $query) => $query->where('slug', 'customer'))
+            ->chunkById(100, function ($users): void {
+                foreach ($users as $user) {
+                    $menuPermissions = MenuPermissions::forUser($user);
+
+                    if (! in_array('search', $menuPermissions, true) && ! in_array('catalogs', $menuPermissions, true)) {
+                        continue;
+                    }
+
+                    $featurePermissions = $user->feature_permissions !== null && is_array($user->feature_permissions)
+                        ? CustomerFeaturePermissions::normalize($user->feature_permissions)
+                        : CustomerFeaturePermissions::defaultsForMenus($menuPermissions);
+                    $nextFeaturePermissions = $featurePermissions;
+
+                    if (in_array('search', $menuPermissions, true) && ! in_array('search.campaigns', $nextFeaturePermissions, true)) {
+                        $nextFeaturePermissions[] = 'search.campaigns';
+                    }
+
+                    if (in_array('catalogs', $menuPermissions, true) && ! in_array('catalogs.hot_products', $nextFeaturePermissions, true)) {
+                        $nextFeaturePermissions[] = 'catalogs.hot_products';
+                    }
+
+                    if ($nextFeaturePermissions === $featurePermissions) {
+                        continue;
+                    }
+
+                    $user->forceFill([
+                        'feature_permissions' => array_values($nextFeaturePermissions),
+                    ])->save();
+                    app(UserPermissionService::class)->markChanged($user);
+                }
+            });
     }
 
     /**
@@ -214,11 +292,25 @@ class CustomerUserController extends Controller
      */
     private function customerMenuPermissionOptions(): array
     {
-        $allowed = array_flip(self::CUSTOMER_MANAGED_MENU_PERMISSIONS);
+        $allowed = array_flip($this->customerManagedMenuPermissions());
 
         return array_values(array_filter(
             MenuPermissions::definitions(),
             fn (array $definition): bool => isset($allowed[$definition['key']])
+        ));
+    }
+
+    /**
+     * Customer accounts may be granted every operational page individually.
+     * User-management pages stay excluded to prevent privilege escalation.
+     *
+     * @return list<string>
+     */
+    private function customerManagedMenuPermissions(): array
+    {
+        return array_values(array_diff(
+            MenuPermissions::keys(),
+            ['moderator', 'customer-users']
         ));
     }
 
@@ -243,6 +335,40 @@ class CustomerUserController extends Controller
             $meta['special_discount_rate'] = number_format(max(0.0, min(100.0, (float) $rate)), 2, '.', '');
         }
 
+        $customer->forceFill(['meta' => $meta])->save();
+    }
+
+    private function updateCustomerBrandSettings(
+        Customer $customer,
+        mixed $allowedBrandIds,
+        mixed $brandDiscounts,
+        bool $updateAllowed,
+        bool $updateDiscounts,
+    ): void {
+        if (! $updateAllowed && ! $updateDiscounts) {
+            return;
+        }
+
+        $meta = is_array($customer->meta) ? $customer->meta : [];
+        $settings = is_array(data_get($meta, 'customer_user')) ? data_get($meta, 'customer_user') : [];
+
+        if ($updateAllowed) {
+            $settings['allowed_brand_ids'] = array_values(array_unique(array_map('intval', is_array($allowedBrandIds) ? $allowedBrandIds : [])));
+        }
+
+        if ($updateDiscounts) {
+            $settings['brand_discounts'] = collect(is_array($brandDiscounts) ? $brandDiscounts : [])
+                ->map(fn (array $row): array => [
+                    'brand_id' => (int) $row['brand_id'],
+                    'discount_1' => number_format((float) ($row['discount_1'] ?? 0), 2, '.', ''),
+                    'discount_2' => number_format((float) ($row['discount_2'] ?? 0), 2, '.', ''),
+                    'discount_3' => number_format((float) ($row['discount_3'] ?? 0), 2, '.', ''),
+                ])
+                ->values()
+                ->all();
+        }
+
+        data_set($meta, 'customer_user', $settings);
         $customer->forceFill(['meta' => $meta])->save();
     }
 

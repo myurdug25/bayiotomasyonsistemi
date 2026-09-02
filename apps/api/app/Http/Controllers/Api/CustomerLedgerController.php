@@ -21,8 +21,8 @@ class CustomerLedgerController extends Controller
 
         $validated = $request->validated();
         $perPage = min((int) ($validated['per_page'] ?? 25), 50);
-        $dateFrom = $validated['date_from'] ?? $validated['from_date'] ?? null;
-        $dateTo = $validated['date_to'] ?? $validated['to_date'] ?? null;
+        $dateFrom = $validated['date_from'] ?? $validated['from_date'] ?? '2026-01-01';
+        $dateTo = $validated['date_to'] ?? $validated['to_date'] ?? now()->toDateString();
         $excludedTypes = array_values(array_filter(
             $validated['exclude_types'] ?? [],
             static fn ($type): bool => is_string($type) && $type !== ''
@@ -64,8 +64,15 @@ class CustomerLedgerController extends Controller
      */
     private function ledgerQuery(Customer $customer, ?string $dateFrom, ?string $dateTo, ?string $type, ?string $collectionMethod, array $excludedTypes)
     {
+        $warehouseTransferOrderIds = $this->warehouseTransferOrderIdsQuery();
+
         return $customer->ledgerEntries()
-            ->effectiveForCustomerBalance()
+            ->visibleForCustomerLedger()
+            ->where(function ($query) use ($warehouseTransferOrderIds): void {
+                $query
+                    ->whereNull('order_id')
+                    ->orWhereNotIn('order_id', $warehouseTransferOrderIds);
+            })
             ->when(
                 ! empty($dateFrom),
                 fn ($q) => $q->whereDate('date', '>=', $dateFrom)
@@ -132,8 +139,9 @@ class CustomerLedgerController extends Controller
         Order::query()
             ->where('customer_id', $customer->id)
             ->whereIn('status', ['approved', 'partially_shipped', 'picking', 'packed'])
-            ->whereDoesntHave('ledgerEntries', function ($query): void {
-                $query->where('meta->source', 'order_visibility');
+            ->whereNotIn('id', $this->warehouseTransferOrderIdsQuery())
+            ->whereDoesntHave('cart', function ($query): void {
+                $query->where('is_warehouse_transfer', true);
             })
             ->whereDoesntHave('ledgerEntries', function ($query): void {
                 $query->where('type', 'invoice');
@@ -155,38 +163,62 @@ class CustomerLedgerController extends Controller
                 foreach ($orders as $order) {
                     $date = optional($order->approved_at ?? $order->ordered_at ?? $order->created_at)?->toDateString()
                         ?? now()->toDateString();
+                    $orderTotal = number_format((float) $order->grand_total, 2, '.', '');
 
-                    LedgerEntry::query()->updateOrCreate(
-                        [
-                            'order_id' => $order->id,
-                            'type' => 'debit',
-                            'source_system' => 'b2b',
-                            'source_reference' => $order->order_no,
+                    $attributes = [
+                        'dealer_id' => $order->dealer_id,
+                        'customer_id' => $order->customer_id,
+                        'source_system' => 'b2b',
+                        'source_reference' => $order->order_no,
+                        'date' => $date,
+                        'type' => 'debit',
+                        'debit' => 0,
+                        'credit' => 0,
+                        'balance_after' => 0,
+                        'entry_date' => $date,
+                        'entry_type' => 'debit',
+                        'amount' => 0,
+                        'currency' => $order->currency ?: 'TRY',
+                        'reference_no' => $order->order_no,
+                        'description' => 'Onaylı / bakiye sipariş '.$order->order_no,
+                        'created_by_user_id' => $order->user_id,
+                        'meta' => [
+                            'source' => 'order_visibility',
+                            'source_label' => 'Sipariş',
+                            'order_no' => $order->order_no,
+                            'order_total' => $orderTotal,
+                            'balance_effect' => 'none',
                         ],
-                        [
-                            'dealer_id' => $order->dealer_id,
-                            'customer_id' => $order->customer_id,
-                            'date' => $date,
-                            'debit' => number_format((float) $order->grand_total, 2, '.', ''),
-                            'credit' => 0,
-                            'balance_after' => 0,
-                            'entry_date' => $date,
-                            'entry_type' => 'debit',
-                            'amount' => number_format((float) $order->grand_total, 2, '.', ''),
-                            'currency' => $order->currency ?: 'TRY',
-                            'reference_no' => $order->order_no,
-                            'description' => 'Onaylı / bakiye sipariş '.$order->order_no,
-                            'created_by_user_id' => $order->user_id,
-                            'meta' => [
-                                'source' => 'order_visibility',
-                                'source_label' => 'Sipariş',
-                                'order_no' => $order->order_no,
-                                'order_total' => number_format((float) $order->grand_total, 2, '.', ''),
-                            ],
-                        ]
-                    );
+                    ];
+
+                    $existing = LedgerEntry::query()
+                        ->where('order_id', $order->id)
+                        ->where('source_system', 'b2b')
+                        ->where('meta->source', 'order_visibility')
+                        ->first();
+
+                    if ($existing instanceof LedgerEntry) {
+                        $existing->fill($attributes)->save();
+
+                        continue;
+                    }
+
+                    LedgerEntry::query()->create([
+                        ...$attributes,
+                        'order_id' => $order->id,
+                    ]);
                 }
             });
+    }
+
+    private function warehouseTransferOrderIdsQuery()
+    {
+        return DB::table('integration_sync_states')
+            ->select('entity_id')
+            ->where('system', 'logo')
+            ->where('domain', 'warehouse-transfer-orders')
+            ->where('direction', 'outbound')
+            ->where('entity_type', Order::class);
     }
 
     /**
@@ -194,7 +226,10 @@ class CustomerLedgerController extends Controller
      */
     private function ledgerSummary($query, ?User $user): array
     {
+        $displayCount = (clone $query)->count();
+
         $summary = (clone $query)
+            ->effectiveForCustomerBalance()
             ->selectRaw('COUNT(*) as total_count')
             ->selectRaw("COALESCE(SUM(COALESCE(debit, CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END)), 0) as total_debit")
             ->selectRaw("COALESCE(SUM(COALESCE(credit, CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END)), 0) as total_credit")
@@ -220,7 +255,7 @@ class CustomerLedgerController extends Controller
             'total_debit' => number_format($totalDebit, 2, '.', ''),
             'total_credit' => number_format($totalCredit, 2, '.', ''),
             'balance' => number_format($totalDebit - $totalCredit, 2, '.', ''),
-            'total_count' => (int) ($summary?->total_count ?? 0),
+            'total_count' => $displayCount,
             'currency' => $currency,
             'total_return_amount' => number_format((float) $totalReturnAmount, 2, '.', ''),
             'total_return_quantity' => (int) $totalReturnQuantity,

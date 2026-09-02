@@ -15,7 +15,7 @@ class LogoFinanceDefinitionSyncController extends Controller
      * @var array<string, string>
      */
     private array $approvedFactoryNames = [
-        '120-61-031' => 'SIRAÇ MADENİ YAĞLAR PAZ. TİC. LTD. ŞTİ.',
+        '120-61-006' => 'SIRAÇ MADENİ YAĞLAR PAZ. TİC. LTD. ŞTİ.',
         '320-54-002' => 'DİNAMİK OTOMOTİV GID.TEKS.İTH.İHR.SANAYİ VE TİC.LTD.ŞTİ',
         '320-34-006' => 'DELTA OTO AKSAMI SAN.TİC.A.Ş',
         '320-34-008' => 'ŞAMPİYON FİLTRE PAZ.TİC.VE SAN.A.Ş.',
@@ -93,6 +93,33 @@ class LogoFinanceDefinitionSyncController extends Controller
                 data_set($meta, 'integrations.logo.synced_at', now()->toIso8601String());
                 data_set($meta, 'integrations.logo.payload', $record['meta'] ?? []);
 
+                $financials = [];
+                foreach ([
+                    'balance' => 'balance',
+                    'balance_debit' => 'debit',
+                    'balance_credit' => 'credit',
+                ] as $recordKey => $metaKey) {
+                    if (array_key_exists($recordKey, $record) && is_numeric($record[$recordKey])) {
+                        $financials[$metaKey] = number_format((float) $record[$recordKey], 2, '.', '');
+                    }
+                }
+
+                if (! empty($record['balance_direction'])) {
+                    $financials['direction'] = mb_strtolower(trim((string) $record['balance_direction']), 'UTF-8');
+                } elseif (isset($financials['balance'])) {
+                    $balance = (float) $financials['balance'];
+                    $financials['direction'] = $balance > 0 ? 'debit' : ($balance < 0 ? 'credit' : 'zero');
+                }
+
+                if (! empty($record['currency'])) {
+                    $financials['currency'] = mb_strtoupper(trim((string) $record['currency']), 'UTF-8');
+                }
+
+                if ($financials !== []) {
+                    $financials['synced_at'] = now()->toIso8601String();
+                    data_set($meta, 'integrations.logo.financials', $financials);
+                }
+
                 $name = $record['name'];
                 if ($record['type'] === 'factory') {
                     $name = $this->approvedFactoryNames[$record['code']]
@@ -107,7 +134,7 @@ class LogoFinanceDefinitionSyncController extends Controller
                     'is_active' => (bool) ($record['is_active'] ?? true),
                     'meta' => $meta,
                 ];
-                if (in_array($record['type'], ['bank', 'pos_device', 'card_type'], true)) {
+                if (in_array($record['type'], ['bank', 'cashbox', 'pos_device', 'card_type'], true)) {
                     $attributes['code'] = $record['code'];
                 }
 

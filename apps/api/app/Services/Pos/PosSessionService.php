@@ -219,12 +219,18 @@ class PosSessionService
 
     private function usesUserScopedCashbox(User $user): bool
     {
-        if ($user->hasRole('dealer_admin') || $user->hasRole('admin')) {
+        if ($user->hasRole('admin')) {
             return false;
         }
 
-        return $user->hasAnyRole(['cashier', 'point'])
-            || in_array('pos', MenuPermissions::forUser($user), true);
+        $hasPosMenu = in_array('pos', MenuPermissions::forUser($user), true);
+        $hasOwnLogoCashbox = $this->nullableString($user->logo_cashbox_code) !== null;
+
+        if ($user->hasRole('dealer_admin')) {
+            return $hasPosMenu && $hasOwnLogoCashbox;
+        }
+
+        return $user->hasAnyRole(['cashier', 'point']) || $hasPosMenu;
     }
 
     private function queueSessionSalesForLogoExport(PosSession $session): void

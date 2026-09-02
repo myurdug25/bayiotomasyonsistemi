@@ -14,14 +14,18 @@ use App\Models\Order;
 use App\Models\User;
 use App\Services\Customers\CustomerAccessScopeService;
 use App\Services\Integrations\Logo\LogoWritePublisher;
+use App\Support\Pricing\CustomerPriceListResolver;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class CustomerController extends Controller
 {
-    public function index(CustomerIndexRequest $request, CustomerAccessScopeService $customerAccessScope)
-    {
+    public function index(
+        CustomerIndexRequest $request,
+        CustomerAccessScopeService $customerAccessScope,
+        CustomerPriceListResolver $priceListResolver
+    ) {
         $this->authorize('viewAny', Customer::class);
 
         $user = $request->user();
@@ -59,10 +63,25 @@ class CustomerController extends Controller
             });
         }
 
+        $priceGroupOptions = $this->priceGroupOptions(clone $baseQuery, $priceListResolver);
+        $priceGroup = $this->normalizePriceGroup($validated['price_group'] ?? null);
+
+        if ($priceGroup !== null) {
+            $this->applyPriceGroupFilter($baseQuery, $priceGroup);
+        }
+
         if ($search !== '') {
-            $baseQuery->where(function ($builder) use ($search) {
+            $normalizedSearch = $this->normalizeLooseCustomerSearch($search);
+
+            $baseQuery->where(function ($builder) use ($search, $normalizedSearch) {
                 $builder->whereLike('customers.code', "{$search}%", caseSensitive: false)
                     ->orWhereLike('customers.name', "%{$search}%", caseSensitive: false);
+
+                if ($normalizedSearch !== '') {
+                    $builder
+                        ->orWhereRaw($this->looseCustomerSearchSql('customers.code').' LIKE ?', [$normalizedSearch.'%'])
+                        ->orWhereRaw($this->looseCustomerSearchSql('customers.name').' LIKE ?', ['%'.$normalizedSearch.'%']);
+                }
             });
         }
 
@@ -101,6 +120,9 @@ class CustomerController extends Controller
                 'prev_cursor' => null,
                 'limit' => $limit,
                 'total_count' => (clone $baseQuery)->count('customers.id'),
+                'meta' => [
+                    'price_groups' => $priceGroupOptions,
+                ],
             ]);
         }
 
@@ -124,6 +146,7 @@ class CustomerController extends Controller
                     'customers.branch_name',
                     'customers.source_system',
                     'customers.source_reference',
+                    'customers.sync_status',
                     'customers.meta',
                     'customers.last_synced_at',
                 ])
@@ -146,26 +169,132 @@ class CustomerController extends Controller
                 ]);
         }
 
+        $page = $this->decodeCustomerPageCursor($validated['cursor'] ?? null);
         $customers = $query
             ->orderByRaw("CASE WHEN customers.source_system = 'b2b' AND customers.sync_status IS NOT NULL THEN 0 WHEN customers.source_system = 'logo' THEN 1 ELSE 2 END ASC")
             ->orderBy('customers.code')
             ->orderBy('customers.id')
-            ->cursorPaginate(
-                perPage: $limit,
-                columns: ['*'],
-                cursorName: 'cursor',
-                cursor: $validated['cursor'] ?? null
-            );
+            ->skip(($page - 1) * $limit)
+            ->take($limit + 1)
+            ->get();
+
+        $hasMorePages = $customers->count() > $limit;
+        $customers = $customers->take($limit)->values();
 
         return response()->json([
-            'data' => collect($customers->items())
+            'data' => $customers
                 ->map(fn (Customer $customer) => (new CustomerSelectionResource($customer))->toArray($request))
                 ->values(),
-            'next_cursor' => $customers->nextCursor()?->encode(),
-            'prev_cursor' => $customers->previousCursor()?->encode(),
+            'next_cursor' => $hasMorePages
+                ? $this->encodeCustomerPageCursor($page + 1)
+                : null,
+            'prev_cursor' => $page > 1
+                ? $this->encodeCustomerPageCursor($page - 1)
+                : null,
             'limit' => $limit,
             'total_count' => $totalCount,
+            'meta' => [
+                'price_groups' => $priceGroupOptions,
+            ],
         ]);
+    }
+
+    /**
+     * @return list<array{code: string, label: string}>
+     */
+    private function priceGroupOptions($query, CustomerPriceListResolver $priceListResolver): array
+    {
+        return $query
+            ->select(['customers.meta'])
+            ->get()
+            ->map(fn (Customer $customer): ?string => $priceListResolver->resolveGroupCode(
+                is_array($customer->meta) ? $customer->meta : []
+            ))
+            ->filter()
+            ->unique()
+            ->sortBy(fn (string $code): int => (int) substr($code, 1))
+            ->values()
+            ->map(fn (string $code): array => [
+                'code' => $code,
+                'label' => $code,
+            ])
+            ->all();
+    }
+
+    private function applyPriceGroupFilter($query, string $priceGroup): void
+    {
+        $values = [$priceGroup, mb_strtolower($priceGroup, 'UTF-8'), mb_strtoupper($priceGroup, 'UTF-8')];
+
+        $query->where(function ($builder) use ($values): void {
+            foreach ($this->priceGroupMetaPaths() as $path) {
+                $builder->orWhereIn("customers.meta->{$path}", $values);
+            }
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function priceGroupMetaPaths(): array
+    {
+        return [
+            'price_group',
+            'price_list_code',
+            'specode',
+            'specode2',
+            'specode3',
+            'specode4',
+            'specode5',
+            'trading_group',
+            'integrations->logo->payload->price_group',
+            'integrations->logo->payload->price_list_code',
+            'integrations->logo->payload->specode',
+            'integrations->logo->payload->specode2',
+            'integrations->logo->payload->specode3',
+            'integrations->logo->payload->specode4',
+            'integrations->logo->payload->specode5',
+            'integrations->logo->payload->trading_group',
+            'integrations->logo->payload->raw->SPECODE',
+            'integrations->logo->payload->raw->SPECODE2',
+            'integrations->logo->payload->raw->SPECODE3',
+            'integrations->logo->payload->raw->SPECODE4',
+            'integrations->logo->payload->raw->SPECODE5',
+            'integrations->logo->payload->raw->TRADINGGRP',
+        ];
+    }
+
+    private function normalizePriceGroup(mixed $value): ?string
+    {
+        $normalized = mb_strtoupper(trim((string) $value), 'UTF-8');
+
+        return preg_match('/^F[1-9][0-9]*$/', $normalized) === 1 ? $normalized : null;
+    }
+
+    private function encodeCustomerPageCursor(int $page): string
+    {
+        return rtrim(strtr(base64_encode((string) $page), '+/', '-_'), '=');
+    }
+
+    private function decodeCustomerPageCursor(mixed $cursor): int
+    {
+        if (! is_string($cursor) || trim($cursor) === '') {
+            return 1;
+        }
+
+        $encoded = strtr(trim($cursor), '-_', '+/');
+        $padding = strlen($encoded) % 4;
+
+        if ($padding > 0) {
+            $encoded .= str_repeat('=', 4 - $padding);
+        }
+
+        $decoded = base64_decode($encoded, true);
+
+        if ($decoded === false || ! ctype_digit($decoded)) {
+            return 1;
+        }
+
+        return max(1, (int) $decoded);
     }
 
     public function show(Customer $customer)
@@ -272,13 +401,16 @@ class CustomerController extends Controller
 
     private function orderBalanceDueSubquery()
     {
-        return LedgerEntry::query()
-            ->effectiveForCustomerBalance()
-            ->selectRaw(
-                "COALESCE(SUM(COALESCE(debit, CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END) - COALESCE(credit, CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END)), 0)"
-            )
-            ->whereColumn('ledger_entries.customer_id', 'customers.id')
-            ->whereNotNull('ledger_entries.order_id');
+        return Order::query()
+            ->selectRaw('COALESCE(SUM(grand_total), 0)')
+            ->whereColumn('orders.customer_id', 'customers.id')
+            ->whereIn('status', ['approved', 'balance', 'partially_shipped', 'picking', 'packed'])
+            ->whereDoesntHave('cart', function ($query): void {
+                $query->where('is_warehouse_transfer', true);
+            })
+            ->whereDoesntHave('ledgerEntries', function ($query): void {
+                $query->where('type', 'invoice');
+            });
     }
 
     private function balanceDueCustomerIdsSubquery(bool $onlyDue = true, bool $orderOnly = false)
@@ -394,5 +526,68 @@ class CustomerController extends Controller
         $normalized = trim((string) $value);
 
         return $normalized !== '' ? $normalized : null;
+    }
+
+    private function normalizeLooseCustomerSearch(string $value): string
+    {
+        $normalized = strtr($value, [
+            'Ç' => 'c',
+            'ç' => 'c',
+            'Ğ' => 'g',
+            'ğ' => 'g',
+            'İ' => 'i',
+            'I' => 'i',
+            'ı' => 'i',
+            'Ö' => 'o',
+            'ö' => 'o',
+            'Ş' => 's',
+            'ş' => 's',
+            'Ü' => 'u',
+            'ü' => 'u',
+            'Â' => 'a',
+            'â' => 'a',
+            'Ê' => 'e',
+            'ê' => 'e',
+            'Î' => 'i',
+            'î' => 'i',
+            'Û' => 'u',
+            'û' => 'u',
+        ]);
+
+        $normalized = mb_strtolower($normalized, 'UTF-8');
+
+        return preg_replace('/[^a-z0-9]+/u', '', $normalized) ?? '';
+    }
+
+    private function looseCustomerSearchSql(string $column): string
+    {
+        $expression = "COALESCE({$column}, '')";
+
+        foreach ($this->looseCustomerSearchReplacements() as [$from, $to]) {
+            $expression = sprintf(
+                'REPLACE(%s, %s, %s)',
+                $expression,
+                DB::getPdo()->quote($from),
+                DB::getPdo()->quote($to)
+            );
+        }
+
+        return "LOWER({$expression})";
+    }
+
+    /**
+     * @return list<array{0:string,1:string}>
+     */
+    private function looseCustomerSearchReplacements(): array
+    {
+        return [
+            ['Ç', 'c'], ['ç', 'c'],
+            ['Ğ', 'g'], ['ğ', 'g'],
+            ['İ', 'i'], ['I', 'i'], ['ı', 'i'],
+            ['Ö', 'o'], ['ö', 'o'],
+            ['Ş', 's'], ['ş', 's'],
+            ['Ü', 'u'], ['ü', 'u'],
+            [' ', ''], ['-', ''], ['.', ''],
+        ];
     }
 }

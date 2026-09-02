@@ -24,6 +24,17 @@ class PosReportController extends Controller
         ]);
     }
 
+    public function dayEndSave(DayEndReportRequest $request, DayEndReportService $dayEndReportService): JsonResponse
+    {
+        $this->authorize('viewAny', PosSale::class);
+
+        $report = $dayEndReportService->save($request->user(), $request->validated());
+
+        return response()->json([
+            'data' => new DayEndReportResource($report),
+        ]);
+    }
+
     public function dayEndPrint(
         DayEndReportRequest $request,
         DayEndReportService $dayEndReportService

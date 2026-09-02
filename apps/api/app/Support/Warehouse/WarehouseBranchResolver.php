@@ -10,9 +10,10 @@ class WarehouseBranchResolver
 {
     /**
      * Kullanıcı bölge kuralı tek kaynak:
-     * - Açık kullanıcı haritası önce gelir. Böylece yanlış kalmış branch alanı kritik plasiyeri yanlış depoya atmaz.
-     * - Sonra kullanıcı branch_code / branch_name okunur.
-     * - En son cari branch alanı fallback olarak kullanılır.
+     * - Siparişi oluşturan/bağlı plasiyerin gerçek şubesi önce gelir.
+     * - Kullanıcı kimliği yoksa carinin açık şube alanları fallback olur.
+     * - Cari kodu yalnızca son çaredir; 120-00-* tek başına Batum kanıtı değildir.
+     * Böylece eski/yanlış cari şube verisi Erzurum plasiyerinin siparişini Batum'a göndermez.
      */
     public function resolveBranchCode(?User $user, ?Customer $customer = null): ?string
     {
@@ -25,7 +26,29 @@ class WarehouseBranchResolver
             ?? $this->normalizeBranchCode($user?->branch_code)
             ?? $this->normalizeBranchCode($user?->branch_name)
             ?? $this->normalizeBranchCode($customer?->branch_code)
-            ?? $this->normalizeBranchCode($customer?->branch_name);
+            ?? $this->normalizeBranchCode($customer?->branch_name)
+            // Eski carilerde şube alanları boş olabilir. Cari kodunun orta
+            // segmenti yalnızca son çaredir; 120-00-* Batum varsayımı gerçek
+            // bağlı plasiyer/oturum şubesini asla ezmemelidir.
+            ?? $this->branchCodeFromCustomerCode($customer?->code);
+    }
+
+    private function branchCodeFromCustomerCode(mixed $value): ?string
+    {
+        $code = trim((string) $value);
+        if ($code === '') {
+            return null;
+        }
+
+        $segments = preg_split('/[^0-9]+/', $code) ?: [];
+        $branchSegment = $segments[1] ?? null;
+
+        return match ($branchSegment) {
+            '00' => 'BATUM',
+            '55' => 'SAMSUN',
+            '61' => 'TRABZON',
+            default => null,
+        };
     }
 
     /**
@@ -38,6 +61,10 @@ class WarehouseBranchResolver
 
         if ($method === 'kargo' && in_array($branchCode, ['TRABZON', 'SAMSUN'], true)) {
             return ['code' => '1', 'name' => 'ERZURUM DEPO', 'reason' => "{$branchCode}_KARGO_TO_ERZURUM"];
+        }
+
+        if ($this->isErzurumPointUser($user)) {
+            return ['code' => '0', 'name' => 'ERZURUM POINT', 'reason' => 'USER_ERZURUM_POINT'];
         }
 
         return match ($branchCode) {
@@ -123,6 +150,35 @@ class WarehouseBranchResolver
         return in_array($identityBranch, ['ERZURUM', 'TRABZON', 'SAMSUN', 'BATUM'], true)
             ? $identityBranch
             : null;
+    }
+
+    private function isErzurumPointUser(?User $user): bool
+    {
+        if (! $user instanceof User) {
+            return false;
+        }
+
+        $identity = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(implode(' ', array_filter([
+            $user->username,
+            $user->email,
+            $user->name,
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+        ]))))) ?? '';
+
+        if ($identity === '') {
+            return false;
+        }
+
+        if (str_contains($identity, 'TRABZON') || str_contains($identity, 'SAMSUN') || str_contains($identity, 'BATUM')) {
+            return false;
+        }
+
+        return str_contains($identity, 'ERZURUMPOINT')
+            || str_contains($identity, 'ERZURUMHIZLISATIS')
+            || str_contains($identity, 'ERZHIZLISATIS');
     }
 
     private function resolveSalesperson(?User $user, ?Customer $customer): ?User

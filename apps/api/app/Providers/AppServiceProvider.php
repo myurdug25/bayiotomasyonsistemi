@@ -129,9 +129,14 @@ class AppServiceProvider extends ServiceProvider
             $fingerprint = $providedKey !== ''
                 ? hash('sha256', $providedKey)
                 : (string) $request->ip();
+            $routeScope = $request->route()?->getName()
+                ?? $request->route()?->uri()
+                ?? $request->path();
 
             return [
-                Limit::perMinute(180)->by($fingerprint),
+                // Bir entegrasyon akışındaki yoğun trafik (ör. POS kuyruğu), aynı
+                // anahtarı kullanan kampanya/ürün senkronunu bloke etmemeli.
+                Limit::perMinute(180)->by($fingerprint.'|'.$routeScope),
                 Limit::perMinute(600)->by((string) $request->ip()),
             ];
         });

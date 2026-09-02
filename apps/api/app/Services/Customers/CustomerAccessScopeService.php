@@ -47,6 +47,10 @@ class CustomerAccessScopeService
         $query->where("{$table}.dealer_id", (int) $user->dealer_id);
         $this->excludeBatumCustomers($query, $user, $table);
 
+        if ($this->usesLogoBatumBranchScope($user)) {
+            return $query->where(fn (Builder $batumBuilder) => $this->applyBatumCustomerScope($batumBuilder, $table));
+        }
+
         if ($user->hasRole('salesperson')) {
             if ($this->hasLogoCustomerFilter($user)) {
                 return $this->applyLogoCustomerFilters($query, $user, $table);
@@ -120,6 +124,10 @@ class CustomerAccessScopeService
 
         if ($this->shouldExcludeBatumCustomers($user) && $this->isLogoBatumCustomer($customer)) {
             return false;
+        }
+
+        if ($this->usesLogoBatumBranchScope($user) && $this->isLogoBatumCustomer($customer)) {
+            return true;
         }
 
         if ($user->hasRole('salesperson')) {
@@ -443,7 +451,26 @@ class CustomerAccessScopeService
 
     private function usesLogoBatumBranchScope(User $user): bool
     {
-        return $this->normalizeCode($user->branch_code) === 'BATUM';
+        if ($this->normalizeCode($user->username) === 'TURGAY.BUYUKKAL') {
+            return false;
+        }
+
+        foreach ([
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+            $user->username,
+            $user->name,
+        ] as $value) {
+            $normalized = $this->normalizeCode($value);
+
+            if ($normalized === 'BATUM' || str_contains((string) $normalized, 'BATUM')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function isLogoBatumCustomer(Customer $customer): bool
@@ -524,6 +551,10 @@ class CustomerAccessScopeService
 
     private function shouldRestrictCustomerAccess(User $user): bool
     {
+        if ($user->hasAnyRole(['global', 'global_user'])) {
+            return false;
+        }
+
         if (! $user->hasAnyRole(['admin', 'moderator'])) {
             return true;
         }

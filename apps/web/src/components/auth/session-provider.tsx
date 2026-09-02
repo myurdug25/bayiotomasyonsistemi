@@ -23,6 +23,7 @@ import {
 
 type SessionStatus = "loading" | "authenticated" | "guest";
 const SELECTED_CUSTOMER_STORAGE_KEY = "powersa:selected_customer";
+const PERMISSION_REFRESH_INTERVAL_MS = 10_000;
 
 type ApiUserPayload = ApiUser & {
   selected_customer?: (Partial<CustomerSummary> & { name?: string | null }) | null;
@@ -56,6 +57,7 @@ function normalizeCustomerSummary(
     name: customer.name ?? null,
     source_system: customer.source_system ?? null,
     source_reference: customer.source_reference ?? null,
+    e_invoice_user: Boolean(customer.e_invoice_user),
     contact_name: customer.contact_name ?? null,
     email: customer.email ?? null,
     city: customer.city ?? null,
@@ -71,33 +73,12 @@ function normalizeCustomerSummary(
     last_synced_at: customer.last_synced_at ?? null,
     balance_summary: customer.balance_summary,
     balance_source: customer.balance_source,
+    customer_user_feature_permissions: Array.isArray(customer.customer_user_feature_permissions)
+      ? customer.customer_user_feature_permissions
+      : null,
     salesperson: customer.salesperson ?? null,
     meta: customer.meta ?? null,
   };
-}
-
-function readStoredSelectedCustomer(): CustomerSummary | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const raw = window.localStorage.getItem(SELECTED_CUSTOMER_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<CustomerSummary>;
-    const normalized = normalizeCustomerSummary(parsed);
-    if (normalized) {
-      return normalized;
-    }
-  } catch {
-    // ignore invalid cached payload
-  }
-
-  window.localStorage.removeItem(SELECTED_CUSTOMER_STORAGE_KEY);
-  return null;
 }
 
 function persistSelectedCustomer(customer: CustomerSummary | null) {
@@ -163,13 +144,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       let nextCustomer = selectedCustomerFromUser(normalizedUser);
 
-      if (!nextCustomer) {
-        try {
-          const context = await getContext();
-          nextCustomer = normalizeCustomerSummary(context.context.customer ?? {}) ?? null;
-        } catch {
-          // Context endpoint can fail independently; fall back to the local selection below.
-        }
+      try {
+        const context = await getContext();
+        nextCustomer = normalizeCustomerSummary(context.context.customer ?? {}) ?? nextCustomer;
+      } catch {
+        // Context endpoint can fail independently; fall back to the local selection below.
       }
 
       setUser(normalizedUser);
@@ -189,6 +168,31 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     return () => window.clearTimeout(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, PERMISSION_REFRESH_INTERVAL_MS);
+
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    };
+
+    window.addEventListener("focus", handleVisible);
+    document.addEventListener("visibilitychange", handleVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleVisible);
+      document.removeEventListener("visibilitychange", handleVisible);
+    };
+  }, [refresh, status]);
 
   const login = useCallback(
     async (payload: { username: string; password: string; remember?: boolean }) => {

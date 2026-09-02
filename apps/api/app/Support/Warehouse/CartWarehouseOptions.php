@@ -8,9 +8,19 @@ use Illuminate\Support\Collection;
 class CartWarehouseOptions
 {
     private const DEFAULT_WAREHOUSES = [
+        ['code' => '0', 'name' => 'ERZURUM POINT'],
         ['code' => '1', 'name' => 'ERZURUM DEPO'],
         ['code' => '2', 'name' => 'TRABZON DEPO'],
         ['code' => '3', 'name' => 'SAMSUN DEPO'],
+        ['code' => '4', 'name' => 'BATUM DEPO'],
+    ];
+
+    private const WAREHOUSE_NAME_BY_CODE = [
+        '0' => 'ERZURUM POINT',
+        '1' => 'ERZURUM DEPO',
+        '2' => 'TRABZON DEPO',
+        '3' => 'SAMSUN DEPO',
+        '4' => 'BATUM DEPO',
     ];
 
     /**
@@ -41,7 +51,7 @@ class CartWarehouseOptions
             ->keyBy('code');
 
         $shipmentWarehouses = collect($logoWarehouses)
-            ->filter(fn (array $warehouse): bool => $this->isShipmentWarehouseOption(
+            ->filter(fn (array $warehouse): bool => $this->isTransferWarehouseOption(
                 $warehouse['warehouse_code'] !== null ? (string) $warehouse['warehouse_code'] : null,
                 $warehouse['warehouse_name'] !== null ? (string) $warehouse['warehouse_name'] : null,
             ));
@@ -60,7 +70,7 @@ class CartWarehouseOptions
                 return [
                     'warehouse_id' => $localWarehouse?->id,
                     'warehouse_code' => $code,
-                    'warehouse_name' => (string) $warehouse['warehouse_name'],
+                    'warehouse_name' => $this->displayWarehouseName($code, $warehouse['warehouse_name'] ?? null),
                     'available_total' => (int) $warehouse['available_total'],
                     'stock_covered_quantity' => $coveredQuantity,
                     'missing_quantity' => max(0, $orderQuantity - $coveredQuantity),
@@ -128,7 +138,7 @@ class CartWarehouseOptions
             if (! isset($logoWarehouses[$normalizedKey])) {
                 $logoWarehouses[$normalizedKey] = [
                     'warehouse_code' => $code,
-                    'warehouse_name' => $name ?? ($code !== null ? "Logo Ambar {$code}" : 'Logo Ambar'),
+                    'warehouse_name' => $this->displayWarehouseName($code, $name),
                     'available_total' => 0,
                     'stock_covered_quantity' => 0,
                     'order_quantity' => 0,
@@ -159,11 +169,11 @@ class CartWarehouseOptions
         }
 
         return $warehouses
-            ->filter(fn (Warehouse $warehouse): bool => $this->isShipmentWarehouseOption($warehouse->code, $warehouse->name))
+            ->filter(fn (Warehouse $warehouse): bool => $this->isTransferWarehouseOption($warehouse->code, $warehouse->name))
             ->map(fn (Warehouse $warehouse): array => [
                 'warehouse_id' => (int) $warehouse->id,
                 'warehouse_code' => $warehouse->code,
-                'warehouse_name' => $warehouse->name,
+                'warehouse_name' => $this->displayWarehouseName($warehouse->code, $warehouse->name),
                 'available_total' => 0,
                 'stock_covered_quantity' => 0,
                 'missing_quantity' => 0,
@@ -175,28 +185,27 @@ class CartWarehouseOptions
             ->all();
     }
 
-    private function isShipmentWarehouseOption(?string $code, ?string $name): bool
+    private function isTransferWarehouseOption(?string $code, ?string $name): bool
     {
         $normalizedCode = trim((string) $code);
         $normalizedName = mb_strtolower(trim((string) $name), 'UTF-8');
 
-        if (in_array($normalizedCode, ['0', '4'], true)) {
-            return false;
-        }
-
-        foreach (['point', 'batum', 'batumi', 'sevkiyat'] as $blockedNeedle) {
+        foreach (['sevkiyat'] as $blockedNeedle) {
             if ($normalizedName !== '' && str_contains($normalizedName, $blockedNeedle)) {
                 return false;
             }
         }
 
-        if (in_array($normalizedCode, ['1', '2', '3'], true)) {
+        if (array_key_exists($normalizedCode, self::WAREHOUSE_NAME_BY_CODE)) {
             return true;
         }
 
-        return str_contains($normalizedName, 'erzurum depo')
+        return str_contains($normalizedName, 'erzurum point')
+            || str_contains($normalizedName, 'erzurum depo')
             || str_contains($normalizedName, 'trabzon depo')
-            || str_contains($normalizedName, 'samsun depo');
+            || str_contains($normalizedName, 'samsun depo')
+            || str_contains($normalizedName, 'batum depo')
+            || str_contains($normalizedName, 'batumi depo');
     }
 
     /**
@@ -228,7 +237,7 @@ class CartWarehouseOptions
             ->map(fn (array $warehouse): array => [
                 'warehouse_id' => null,
                 'warehouse_code' => $warehouse['code'],
-                'warehouse_name' => $warehouse['name'],
+                'warehouse_name' => $this->displayWarehouseName($warehouse['code'], $warehouse['name']),
                 'available_total' => 0,
                 'stock_covered_quantity' => 0,
                 'missing_quantity' => 0,
@@ -270,5 +279,20 @@ class CartWarehouseOptions
         }
 
         return null;
+    }
+
+    private function displayWarehouseName(?string $code, mixed $name): string
+    {
+        $normalizedCode = trim((string) $code);
+        if (array_key_exists($normalizedCode, self::WAREHOUSE_NAME_BY_CODE)) {
+            return self::WAREHOUSE_NAME_BY_CODE[$normalizedCode];
+        }
+
+        $normalizedName = is_scalar($name) ? trim((string) $name) : '';
+        if ($normalizedName !== '' && ! preg_match('/^logo\s+ambar\s+\d+$/i', $normalizedName)) {
+            return mb_strtoupper($normalizedName, 'UTF-8');
+        }
+
+        return $normalizedCode !== '' ? "LOGO AMBAR {$normalizedCode}" : 'LOGO AMBAR';
     }
 }

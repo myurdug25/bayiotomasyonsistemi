@@ -3,15 +3,20 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\IntegrationSyncState;
 use App\Models\Product;
 use App\Models\ProductCodeAlias;
 use App\Models\User;
+use App\Support\CustomerFeaturePermissions;
+use App\Support\MenuPermissions;
+use App\Support\OperationalUserRoster;
 use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -41,12 +46,18 @@ class WarehouseShelfController extends Controller
         $validated = $request->validate([
             'q' => ['nullable', 'string', 'max:120'],
             'warehouse_code' => ['nullable', 'string', Rule::in(array_keys(self::WAREHOUSES))],
+            'include_equivalents' => ['nullable', 'boolean'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:80'],
         ]);
 
         $user = $request->user();
-        $warehouseCode = $this->resolveRequestedWarehouseCode($user, $validated['warehouse_code'] ?? null);
+        abort_unless($this->canAccessRackAddresses($user), 403, 'Raf adresi güncelleme yetkiniz yok.');
+
+        $warehouseOptions = $this->allowedWarehouseOptions($user);
+
+        $warehouseCode = $this->resolveRequestedWarehouseCode($user, $validated['warehouse_code'] ?? null, $warehouseOptions);
         $queryText = trim((string) ($validated['q'] ?? ''));
+        $includeEquivalents = $request->boolean('include_equivalents');
         $limit = (int) ($validated['limit'] ?? 40);
 
         $productsQuery = Product::query()
@@ -68,6 +79,8 @@ class WarehouseShelfController extends Controller
             });
         }
 
+        $this->applyProductSpecialCodeVisibility($productsQuery, $includeEquivalents);
+
         $products = $productsQuery
             ->get()
             ->map(fn (Product $product): array => $this->mapProduct($product, $warehouseCode))
@@ -80,6 +93,8 @@ class WarehouseShelfController extends Controller
                 'name' => self::WAREHOUSES[$warehouseCode] ?? 'DEPO',
                 'editable' => $this->canManageWarehouse($user, $warehouseCode),
             ],
+            'warehouses' => $warehouseOptions,
+            'can_choose_warehouse' => $user instanceof User && $this->canChooseWarehouseForShelves($user),
         ]);
     }
 
@@ -93,6 +108,7 @@ class WarehouseShelfController extends Controller
         $user = $request->user();
         $warehouseCode = (string) $validated['warehouse_code'];
 
+        abort_unless($this->canAccessRackAddresses($user), 403, 'Raf adresi güncelleme yetkiniz yok.');
         abort_unless($this->canManageWarehouse($user, $warehouseCode), 403, 'Bu raf adresini düzenleme yetkiniz yok.');
 
         $shelfAddress = trim((string) ($validated['shelf_address'] ?? ''));
@@ -103,6 +119,8 @@ class WarehouseShelfController extends Controller
 
             Arr::set($meta, 'integrations.logo.shelf_update_pending_at', now()->toIso8601String());
             Arr::set($meta, 'integrations.logo.shelf_update_user_id', $user?->id);
+            Arr::set($meta, 'integrations.logo.shelf_update_user_name', $user?->name);
+            Arr::set($meta, 'integrations.logo.shelf_update_username', $user?->username);
 
             $product->forceFill(['meta' => $meta])->save();
 
@@ -150,21 +168,70 @@ class WarehouseShelfController extends Controller
         ]);
     }
 
-    private function resolveRequestedWarehouseCode(?User $user, ?string $requestedCode): string
+    /**
+     * @param  list<array{code:string,name:string,editable:bool}>  $warehouseOptions
+     */
+    private function resolveRequestedWarehouseCode(?User $user, ?string $requestedCode, array $warehouseOptions): string
     {
-        if ($requestedCode !== null && $this->canManageWarehouse($user, $requestedCode)) {
+        if ($warehouseOptions === []) {
+            return '1';
+        }
+
+        $requestedCode = $this->normalizeWarehouseRequestCode($requestedCode);
+        $allowedCodes = array_column($warehouseOptions, 'code');
+
+        if ($user instanceof User && $this->canChooseWarehouseForShelves($user) && $requestedCode !== null) {
             return $requestedCode;
+        }
+
+        if ($user instanceof User && ! $this->canChooseWarehouseForShelves($user)) {
+            return (string) $warehouseOptions[0]['code'];
+        }
+
+        if ($requestedCode !== null && in_array($requestedCode, $allowedCodes, true)) {
+            return $requestedCode;
+        }
+
+        $pointWarehouseCode = $this->resolvePointWarehouseCode($user);
+        if ($pointWarehouseCode !== null && in_array($pointWarehouseCode, $allowedCodes, true)) {
+            return $pointWarehouseCode;
         }
 
         $branchCode = $this->branchResolver->resolveBranchCode($user);
         if ($branchCode === 'BATUM') {
-            return '4';
+            return in_array('4', $allowedCodes, true) ? '4' : (string) $warehouseOptions[0]['code'];
         }
 
         $target = $this->branchResolver->targetWarehouse($user);
         $targetCode = $this->stringOrNull($target['code'] ?? null);
 
-        return in_array($targetCode, array_keys(self::WAREHOUSES), true) ? $targetCode : '1';
+        if ($targetCode !== null && in_array($targetCode, $allowedCodes, true)) {
+            return $targetCode;
+        }
+
+        return (string) $warehouseOptions[0]['code'];
+    }
+
+    private function normalizeWarehouseRequestCode(?string $value): ?string
+    {
+        $normalized = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(trim((string) $value)))) ?? '';
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (array_key_exists($normalized, self::WAREHOUSES)) {
+            return $normalized;
+        }
+
+        return match (true) {
+            str_contains($normalized, 'ERZURUMPOINT') => '0',
+            str_contains($normalized, 'ERZURUMDEPO') => '1',
+            str_contains($normalized, 'TRABZON') => '2',
+            str_contains($normalized, 'SAMSUN') => '3',
+            str_contains($normalized, 'BATUM') => '4',
+            default => null,
+        };
     }
 
     private function canManageWarehouse(?User $user, string $warehouseCode): bool
@@ -173,24 +240,384 @@ class WarehouseShelfController extends Controller
             return false;
         }
 
-        if ($user->hasAnyRole(['admin', 'dealer_admin'])) {
+        if ($this->canChooseWarehouseForShelves($user)) {
             return true;
         }
 
-        $branchCode = $this->branchResolver->resolveBranchCode($user);
+        return in_array($warehouseCode, $this->primaryWarehouseCodesForUser($user), true);
+    }
+
+    /**
+     * @return list<array{code:string,name:string,editable:bool}>
+     */
+    private function allowedWarehouseOptions(?User $user): array
+    {
+        if (! $user instanceof User) {
+            return [];
+        }
+
+        if ($this->canChooseWarehouseForShelves($user)) {
+            return $this->warehouseOptionsForCodes(array_keys(self::WAREHOUSES), $user);
+        }
+
+        $codes = $this->primaryWarehouseCodesForUser($user);
+
+        return $this->warehouseOptionsForCodes($codes, $user);
+    }
+
+    /**
+     * Normal kullanıcı raf ekranında tek depoya kilitlenir. Admin hariç
+     * cross-branch raf seçimi yoktur; böylece Trabzon/Samsun/Batum/Erzurum rafları karışmaz.
+     *
+     * @return list<string>
+     */
+    private function primaryWarehouseCodesForUser(User $user): array
+    {
+        $identity = $this->normalizedUserIdentity($user);
+        $cashboxWarehouseCode = $this->warehouseCodeFromCashbox($user);
+
+        if (str_contains($identity, 'TRABZON') || str_contains($identity, '10002')) {
+            return ['2'];
+        }
+
+        if (str_contains($identity, 'SAMSUN') || str_contains($identity, '10003')) {
+            return ['3'];
+        }
+
+        if (str_contains($identity, 'BATUM') || str_contains($identity, '10004')) {
+            return ['4'];
+        }
+
+        if (in_array($cashboxWarehouseCode, ['2', '3', '4'], true)) {
+            return [$cashboxWarehouseCode];
+        }
+
+        if ((str_contains($identity, 'POINT') || str_contains($identity, 'HIZLISATIS')) && ! str_contains($identity, 'DEPO')) {
+            return ['0'];
+        }
+
+        if (str_contains($identity, 'ERZURUM') || str_starts_with($identity, 'ERZ') || str_contains($identity, '10001')) {
+            return ['1'];
+        }
+
+        $rosterWarehouseCode = $this->warehouseCodeFromOperationalRoster($user);
+        if ($rosterWarehouseCode !== null) {
+            return [$rosterWarehouseCode];
+        }
+
+        $customerWarehouseCode = $this->warehouseCodeFromSelectedCustomer($user);
+        if ($customerWarehouseCode !== null) {
+            return [$customerWarehouseCode];
+        }
+
+        $permissionCodes = $this->singleWarehouseCodeFromFeaturePermissions($user);
+        if ($permissionCodes !== []) {
+            return $permissionCodes;
+        }
+
+        $branchCode = $this->branchResolver->resolveBranchCode($user)
+            ?? $this->inferBranchCodeFromUserIdentity($user);
 
         return match ($branchCode) {
-            'ERZURUM' => in_array($warehouseCode, ['0', '1'], true),
-            'TRABZON' => $warehouseCode === '2',
-            'SAMSUN' => $warehouseCode === '3',
-            'BATUM' => $warehouseCode === '4',
-            default => false,
+            'TRABZON' => ['2'],
+            'SAMSUN' => ['3'],
+            'BATUM' => ['4'],
+            'ERZURUM' => ['1'],
+            default => $cashboxWarehouseCode !== null
+                ? [$cashboxWarehouseCode]
+                : ['1'],
+        };
+    }
+
+    private function warehouseCodeFromOperationalRoster(User $user): ?string
+    {
+        $username = mb_strtolower(trim((string) $user->username), 'UTF-8');
+        if ($username === '') {
+            return null;
+        }
+
+        foreach (OperationalUserRoster::users() as $definition) {
+            if (mb_strtolower((string) ($definition['username'] ?? ''), 'UTF-8') !== $username) {
+                continue;
+            }
+
+            return $this->warehouseCodeFromBranchValue($definition['branch_code'] ?? null);
+        }
+
+        return null;
+    }
+
+    private function warehouseCodeFromSelectedCustomer(User $user): ?string
+    {
+        $customer = $user->selectedCustomer;
+        if (! $customer instanceof Customer) {
+            return null;
+        }
+
+        return $this->warehouseCodeFromBranchValue($customer->branch_code)
+            ?? $this->warehouseCodeFromBranchValue($customer->branch_name)
+            ?? $this->warehouseCodeFromBranchValue($customer->region_code)
+            ?? $this->warehouseCodeFromBranchValue($customer->region_name);
+    }
+
+    private function warehouseCodeFromBranchValue(mixed $value): ?string
+    {
+        $normalized = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(trim((string) $value)))) ?? '';
+
+        return match (true) {
+            str_contains($normalized, 'TRABZON') => '2',
+            str_contains($normalized, 'SAMSUN') => '3',
+            str_contains($normalized, 'BATUM') => '4',
+            str_contains($normalized, 'ERZURUM'), str_starts_with($normalized, 'ERZ') => '1',
+            default => null,
+        };
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function singleWarehouseCodeFromFeaturePermissions(User $user): array
+    {
+        $permissionCodes = $this->warehouseCodesFromFeaturePermissions($user);
+
+        return count($permissionCodes) === 1
+            ? [array_values($permissionCodes)[0]]
+            : [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function fallbackWarehouseCodesForRackUser(User $user): array
+    {
+        $permissionCodes = $this->singleWarehouseCodeFromFeaturePermissions($user);
+        if ($permissionCodes !== []) {
+            return $permissionCodes;
+        }
+
+        $identity = $this->normalizedUserIdentity($user);
+
+        if (str_contains($identity, 'TRABZON')) {
+            return ['2'];
+        }
+
+        if (str_contains($identity, 'SAMSUN')) {
+            return ['3'];
+        }
+
+        if (str_contains($identity, 'BATUM')) {
+            return ['4'];
+        }
+
+        if (str_contains($identity, 'POINT') || str_contains($identity, 'HIZLISATIS')) {
+            return ['0'];
+        }
+
+        if ($user->hasAnyRole(['warehouse', 'point']) || $this->canAccessRackAddresses($user)) {
+            return ['1'];
+        }
+
+        return [];
+    }
+
+    private function normalizedUserIdentity(User $user): string
+    {
+        return preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii(implode(' ', array_filter([
+            $user->username,
+            $user->email,
+            $user->name,
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+            $user->logo_cashbox_code,
+            $user->logo_cashbox_name,
+        ], fn ($value): bool => is_scalar($value) && trim((string) $value) !== ''))))) ?? '';
+    }
+
+    private function warehouseCodeFromCashbox(User $user): ?string
+    {
+        $cashboxCode = preg_replace('/[^0-9]+/', '', (string) $user->logo_cashbox_code) ?? '';
+
+        if ($cashboxCode === '') {
+            return null;
+        }
+
+        if (str_starts_with($cashboxCode, '10001007')) {
+            return '0';
+        }
+
+        return match (true) {
+            str_starts_with($cashboxCode, '10002') => '2',
+            str_starts_with($cashboxCode, '10003') => '3',
+            str_starts_with($cashboxCode, '10004') => '4',
+            str_starts_with($cashboxCode, '10001') => '1',
+            default => null,
+        };
+    }
+
+    private function canChooseWarehouseForShelves(User $user): bool
+    {
+        if (! $user->hasAnyRole(['admin', 'dealer_admin'])) {
+            return false;
+        }
+
+        if ($user->hasAnyRole(['warehouse', 'point', 'customer', 'salesperson'])) {
+            return false;
+        }
+
+        $identity = $this->normalizedUserIdentity($user);
+        if ($identity === '') {
+            return true;
+        }
+
+        $operationalNeedles = [
+            'ERZURUMDEPO',
+            'ERZDEPO',
+            'TRABZONDEPO',
+            'SAMSUNDEPO',
+            'BATUMDEPO',
+            'ERZURUMPOINT',
+            'TRABZONPOINT',
+            'SAMSUNPOINT',
+            'BATUMPOINT',
+            'HIZLISATIS',
+            'HIZLISATIŞ',
+        ];
+
+        foreach ($operationalNeedles as $needle) {
+            if (str_contains($identity, $needle)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function inferBranchCodeFromUserIdentity(User $user): ?string
+    {
+        $identity = Str::upper(Str::ascii(implode(' ', array_filter([
+            $user->username,
+            $user->email,
+            $user->name,
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+        ], fn ($value): bool => is_scalar($value) && trim((string) $value) !== ''))));
+        $identity = preg_replace('/[^A-Z0-9]+/', '', $identity) ?? '';
+
+        if ($identity === '') {
+            return null;
+        }
+
+        return match (true) {
+            str_contains($identity, 'TRABZON') => 'TRABZON',
+            str_contains($identity, 'SAMSUN') => 'SAMSUN',
+            str_contains($identity, 'BATUM') => 'BATUM',
+            str_contains($identity, 'ERZURUM'),
+            str_starts_with($identity, 'ERZ') => 'ERZURUM',
+            default => null,
+        };
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function warehouseCodesFromFeaturePermissions(User $user): array
+    {
+        $permissions = array_flip(CustomerFeaturePermissions::forUser($user));
+        $mapping = [
+            'search.stock.warehouse.erzurum_point' => '0',
+            'search.stock.warehouse.erzurum_depo' => '1',
+            'search.stock.warehouse.trabzon' => '2',
+            'search.stock.warehouse.samsun' => '3',
+            'search.stock.warehouse.batum' => '4',
+        ];
+
+        $codes = [];
+        foreach ($mapping as $permission => $code) {
+            if (isset($permissions[$permission])) {
+                $codes[] = $code;
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+
+    /**
+     * @param  list<string>  $codes
+     * @return list<array{code:string,name:string,editable:bool}>
+     */
+    private function warehouseOptionsForCodes(array $codes, ?User $user): array
+    {
+        $codes = array_map(static fn ($code): string => (string) $code, $codes);
+        $ordered = [];
+        foreach (array_keys(self::WAREHOUSES) as $rawCode) {
+            $code = (string) $rawCode;
+            if (! in_array($code, $codes, true)) {
+                continue;
+            }
+
+            $ordered[] = [
+                'code' => $code,
+                'name' => self::WAREHOUSES[$code],
+                'editable' => $this->canManageWarehouse($user, $code),
+            ];
+        }
+
+        return $ordered;
+    }
+
+    private function canAccessRackAddresses(?User $user): bool
+    {
+        if (! $user instanceof User) {
+            return false;
+        }
+
+        if ($user->hasAnyRole(['admin'])) {
+            return true;
+        }
+
+        $menuPermissions = array_flip(MenuPermissions::forUser($user));
+        if (isset($menuPermissions['rack-addresses'])) {
+            return true;
+        }
+
+        $featurePermissions = array_flip(CustomerFeaturePermissions::forUser($user));
+
+        return isset($featurePermissions['rack-addresses.update']);
+    }
+
+    private function resolvePointWarehouseCode(?User $user): ?string
+    {
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        $identity = mb_strtoupper(implode(' ', array_filter([
+            $user->username,
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+        ], fn ($value): bool => is_scalar($value) && trim((string) $value) !== '')), 'UTF-8');
+
+        return match (true) {
+            str_contains($identity, 'TRABZON') => '2',
+            str_contains($identity, 'SAMSUN') => '3',
+            str_contains($identity, 'BATUM') => '4',
+            str_contains($identity, 'HIZLISATIS'),
+            str_contains($identity, 'HIZLI SATIS'),
+            str_contains($identity, 'HIZLI SATIŞ'),
+            str_contains($identity, 'POINT') => '0',
+            default => null,
         };
     }
 
     private function mapProduct(Product $product, string $warehouseCode): array
     {
-        $aliases = $product->codeAliases instanceof \Illuminate\Support\Collection
+        $aliases = $product->codeAliases instanceof Collection
             ? $product->codeAliases
             : collect();
 
@@ -215,6 +642,10 @@ class WarehouseShelfController extends Controller
             'warehouse_code' => $warehouseCode,
             'warehouse_name' => self::WAREHOUSES[$warehouseCode] ?? 'DEPO',
             'shelf_address' => $this->resolveShelfAddress($meta, $warehouseCode),
+            'shelf_updated_at' => $this->stringOrNull(Arr::get($meta, 'integrations.logo.shelf_update_pending_at')),
+            'shelf_updated_by' => $this->stringOrNull(Arr::get($meta, 'integrations.logo.shelf_update_user_name'))
+                ?? $this->stringOrNull(Arr::get($meta, 'integrations.logo.shelf_update_username'))
+                ?? $this->shelfUpdateUserFallback($meta),
             'editable' => true,
             'logo_ref' => $this->stringOrNull(Arr::get($meta, 'integrations.logo.external_ref')),
         ];
@@ -223,9 +654,63 @@ class WarehouseShelfController extends Controller
     /**
      * @param  array<string, mixed>  $meta
      */
+    private function shelfUpdateUserFallback(array $meta): ?string
+    {
+        $userId = $this->stringOrNull(Arr::get($meta, 'integrations.logo.shelf_update_user_id'));
+
+        return $userId === null ? null : "Kullanıcı #{$userId}";
+    }
+
+    private function applyProductSpecialCodeVisibility(Builder $query, bool $includeEquivalents): void
+    {
+        $allowedCodes = $includeEquivalents ? ['E', 'H'] : ['E'];
+        $paths = [
+            'specode4',
+            'integrations.logo.payload.specode4',
+            'integrations.logo.payload.raw.SPECODE4',
+        ];
+
+        $query->where(function (Builder $specialCodeQuery) use ($paths, $allowedCodes): void {
+            foreach ($paths as $path) {
+                $placeholders = implode(',', array_fill(0, count($allowedCodes), '?'));
+                $specialCodeQuery->orWhereRaw(
+                    $this->normalizedJsonValueSql('products.meta', $path).' in ('.$placeholders.')',
+                    $allowedCodes
+                );
+            }
+        });
+    }
+
+    private function quoteJsonPath(string $path): string
+    {
+        return "'$.".str_replace("'", "\\'", $path)."'";
+    }
+
+    private function normalizedJsonValueSql(string $column, string $path): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            $pgPath = str_replace('.', ',', $path);
+            $expression = sprintf("%s#>>'{%s}'", $column, $pgPath);
+        } else {
+            $expression = sprintf('JSON_EXTRACT(%s, %s)', $column, $this->quoteJsonPath($path));
+
+            if ($driver !== 'sqlite') {
+                $expression = sprintf('JSON_UNQUOTE(%s)', $expression);
+            }
+        }
+
+        return sprintf('UPPER(TRIM(%s))', $expression);
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
     private function resolveShelfAddress(array $meta, string $warehouseCode): ?string
     {
         $rafColumn = self::WAREHOUSE_RAF_COLUMNS[$warehouseCode] ?? null;
+        $rafCandidates = $this->rafFieldCandidates($rafColumn);
         $warehouses = Arr::get($meta, 'integrations.logo.payload.logo_stock.warehouses');
         if (is_array($warehouses)) {
             foreach ($warehouses as $warehouse) {
@@ -238,38 +723,41 @@ class WarehouseShelfController extends Controller
                     continue;
                 }
 
-                $value = $this->firstString($warehouse, ['shelf_address', 'raf_address', 'raf_adresi', 'shelf', 'raf']);
+                $value = $this->firstCaseInsensitiveString($warehouse, $rafCandidates);
                 if ($value !== null) {
                     return $value;
                 }
 
-                if ($rafColumn !== null) {
-                    $value = $this->firstCaseInsensitiveString($warehouse, [$rafColumn]);
-                    if ($value !== null) {
-                        return $value;
-                    }
+                $value = $this->firstString($warehouse, ['shelf_address', 'raf_address', 'raf_adresi', 'shelf', 'raf']);
+                if ($value !== null) {
+                    return $value;
                 }
             }
         }
 
         if ($rafColumn !== null) {
-            $value = $this->firstCaseInsensitiveString($meta, [
-                $rafColumn,
-                "integrations.logo.payload.{$rafColumn}",
-                "integrations.logo.payload.raw.{$rafColumn}",
-                "integrations.logo.payload.logo_product.{$rafColumn}",
-                "integrations.logo.product_card.{$rafColumn}",
-                "logo_product.{$rafColumn}",
-                "raw.{$rafColumn}",
-            ]);
+            $paths = [];
+            foreach ($rafCandidates as $candidate) {
+                $paths[] = $candidate;
+                $paths[] = "integrations.logo.payload.{$candidate}";
+                $paths[] = "integrations.logo.payload.raw.{$candidate}";
+                $paths[] = "integrations.logo.payload.logo_product.{$candidate}";
+                $paths[] = "integrations.logo.product_card.{$candidate}";
+                $paths[] = "logo_product.{$candidate}";
+                $paths[] = "raw.{$candidate}";
+            }
+
+            $value = $this->firstCaseInsensitiveString($meta, $paths);
 
             if ($value !== null) {
                 return $value;
             }
 
-            $value = $this->recursiveStringByKey($meta, $rafColumn);
-            if ($value !== null) {
-                return $value;
+            foreach ($rafCandidates as $candidate) {
+                $value = $this->recursiveStringByKey($meta, $candidate);
+                if ($value !== null) {
+                    return $value;
+                }
             }
         }
 
@@ -285,6 +773,33 @@ class WarehouseShelfController extends Controller
             'integrations.logo.payload.raf_address',
             'integrations.logo.payload.raf_adresi',
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function rafFieldCandidates(?string $rafColumn): array
+    {
+        if ($rafColumn === null) {
+            return [];
+        }
+
+        $suffix = preg_replace('/\D+/', '', $rafColumn) ?? '';
+        $candidates = [$rafColumn];
+
+        if ($suffix !== '') {
+            $candidates = array_merge($candidates, [
+                "RAF{$suffix}",
+                "RAF_{$suffix}",
+                "RAFADRESI{$suffix}",
+                "RAF_ADRESI_{$suffix}",
+                "SHELF_ADDRESS{$suffix}",
+                "LOCATION{$suffix}",
+                "LOCATION_CODE{$suffix}",
+            ]);
+        }
+
+        return array_values(array_unique($candidates));
     }
 
     /**
@@ -358,6 +873,7 @@ class WarehouseShelfController extends Controller
 
         if ($driver === 'pgsql') {
             $query->orWhereRaw('LOWER(CAST(meta AS TEXT)) LIKE ?', [$needle]);
+
             return;
         }
 

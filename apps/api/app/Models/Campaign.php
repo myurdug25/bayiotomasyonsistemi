@@ -78,14 +78,19 @@ class Campaign extends Model
         return array_intersect($groups, $normalizedCustomerGroups) !== [];
     }
 
-    /**
-     * Aktif ve tarihi geçmemiş kampanya sorgusu.
-     */
     public function scopeActive($query)
     {
+        $today = now()->toDateString();
+
         return $query
             ->where('is_active', true)
-            ->where(fn ($q) => $q->whereNull('starts_at')->orWhereDate('starts_at', '<=', today()))
-            ->where(fn ($q) => $q->whereNull('ends_at')->orWhereDate('ends_at', '>=', today()));
+            ->where(function ($query) use ($today): void {
+                $query->whereNull('starts_at')
+                    ->orWhereDate('starts_at', '<=', $today);
+            })
+            ->where(function ($query) use ($today): void {
+                $query->whereNull('ends_at')
+                    ->orWhereDate('ends_at', '>=', $today);
+            });
     }
 }

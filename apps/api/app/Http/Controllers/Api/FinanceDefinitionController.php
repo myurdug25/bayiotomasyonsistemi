@@ -4,28 +4,62 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FinanceDefinition;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class FinanceDefinitionController extends Controller
 {
+    /**
+     * These are UI categories, not shared Logo accounts. PosExpenseService
+     * resolves each category to the authenticated salesperson's own account.
+     *
+     * @var list<string>
+     */
+    private const STANDARD_EXPENSE_CATEGORY_CODES = [
+        'vehicle_maintenance',
+        'marketing',
+        'fuel',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'type' => ['nullable', Rule::in(FinanceDefinition::TYPES)],
             'include_inactive' => ['nullable', 'boolean'],
+            'scope' => ['nullable', Rule::in(['turkey', 'batum'])],
         ]);
 
+        $scope = $validated['scope'] ?? 'turkey';
+        $type = $validated['type'] ?? null;
+        $user = $request->user();
+
         $query = FinanceDefinition::query()
-            ->when($validated['type'] ?? null, fn ($q, $type) => $q->where('type', $type))
-            ->when(! ($validated['include_inactive'] ?? false), fn ($q) => $q
-                ->where('is_active', true)
-                ->where(function ($definitionQuery): void {
-                    $definitionQuery->where('type', '!=', 'bank')
-                        ->orWhere(fn ($bankQuery) => $this->applyTurkeyBankScope($bankQuery));
-                }))
-            ->orderBy('type')
+            ->when($type, fn ($q, $definitionType) => $q->where('type', $definitionType))
+            ->when(! ($validated['include_inactive'] ?? false), fn ($q) => $q->where('is_active', true))
+            ->when(! ($validated['include_inactive'] ?? false), function ($q) use ($scope): void {
+                $q->where(function ($definitionQuery) use ($scope): void {
+                    $definitionQuery
+                        ->where('type', '!=', 'bank')
+                        ->orWhere(function ($bankQuery) use ($scope): void {
+                            if ($scope === 'batum') {
+                                $this->applyBatumBankScope($bankQuery);
+
+                                return;
+                            }
+
+                            $this->applyTurkeyBankScope($bankQuery);
+                        });
+                });
+            });
+
+        if ($type === 'expense_category' && $user instanceof User) {
+            $this->applyExpenseCategoryScope($query, $user);
+        }
+
+        $query->orderBy('type')
             ->orderBy('sort_order')
             ->orderBy('name');
 
@@ -89,5 +123,72 @@ class FinanceDefinitionController extends Controller
                 ->whereRaw('LOWER(COALESCE(logo_code, \'\')) NOT LIKE ?', [$like])
                 ->whereRaw('LOWER(COALESCE(logo_name, \'\')) NOT LIKE ?', [$like]);
         }
+    }
+
+    private function applyBatumBankScope($query): void
+    {
+        $query->where(function ($bankQuery): void {
+            foreach (['batum', 'georgia', 'gürcistan', 'gurcistan', 'tbc'] as $term) {
+                $like = '%'.$term.'%';
+                $bankQuery
+                    ->orWhereRaw('LOWER(COALESCE(code, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(name, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(logo_code, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(logo_name, \'\')) LIKE ?', [$like]);
+            }
+        });
+    }
+
+    private function applyExpenseCategoryScope($query, User $user): void
+    {
+        if ($user->hasAnyRole(['admin', 'dealer_admin'])) {
+            return;
+        }
+
+        if ($this->isBatumUser($user)) {
+            $query->where(function ($expenseQuery): void {
+                $expenseQuery->where('meta->scope', 'batum');
+
+                foreach (['batum', 'georgia', 'gürcistan', 'gurcistan'] as $term) {
+                    $like = '%'.$term.'%';
+                    $expenseQuery
+                        ->orWhereRaw('LOWER(COALESCE(code, \'\')) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(COALESCE(name, \'\')) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(COALESCE(logo_name, \'\')) LIKE ?', [$like]);
+                }
+
+                $expenseQuery->orWhere(function ($codeQuery): void {
+                    foreach (['196-00-', '397-00-', '612-00-', '760-00-', '770-00-'] as $prefix) {
+                        $codeQuery
+                            ->orWhere('logo_code', 'like', $prefix.'%')
+                            ->orWhere('code', 'like', $prefix.'%');
+                    }
+                });
+            });
+
+            return;
+        }
+
+        // The three standard cards are resolved to the authenticated user's
+        // own Logo expense accounts by PosExpenseService. Returning arbitrary
+        // account definitions here would leak another branch/user's cards.
+        $query->whereIn('code', self::STANDARD_EXPENSE_CATEGORY_CODES);
+    }
+
+    private function isBatumUser(User $user): bool
+    {
+        $signals = implode(' ', array_filter([
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+            $user->username,
+            $user->name,
+        ]));
+
+        return str_contains(
+            mb_strtoupper(Str::ascii($signals), 'UTF-8'),
+            'BATUM'
+        );
     }
 }

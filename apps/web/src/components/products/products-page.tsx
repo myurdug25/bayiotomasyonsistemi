@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,7 @@ import {
   PackageSearch,
   Search,
   ShoppingCart,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 
@@ -33,15 +34,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type ProductPreviousPurchase,
+  type ProductPreviousPurchaseHistoryItem,
+  type ProductPreviousPurchasesResponse,
   type ProductSearchItem,
+  getProductPreviousPurchases,
   getProductFilterOptions,
   resolveApiBaseUrl,
   searchProducts,
-  fetchCampaignProgress,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const PAGE_LIMIT = 12;
+const SHOW_ALL_PAGE_LIMIT = 50;
 const SEARCH_DEBOUNCE_MS = 220;
 const MIN_SEARCH_LENGTH = 2;
 const PRODUCT_PREVIEW_IMAGE_WIDTH = 960;
@@ -118,19 +122,6 @@ function shouldResetFiltersAfterReload(params: URLSearchParams): boolean {
   return PRODUCT_RESET_QUERY_KEYS.some((key) => params.has(key));
 }
 
-function formatTry(value: string | null): string {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = parseDecimalValue(value);
-  if (!Number.isFinite(parsed)) {
-    return `${value} TRY`;
-  }
-
-  return formatTryAmount(parsed);
-}
-
 function currencyLabel(currency: string | null | undefined): string {
   const normalized = typeof currency === "string" ? currency.trim().toUpperCase() : "";
 
@@ -199,13 +190,14 @@ function formatProductDateTime(value: string | null | undefined): string {
   }).format(date);
 }
 
-function formatPercentValue(value: string | null | undefined): string {
-  const parsed = parseDecimalValue(value);
-  if (parsed === null) {
-    return "-";
-  }
+function formatDiscountList(discounts: number[] | null | undefined): string {
+  const visible = (discounts ?? [])
+    .map((discount) => Number(discount))
+    .filter((discount) => Number.isFinite(discount) && discount > 0);
 
-  return `%${parsed.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}`;
+  return visible.length > 0
+    ? visible.map((discount) => `%${discount.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}`).join(" + ")
+    : "-";
 }
 
 function parseDecimalValue(value: string | number | null | undefined): number | null {
@@ -216,17 +208,6 @@ function parseDecimalValue(value: string | number | null | undefined): number | 
   const parsed = typeof value === "number" ? value : Number(String(value).replace(",", "."));
 
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function formatTryAmount(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) {
-    return "-";
-  }
-
-  return `${value.toLocaleString("tr-TR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} TRY`;
 }
 
 function formatProductAmount(value: number | null, currency?: string | null): string {
@@ -240,7 +221,12 @@ function formatProductAmount(value: number | null, currency?: string | null): st
   })} ${currencyLabel(currency)}`;
 }
 
-function formatProductModalPrice(product: ProductSearchItem, value: string | null | undefined, includeVat: boolean): string {
+function formatProductModalPrice(
+  product: ProductSearchItem,
+  value: string | null | undefined,
+  includeVat: boolean,
+  currencyOverride?: string
+): string {
   const parsed = parseDecimalValue(value);
   if (parsed === null) {
     return "-";
@@ -248,7 +234,7 @@ function formatProductModalPrice(product: ProductSearchItem, value: string | nul
 
   const vatRate = parseDecimalValue(product.vat_rate) ?? 0;
 
-  return formatProductAmount(includeVat ? parsed * (1 + vatRate / 100) : parsed, product.currency);
+  return formatProductAmount(includeVat ? parsed * (1 + vatRate / 100) : parsed, currencyOverride ?? product.currency);
 }
 
 function campaignTierUnitPrice(
@@ -279,13 +265,14 @@ function formatCampaignTierPrice(
     currency?: string | null;
     discount_percent?: number | null;
   },
-  includeVat: boolean
+  includeVat: boolean,
+  currencyOverride?: string
 ): { unit: string; total: string } {
   const unitPrice = campaignTierUnitPrice(product, tier);
   const vatRate = parseDecimalValue(product.vat_rate) ?? 0;
   const displayUnitPrice =
     unitPrice === null ? null : includeVat ? unitPrice * (1 + vatRate / 100) : unitPrice;
-  const currency = tier.unit_price ? tier.currency : product.currency;
+  const currency = currencyOverride ?? (tier.unit_price ? tier.currency : product.currency);
 
   return {
     unit: formatProductAmount(displayUnitPrice, currency),
@@ -434,35 +421,72 @@ function branchStockRows(product: ProductSearchItem, columns: readonly BranchSto
 
 function userSpecificBranchStockColumns(username: string | null | undefined): readonly BranchStockColumn[] | null {
   const normalizedUsername = normalizeBranchText(username);
-  const allowedKeys = (() => {
+  const orderedKeys = (() => {
     switch (normalizedUsername) {
       case "erzurum hizlisatis":
-        return new Set(["erz-point", "erz-depo"]);
+        return ["erz-point", "erz-depo"];
       case "ahmet arac":
       case "huseyin ozguney":
       case "mehmet aksoy":
-        return new Set(["erz-depo"]);
+        return ["erz-depo"];
       default:
         return null;
     }
   })();
 
-  return allowedKeys ? BRANCH_STOCK_COLUMNS.filter((column) => allowedKeys.has(column.key)) : null;
+  return orderedKeys
+    ? orderedKeys
+      .map((key) => BRANCH_STOCK_COLUMNS.find((column) => column.key === key))
+      .filter((column): column is BranchStockColumn => Boolean(column))
+    : null;
 }
 
-function visibleBranchStockColumns(featurePermissionSet: Set<string>, roleSlugs: string[], username: string | null | undefined): readonly BranchStockColumn[] {
+function orderBranchStockColumns(
+  columns: readonly BranchStockColumn[],
+  branchIdentity: string | null | undefined,
+): readonly BranchStockColumn[] {
+  const normalizedIdentity = normalizeBranchText(branchIdentity);
+  const preferredKeys = normalizedIdentity.includes("batum")
+    ? ["batum", "erz-depo", "erz-point", "trabzon", "samsun"]
+    : normalizedIdentity.includes("trabzon")
+      ? ["trabzon", "erz-depo", "erz-point", "samsun", "batum"]
+      : normalizedIdentity.includes("samsun")
+        ? ["samsun", "erz-depo", "erz-point", "trabzon", "batum"]
+        : normalizedIdentity.includes("erzurum") || normalizedIdentity.includes("erz depo")
+          ? ["erz-depo", "erz-point", "trabzon", "samsun", "batum"]
+          : BRANCH_STOCK_COLUMNS.map((column) => column.key);
+  const rank = new Map(preferredKeys.map((key, index) => [key, index]));
+
+  return [...columns].sort((left, right) =>
+    (rank.get(left.key) ?? Number.MAX_SAFE_INTEGER) - (rank.get(right.key) ?? Number.MAX_SAFE_INTEGER)
+  );
+}
+
+function visibleBranchStockColumns(
+  featurePermissionSet: Set<string>,
+  roleSlugs: string[],
+  username: string | null | undefined,
+  branchIdentity: string | null | undefined,
+): readonly BranchStockColumn[] {
   const userSpecificColumns = userSpecificBranchStockColumns(username);
   if (userSpecificColumns !== null) {
     return userSpecificColumns;
   }
 
-  if (roleSlugs.includes("admin") || roleSlugs.includes("moderator")) {
-    return BRANCH_STOCK_COLUMNS;
+  const selectedColumns = BRANCH_STOCK_COLUMNS.filter((column) => featurePermissionSet.has(column.permissionKey));
+  const hasExplicitStockPolicy =
+    featurePermissionSet.has("search.stock") ||
+    BRANCH_STOCK_COLUMNS.some((column) => featurePermissionSet.has(column.permissionKey));
+
+  if (hasExplicitStockPolicy) {
+    return orderBranchStockColumns(selectedColumns, branchIdentity);
   }
 
-  const selectedColumns = BRANCH_STOCK_COLUMNS.filter((column) => featurePermissionSet.has(column.permissionKey));
+  if (roleSlugs.includes("admin") || roleSlugs.includes("moderator")) {
+    return orderBranchStockColumns(BRANCH_STOCK_COLUMNS, branchIdentity);
+  }
 
-  return selectedColumns.length > 0 ? selectedColumns : BRANCH_STOCK_COLUMNS;
+  return orderBranchStockColumns(selectedColumns.length > 0 ? selectedColumns : BRANCH_STOCK_COLUMNS, branchIdentity);
 }
 
 function normalizeSearchValue(value: string | null | undefined): string {
@@ -515,6 +539,7 @@ type ProductRowProps = {
   canViewPrices: boolean;
   canViewStock: boolean;
   visibleStockColumns: readonly BranchStockColumn[];
+  pricesIncludeVat: boolean;
   showRetailPriceHint: boolean;
   tableGridStyle: CSSProperties;
   style?: CSSProperties;
@@ -555,6 +580,8 @@ type ProductPreviousPurchasePreview = {
   sku: string;
   name: string;
   previousPurchase: ProductPreviousPurchase | null;
+  history?: ProductPreviousPurchasesResponse | null;
+  loading?: boolean;
 };
 
 function normalizeCompetitorCodeRows(
@@ -652,6 +679,27 @@ const ProductStockCell = memo(function ProductStockCell({
   canViewStock: boolean;
   columns: readonly BranchStockColumn[];
 }) {
+  if (!canViewStock) {
+    const totalStock = productStockLocations(product).reduce((total, location) => total + Math.max(0, location.stock ?? 0), 0);
+    const tone = totalStock > 10 ? "high" : totalStock > 0 ? "low" : "none";
+    const label = tone === "high" ? "Stok Var" : tone === "low" ? "Stok Az" : "Stok Yok";
+
+    return (
+      <div className="flex h-full w-full items-center justify-center px-1 text-center">
+        <span
+          className={cn(
+            "inline-flex min-h-7 items-center justify-center rounded-full border px-2.5 text-[10px] font-black",
+            tone === "high" && "border-[#00a83a] bg-[#00e052] text-[#001f0b]",
+            tone === "low" && "border-[#1d4ed8] bg-[#2563eb] text-white shadow-[0_6px_16px_-10px_rgba(37,99,235,0.95)]",
+            tone === "none" && "border-[#cc0000] bg-[#ff0000] text-white"
+          )}
+        >
+          {label}
+        </span>
+      </div>
+    );
+  }
+
   const branchRows = branchStockRows(product, columns);
 
   if (branchRows.length === 0) {
@@ -746,6 +794,7 @@ const ProductRow = memo(function ProductRow({
   canViewPrices,
   canViewStock,
   visibleStockColumns,
+  pricesIncludeVat,
   showRetailPriceHint,
   tableGridStyle,
   style,
@@ -760,11 +809,26 @@ const ProductRow = memo(function ProductRow({
   const effectiveNetPrice = product.special_discounted_price ?? product.net_price;
   const hasPrice = canViewPrices && Boolean(product.list_price ?? effectiveNetPrice);
   const hasCategory = Boolean(product.category?.name);
-  const priceText = canViewPrices ? formatPriceValue(product.list_price ?? effectiveNetPrice, product.currency) : "-";
-  const retailPriceText = canViewPrices ? formatPriceValue(effectiveNetPrice ?? product.list_price, product.currency) : "-";
+  const priceText = canViewPrices
+    ? pricesIncludeVat
+      ? formatProductModalPrice(product, product.list_price ?? effectiveNetPrice, true, "GEL")
+      : formatPriceValue(product.list_price ?? effectiveNetPrice, product.currency)
+    : "-";
+  const listPriceNumber = Number(product.list_price ?? effectiveNetPrice ?? 0);
+  const retailPriceText = canViewPrices
+    ? pricesIncludeVat
+      ? formatProductModalPrice(product, String(listPriceNumber * 0.9), true, "GEL")
+      : formatPriceValue(String(listPriceNumber * 0.9), product.currency)
+    : "-";
+  const masterPriceText = canViewPrices
+    ? pricesIncludeVat
+      ? formatProductModalPrice(product, String(listPriceNumber * 0.8), true, "GEL")
+      : formatPriceValue(String(listPriceNumber * 0.8), product.currency)
+    : "-";
   const competitorCodes = product.competitor_codes ?? [];
   const vehicleFitments = product.vehicle_fitments ?? [];
   const previousPurchase = normalizePreviousPurchase(product.previous_purchase);
+  const isCampaignRow = Boolean(campaignNames && campaignNames.length > 0);
 
   return (
     <div
@@ -775,7 +839,7 @@ const ProductRow = memo(function ProductRow({
       <div
         className={cn(
           "admin-product-row-grid group min-h-[34px] border-b border-l-4 border-[var(--brand-border)] border-l-transparent bg-[var(--surface)] transition-[background-color,border-color,box-shadow] duration-150 hover:border-l-[#8bd19f] hover:bg-[#1d3024] hover:shadow-[inset_0_0_0_9999px_rgba(139,209,159,0.08)]",
-          campaignNames && campaignNames.length > 0 && "border-l-amber-300 bg-[linear-gradient(90deg,rgba(245,158,11,0.18)_0%,rgba(245,158,11,0.09)_38%,rgba(14,24,20,0.96)_100%)] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.08)] hover:border-l-amber-200 hover:bg-[linear-gradient(90deg,rgba(245,158,11,0.24)_0%,rgba(245,158,11,0.12)_42%,rgba(29,48,36,0.96)_100%)]",
+          isCampaignRow && "product-campaign-row border-l-[#ffff00] bg-[#ffff00] text-slate-950 shadow-[inset_0_0_0_1px_rgba(255,255,0,0.88)] hover:border-l-[#ffff00] hover:bg-[#ffff00]",
           PRODUCT_TABLE_GRID
         )}
         style={tableGridStyle}
@@ -823,12 +887,18 @@ const ProductRow = memo(function ProductRow({
           <p className="flex max-w-full justify-center text-center text-[11px] font-extrabold text-[var(--foreground)]">
             <span className="group/retail-price relative inline-flex max-w-full">
               <span className="truncate">{priceText}</span>
-            {showRetailPriceHint && hasPrice ? (
-              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 hidden -translate-y-1/2 whitespace-nowrap rounded-xl border border-emerald-200/35 bg-[#101b18]/98 px-5 py-3 text-left font-black text-[#f3fff5] opacity-0 shadow-[0_18px_38px_-18px_rgba(0,0,0,0.98),0_0_28px_-12px_rgba(139,209,159,0.9)] ring-1 ring-white/10 group-hover/retail-price:block group-hover/retail-price:opacity-100">
-                <span className="block text-[13px] uppercase tracking-[0.12em] text-[#9fb5a8]">Perakende Satış</span>
-                <span className="mt-1 block text-[22px] leading-none text-[#faee56]">{retailPriceText}</span>
-              </span>
-            ) : null}
+              {showRetailPriceHint && hasPrice ? (
+                <>
+                  <span className="product-price-tooltip pointer-events-none absolute right-full top-1/2 z-50 mr-2 hidden w-max -translate-y-1/2 whitespace-nowrap rounded-xl border border-emerald-200/35 bg-[#101b18]/98 px-4 py-2 text-left font-black text-[#f3fff5] opacity-0 shadow-[0_18px_38px_-18px_rgba(0,0,0,0.98),0_0_28px_-12px_rgba(139,209,159,0.9)] ring-1 ring-white/10 group-hover/retail-price:block group-hover/retail-price:opacity-100">
+                    <span className="block text-[11px] uppercase tracking-[0.1em] text-[#9fb5a8]">Usta Satış</span>
+                    <span className="mt-1 block text-[18px] leading-none text-[#faee56]">{masterPriceText}</span>
+                  </span>
+                  <span className="product-price-tooltip pointer-events-none absolute left-full top-1/2 z-50 ml-2 hidden w-max -translate-y-1/2 whitespace-nowrap rounded-xl border border-emerald-200/35 bg-[#101b18]/98 px-4 py-2 text-left font-black text-[#f3fff5] opacity-0 shadow-[0_18px_38px_-18px_rgba(0,0,0,0.98),0_0_28px_-12px_rgba(139,209,159,0.9)] ring-1 ring-white/10 group-hover/retail-price:block group-hover/retail-price:opacity-100">
+                    <span className="block text-[11px] uppercase tracking-[0.1em] text-[#9fb5a8]">Perakende Satış</span>
+                    <span className="mt-1 block text-[18px] leading-none text-[#faee56]">{retailPriceText}</span>
+                  </span>
+                </>
+              ) : null}
             </span>
           </p>
         </div>
@@ -838,7 +908,7 @@ const ProductRow = memo(function ProductRow({
         </div>
 
         <div role="cell" className="relative flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5">
-          <details className="group/details relative">
+          <details data-product-info className="group/details relative">
             <summary
               className="flex h-7 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#faee56]/55 bg-[#6b611f] text-[#fff4a3] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_18px_-18px_rgba(250,238,86,0.9)] transition-colors hover:bg-[#7d7228] [&::-webkit-details-marker]:hidden"
               title="Ürün bilgileri"
@@ -846,7 +916,7 @@ const ProductRow = memo(function ProductRow({
             >
               <Info className="h-4 w-4" strokeWidth={3} />
             </summary>
-            <div className="absolute right-0 top-8 z-50 hidden w-56 rounded-xl border border-[#faee56]/35 bg-[#101817]/98 p-2 shadow-[0_24px_44px_-18px_rgba(0,0,0,0.92),0_0_24px_-16px_rgba(250,238,86,0.9)] group-open/details:block">
+            <div className="product-info-popover absolute right-0 top-8 z-50 hidden w-56 rounded-xl border border-[#faee56]/35 bg-[#101817]/98 p-2 shadow-[0_24px_44px_-18px_rgba(0,0,0,0.92),0_0_24px_-16px_rgba(250,238,86,0.9)] group-open/details:block">
               <div className="grid max-w-full min-w-0 grid-cols-2 gap-1.5 text-[9px] font-black leading-tight">
             <button
               type="button"
@@ -888,10 +958,9 @@ const ProductRow = memo(function ProductRow({
             </button>
             <button
               type="button"
-              onClick={() => previousPurchase && onShowPreviousPurchase({ sku: product.sku, name: product.name, previousPurchase })}
-              disabled={!previousPurchase}
+              onClick={() => onShowPreviousPurchase({ sku: product.sku, name: product.name, previousPurchase })}
               className={cn(
-                "relative flex h-7 min-w-0 items-center justify-between gap-1 rounded-lg border border-[var(--brand-border)] bg-[var(--surface-soft)] px-1 text-[var(--foreground)] transition-colors hover:border-[#8bd19f]/60 hover:bg-[#213b31] disabled:cursor-default disabled:opacity-70",
+                "relative flex h-7 min-w-0 items-center justify-between gap-1 rounded-lg border border-[var(--brand-border)] bg-[var(--surface-soft)] px-1 text-[var(--foreground)] transition-colors hover:border-[#8bd19f]/60 hover:bg-[#213b31]",
                 previousPurchase && "border-emerald-300/60 bg-emerald-300/10 shadow-[0_0_18px_-8px_rgba(52,211,153,0.95)]"
               )}
               title="Önceki alım"
@@ -907,7 +976,7 @@ const ProductRow = memo(function ProductRow({
               />
               <span className="truncate text-[8px] uppercase tracking-[0.02em]">Önceki</span>
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--brand-primary)] px-1 text-[9px] text-[var(--primary-foreground)]">
-                {previousPurchase ? 1 : 0}
+                {previousPurchase ? 1 : "?"}
               </span>
             </button>
               </div>
@@ -915,7 +984,15 @@ const ProductRow = memo(function ProductRow({
           </details>
         </div>
 
-        <div role="cell" className="admin-product-actions sticky right-0 z-20 flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] bg-[var(--surface)] px-1 py-0.5 shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] group-hover:bg-[#1d3024]">
+        <div
+          role="cell"
+          className={cn(
+            "admin-product-actions right-0 z-20 flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5 shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] lg:sticky",
+            isCampaignRow
+              ? "bg-[#ffff00] group-hover:bg-[#ffff00]"
+              : "bg-[var(--surface)] group-hover:bg-[#1d3024]"
+          )}
+        >
           <Button
             type="button"
             size="icon"
@@ -944,7 +1021,6 @@ const ProductRow = memo(function ProductRow({
 });
 
 export function ProductsPage({ compact = false }: { compact?: boolean }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchParamsKey = searchParams.toString();
@@ -967,6 +1043,26 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const skipNextDebouncedEmptySearchRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const cartQuantityInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const closeProductInfoOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      document
+        .querySelectorAll<HTMLDetailsElement>("details[data-product-info][open]")
+        .forEach((details) => {
+          if (!details.contains(target)) {
+            details.removeAttribute("open");
+          }
+        });
+    };
+
+    document.addEventListener("pointerdown", closeProductInfoOutside);
+    return () => document.removeEventListener("pointerdown", closeProductInfoOutside);
+  }, []);
 
   useEffect(() => {
     if (!resetFiltersAfterReload) {
@@ -993,11 +1089,68 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const isCustomerUser = useMemo(() => roleSlugs.includes("customer"), [roleSlugs]);
   const featurePermissionSet = useMemo(() => new Set(user?.feature_permissions ?? []), [user?.feature_permissions]);
   const canViewSearchPrices = !isCustomerUser || featurePermissionSet.has("search.prices");
-  const canViewSearchStock = !isCustomerUser || featurePermissionSet.has("search.stock");
+  const canViewCampaigns = !isCustomerUser || featurePermissionSet.has("search.campaigns");
+  // Müşteri panelinde gerçek depo adedi ve raf adresi gösterilmez.
+  // Yetki verilmiş olsa bile müşteri sadece stok durum rozetini görür.
+  const canViewSearchStock = !isCustomerUser;
   const canUseSearchCart = !isCustomerUser || featurePermissionSet.has("search.add_to_cart");
+  const canUseDepotTransferCart =
+    roleSlugs.includes("admin") ||
+    roleSlugs.includes("dealer_admin") ||
+    roleSlugs.includes("warehouse") ||
+    roleSlugs.includes("point") ||
+    featurePermissionSet.has("cart.warehouse_transfer");
+  const branchIdentity = useMemo(() => {
+    const selectedCustomerIdentity = [
+      selectedCustomer?.branch_code,
+      selectedCustomer?.branch_name,
+      selectedCustomer?.region_code,
+      selectedCustomer?.region_name,
+    ].filter(Boolean).join(" ");
+    const followsSelectedCustomerBranch =
+      roleSlugs.includes("admin") ||
+      roleSlugs.includes("moderator") ||
+      roleSlugs.includes("global") ||
+      roleSlugs.includes("accounting");
+
+    if (followsSelectedCustomerBranch && selectedCustomerIdentity !== "") {
+      return selectedCustomerIdentity;
+    }
+
+    const userIdentity = [
+      user?.username,
+      user?.branch_code,
+      user?.branch_name,
+      user?.region_code,
+      user?.region_name,
+    ].filter(Boolean).join(" ");
+    const normalizedUserIdentity = normalizeBranchText(userIdentity);
+    const hasKnownUserBranch = ["batum", "trabzon", "samsun", "erzurum", "erz depo"]
+      .some((branch) => normalizedUserIdentity.includes(branch));
+
+    if (hasKnownUserBranch) {
+      return userIdentity;
+    }
+
+    return selectedCustomerIdentity;
+  },
+    [
+      selectedCustomer?.branch_code,
+      selectedCustomer?.branch_name,
+      selectedCustomer?.region_code,
+      selectedCustomer?.region_name,
+      roleSlugs,
+      user?.branch_code,
+      user?.branch_name,
+      user?.region_code,
+      user?.region_name,
+      user?.username,
+    ]
+  );
+  const isBatumPriceScope = normalizeBranchText(branchIdentity).includes("batum");
   const visibleStockColumns = useMemo(
-    () => visibleBranchStockColumns(featurePermissionSet, roleSlugs, user?.username),
-    [featurePermissionSet, roleSlugs, user?.username]
+    () => (isCustomerUser && !canViewSearchStock ? [] : visibleBranchStockColumns(featurePermissionSet, roleSlugs, user?.username, branchIdentity)),
+    [branchIdentity, canViewSearchStock, featurePermissionSet, isCustomerUser, roleSlugs, user?.username]
   );
   const tableGridStyle = useMemo(
     () => productTableGridStyle(visibleStockColumns.length),
@@ -1023,18 +1176,47 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     campaignKey: string | null;
   } | null>(null);
   const [cartCalculatorOpen, setCartCalculatorOpen] = useState(false);
-  const [cartPricesIncludeVat, setCartPricesIncludeVat] = useState(false);
+  const [cartPricesIncludeVat, setCartPricesIncludeVat] = useState(isBatumPriceScope);
   const [calculatorDisplay, setCalculatorDisplay] = useState("0");
   const [calculatorStored, setCalculatorStored] = useState<number | null>(null);
   const [calculatorOperator, setCalculatorOperator] = useState<CalculatorOperator | null>(null);
   const [calculatorShouldReplace, setCalculatorShouldReplace] = useState(false);
-  const [shouldLoadFilterOptions, setShouldLoadFilterOptions] = useState(() =>
-    Boolean(querySeed.brandId || querySeed.metaFilters.kod2 || querySeed.metaFilters.kod3)
-  );
+  const [shouldLoadFilterOptions, setShouldLoadFilterOptions] = useState(true);
+  const selectedCustomerContextId = selectedCustomer?.id ?? null;
   const competitorCodeRows = useMemo(
     () => normalizeCompetitorCodeRows(competitorCodesPreview?.codes ?? []),
     [competitorCodesPreview],
   );
+  const handleShowPreviousPurchase = useCallback(async (preview: ProductPreviousPurchasePreview) => {
+    if (!selectedCustomerContextId) {
+      toast.error("Önceki alımları görüntülemek için önce bir cari seçiniz.");
+      return;
+    }
+
+    setPreviousPurchasePreview({
+      ...preview,
+      history: null,
+      loading: true,
+    });
+
+    try {
+      const history = await getProductPreviousPurchases(preview.sku, {
+        customer_id: selectedCustomerContextId,
+        limit: 50,
+      });
+
+      setPreviousPurchasePreview({
+        ...preview,
+        history,
+        loading: false,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Önceki alımlar şu anda alınamadı.");
+      setPreviousPurchasePreview((current) => current?.sku === preview.sku
+        ? { ...current, history: null, loading: false }
+        : current);
+    }
+  }, [selectedCustomerContextId]);
 
   useEffect(() => {
     if (compact || !selectedCustomer?.id) {
@@ -1054,13 +1236,34 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
+    if (window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768) {
+      cartQuantityInputRef.current?.blur();
+      return;
+    }
+
     const focusTimer = window.setTimeout(() => {
-      cartQuantityInputRef.current?.focus();
+      cartQuantityInputRef.current?.focus({ preventScroll: true });
       cartQuantityInputRef.current?.select();
     }, 60);
 
     return () => window.clearTimeout(focusTimer);
   }, [cartModalProduct]);
+
+  useEffect(() => {
+    const resetTimer = window.setTimeout(() => {
+      setImagePreview(null);
+      setCompetitorCodesPreview(null);
+      setOemCodePreview(null);
+      setVehicleFitmentsPreview(null);
+      setPreviousPurchasePreview(null);
+      setCartModalProduct(null);
+      setCartDuplicateConfirm(null);
+      setCartCalculatorOpen(false);
+      setCartPricesIncludeVat(isBatumPriceScope);
+    }, 0);
+
+    return () => window.clearTimeout(resetTimer);
+  }, [isBatumPriceScope, selectedCustomerContextId]);
 
   const filterOptionsQuery = useQuery({
     queryKey: ["product-filter-options", "search"],
@@ -1069,8 +1272,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
     retry: 2,
-    staleTime: 30 * 60_000,
-    gcTime: 60 * 60_000,
+    staleTime: 2 * 60 * 60_000,
+    gcTime: 4 * 60 * 60_000,
     enabled: shouldLoadFilterOptions,
   });
 
@@ -1098,6 +1301,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const normalizedSearch = submittedSearchValue.length >= MIN_SEARCH_LENGTH ? submittedSearchValue : "";
   const hasMetaFilters = Boolean(brandId) || Object.values(metaFilters).some(Boolean);
   const shouldFetchProducts = Boolean(normalizedSearch || hasMetaFilters || showAllProducts || sort !== "recommended");
+  const productPageLimit = showAllProducts && !normalizedSearch && !hasMetaFilters ? SHOW_ALL_PAGE_LIMIT : PAGE_LIMIT;
 
   useEffect(() => {
     const previousQuerySearch = previousQuerySearchRef.current;
@@ -1147,12 +1351,14 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
-    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
-  }, [brandId, metaFilters, normalizedSearch, pathname, resetFiltersAfterReload, router, showAllProducts, sort]);
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, [brandId, metaFilters, normalizedSearch, pathname, resetFiltersAfterReload, showAllProducts, sort]);
 
   const productsQuery = useInfiniteQuery({
     queryKey: [
       "products",
+      selectedCustomerContextId,
       {
         q: normalizedSearch,
         showAllProducts,
@@ -1168,10 +1374,11 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
         {
           q: normalizedSearch || undefined,
           sort: sort === "recommended" ? undefined : sort,
-          limit: PAGE_LIMIT,
+          limit: productPageLimit,
           cursor: sort === "recommended" ? pageParam.cursor ?? undefined : undefined,
           page: sort === "recommended" ? undefined : pageParam.page,
           include_equivalents: showAllProducts,
+          customer_id: selectedCustomerContextId ?? undefined,
           brand_id: brandId ?? undefined,
           kod2: metaFilters.kod2 || undefined,
           kod3: metaFilters.kod3 || undefined,
@@ -1191,43 +1398,13 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       return lastPage.next_cursor ? { cursor: null, page: allPages.length + 1 } : undefined;
     },
     refetchOnMount: false,
-    refetchOnReconnect: true,
-    refetchOnWindowFocus: true,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
     retry: 0,
-    staleTime: 2_000,
+    staleTime: 60_000,
     gcTime: 15 * 60_000,
-    refetchInterval: shouldFetchProducts ? 5_000 : false,
-    refetchIntervalInBackground: false,
     enabled: shouldFetchProducts,
-    placeholderData: (previousData) => previousData,
   });
-
-  const campaignProgressQuery = useQuery({
-    queryKey: ["campaignProgress", selectedCustomer?.id],
-    queryFn: async () => {
-      if (!selectedCustomer?.id) return { data: [] };
-      return fetchCampaignProgress(selectedCustomer.id);
-    },
-    enabled: Boolean(selectedCustomer?.id),
-    staleTime: 60_000, // 1 dakika
-  });
-
-  const campaignSkuMap = useMemo(() => {
-    const map = new Map<string, { id: number; name: string }[]>();
-    const allCampaigns = campaignProgressQuery.data?.data || [];
-    
-    for (const campaign of allCampaigns) {
-      for (const sku of campaign.product_skus || []) {
-        if (!sku) continue;
-        
-        const existing = map.get(sku) || [];
-        existing.push({ id: campaign.campaign_id, name: campaign.name });
-        map.set(sku, existing);
-      }
-    }
-    
-    return map;
-  }, [campaignProgressQuery.data]);
 
   const products = useMemo(() => {
     if (!shouldFetchProducts) {
@@ -1325,7 +1502,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
         }
       },
       {
-        root: productListScrollRef.current,
+        root: null,
         rootMargin: "360px 0px",
         threshold: 0,
       },
@@ -1345,10 +1522,10 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
   const cartModalCurrentQty = cartModalProduct ? (qtyByProductId.get(cartModalProduct.id) ?? 0) : 0;
   const cartModalHasPrice = Boolean(cartModalProduct?.list_price ?? cartModalProduct?.net_price);
   const cartModalHasStock = (cartModalProduct?.available_total ?? 0) > 0;
-  const cartModalCanSubmit = Boolean(cartModalProduct && selectedCustomer && cartModalHasPrice && !mutating);
+  const cartModalCanSubmit = Boolean(cartModalProduct && (selectedCustomer || canUseDepotTransferCart) && cartModalHasPrice && !mutating);
   const cartModalCampaigns = useMemo(
-    () => cartModalProduct?.campaigns ?? [],
-    [cartModalProduct?.campaigns]
+    () => canViewCampaigns ? (cartModalProduct?.campaigns ?? []) : [],
+    [canViewCampaigns, cartModalProduct?.campaigns]
   );
   const cartModalApplicableCampaign = useMemo(() => {
     const quantity = Math.max(1, Number(cartModalQuantity) || 1);
@@ -1392,10 +1569,23 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     setCalculatorOperator(null);
     setCalculatorShouldReplace(false);
   }, []);
+  const prepareSearchInputForNextProduct = useCallback(() => {
+    setSearch("");
+    setSubmittedSearch("");
+
+    window.setTimeout(() => {
+      if (window.matchMedia("(max-width: 767px)").matches) {
+        return;
+      }
+
+      searchInputRef.current?.focus({ preventScroll: true });
+      searchInputRef.current?.select();
+    }, 0);
+  }, [setSearch, setSubmittedSearch]);
 
   const handleSetQuantity = useCallback(
     (product: ProductSearchItem, nextQty: number, campaignKey?: string | null, mode: "added" | "updated" = "added") => {
-      if (!selectedCustomer) {
+      if (!selectedCustomer && !canUseDepotTransferCart) {
         return;
       }
 
@@ -1407,16 +1597,16 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
         });
       });
     },
-    [selectedCustomer, upsertQuantity]
+    [canUseDepotTransferCart, selectedCustomer, upsertQuantity]
   );
 
   const handleOpenCartModal = useCallback((product: ProductSearchItem, currentQty: number) => {
     setCartModalProduct(product);
     setCartModalQuantity(currentQty || "");
     setCartCalculatorOpen(false);
-    setCartPricesIncludeVat(false);
+    setCartPricesIncludeVat(isBatumPriceScope);
     resetCalculator();
-  }, [resetCalculator]);
+  }, [isBatumPriceScope, resetCalculator]);
 
   const handleCartModalQuantityChange = useCallback(
     (nextQty: number | string) => {
@@ -1435,7 +1625,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     if (!cartModalProduct) {
       return;
     }
-    if (!selectedCustomer || !cartModalHasPrice) {
+    if ((!selectedCustomer && !canUseDepotTransferCart) || !cartModalHasPrice) {
       return;
     }
 
@@ -1453,8 +1643,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     handleSetQuantity(cartModalProduct, quantity, campaignKey, "added");
     setCartModalProduct(null);
     setCartCalculatorOpen(false);
-    setSearch("");
-    setSubmittedSearch("");
+    prepareSearchInputForNextProduct();
   }, [
     cartData?.items,
     cartModalApplicableCampaign?.campaign.key,
@@ -1462,9 +1651,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     cartModalProduct,
     cartModalQuantity,
     handleSetQuantity,
+    prepareSearchInputForNextProduct,
+    canUseDepotTransferCart,
     selectedCustomer,
-    setSearch,
-    setSubmittedSearch,
   ]);
 
   const handleCalculatorDigit = useCallback((digit: string) => {
@@ -1609,11 +1798,93 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     setBrandId(nextBrandId);
   }, []);
 
+  const filterControls = (
+    <div className="product-filter-grid grid gap-1.5 rounded-lg border border-[var(--brand-border)] bg-[color-mix(in_oklab,var(--surface)_72%,transparent)] p-1.5 lg:grid-cols-4">
+      <div className="space-y-0.5">
+        <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Sıralama</span>
+        <Select
+          value={sort}
+          onValueChange={(value) => {
+            setSort(parseSort(value));
+          }}
+        >
+          <SelectTrigger className={PRODUCT_FILTER_TRIGGER_CLASS}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className={PRODUCT_FILTER_CONTENT_CLASS}>
+            {PRODUCT_SORT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value} className={PRODUCT_FILTER_ITEM_CLASS}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-0.5">
+        <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Marka</span>
+        <Select
+          value={brandId ? String(brandId) : ALL_FILTER_VALUE}
+          onValueChange={handleBrandFilterChange}
+          onOpenChange={handleFilterOptionsOpenChange}
+        >
+          <SelectTrigger className={PRODUCT_FILTER_TRIGGER_CLASS}>
+            <SelectValue placeholder="Hepsi" />
+          </SelectTrigger>
+          <SelectContent className={PRODUCT_FILTER_CONTENT_CLASS}>
+            <SelectItem value={ALL_FILTER_VALUE} className={PRODUCT_FILTER_ITEM_CLASS}>Hepsi</SelectItem>
+            {filterOptionsQuery.isLoading && !filterOptionsQuery.data ? (
+              <SelectItem value="__loading_brands" className={PRODUCT_FILTER_ITEM_CLASS} disabled>
+                Yükleniyor...
+              </SelectItem>
+            ) : null}
+            {(filterOptionsQuery.data?.brands ?? []).map((brand) => (
+              <SelectItem key={`brand-${brand.id}`} value={String(brand.id)} className={PRODUCT_FILTER_ITEM_CLASS}>
+                {brand.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {[
+        { key: "kod2" as const, label: "Ürün Detayı 1", options: filterOptionsQuery.data?.meta.kod2 ?? [] },
+        { key: "kod3" as const, label: "Ürün Detayı 2", options: filterOptionsQuery.data?.meta.kod3 ?? [] },
+      ].map((filter) => (
+        <div key={filter.key} className="space-y-0.5">
+          <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">{filter.label}</span>
+          <Select
+            value={metaFilters[filter.key] || ALL_FILTER_VALUE}
+            onValueChange={(value) => handleMetaFilterChange(filter.key, value)}
+            onOpenChange={handleFilterOptionsOpenChange}
+          >
+            <SelectTrigger className={PRODUCT_FILTER_TRIGGER_CLASS}>
+              <SelectValue placeholder="Hepsi" />
+            </SelectTrigger>
+            <SelectContent className={PRODUCT_FILTER_CONTENT_CLASS}>
+              <SelectItem value={ALL_FILTER_VALUE} className={PRODUCT_FILTER_ITEM_CLASS}>Hepsi</SelectItem>
+              {filterOptionsQuery.isLoading && !filterOptionsQuery.data ? (
+                <SelectItem value={`__loading_${filter.key}`} className={PRODUCT_FILTER_ITEM_CLASS} disabled>
+                  Yükleniyor...
+                </SelectItem>
+              ) : null}
+              {filter.options.map((option) => (
+                <SelectItem key={`${filter.key}-${option}`} value={option} className={PRODUCT_FILTER_ITEM_CLASS}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="admin-catalog-page space-y-2">
+    <div className="admin-catalog-page min-w-0 space-y-2">
       <Card className="admin-catalog-list dashboard-panel-card min-h-[560px]">
         <CardHeader className="space-y-2 pb-2">
-          <div className="grid gap-2 lg:grid-cols-[minmax(260px,1fr)_120px_112px_148px]">
+          <div className="product-search-actions grid gap-2 lg:grid-cols-[minmax(260px,1fr)_120px_112px_148px]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[var(--muted-foreground)]" />
               <Input
@@ -1663,93 +1934,25 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                 showAllProducts ? "admin-primary-action" : "admin-dashboard-ghost"
               )}
             >
-              {showAllProducts ? "E + H Ürünler" : "Tüm Ürünler"}
+              {showAllProducts ? "Sadece E Göster" : "E + H Göster"}
             </Button>
           </div>
 
-          <div className="grid gap-1.5 rounded-lg border border-[var(--brand-border)] bg-[color-mix(in_oklab,var(--surface)_72%,transparent)] p-1.5 lg:grid-cols-4">
-            <div className="space-y-0.5">
-              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Sıralama</span>
-              <Select
-                value={sort}
-                onValueChange={(value) => {
-                  setSort(parseSort(value));
-                }}
-              >
-                <SelectTrigger className={PRODUCT_FILTER_TRIGGER_CLASS}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className={PRODUCT_FILTER_CONTENT_CLASS}>
-                  {PRODUCT_SORT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value} className={PRODUCT_FILTER_ITEM_CLASS}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Marka</span>
-              <Select
-                value={brandId ? String(brandId) : ALL_FILTER_VALUE}
-                onValueChange={handleBrandFilterChange}
-                onOpenChange={handleFilterOptionsOpenChange}
-              >
-                <SelectTrigger className={PRODUCT_FILTER_TRIGGER_CLASS}>
-                  <SelectValue placeholder="Hepsi" />
-                </SelectTrigger>
-                <SelectContent className={PRODUCT_FILTER_CONTENT_CLASS}>
-                  <SelectItem value={ALL_FILTER_VALUE} className={PRODUCT_FILTER_ITEM_CLASS}>Hepsi</SelectItem>
-                  {filterOptionsQuery.isLoading && !filterOptionsQuery.data ? (
-                    <SelectItem value="__loading_brands" className={PRODUCT_FILTER_ITEM_CLASS} disabled>
-                      Yükleniyor...
-                    </SelectItem>
-                  ) : null}
-                  {(filterOptionsQuery.data?.brands ?? []).map((brand) => (
-                    <SelectItem key={`brand-${brand.id}`} value={String(brand.id)} className={PRODUCT_FILTER_ITEM_CLASS}>
-                      {brand.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {[
-              { key: "kod2" as const, label: "Ürün Detayı 1", options: filterOptionsQuery.data?.meta.kod2 ?? [] },
-              { key: "kod3" as const, label: "Ürün Detayı 2", options: filterOptionsQuery.data?.meta.kod3 ?? [] },
-            ].map((filter) => (
-              <div key={filter.key} className="space-y-0.5">
-                <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">{filter.label}</span>
-                <Select
-                  value={metaFilters[filter.key] || ALL_FILTER_VALUE}
-                  onValueChange={(value) => handleMetaFilterChange(filter.key, value)}
-                  onOpenChange={handleFilterOptionsOpenChange}
-                >
-                  <SelectTrigger className={PRODUCT_FILTER_TRIGGER_CLASS}>
-                    <SelectValue placeholder="Hepsi" />
-                  </SelectTrigger>
-                  <SelectContent className={PRODUCT_FILTER_CONTENT_CLASS}>
-                    <SelectItem value={ALL_FILTER_VALUE} className={PRODUCT_FILTER_ITEM_CLASS}>Hepsi</SelectItem>
-                    {filterOptionsQuery.isLoading && !filterOptionsQuery.data ? (
-                      <SelectItem value={`__loading_${filter.key}`} className={PRODUCT_FILTER_ITEM_CLASS} disabled>
-                        Yükleniyor...
-                      </SelectItem>
-                    ) : null}
-                    {filter.options.map((option) => (
-                      <SelectItem key={`${filter.key}-${option}`} value={option} className={PRODUCT_FILTER_ITEM_CLASS}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
-          </div>
+          <div className="product-filter-desktop hidden lg:block">{filterControls}</div>
+          <details className="product-filter-mobile rounded-lg border border-[var(--brand-border)] bg-[var(--surface)] lg:hidden" open={hasMetaFilters}>
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-[var(--brand-primary-strong)] [&::-webkit-details-marker]:hidden">
+              <SlidersHorizontal className="h-4 w-4 text-[var(--brand-primary)]" />
+              Filtreler
+              <span className="ml-auto rounded-full bg-[var(--brand-primary-soft)] px-2 py-1 text-[10px] text-[var(--brand-primary-strong)]">
+                {hasMetaFilters ? "Aktif" : "Kapalı"}
+              </span>
+            </summary>
+            <div className="border-t border-[var(--brand-border)] p-2">{filterControls}</div>
+          </details>
         </CardHeader>
 
         <CardContent>
-          {!selectedCustomer ? (
+          {!selectedCustomer && !canUseDepotTransferCart ? (
             <p className="mb-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-100">
               Sepete ürün eklemek için önce müşteri seçin.
             </p>
@@ -1813,14 +2016,14 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                 ref={productListScrollRef}
                 role="table"
                 aria-label="Ürün listesi"
-                className="max-h-[calc(100dvh-205px)] min-h-[340px] overflow-auto rounded-[18px] bg-[var(--surface)] px-1.5 pb-2 pt-2 shadow-[0_24px_42px_-36px_rgba(0,0,0,0.7)] overscroll-contain [scrollbar-color:#8aa0b0_#122022] [scrollbar-width:thin] md:max-h-[calc(100dvh-230px)]"
+                className="product-results-scroll max-h-none min-h-[340px] max-w-full overflow-x-auto overflow-y-visible rounded-[18px] bg-[var(--surface)] px-1.5 pb-2 pt-2 shadow-[0_24px_42px_-36px_rgba(0,0,0,0.7)] [scrollbar-color:#8aa0b0_#122022] [scrollbar-width:thin] lg:max-h-[calc(100dvh-230px)] lg:overflow-auto lg:overscroll-contain"
               >
                 <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)]">
                   <div
                     role="row"
                     className={cn(
                       PRODUCT_TABLE_GRID,
-                      "sticky top-0 z-30 border border-emerald-300/35 bg-[radial-gradient(circle_at_8%_16%,rgba(34,197,94,0.42)_0%,transparent_34%),linear-gradient(135deg,rgba(15,118,54,0.96)_0%,rgba(3,48,31,0.98)_100%)] text-[9px] font-black uppercase tracking-[0.08em] text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(34,197,94,0.12),0_16px_34px_-30px_rgba(34,197,94,0.84)]"
+                      "z-30 border border-emerald-300/35 bg-[radial-gradient(circle_at_8%_16%,rgba(34,197,94,0.42)_0%,transparent_34%),linear-gradient(135deg,rgba(15,118,54,0.96)_0%,rgba(3,48,31,0.98)_100%)] text-[9px] font-black uppercase tracking-[0.08em] text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(34,197,94,0.12),0_16px_34px_-30px_rgba(34,197,94,0.84)] lg:sticky lg:top-0"
                     )}
                     style={tableGridStyle}
                   >
@@ -1836,7 +2039,11 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                       className="grid items-stretch border-l border-white/10 drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]"
                       style={{ gridTemplateColumns: `repeat(${Math.max(visibleStockColumns.length, 1)}, minmax(0, 1fr))` }}
                     >
-                      {visibleStockColumns.length > 0 ? visibleStockColumns.map((branch) => (
+                      {!canViewSearchStock ? (
+                        <span className="flex min-w-0 items-center justify-center whitespace-nowrap px-1 py-2 text-center text-[7px] tracking-[0.02em]">
+                          Stok Durumu
+                        </span>
+                      ) : visibleStockColumns.length > 0 ? visibleStockColumns.map((branch) => (
                         <span
                           key={`stock-head-${branch.key}`}
                           className="flex min-w-0 items-center justify-center whitespace-nowrap border-l border-white/10 px-1 py-2 text-center text-[7px] tracking-[0.02em] first:border-l-0"
@@ -1850,14 +2057,15 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                       )}
                     </span>
 	                    <span role="columnheader" className="flex items-center justify-center border-l border-white/10 px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Bilgi</span>
-		                    <span role="columnheader" className="sticky right-0 z-30 flex items-center justify-center border-l border-white/10 bg-[linear-gradient(135deg,rgba(10,96,54,0.98)_0%,rgba(3,48,31,1)_100%)] px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)] shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)]">Sepet</span>
+		                    <span role="columnheader" className="right-0 z-30 flex items-center justify-center border-l border-white/10 bg-[linear-gradient(135deg,rgba(10,96,54,0.98)_0%,rgba(3,48,31,1)_100%)] px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)] shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] lg:sticky">Sepet</span>
                   </div>
                 </div>
                 <div className={cn("rounded-xl border border-t-0 border-[var(--brand-border)]", compact ? "min-h-[360px]" : "min-h-[520px]")}>
                   {products.map((product) => {
                     const qty = qtyByProductId.get(product.id) ?? 0;
-                    const productCampaigns = campaignSkuMap.get(product.sku);
-                    const campaignNames = productCampaigns?.map((c) => c.name);
+                    const campaignNames = canViewCampaigns
+                      ? (product.campaigns ?? []).map((campaign) => campaign.name)
+                      : [];
 
                     return (
                       <ProductRow
@@ -1866,8 +2074,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         qty={qty}
                         cartDistinctLineCount={cartDistinctLineCount}
                         mutating={mutating}
-                        canAdd={Boolean(selectedCustomer) && canUseSearchCart}
+                        canAdd={(Boolean(selectedCustomer) || canUseDepotTransferCart) && canUseSearchCart}
                         canViewPrices={canViewSearchPrices}
+                        pricesIncludeVat={isBatumPriceScope}
                         canViewStock={canViewSearchStock}
                         visibleStockColumns={visibleStockColumns}
                         showRetailPriceHint={isPointPanel}
@@ -1878,7 +2087,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                        onShowCompetitorCodes={setCompetitorCodesPreview}
 	                        onShowOemCode={setOemCodePreview}
 	                        onShowVehicleFitments={setVehicleFitmentsPreview}
-	                        onShowPreviousPurchase={setPreviousPurchasePreview}
+	                        onShowPreviousPurchase={handleShowPreviousPurchase}
                       />
                     );
                   })}
@@ -1938,12 +2147,12 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
           }
         }}
       >
-        <DialogContent className="z-[60] flex max-h-[calc(100dvh-16px)] max-w-[min(1080px,calc(100vw-16px))] flex-col overflow-hidden rounded-[30px] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(213,205,42,0.1)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_55%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)] sm:max-h-[calc(100dvh-32px)]">
-	          <DialogHeader className="mb-0 shrink-0 border-b border-white/10 px-5 py-4">
+        <DialogContent className="product-cart-dialog z-[60] flex max-h-[calc(100dvh-12px)] max-w-[min(760px,calc(100vw-16px))] flex-col overflow-hidden rounded-[20px] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(213,205,42,0.1)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_55%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)] sm:max-h-[calc(100dvh-32px)] sm:rounded-[26px]">
+	          <DialogHeader className="mb-0 shrink-0 border-b border-white/10 px-3 py-3 sm:px-5 sm:py-4">
 	            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
 	              <div className="min-w-0">
-	                <DialogTitle className="flex items-center gap-3 text-2xl font-black text-white">
-	                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-300">
+	                <DialogTitle className="flex items-center gap-2 text-lg font-black text-white sm:gap-3 sm:text-2xl">
+	                  <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-300 sm:h-11 sm:w-11 sm:rounded-2xl">
 	                    <ShoppingCart className="h-5 w-5" strokeWidth={3} />
 	                  </span>
 	                  Sepete Ekle
@@ -1952,55 +2161,75 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                  Ürün miktarını seçin
 	                </DialogDescription>
 	                {cartModalProduct ? (
-	                  <div className="mt-3 flex w-fit max-w-full min-w-0 flex-nowrap items-center gap-3 overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-	                    <p className="shrink-0 whitespace-nowrap text-2xl font-black leading-none tracking-[0.02em] text-[#f8f3a1] drop-shadow-[0_6px_14px_rgba(0,0,0,0.42)]">
+	                  <div className="product-cart-modal-heading mt-2 flex w-full max-w-full min-w-0 flex-wrap items-center gap-2 overflow-hidden rounded-[14px] border border-white/10 bg-white/[0.035] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:mt-3 sm:gap-2.5 sm:rounded-[20px] sm:px-4 sm:py-2.5">
+	                    <p className="shrink-0 whitespace-nowrap text-lg font-black leading-none tracking-[0.02em] text-[#f8f3a1] drop-shadow-[0_6px_14px_rgba(0,0,0,0.42)] sm:text-xl">
 	                      {cartModalProduct.sku}
 	                    </p>
-	                    <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-100">
+	                    <span className="max-w-[9rem] shrink-0 truncate rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-100">
 	                      {cartModalProduct.brand.name ?? "Marka Yok"}
 	                    </span>
-	                    <span className="min-w-0 max-w-[min(620px,54vw)] shrink truncate whitespace-nowrap text-sm font-extrabold leading-none text-slate-300 sm:text-base" title={cartModalProduct.name}>
+	                    <span className="product-cart-modal-name min-w-[12rem] flex-1 truncate text-sm font-extrabold leading-tight text-slate-300 sm:text-[15px]" title={cartModalProduct.name}>
 	                      {cartModalProduct.name}
 	                    </span>
 	                  </div>
 	                ) : null}
 	              </div>
-	              <div className="flex flex-wrap items-center gap-2 md:justify-end">
-	                <Button
-	                  type="button"
-	                  variant="outline"
-	                  className="h-10 rounded-xl border-[#d8cf42]/25 bg-[#d8cf42]/10 px-3 text-xs font-black uppercase tracking-[0.08em] text-[#f8f3a1] hover:bg-[#d8cf42]/16 hover:text-white"
-	                  onClick={() => setCartCalculatorOpen((open) => !open)}
-	                >
-	                  <Calculator className="h-4 w-4" />
-	                  Hesap Makinesi
-	                </Button>
-	                <Button
-	                  type="button"
-	                  variant="outline"
-	                  className={cn(
-	                    "h-10 rounded-xl px-3 text-xs font-black uppercase tracking-[0.08em]",
-	                    cartPricesIncludeVat
-	                      ? "border-red-200/35 bg-red-500/16 text-red-100 hover:bg-red-500/22 hover:text-white"
-	                      : "border-white/12 bg-white/[0.045] text-slate-200 hover:bg-white/[0.08] hover:text-white"
+	              <div className="flex flex-col gap-2 md:items-end">
+	                <div className="flex flex-wrap items-center gap-2 md:justify-end">
+	                  <Button
+	                    type="button"
+	                    variant="outline"
+	                    className="h-10 rounded-xl border-[#d8cf42]/25 bg-[#d8cf42]/10 px-3 text-xs font-black uppercase tracking-[0.08em] text-[#f8f3a1] hover:bg-[#d8cf42]/16 hover:text-white"
+	                    onClick={() => {
+	                      setCartCalculatorOpen((open) => {
+	                        const nextOpen = !open;
+	                        if (nextOpen) {
+	                          window.setTimeout(() => {
+	                            document
+	                              .getElementById("product-cart-calculator")
+	                              ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+	                          }, 0);
+	                        }
+	                        return nextOpen;
+	                      });
+	                    }}
+	                  >
+	                    <Calculator className="h-4 w-4" />
+	                    Hesap Makinesi
+	                  </Button>
+	                  {isBatumPriceScope ? (
+	                    <span className="inline-flex h-10 items-center rounded-xl border border-emerald-300/35 bg-emerald-400/12 px-3 text-xs font-black uppercase tracking-[0.08em] text-emerald-100">
+	                      KDV Dahil
+	                    </span>
+	                  ) : (
+	                  <Button
+	                    type="button"
+	                    variant="outline"
+	                    className={cn(
+	                      "h-10 rounded-xl px-3 text-xs font-black uppercase tracking-[0.08em]",
+	                      cartPricesIncludeVat
+	                        ? "border-red-200/35 bg-red-500/16 text-red-100 hover:bg-red-500/22 hover:text-white"
+	                        : "border-white/12 bg-white/[0.045] text-slate-200 hover:bg-white/[0.08] hover:text-white"
+	                    )}
+	                    onClick={() => setCartPricesIncludeVat((includeVat) => !includeVat)}
+	                  >
+	                    {cartPricesIncludeVat ? "Kdv Hariç Göster" : "Kdv Dahil Göster"}
+	                  </Button>
 	                  )}
-	                  onClick={() => setCartPricesIncludeVat((includeVat) => !includeVat)}
-	                >
-		                  {cartPricesIncludeVat ? "Kdv Hariç Göster" : "Kdv Dahil Göster"}
-	                </Button>
+	                </div>
 	              </div>
 	            </div>
 	          </DialogHeader>
 
           {cartModalProduct ? (
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
-              <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
-                <div className="rounded-2xl border border-[#d8cf42]/25 bg-[#d8cf42]/[0.10] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-	                  <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4">
+              <div className="grid gap-3 lg:grid-cols-[190px_minmax(0,1fr)]">
+                <div className="grid content-center rounded-2xl border border-[#d8cf42]/25 bg-[#d8cf42]/[0.10] p-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+	                  <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
 	                    Satış Fiyatı
 	                  </span>
-	                  <strong className="mt-2 block text-2xl font-black text-[#f8f3a1]">
-	                    {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.list_price ?? cartModalProduct.net_price, cartPricesIncludeVat))}
+	                  <strong className="mt-1 block text-2xl font-black text-[#f8f3a1]">
+	                    {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.net_price, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined))}{isBatumPriceScope ? " GEL" : ""}
 	                  </strong>
 	                </div>
                 <div className="flex min-h-[116px] flex-wrap gap-2">
@@ -2010,13 +2239,13 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         Özel İskonto
                       </span>
                       <strong className="mt-1 block text-xl font-black text-emerald-100">
-                        {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.special_discounted_price, cartPricesIncludeVat))}
+                        {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.special_discounted_price, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined))}{isBatumPriceScope ? " GEL" : ""}
                       </strong>
                     </div>
                   ) : null}
                   {cartModalCampaigns.flatMap((campaign) =>
                     campaign.tiers.map((tier) => {
-                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, cartPricesIncludeVat);
+                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined);
                       const active =
                         cartModalApplicableCampaign?.campaign.key === campaign.key &&
                         cartModalApplicableCampaign.tier.min_quantity === tier.min_quantity;
@@ -2025,20 +2254,18 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         <div
                           key={`${campaign.key}-${tier.min_quantity}-${tier.unit_price}`}
                           className={cn(
-                            "min-w-[180px] flex-1 rounded-2xl border p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-                            active
-                              ? "border-amber-200/45 bg-amber-200/16 text-amber-50"
-                              : "border-[#d8cf42]/20 bg-[#d8cf42]/[0.075] text-[#f8f3a1]"
+                            "grid min-w-[180px] flex-1 content-center rounded-2xl border border-[#bda800] bg-[#ffff00] p-3 text-center text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]",
+                            active && "ring-2 ring-emerald-600 ring-offset-2 ring-offset-[#06130f]"
                           )}
                         >
-                          <span className="block truncate text-[10px] font-black uppercase tracking-[0.12em] text-amber-100/75">
-                            {campaign.name}
-                          </span>
-                          <strong className="mt-1 block text-lg font-black text-emerald-100">
-                            {stripPriceCurrency(tierPrice.unit)}
-                          </strong>
-                          <span className="mt-1 block text-[11px] font-extrabold text-slate-300">
+                          <span className="block text-[13px] font-black uppercase tracking-[0.08em] text-slate-800">
                             {tier.min_quantity > 1 ? `${tier.min_quantity}+ adet` : "Tekli"}
+                          </span>
+                          <strong className="mt-1.5 block text-xl font-black leading-none text-slate-950">
+                            {stripPriceCurrency(tierPrice.unit)}{isBatumPriceScope ? " GEL" : ""}
+                          </strong>
+                          <span className="mt-2 block text-[10px] font-black uppercase tracking-[0.08em] text-slate-700">
+                            {cartPricesIncludeVat ? "KDV Dahil" : "KDV Hariç"}
                           </span>
                         </div>
                       );
@@ -2061,12 +2288,12 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                </p>
 	              ) : null}
 
-	              <div className="mt-4 rounded-[18px] border border-emerald-300/15 bg-emerald-300/[0.045] p-3">
-                <div className="flex flex-wrap items-center justify-center gap-3">
+	              <div className="mt-3 rounded-[16px] border border-emerald-300/15 bg-emerald-300/[0.045] p-2.5 sm:mt-4 sm:rounded-[18px] sm:p-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_minmax(9rem,12rem)_minmax(8rem,9rem)_auto] sm:items-center">
                   <label className="shrink-0 text-[12px] font-black uppercase tracking-[0.16em] text-slate-400">
                     Miktar
                   </label>
-                  <div className="w-full max-w-[300px]">
+                  <div className="w-full">
 	                  <Input
                     ref={cartQuantityInputRef}
                     type="text"
@@ -2079,12 +2306,45 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         handleConfirmCartQuantity();
                       }
                     }}
-                    className="h-12 rounded-2xl border-emerald-300/25 bg-slate-950/55 text-center text-2xl font-black text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] [appearance:textfield] focus-visible:ring-2 focus-visible:ring-emerald-300/55 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="h-12 rounded-2xl border-emerald-300/25 bg-slate-950/55 px-4 text-left text-xl font-black text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] [appearance:textfield] focus-visible:ring-2 focus-visible:ring-emerald-300/55 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
+                  </div>
+                  <div className="product-cart-modal-stock-stack">
+                    <span>
+                      <em>Stok</em>
+                      <strong>{cartModalProduct.available_total.toLocaleString("tr-TR")}</strong>
+                    </span>
+                    <span>
+                      <em>Koli</em>
+                      <strong>{formatPackageQuantity(cartModalProduct.package_quantity)}</strong>
+                    </span>
+                    <span>
+                      <em>Raf</em>
+                      <strong>{productShelfAddress(cartModalProduct)}</strong>
+                    </span>
+                  </div>
+                  <div className="flex flex-row flex-nowrap gap-2 sm:justify-self-end sm:gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 rounded-xl border-white/10 bg-white/[0.04] px-4 text-sm font-extrabold text-slate-200 hover:bg-white/[0.08] hover:text-white sm:h-12 sm:rounded-2xl sm:px-6"
+                      onClick={() => setCartModalProduct(null)}
+                    >
+                      Vazgeç
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-11 rounded-xl border border-red-200/45 bg-gradient-to-b from-[#ff4a43] via-[#d71920] to-[#8d070d] px-4 text-sm font-black text-white shadow-[0_3px_0_#8a070d,0_14px_24px_-18px_rgba(255,35,35,0.92),inset_0_1px_0_rgba(255,255,255,0.48)] hover:from-[#ff625b] hover:via-[#e51f26] hover:to-[#9b080e] sm:h-12 sm:rounded-2xl sm:px-7 sm:text-base"
+                      disabled={!cartModalCanSubmit}
+                      onClick={handleConfirmCartQuantity}
+                    >
+                      {mutating ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShoppingCart className="h-5 w-5" />}
+                      {cartModalCurrentQty > 0 ? "Güncelle" : "Sepete Ekle"}
+                    </Button>
                   </div>
                 </div>
                 {cartCalculatorOpen ? (
-                  <div className="mt-4 rounded-[20px] border border-[#d8cf42]/20 bg-slate-950/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                  <div id="product-cart-calculator" className="mt-4 scroll-mt-3 rounded-[20px] border border-[#d8cf42]/20 bg-slate-950/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                     <Input
                       aria-label="Hesap makinesi değeri"
                       inputMode="decimal"
@@ -2152,45 +2412,6 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
             </div>
           ) : null}
 
-          <DialogFooter className="mt-0 shrink-0 flex-col gap-3 border-t border-white/10 bg-black/12 px-5 py-4">
-            <div className="grid w-full min-w-0 grid-cols-4 gap-2">
-              <span className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-300/18 bg-emerald-300/10 px-2 text-xs font-black text-emerald-100">
-                <span>Stok</span>
-                <strong className="min-w-0 truncate text-base text-emerald-300">{cartModalProduct?.available_total.toLocaleString("tr-TR") ?? "-"}</strong>
-              </span>
-              <span className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-sky-200/18 bg-sky-200/10 px-2 text-xs font-black text-sky-100">
-                <span className="truncate">Açık Sepetler</span>
-                <strong className="shrink-0 text-base text-sky-200">{(cartModalProduct?.open_cart_quantity ?? 0).toLocaleString("tr-TR")}</strong>
-              </span>
-              <span className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#d8cf42]/18 bg-[#d8cf42]/10 px-2 text-xs font-black text-[#f8f3a1]">
-                <span>Koli İçi</span>
-                <strong className="shrink-0 text-base text-white">{formatPackageQuantity(cartModalProduct?.package_quantity)}</strong>
-              </span>
-              <span className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-cyan-200/18 bg-cyan-200/10 px-2 text-xs font-black text-cyan-100">
-                <span className="shrink-0">Raf Adresi</span>
-                <strong className="min-w-0 truncate text-base text-white">{cartModalProduct ? productShelfAddress(cartModalProduct) : "-"}</strong>
-              </span>
-            </div>
-            <div className="flex w-full flex-col-reverse justify-end gap-3 sm:flex-row">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-[52px] rounded-2xl border-white/10 bg-white/[0.04] px-6 font-extrabold text-slate-200 hover:bg-white/[0.08] hover:text-white"
-                onClick={() => setCartModalProduct(null)}
-              >
-                Vazgeç
-              </Button>
-              <Button
-                type="button"
-                className="h-[52px] rounded-2xl border border-red-200/45 bg-gradient-to-b from-[#ff4a43] via-[#d71920] to-[#8d070d] px-7 text-base font-black text-white shadow-[0_3px_0_#8a070d,0_14px_24px_-18px_rgba(255,35,35,0.92),inset_0_1px_0_rgba(255,255,255,0.48)] hover:from-[#ff625b] hover:via-[#e51f26] hover:to-[#9b080e]"
-	                disabled={!cartModalCanSubmit}
-                onClick={handleConfirmCartQuantity}
-              >
-                {mutating ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShoppingCart className="h-5 w-5" />}
-                {cartModalCurrentQty > 0 ? "Güncelle" : "Sepete Ekle"}
-              </Button>
-            </div>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2262,8 +2483,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                   "updated"
                 );
                 setCartDuplicateConfirm(null);
-                setSearch("");
-                setSubmittedSearch("");
+                prepareSearchInputForNextProduct();
               }}
             >
               Evet, Güncelle
@@ -2413,9 +2633,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
         open={Boolean(previousPurchasePreview)}
         onOpenChange={(open) => !open && setPreviousPurchasePreview(null)}
       >
-        <DialogContent className="max-w-2xl border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(52,211,153,0.12)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_58%,rgba(10,30,23,0.98)_100%)] text-slate-100">
+        <DialogContent className="max-w-5xl border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(52,211,153,0.12)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_58%,rgba(10,30,23,0.98)_100%)] text-slate-100">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black text-white">Son Alış Hareketi</DialogTitle>
+            <DialogTitle className="text-2xl font-black text-white">Önceki Alımlar</DialogTitle>
             <DialogDescription className="font-bold text-slate-400">
               {previousPurchasePreview
                 ? `${previousPurchasePreview.sku} - ${previousPurchasePreview.name}`
@@ -2423,43 +2643,88 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
             </DialogDescription>
           </DialogHeader>
 
-          {previousPurchasePreview?.previousPurchase ? (
+          {previousPurchasePreview?.loading ? (
+            <div className="flex min-h-64 items-center justify-center rounded-2xl border border-white/10 bg-black/15 text-sm font-black text-slate-200">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Eryaz önceki alımları yükleniyor
+            </div>
+          ) : previousPurchasePreview?.history && previousPurchasePreview.history.items.length > 0 ? (
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                 {[
-                  { label: "Tarih", value: formatProductDate(previousPurchasePreview.previousPurchase.ordered_at) },
-                  { label: "Fatura No", value: previousPurchasePreview.previousPurchase.invoice_no || previousPurchasePreview.previousPurchase.order_no || "-" },
-                  { label: "Sipariş No", value: previousPurchasePreview.previousPurchase.order_no || "-" },
+                  { label: "Son Alım", value: formatProductDate(previousPurchasePreview.history.summary.last_purchase_date) },
+                  {
+                    label: "Son Miktar",
+                    value: previousPurchasePreview.history.summary.last_quantity !== null && previousPurchasePreview.history.summary.last_quantity !== undefined
+                      ? `${Number(previousPurchasePreview.history.summary.last_quantity).toLocaleString("tr-TR")} ${previousPurchasePreview.history.summary.last_unit ?? "AD"}`
+                      : "-",
+                  },
+                  {
+                    label: "Son Net Fiyat",
+                    value: previousPurchasePreview.history.summary.last_net_price !== null && previousPurchasePreview.history.summary.last_net_price !== undefined
+                      ? formatProductAmount(Number(previousPurchasePreview.history.summary.last_net_price), isBatumPriceScope ? "GEL" : "TRY")
+                      : "-",
+                  },
+                  {
+                    label: "Toplam Alım",
+                    value: `${Number(previousPurchasePreview.history.summary.total_quantity ?? 0).toLocaleString("tr-TR")} ${previousPurchasePreview.history.summary.last_unit ?? "AD"}`,
+                  },
+                  { label: "Toplam Net", value: formatProductAmount(Number(previousPurchasePreview.history.summary.total_net_amount ?? 0), isBatumPriceScope ? "GEL" : "TRY") },
+                  { label: "Belge Sayısı", value: Number(previousPurchasePreview.history.summary.purchase_count ?? 0).toLocaleString("tr-TR") },
                 ].map((item) => (
                   <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                     <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{item.label}</span>
-                    <strong className="mt-2 block min-h-7 break-words text-lg font-black text-white">{item.value}</strong>
+                    <strong className="mt-2 block min-h-7 break-words text-base font-black text-white">{item.value}</strong>
                   </div>
                 ))}
               </div>
 
-              <div className="rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.06] p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200/70">Hareket Özeti</p>
-                    <p className="mt-1 text-sm font-bold text-slate-400">Müşterinin bu üründeki en son alış kaydı</p>
-                  </div>
-                  <span className="rounded-full border border-emerald-300/25 bg-emerald-300/12 px-3 py-1 text-xs font-black uppercase text-emerald-100">
-                    {previousPurchasePreview.previousPurchase.status || "Kayıtlı"}
-                  </span>
+              <div className="max-h-[55vh] overflow-y-auto rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.06]">
+                <div className="hidden grid-cols-[92px_1fr_82px_78px_92px_92px_130px_108px] gap-2 border-b border-white/10 bg-black/20 px-3 py-3 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100/75 lg:grid">
+                  <span>Tarih</span>
+                  <span>Belge / Açıklama</span>
+                  <span className="text-right">Miktar</span>
+                  <span>Birim</span>
+                  <span className="text-right">Birim</span>
+                  <span className="text-right">Net</span>
+                  <span>İskonto</span>
+                  <span className="text-right">Net Tutar</span>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {[
-                    { label: "Adet", value: previousPurchasePreview.previousPurchase.quantity.toLocaleString("tr-TR") },
-                    { label: "Birim Fiyat", value: previousPurchasePreview.previousPurchase.unit_net_price ? formatTry(previousPurchasePreview.previousPurchase.unit_net_price) : "-" },
-                    { label: "Satır Toplam", value: previousPurchasePreview.previousPurchase.line_total ? formatTry(previousPurchasePreview.previousPurchase.line_total) : "-" },
-                    { label: "Para Birimi", value: previousPurchasePreview.previousPurchase.currency || "TRY" },
-                    { label: "İskonto", value: formatPercentValue(previousPurchasePreview.previousPurchase.discount_rate) },
-                    { label: "KDV", value: formatPercentValue(previousPurchasePreview.previousPurchase.tax_rate) },
-                  ].map((row) => (
-                    <div key={row.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/16 px-3 py-2.5">
-                      <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{row.label}</span>
-                      <span className="min-w-0 break-words text-right text-sm font-black text-slate-100">{row.value}</span>
+                <div className="divide-y divide-white/10">
+                  {previousPurchasePreview.history.items.map((item: ProductPreviousPurchaseHistoryItem, index: number) => (
+                    <div
+                      key={`${item.document_no ?? "doc"}-${item.date ?? "date"}-${index}`}
+                      className="grid gap-2 px-3 py-3 text-sm lg:grid-cols-[92px_1fr_82px_78px_92px_92px_130px_108px] lg:items-center"
+                    >
+                      <span className="font-black text-white">{formatProductDate(item.date)}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate font-black text-slate-100">{item.document_no || "-"}</span>
+                        <span className="mt-0.5 block truncate text-xs font-semibold text-slate-400">{item.description || "-"}</span>
+                      </span>
+                      <span className="flex justify-between gap-3 lg:block lg:text-right">
+                        <span className="text-[10px] font-black uppercase text-slate-500 lg:hidden">Miktar</span>
+                        <strong>{Number(item.quantity ?? 0).toLocaleString("tr-TR")}</strong>
+                      </span>
+                      <span className="flex justify-between gap-3 lg:block">
+                        <span className="text-[10px] font-black uppercase text-slate-500 lg:hidden">Birim</span>
+                        <strong>{item.unit || "AD"}</strong>
+                      </span>
+                      <span className="flex justify-between gap-3 lg:block lg:text-right">
+                        <span className="text-[10px] font-black uppercase text-slate-500 lg:hidden">Birim Fiyat</span>
+                        <strong>{formatProductAmount(Number(item.unit_price ?? 0), isBatumPriceScope ? "GEL" : "TRY")}</strong>
+                      </span>
+                      <span className="flex justify-between gap-3 lg:block lg:text-right">
+                        <span className="text-[10px] font-black uppercase text-slate-500 lg:hidden">Net Fiyat</span>
+                        <strong>{formatProductAmount(Number(item.net_price ?? 0), isBatumPriceScope ? "GEL" : "TRY")}</strong>
+                      </span>
+                      <span className="flex justify-between gap-3 lg:block">
+                        <span className="text-[10px] font-black uppercase text-slate-500 lg:hidden">İskonto</span>
+                        <strong>{formatDiscountList(item.discounts)}</strong>
+                      </span>
+                      <span className="flex justify-between gap-3 lg:block lg:text-right">
+                        <span className="text-[10px] font-black uppercase text-slate-500 lg:hidden">Net Tutar</span>
+                        <strong>{formatProductAmount(Number(item.net_total ?? 0), isBatumPriceScope ? "GEL" : "TRY")}</strong>
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -2467,7 +2732,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
             </div>
           ) : (
             <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-6 text-center text-sm font-semibold text-[var(--muted-foreground)]">
-              Bu ürün için önceki alım kaydı yok.
+              Bu müşterinin bu ürüne ait önceki alımı bulunamadı.
             </div>
           )}
         </DialogContent>

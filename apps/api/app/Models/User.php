@@ -44,6 +44,8 @@ class User extends Authenticatable
         'is_active',
         'menu_permissions',
         'feature_permissions',
+        'permissions_updated_at',
+        'last_activity_at',
     ];
 
     /**
@@ -69,6 +71,8 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'menu_permissions' => 'array',
             'feature_permissions' => 'array',
+            'permissions_updated_at' => 'datetime',
+            'last_activity_at' => 'datetime',
         ];
     }
 

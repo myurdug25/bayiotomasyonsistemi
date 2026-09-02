@@ -60,6 +60,7 @@ import {
   type ModeratorUserRecord,
   resetModeratorUserPassword,
   updateModeratorCustomer,
+  updateModeratorSystemSettings,
   updateModeratorUser,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -573,6 +574,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const [userSearch, setUserSearch] = useState("");
   const [showUserPassword, setShowUserPassword] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [complaintMailTo, setComplaintMailTo] = useState("");
   const trimmedCustomerSearch = customerSearch.trim();
   const overviewParams = useMemo(
     () => ({
@@ -652,6 +654,21 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
 
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (overviewQuery.data?.system_settings.complaint_mail_to) {
+      setComplaintMailTo(overviewQuery.data.system_settings.complaint_mail_to);
+    }
+  }, [overviewQuery.data?.system_settings.complaint_mail_to]);
+
+  const systemSettingsMutation = useMutation({
+    mutationFn: () => updateModeratorSystemSettings({ complaint_mail_to: complaintMailTo.trim() }),
+    onSuccess: async (response) => {
+      toast.success(response.message);
+      await queryClient.invalidateQueries({ queryKey: ["moderator", "overview"] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Sistem ayarı kaydedilemedi."),
+  });
 
   const sectionClassName = "dashboard-panel-card rounded-[18px] p-6 lg:p-7";
   const iconCardClassName = cn(
@@ -794,6 +811,12 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const userMenuRequiresDealer =
     userRoleRequiresDealer ||
     (userForm.role_slugs.length === 0 && menuSelectionRequiresDealer(userForm.menu_permissions));
+  const effectiveUserName = userForm.name.trim() || editingUser?.name?.trim() || "";
+  const effectiveUsername = userForm.username.trim() || editingUser?.username?.trim() || "";
+  const editingPasswordValid =
+    userForm.password.trim() === "" ||
+    (userForm.password.trim().length >= 6 &&
+      (userForm.password_confirmation.trim() === "" || userForm.password === userForm.password_confirmation));
   const canCreateUser =
     userForm.name.trim() !== "" &&
     userForm.username.trim() !== "" &&
@@ -802,12 +825,12 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     userForm.password === userForm.password_confirmation;
   const isEditingUser = editingUser !== null;
   const canSubmitUserModal =
-    userForm.name.trim() !== "" &&
-    userForm.username.trim() !== "" &&
+    effectiveUserName !== "" &&
+    effectiveUsername !== "" &&
     (!userMenuRequiresDealer || userForm.dealer_id !== "") &&
-    (isEditingUser ? userForm.phone.trim() === "" || isValidTurkishMobilePhone(userForm.phone.trim()) : isValidTurkishMobilePhone(userForm.phone.trim())) &&
+    (isEditingUser || isValidTurkishMobilePhone(userForm.phone.trim())) &&
     (isEditingUser
-      ? userForm.password.trim() === "" || (userForm.password.trim().length >= 6 && userForm.password === userForm.password_confirmation)
+      ? editingPasswordValid
       : userForm.password.length >= 6 && userForm.password === userForm.password_confirmation);
   const applyPermissionTemplate = (template: PermissionTemplate) => {
     setUserForm((prev) => ({
@@ -849,6 +872,18 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     if (!canSubmitUserModal) {
       if (userMenuRequiresDealer && userForm.dealer_id === "") {
         toast.error("Seçtiğiniz rol veya yetkiler bir bayiye bağlı çalışmayı gerektiriyor. Lütfen 'Bayi' alanından bir bayi seçin.");
+      } else if (effectiveUserName === "" || effectiveUsername === "") {
+        toast.error("Ad ve kullanıcı adı zorunludur.");
+      } else if (!isEditingUser && userForm.password.length < 6) {
+        toast.error("Yeni kullanıcı için şifre en az 6 karakter olmalı.");
+      } else if (isEditingUser && userForm.password.trim() !== "" && userForm.password.trim().length < 6) {
+        toast.error("Yeni şifre en az 6 karakter olmalı.");
+      } else if (!isEditingUser && userForm.password !== userForm.password_confirmation) {
+        toast.error("Şifre ve şifre tekrar aynı olmalı.");
+      } else if (isEditingUser && userForm.password_confirmation.trim() !== "" && userForm.password !== userForm.password_confirmation) {
+        toast.error("Şifre ve şifre tekrar aynı olmalı.");
+      } else if (!isEditingUser && !isValidTurkishMobilePhone(userForm.phone.trim())) {
+        toast.error("❌ Geçerli telefon numarası giriniz");
       } else {
         toast.error(
           isEditingUser
@@ -859,7 +894,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       return;
     }
 
-    if ((!isEditingUser || userForm.phone.trim() !== "") && !isValidTurkishMobilePhone(userForm.phone.trim())) {
+    if (!isEditingUser && !isValidTurkishMobilePhone(userForm.phone.trim())) {
       toast.error("❌ Geçerli telefon numarası giriniz");
       return;
     }
@@ -881,8 +916,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       logo_cashbox_name: userForm.logo_cashbox_name.trim() || null,
       logo_expense_account_code: userForm.logo_expense_account_code.trim() || null,
       logo_expense_account_name: userForm.logo_expense_account_name.trim() || null,
-      name: userForm.name.trim(),
-      username: userForm.username.trim(),
+      name: effectiveUserName,
+      username: effectiveUsername,
       email: null,
       phone: userForm.phone.trim() || null,
       role_slugs: userForm.role_slugs,
@@ -901,6 +936,10 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
 
       if (password.length >= 6) {
         updatePayload.password = password;
+      }
+
+      if (userForm.phone.trim() !== "" && !isValidTurkishMobilePhone(userForm.phone.trim())) {
+        delete updatePayload.phone;
       }
 
       updateUserMutation.mutate({
@@ -969,7 +1008,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1540px] space-y-4">
+    <div className="moderator-panel-page mx-auto w-full max-w-[1540px] space-y-4">
       <Dialog open={permissionTemplatesOpen} onOpenChange={setPermissionTemplatesOpen}>
         <DialogContent className="max-h-[88vh] max-w-[1180px] overflow-hidden rounded-[20px] p-0">
           <DialogHeader className="mb-0 border-b border-[var(--brand-border)] px-5 py-4 sm:px-6">
@@ -1411,6 +1450,29 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
         </DialogContent>
       </Dialog>
 
+      <section className="dashboard-panel-card rounded-[18px] p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <label className="w-full space-y-2 text-sm lg:max-w-xl">
+            <span className="font-extrabold text-[var(--brand-primary-strong)]">Dilek / Şikayet E-posta Adresi</span>
+            <Input
+              type="email"
+              value={complaintMailTo}
+              onChange={(event) => setComplaintMailTo(event.target.value)}
+              placeholder="farukcelik@gucsa.com.tr"
+            />
+          </label>
+          <Button
+            type="button"
+            className="h-10 rounded-xl px-5 text-sm font-extrabold"
+            disabled={systemSettingsMutation.isPending || complaintMailTo.trim() === ""}
+            onClick={() => systemSettingsMutation.mutate()}
+          >
+            {systemSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            E-posta Ayarını Kaydet
+          </Button>
+        </div>
+      </section>
+
       {view === "create-user" ? (
         <section id="moderator-create-user" className={sectionClassName}>
           <div className="grid gap-4 md:grid-cols-2">
@@ -1764,10 +1826,15 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                   return;
                 }
 
-                if (userForm.password !== userForm.password_confirmation) {
-                  toast.error("Şifre ve şifre tekrar aynı olmalı.");
-                  return;
-                }
+    if (!isEditingUser && userForm.password !== userForm.password_confirmation) {
+      toast.error("Şifre ve şifre tekrar aynı olmalı.");
+      return;
+    }
+
+    if (isEditingUser && userForm.password_confirmation.trim() !== "" && userForm.password !== userForm.password_confirmation) {
+      toast.error("Şifre ve şifre tekrar aynı olmalı.");
+      return;
+    }
 
                 createUserMutation.mutate({
                   dealer_id: userMenuRequiresDealer && userForm.dealer_id !== "" ? Number(userForm.dealer_id) : null,
@@ -2164,9 +2231,9 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       ) : null}
 
       {view === "manage-users" ? (
-        <section id="moderator-manage-users" className="dashboard-panel-card rounded-[18px] p-3 lg:p-4">
+        <section id="moderator-manage-users" className="moderator-users-section dashboard-panel-card rounded-[18px] p-3 lg:p-4">
           <div className="mb-3 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <div className="grid gap-2 sm:grid-cols-3 xl:w-[620px]">
+            <div className="moderator-user-stats grid gap-2 sm:grid-cols-3 xl:w-[620px]">
               {[
                 ["Toplam", summary.users_total],
                 ["Aktif", summary.active_users_total],
@@ -2185,7 +2252,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                 </div>
               ))}
             </div>
-            <div className="flex flex-wrap gap-2 xl:justify-end">
+            <div className="moderator-user-actions flex flex-wrap gap-2 xl:justify-end">
               <Button
                 type="button"
                 className="h-9 rounded-xl px-3 text-xs font-extrabold"
@@ -2250,7 +2317,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
 
           <div className={cn(tableShellClassName, "rounded-[14px] shadow-[0_18px_34px_-34px_rgba(10,32,20,0.32)]")}>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] table-fixed text-[12px]">
+              <table className="moderator-users-table w-full min-w-[980px] table-fixed text-[12px]">
                 <colgroup>
                   <col className="w-[23%]" />
                   <col className="w-[18%]" />

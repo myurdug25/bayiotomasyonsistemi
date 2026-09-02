@@ -14,7 +14,7 @@ class FixFactoryNames extends Command
      * @var array<string, string>
      */
     private array $approvedFactoryNames = [
-        '120-61-031' => 'SIRAÇ MADENİ YAĞLAR PAZ. TİC. LTD. ŞTİ.',
+        '120-61-006' => 'SIRAÇ MADENİ YAĞLAR PAZ. TİC. LTD. ŞTİ.',
         '320-54-002' => 'DİNAMİK OTOMOTİV GID.TEKS.İTH.İHR.SANAYİ VE TİC.LTD.ŞTİ',
         '320-34-006' => 'DELTA OTO AKSAMI SAN.TİC.A.Ş',
         '320-34-008' => 'ŞAMPİYON FİLTRE PAZ.TİC.VE SAN.A.Ş.',

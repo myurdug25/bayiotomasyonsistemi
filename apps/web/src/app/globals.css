@@ -313,6 +313,18 @@
       width: 36px !important;
     }
 
+    .app-sidebar-nav-link .app-sidebar-notes-icon {
+      height: 26px !important;
+      width: 26px !important;
+      stroke-width: 2.35px !important;
+    }
+
+    .app-sidebar-nav-link .app-sidebar-notes-tile {
+      height: 46px !important;
+      width: 46px !important;
+      border-radius: 14px !important;
+    }
+
     .app-sidebar-nav-label {
       height: 24px !important;
       font-size: 10px !important;
@@ -327,7 +339,9 @@
     .page-shell-main,
     .point-sale-fit-screen {
       width: 100%;
-      max-width: none !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      overflow-x: hidden;
     }
 
     .page-shell-header {
@@ -563,6 +577,17 @@
     .app-sidebar-nav-link > span:first-child {
       height: 50px !important;
       width: 50px !important;
+    }
+
+    .app-sidebar-nav-link .app-sidebar-notes-tile {
+      height: 42px !important;
+      width: 42px !important;
+      border-radius: 13px !important;
+    }
+
+    .app-sidebar-nav-link .app-sidebar-notes-icon {
+      height: 23px !important;
+      width: 23px !important;
     }
 
     .app-sidebar-nav-label {
@@ -1648,6 +1673,140 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
   --sidebar-ring: color-mix(in oklab, var(--ui-accent-base) 40%, white);
 }
 
+/* Light theme semantic action guard: keep action meaning while surfaces stay light. */
+html[data-ui-theme="light"] .app-shell-root :where(.admin-primary-action, .cart-primary-button, .point-primary-button, button[class*="bg-[linear-gradient"][class*="#e62d2d"], button[class*="from-[#ff"], button[class*="via-[#d71920"]) {
+  background: linear-gradient(135deg, #ef3340 0%, #c92e32 56%, #a92327 100%) !important;
+  border-color: rgba(169, 35, 39, 0.48) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 22px rgba(201, 46, 50, 0.22) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.admin-primary-action, .cart-primary-button, .point-primary-button, button[class*="bg-[linear-gradient"][class*="#e62d2d"], button[class*="from-[#ff"], button[class*="via-[#d71920"]) :where(svg, span) {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-save-button, .point-yellow-action-button, button[class*="from-yellow"], button[class*="from-amber"], button[class*="bg-yellow"], button[class*="bg-amber"]) {
+  color: #172017 !important;
+  border-color: rgba(201, 148, 0, 0.46) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-save-button, .point-yellow-action-button, button[class*="from-yellow"], button[class*="from-amber"], button[class*="bg-yellow"], button[class*="bg-amber"]) :where(svg, span) {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.btn-success, .point-success-button, button[class*="bg-emerald"], button[class*="from-emerald"], button[class*="bg-green"], button[class*="from-green"]) {
+  background: #087a52 !important;
+  border-color: #066440 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(8, 122, 82, 0.18) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.btn-success, .point-success-button, button[class*="bg-emerald"], button[class*="from-emerald"], button[class*="bg-green"], button[class*="from-green"]) :where(svg, span) {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.admin-dashboard-ghost, .ledger-refresh-button, button[data-variant="outline"], button[class*="border-"][class*="bg-transparent"]) {
+  background: #ffffff !important;
+  border-color: #b8ccc0 !important;
+  color: #18392b !important;
+  box-shadow: 0 3px 10px rgba(24, 57, 43, 0.08) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.admin-primary-action:disabled, .cart-primary-button:disabled, .point-primary-button:disabled, .point-save-button:disabled) {
+  background: #e4b5bc !important;
+  border-color: #d29aa3 !important;
+  color: #712d37 !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-ui-theme="light"] body {
+  background: #f4f7f5 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root,
+html[data-ui-theme="light"] .app-shell-root.dashboard-shell {
+  --light-bg: #f4f7f5;
+  --light-bg-secondary: #eef3f0;
+  --light-surface: #ffffff;
+  --light-surface-soft: #f7faf8;
+  --light-surface-muted: #edf3ef;
+  --light-border: #d4e0d9;
+  --light-border-strong: #b8cbc0;
+  --light-text-primary: #10271d;
+  --light-text-secondary: #50645a;
+  --light-text-muted: #718278;
+  --light-brand: #14633f;
+  --light-brand-hover: #105234;
+  --light-brand-soft: #e2f0e8;
+  --light-success: #168a50;
+  --light-success-soft: #e3f5ea;
+  --light-warning: #c99400;
+  --light-warning-soft: #fff4cf;
+  --light-danger: #c92e32;
+  --light-danger-hover: #a92327;
+  --light-danger-soft: #fde8e9;
+  --light-info: #1476a8;
+  --light-info-soft: #e6f3f9;
+  --muted-foreground: var(--light-text-secondary);
+  --brand-primary: var(--light-brand);
+  --brand-primary-strong: var(--light-text-primary);
+  --brand-primary-soft: var(--light-brand-soft);
+  --brand-accent: #d9a80f;
+  --brand-accent-foreground: #172017;
+  --brand-accent-soft: var(--light-warning-soft);
+  --brand-border: var(--light-border);
+  --surface: #ffffff;
+  --surface-soft: var(--light-surface-soft);
+  --background: var(--light-bg);
+  --foreground: var(--light-text-primary);
+  --card: #ffffff;
+  --card-foreground: var(--light-text-primary);
+  --popover: #ffffff;
+  --popover-foreground: var(--light-text-primary);
+  --primary: var(--light-brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--light-surface-muted);
+  --secondary-foreground: var(--light-text-primary);
+  --muted: var(--light-surface-muted);
+  --accent: var(--light-brand-soft);
+  --accent-foreground: var(--light-text-primary);
+  --border: var(--light-border);
+  --input: #ffffff;
+  --ring: #14633f;
+  --sidebar: #102b20;
+  --sidebar-foreground: rgba(255, 255, 255, 0.88);
+  --sidebar-primary: #4fd083;
+  --sidebar-primary-foreground: #062016;
+  --sidebar-accent: #0b241a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.14);
+  --sidebar-ring: #f3c643;
+}
+
+html[data-ui-theme="light"] .app-shell-root .app-content-region,
+html[data-ui-theme="light"] .app-shell-root .page-shell-header,
+html[data-ui-theme="light"] .app-shell-root .page-shell-main {
+  background: var(--light-bg) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .page-shell-main::before,
+html[data-ui-theme="light"] .app-shell-root .app-content-region::before {
+  display: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root [data-slot="card"],
+html[data-ui-theme="light"] .app-shell-root .dashboard-top-header-card {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -1865,6 +2024,87 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
     box-shadow:
       0 22px 42px -36px color-mix(in oklab, var(--ui-accent-base) 52%, black),
       inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    overflow: visible;
+  }
+
+  .app-sidebar-boss-lockup {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    isolation: isolate;
+    margin-top: 0.32rem;
+    padding: 0 0.35rem 0.26rem;
+    position: relative;
+    width: 100%;
+  }
+
+  .app-sidebar-boss-title {
+    background:
+      linear-gradient(180deg, #fff6b5 0%, #ffd553 34%, #f0a51d 68%, #9f6507 100%);
+    background-clip: text;
+    color: transparent;
+    filter:
+      drop-shadow(0 1px 0 rgba(255, 247, 184, 0.42))
+      drop-shadow(0 6px 10px rgba(0, 0, 0, 0.42))
+      drop-shadow(0 0 14px rgba(255, 200, 63, 0.22));
+    font-size: 2.18rem;
+    font-weight: 1000;
+    letter-spacing: 0.11em;
+    line-height: 0.92;
+    padding-left: 0.11em;
+    position: relative;
+    text-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.22),
+      0 2px 0 rgba(96, 60, 0, 0.42);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .app-sidebar-boss-title::after {
+    background: linear-gradient(90deg, transparent, rgba(255, 217, 88, 0.9), transparent);
+    border-radius: 999px;
+    bottom: -0.34rem;
+    content: "";
+    height: 2px;
+    left: 14%;
+    position: absolute;
+    right: 14%;
+  }
+
+  .app-sidebar-boss-subtitle {
+    color: rgba(255, 247, 221, 0.92);
+    display: block;
+    font-family: "Segoe Script", "Lucida Handwriting", "Brush Script MT", cursive;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+    margin-top: 0.44rem;
+    padding-inline: 0.55rem;
+    text-align: center;
+    text-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.72),
+      0 0 12px rgba(255, 212, 109, 0.18);
+    text-transform: none;
+    text-wrap: balance;
+  }
+
+  @media (max-width: 1366px) {
+    .app-sidebar-boss-title {
+      font-size: 1.42rem;
+    }
+
+    .app-sidebar-boss-subtitle {
+      font-size: 0.56rem;
+      letter-spacing: 0;
+    }
+  }
+
+  @media (max-width: 1279px), (max-height: 768px) {
+    .app-sidebar-boss-lockup,
+    .app-sidebar-boss-subtitle {
+      display: none;
+    }
   }
 
   .app-sidebar-nav-region {
@@ -1926,12 +2166,110 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
       width: 4.25rem !important;
     }
 
+    .app-sidebar-nav-link .app-sidebar-notes-tile {
+      height: 3.15rem !important;
+      width: 3.15rem !important;
+      border-radius: 16px !important;
+    }
+
+    .app-sidebar-nav-link .app-sidebar-notes-icon {
+      height: 1.65rem !important;
+      width: 1.65rem !important;
+    }
+
     .app-sidebar-nav-label {
       display: none !important;
     }
 
     .app-sidebar-system {
-      display: none !important;
+      display: flex !important;
+      justify-content: center !important;
+      padding: 0.35rem 0.35rem 0.75rem !important;
+    }
+
+    .app-sidebar-system button {
+      min-height: 2.75rem !important;
+      width: 4.75rem !important;
+      padding: 0.7rem !important;
+      font-size: 0 !important;
+      gap: 0 !important;
+    }
+
+    .app-sidebar-system button svg {
+      height: 1.2rem !important;
+      width: 1.2rem !important;
+    }
+  }
+
+  @media (min-width: 1024px) and (max-width: 1279px) and (orientation: landscape) {
+    .app-sidebar-aside[data-sidebar-collapsed="false"] {
+      width: 176px !important;
+    }
+
+    .app-sidebar-brand-zone {
+      padding: 0.55rem 0.55rem 0.65rem !important;
+    }
+
+    .app-sidebar-brand-link {
+      max-width: 6.75rem !important;
+      padding: 0.25rem !important;
+    }
+
+    .app-sidebar-nav-region {
+      padding: 0.45rem 0.35rem 0.55rem !important;
+    }
+
+    .app-sidebar-nav-grid {
+      grid-template-columns: repeat(2, 68px) !important;
+      gap: 0.25rem 0.4rem !important;
+      justify-content: center !important;
+      justify-items: center !important;
+    }
+
+    .app-sidebar-nav-link {
+      min-height: 82px !important;
+      width: 68px !important;
+      border-radius: 14px !important;
+    }
+
+    .app-sidebar-nav-link > span:first-child {
+      height: 54px !important;
+      width: 54px !important;
+      border-radius: 15px !important;
+    }
+
+    .app-sidebar-nav-link img {
+      height: 36px !important;
+      width: 36px !important;
+    }
+
+    .app-sidebar-nav-link .app-sidebar-notes-tile {
+      height: 44px !important;
+      width: 44px !important;
+      border-radius: 14px !important;
+    }
+
+    .app-sidebar-nav-link .app-sidebar-notes-icon {
+      height: 24px !important;
+      width: 24px !important;
+    }
+
+    .app-sidebar-nav-label {
+      display: flex !important;
+      height: 22px !important;
+      font-size: 9.5px !important;
+      line-height: 1.02 !important;
+    }
+
+    .app-sidebar-system {
+      padding: 0.15rem 0.45rem 0.55rem !important;
+    }
+
+    .app-sidebar-system button {
+      min-height: 2.35rem !important;
+      width: 100% !important;
+      padding: 0.55rem !important;
+      font-size: 0 !important;
     }
   }
 
@@ -2032,6 +2370,151 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
     display: none;
   }
 
+  .product-campaign-row,
+  .warehouse-transfer-row {
+    background: #ffff00 !important;
+    color: #000000 !important;
+  }
+
+  .warehouse-transfer-row td,
+  .warehouse-transfer-row div,
+  .warehouse-transfer-row p,
+  .warehouse-transfer-row span {
+    color: #08111f !important;
+    text-shadow: none !important;
+  }
+
+  .product-campaign-row p,
+  .product-campaign-row > [role="cell"],
+  .product-campaign-row > [role="cell"] > p,
+  .warehouse-transfer-row p {
+    color: #000000 !important;
+    text-shadow: none !important;
+  }
+
+  .product-campaign-row .text-\[var\(--muted-foreground\)\],
+  .warehouse-transfer-row .text-\[var\(--muted-foreground\)\] {
+    color: #000000 !important;
+  }
+
+  .product-campaign-row .product-info-popover {
+    background: #06130f !important;
+    color: #f3fff5 !important;
+    border-color: rgba(250, 238, 86, 0.62) !important;
+  }
+
+  .product-campaign-row .product-info-popover button {
+    background: #10251d !important;
+    border-color: rgba(139, 209, 159, 0.35) !important;
+    color: #eaffef !important;
+  }
+
+  .product-campaign-row .product-info-popover span {
+    color: #eaffef !important;
+  }
+
+  .product-campaign-row .product-info-popover button span:last-child {
+    background: #00c853 !important;
+    color: #001f0b !important;
+  }
+
+  .product-campaign-row .product-info-popover button:disabled {
+    opacity: 0.72;
+  }
+
+  .warehouse-transfer-row .warehouse-tag {
+    border-color: #d9b600 !important;
+    background: #fffde8 !important;
+    color: #08111f !important;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08) !important;
+  }
+
+  .warehouse-transfer-row .warehouse-tag span {
+    color: #08111f !important;
+  }
+
+  .warehouse-transfer-row .warehouse-salesperson-dash {
+    background: #ffffff !important;
+    border-color: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+
+  .warehouse-transfer-row .warehouse-salesperson-dash span {
+    color: #000000 !important;
+  }
+
+  .warehouse-transfer-row button,
+  .warehouse-transfer-row button span {
+    color: #07140d !important;
+    text-shadow: none !important;
+  }
+
+  .warehouse-transfer-row button svg {
+    color: #07140d !important;
+    stroke: currentColor !important;
+  }
+
+  .product-campaign-row .rounded-full {
+    text-shadow: none !important;
+  }
+
+  .product-campaign-row .admin-product-stock,
+  .product-campaign-row .admin-product-stock *,
+  .product-campaign-row .admin-product-stock span,
+  .product-campaign-row .admin-product-price span,
+  .product-campaign-row .admin-product-media svg {
+    color: #000000 !important;
+    stroke: currentColor !important;
+    text-shadow: none !important;
+  }
+
+  .product-campaign-row .admin-product-stock > div > div,
+  .product-campaign-row [role="cell"] .admin-product-stock > div > div {
+    border-color: rgba(89, 76, 0, 0.62) !important;
+    background: #ffff00 !important;
+    color: #000000 !important;
+  }
+
+  .product-campaign-row .admin-product-stock .rounded-full,
+  .product-campaign-row details > summary {
+    border-color: #000000 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .product-campaign-row .admin-product-stock .rounded-md {
+    border-color: #000000 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12) !important;
+  }
+
+  .product-campaign-row .admin-product-stock .text-emerald-100,
+  .product-campaign-row .admin-product-stock .text-emerald-200,
+  .product-campaign-row .admin-product-stock .text-sky-100,
+  .product-campaign-row .admin-product-stock .text-slate-400,
+  .product-campaign-row .admin-product-stock .text-\[var\(--muted-foreground\)\] {
+    color: #000000 !important;
+  }
+
+  .product-campaign-row .admin-product-stock .bg-emerald-300\/10,
+  .product-campaign-row .admin-product-stock .bg-emerald-300\/14,
+  .product-campaign-row .admin-product-stock .bg-sky-300\/14,
+  .product-campaign-row .admin-product-stock .bg-slate-500\/10 {
+    background: #ffff00 !important;
+  }
+
+  .product-campaign-row .admin-product-price .product-price-tooltip,
+  .product-campaign-row .admin-product-price .product-price-tooltip span {
+    color: #f3fff5 !important;
+    text-shadow: none !important;
+  }
+
+  .product-campaign-row .admin-product-price .product-price-tooltip span:last-child {
+    color: #faee56 !important;
+  }
+
   .customers-header-card {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2059,6 +2542,11 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
   .dashboard-header-actions {
     justify-content: flex-end;
     justify-self: end;
+  }
+
+  .header-notification-action {
+    order: 1000;
+    flex: 0 0 auto;
   }
 
   .dashboard-header-profile,
@@ -2131,9 +2619,10 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
 
   .header-market-rates {
     gap: 0.35rem;
-    flex: 0 1 15.5rem;
+    flex: 0 0 8.9rem;
     max-width: 100%;
-    padding: 0.18rem 0.42rem;
+    min-height: 2.85rem;
+    padding: 0.2rem 0.45rem;
     color: var(--brand-primary-strong);
     justify-content: center;
   }
@@ -2143,13 +2632,18 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
     justify-content: center;
   }
 
+  .header-rate-stack {
+    width: 100%;
+  }
+
   .header-rate-chip {
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: 2.15rem minmax(0, 1fr);
     align-items: baseline;
-    justify-content: center;
-    gap: 0.32rem;
+    justify-content: stretch;
+    gap: 0.4rem;
     border-radius: 999px;
-    padding: 0.2rem 0.35rem;
+    padding: 0.08rem 0.18rem;
     font-size: 0.7rem;
     font-weight: 950;
     line-height: 1;
@@ -2162,6 +2656,7 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
   }
 
   .header-rate-chip strong {
+    justify-self: end;
     font-variant-numeric: tabular-nums;
     font-size: 0.75rem;
   }
@@ -2248,10 +2743,16 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
     margin-left: 0.6rem;
   }
 
+  .header-customer-action-group-floating {
+    margin-left: 0;
+    margin-right: 0.15rem;
+  }
+
   .header-customer-select-button,
   .header-cart-shortcut-button {
     display: inline-flex;
-    height: 2rem;
+    height: 3.05rem;
+    min-height: 3.05rem;
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
@@ -2268,8 +2769,8 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
   }
 
   .header-customer-select-button {
-    min-width: 7.1rem;
-    padding-inline: 0.85rem;
+    min-width: 7.9rem;
+    padding-inline: 1rem;
     background: linear-gradient(180deg, #ff5960 0%, #cf252a 58%, #a9161b 100%);
     box-shadow:
       0 14px 26px -19px rgba(255, 65, 72, 0.95),
@@ -2278,12 +2779,22 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
 
   .header-cart-shortcut-button {
     position: relative;
-    width: 2.35rem;
+    width: 3.65rem;
+    min-width: 3.65rem;
     padding: 0;
-    background: linear-gradient(180deg, #182820 0%, #0b1812 100%);
+    border-color: rgba(255, 218, 132, 0.62);
+    background:
+      radial-gradient(circle at 34% 18%, rgba(255, 255, 255, 0.72) 0 14%, transparent 34%),
+      linear-gradient(180deg, #b96d24 0%, #7d3f16 58%, #3d1d0a 100%);
     box-shadow:
-      0 12px 24px -20px rgba(0, 0, 0, 0.95),
-      inset 0 1px 0 rgba(255, 255, 255, 0.16);
+      0 16px 30px -18px rgba(255, 171, 54, 0.9),
+      inset 0 1px 0 rgba(255, 255, 255, 0.34),
+      inset 0 -10px 18px rgba(50, 20, 0, 0.32);
+  }
+
+  .header-cart-shortcut-button svg {
+    color: #fff7d1;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
   }
 
   .header-cart-shortcut-button span {
@@ -2307,6 +2818,63 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
     transform: translateY(-1px);
     color: #fff;
     filter: brightness(1.06);
+  }
+
+  .product-cart-modal-heading {
+    overflow: hidden !important;
+  }
+
+  .product-cart-modal-name {
+    font-size: 0.9rem;
+    letter-spacing: 0;
+    min-width: 0;
+  }
+
+  .cart-submit-panel {
+    min-height: 100%;
+  }
+
+  @media (max-width: 640px) {
+    .cart-submit-panel {
+      min-height: auto;
+    }
+  }
+
+  .product-cart-modal-stock-stack {
+    display: grid;
+    min-width: 8rem;
+    gap: 0.35rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(15, 23, 42, 0.42);
+    padding: 0.45rem 0.65rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  }
+
+  .product-cart-modal-stock-stack span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    font-weight: 950;
+    line-height: 1;
+  }
+
+  .product-cart-modal-stock-stack em {
+    color: #9fb5aa;
+    font-style: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .product-cart-modal-stock-stack strong {
+    max-width: 4.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #f8f3a1;
+    text-align: right;
   }
 
   .header-selected-customer-active {
@@ -2401,6 +2969,127 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
     .header-selected-customer {
       flex-basis: 100%;
       max-width: none;
+    }
+  }
+
+  @media (min-width: 1024px) and (max-width: 1279px) and (orientation: landscape) {
+    .page-shell-header {
+      padding: 0.45rem 0.65rem 0 !important;
+    }
+
+    .dashboard-top-header-card {
+      grid-template-columns: minmax(0, 1fr) minmax(0, max-content) !important;
+      align-items: center !important;
+      gap: 0.45rem !important;
+      padding: 0.42rem 0.55rem !important;
+    }
+
+    .customers-header-card,
+    .search-header-card {
+      grid-template-columns: minmax(0, 1fr) minmax(0, max-content) !important;
+    }
+
+    .dashboard-header-center,
+    .dashboard-header-actions {
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+    }
+
+    .dashboard-header-center {
+      justify-self: stretch !important;
+      min-width: 0 !important;
+    }
+
+    .dashboard-header-actions {
+      justify-self: end !important;
+      justify-content: flex-end !important;
+      min-width: 0 !important;
+      gap: 0.35rem !important;
+    }
+
+    .header-selected-customer {
+      flex: 1 1 auto !important;
+      min-height: 2.35rem !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      padding: 0.18rem 0.48rem !important;
+      gap: 0.42rem !important;
+    }
+
+    .header-selected-customer > svg {
+      height: 1.05rem !important;
+      width: 1.05rem !important;
+    }
+
+    .header-selected-customer-name {
+      font-size: clamp(1rem, 2.2vw, 1.45rem) !important;
+    }
+
+    .header-selected-customer-code {
+      display: none !important;
+    }
+
+    .header-customer-action-group {
+      margin-left: 0.35rem !important;
+      gap: 0.3rem !important;
+    }
+
+    .header-customer-select-button {
+      min-width: 6.4rem !important;
+      height: 1.9rem !important;
+      padding-inline: 0.65rem !important;
+      font-size: 0.68rem !important;
+    }
+
+    .header-cart-shortcut-button {
+      height: 1.9rem !important;
+      width: 2.15rem !important;
+    }
+
+    .header-market-rates {
+      flex: 0 1 11rem !important;
+      padding: 0.12rem 0.32rem !important;
+    }
+
+    .header-rate-chip {
+      gap: 0.2rem !important;
+      padding: 0.16rem 0.24rem !important;
+      font-size: 0.62rem !important;
+    }
+
+    .header-rate-chip span {
+      font-size: 0.54rem !important;
+    }
+
+    .header-rate-chip strong {
+      font-size: 0.66rem !important;
+    }
+
+    .dashboard-header-profile {
+      max-width: 9.8rem !important;
+      min-height: 2.35rem !important;
+      padding: 0.14rem 0.28rem !important;
+    }
+
+    .dashboard-header-profile > span:first-child {
+      height: 2rem !important;
+      width: 2rem !important;
+    }
+
+    .dashboard-header-profile-name {
+      max-width: 6.8rem !important;
+      font-size: 0.72rem !important;
+    }
+
+    .dashboard-header-profile span:last-child span:last-child {
+      display: none !important;
+    }
+
+    .header-icon-button,
+    .dashboard-header-profile-edit {
+      height: 2.35rem !important;
+      width: 2.35rem !important;
+      min-width: 2.35rem !important;
     }
   }
 
@@ -4582,4 +5271,4246 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
 .app-sidebar-nav-region {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Uygulama geneli mobil yerleşim standardı */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+body {
+  min-height: 100dvh;
+  overscroll-behavior-y: auto;
+}
+
+.app-shell-root,
+.app-layout-frame,
+.app-content-region {
+  min-height: 100dvh;
+}
+
+.page-shell-main,
+.page-shell-main > *,
+.app-content-region,
+[data-slot="dialog-content"] {
+  min-width: 0;
+}
+
+.app-mobile-nav {
+  border: 1px solid var(--brand-border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.app-mobile-nav > summary {
+  list-style: none;
+}
+
+.app-mobile-nav > summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-mobile-nav-trigger {
+  display: flex;
+  min-height: 44px;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  color: var(--brand-primary-strong);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.app-mobile-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  max-height: min(58vh, 420px);
+  overflow-y: auto;
+  border-top: 1px solid var(--brand-border);
+  padding: 0.55rem;
+}
+
+.app-mobile-nav-link {
+  min-height: 44px;
+  overflow: hidden;
+}
+
+.app-mobile-nav-link > span,
+.app-mobile-nav-link {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1023px) {
+  .page-shell-header {
+    position: relative !important;
+    top: auto !important;
+  }
+
+  .page-shell-main [class*="sticky"],
+  .page-shell-main [style*="position: sticky"] {
+    position: static !important;
+    top: auto !important;
+  }
+
+  .product-results-scroll {
+    max-height: none !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    overscroll-behavior: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .product-filter-mobile .product-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-shell-root,
+  .app-layout-frame,
+  .app-content-region,
+  .page-shell-main {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow-x: clip;
+    overflow-y: visible !important;
+  }
+
+  .page-shell-main {
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  .page-shell-main [class*="sticky"],
+  .page-shell-main [style*="position: sticky"] {
+    position: static !important;
+    top: auto !important;
+  }
+
+  .page-shell-main {
+    padding: 0.65rem !important;
+  }
+
+  .page-shell-main input,
+  .page-shell-main select,
+  .page-shell-main textarea {
+    max-width: 100%;
+    font-size: 16px;
+  }
+
+  [data-slot="dialog-content"] {
+    width: calc(100vw - 1rem) !important;
+    max-width: calc(100vw - 1rem) !important;
+    max-height: calc(100dvh - 1rem) !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 18px !important;
+  }
+
+  [data-slot="table"] {
+    font-size: 0.75rem;
+  }
+
+  [data-slot="table-head"],
+  [data-slot="table-cell"] {
+    padding-left: 0.55rem;
+    padding-right: 0.55rem;
+  }
+
+  .page-hero-content {
+    align-items: flex-start;
+    padding: 0.75rem !important;
+  }
+
+  .page-hero-title {
+    font-size: clamp(1.2rem, 7vw, 1.7rem) !important;
+    line-height: 1.08 !important;
+  }
+
+  .point-sale-screen,
+  .point-admin-page,
+  .point-admin-shell {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  /* Hızlı satış satırları telefonda yatay tablo yerine dokunulabilir kart olur. */
+  .point-sale-fit-screen .point-table {
+    overflow-x: visible !important;
+  }
+
+  .point-sale-fit-screen .point-cart-head {
+    display: none !important;
+  }
+
+  .point-sale-fit-screen .point-cart-body {
+    min-width: 0 !important;
+  }
+
+  .point-sale-fit-screen .point-cart-row {
+    grid-template-columns: 32px minmax(0, 1fr) 74px 88px !important;
+    min-width: 0 !important;
+    gap: 0.25rem !important;
+    padding: 0.45rem 0.35rem !important;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div {
+    min-width: 0;
+    padding: 0.15rem 0.25rem !important;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div:nth-child(2) {
+    display: none;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div:nth-child(3) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div:nth-child(4) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div:nth-child(5) {
+    grid-column: 3;
+    grid-row: 1;
+    text-align: center;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div:nth-child(6) {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div:nth-child(7) {
+    grid-column: 4;
+    grid-row: 1;
+  }
+
+  .point-sale-fit-screen .point-cart-row > div:nth-child(8) {
+    grid-column: 4;
+    grid-row: 2;
+    align-self: center;
+    padding-inline: 0 !important;
+    font-size: 0.75rem !important;
+  }
+}
+
+/*
+ * POS mobile action rail.
+ * The rail owns horizontal scrolling; controls keep their readable desktop-like
+ * widths instead of being compressed into the phone viewport.
+ */
+@media (max-width: 1024px) {
+  .point-sale-fit-screen .point-table {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .point-sale-fit-screen .point-cart-body,
+  .point-sale-fit-screen .point-cart-empty {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .point-sale-fit-screen .point-cart-empty {
+    padding-inline: 0.85rem !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(250, 238, 86, 0.72) rgba(5, 28, 21, 0.9);
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    padding-bottom: 0.35rem;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll::-webkit-scrollbar {
+    height: 0.42rem;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll::-webkit-scrollbar-track {
+    border-radius: 999px;
+    background: rgba(5, 28, 21, 0.9);
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(250, 238, 86, 0.72);
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll .point-sales-footer {
+    display: flex !important;
+    align-items: stretch !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    gap: 0.5rem !important;
+    padding: 0.5rem !important;
+    overflow: visible !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll .point-sales-footer > div:first-child {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    flex: 0 0 5.25rem !important;
+    width: 5.25rem !important;
+    min-width: 5.25rem !important;
+    gap: 0.3rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll .point-sales-footer > button {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 6.5rem !important;
+    max-width: none !important;
+    min-height: 4.4rem !important;
+    height: auto !important;
+    padding: 0.55rem 0.7rem !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll .point-sales-footer > button:nth-of-type(2),
+  .point-sale-fit-screen .point-sales-footer-scroll .point-sales-footer > button:nth-of-type(3) {
+    min-width: 7.6rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll .point-sales-footer > button span {
+    width: auto !important;
+    max-width: none !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll .point-total-card {
+    display: grid !important;
+    grid-column: auto !important;
+    flex: 0 0 18rem !important;
+    width: 18rem !important;
+    min-width: 18rem !important;
+    max-width: 18rem !important;
+    min-height: 4.4rem !important;
+    overflow: visible !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll .point-total-card > div {
+    grid-template-columns: minmax(5.2rem, 1fr) auto minmax(6rem, auto) !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer-scroll .point-total-card span {
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+}
+
+/*
+ * POS compact landscape/tablet widths use a swipeable action rail. Some
+ * installed PWAs report a wider CSS viewport than the physical phone, so this
+ * deliberately covers tablets as well as phones.
+ */
+@media (max-width: 1024px) {
+  .point-sale-fit-screen .point-table,
+  .point-sale-fit-screen .point-cart-body {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .point-sale-fit-screen .point-cart-empty {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 0.65rem 0.75rem !important;
+    overflow: hidden !important;
+    font-size: 0.68rem !important;
+    line-height: 1.35 !important;
+    text-align: center !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer {
+    display: flex !important;
+    flex-flow: row nowrap !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    gap: 0.42rem !important;
+    padding: 0.48rem !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > div:first-child {
+    display: grid !important;
+    flex: 0 0 6.5rem !important;
+    width: 6.5rem !important;
+    min-width: 6.5rem !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.28rem !important;
+    scroll-snap-align: start;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > div:first-child button {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 0.25rem !important;
+    font-size: 0.6rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > button {
+    flex: 0 0 6.4rem !important;
+    width: 6.4rem !important;
+    min-width: 6.4rem !important;
+    min-height: 3.5rem !important;
+    padding: 0.4rem !important;
+    scroll-snap-align: start;
+    white-space: normal !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > button:nth-of-type(2),
+  .point-sale-fit-screen .point-sales-footer > button:nth-of-type(3) {
+    flex-basis: 7.2rem !important;
+    width: 7.2rem !important;
+    min-width: 7.2rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card {
+    display: grid !important;
+    flex: 0 0 18rem !important;
+    width: 18rem !important;
+    min-width: 18rem !important;
+    max-width: 18rem !important;
+    min-height: 3.5rem !important;
+    overflow: hidden !important;
+    scroll-snap-align: end;
+  }
+}
+
+@media (max-width: 479px) {
+  .app-mobile-nav-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-mobile-nav-link {
+    padding-left: 0.6rem !important;
+    padding-right: 0.6rem !important;
+    font-size: 0.7rem !important;
+  }
+
+  .page-shell-main {
+    padding: 0.5rem !important;
+  }
+}
+
+@media (max-width: 339px) {
+  .app-mobile-nav-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Ledger: telefonda tablo dilini korur, filtreleri ve satırları kompaktlaştırır. */
+@media (max-width: 767px) {
+  .ledger-filter-content {
+    padding: 0.45rem !important;
+  }
+
+  .ledger-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem !important;
+  }
+
+  .ledger-filter-grid > div:not(.ledger-date-filter),
+  .ledger-filter-grid > button {
+    grid-column: 1 / -1;
+  }
+
+  .ledger-filter-grid label {
+    margin-bottom: 0.2rem !important;
+    font-size: 0.55rem !important;
+    letter-spacing: 0.05em !important;
+  }
+
+  .ledger-filter-grid input {
+    height: 2.1rem !important;
+    min-height: 2.1rem !important;
+    padding-inline: 0.45rem !important;
+    font-size: 0.72rem !important;
+  }
+
+  .ledger-filter-strip {
+    display: flex !important;
+    width: 100% !important;
+    min-height: 2.05rem !important;
+    flex-wrap: wrap !important;
+    overflow: visible !important;
+    padding: 0.18rem !important;
+    scrollbar-width: none;
+  }
+
+  .ledger-filter-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ledger-filter-strip button {
+    height: 1.75rem !important;
+    min-height: 1.75rem !important;
+    padding-inline: 0.45rem !important;
+    font-size: 0.58rem !important;
+  }
+
+  .ledger-refresh-button,
+  .ledger-filter-grid > button {
+    height: 2.1rem !important;
+    min-height: 2.1rem !important;
+    font-size: 0.66rem !important;
+  }
+
+  .ledger-filter-actions {
+    grid-column: 1 / -1;
+  }
+
+  .ledger-table-scroll {
+    margin-inline: -0.45rem;
+    padding-bottom: 0.25rem;
+    scrollbar-width: thin;
+  }
+
+  .ledger-table {
+    min-width: 710px !important;
+    font-size: 0.62rem !important;
+  }
+
+  .ledger-table th {
+    padding: 0.35rem 0.25rem !important;
+    font-size: 0.52rem !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  .ledger-table td {
+    padding: 0.38rem 0.25rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .ledger-table button {
+    height: 1.75rem !important;
+    min-height: 1.75rem !important;
+    padding-inline: 0.4rem !important;
+    font-size: 0.58rem !important;
+  }
+
+  .ledger-table [data-slot="badge"],
+  .ledger-table .rounded-full {
+    height: auto !important;
+    min-height: 1.15rem !important;
+    padding: 0.1rem 0.35rem !important;
+    font-size: 0.52rem !important;
+  }
+}
+
+@media (max-width: 1280px) {
+  .virtual-pos-workspace {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .virtual-pos-main-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .virtual-pos-form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .virtual-pos-form-grid > *,
+  .virtual-pos-main-grid > * {
+    min-width: 0 !important;
+  }
+
+  .virtual-pos-action-grid {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .virtual-pos-card-detail-grid,
+  .virtual-pos-two-field-grid,
+  .virtual-pos-summary-grid,
+  .virtual-pos-action-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .virtual-pos-workspace input,
+  .virtual-pos-workspace select,
+  .virtual-pos-workspace button {
+    min-width: 0;
+  }
+}
+
+/* Depo: tablet/telefon filtreleri ve işlem satırları ekrana sığar. */
+@media (max-width: 1023px) {
+  .warehouse-filter-card [data-slot="card-content"] {
+    padding: 0.5rem !important;
+  }
+
+  .warehouse-salesperson-strip {
+    gap: 0.35rem !important;
+    scrollbar-width: none;
+  }
+
+  .warehouse-salesperson-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .warehouse-salesperson-strip button {
+    height: 2.15rem !important;
+    min-height: 2.15rem !important;
+    min-width: 7rem !important;
+    padding-inline: 0.55rem !important;
+    font-size: 0.62rem !important;
+  }
+
+  .warehouse-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem !important;
+  }
+
+  .warehouse-filter-grid > :first-child,
+  .warehouse-filter-actions {
+    grid-column: 1 / -1;
+  }
+
+  .warehouse-filter-grid input {
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
+    padding-inline: 0.5rem !important;
+    font-size: 0.72rem !important;
+  }
+
+  .warehouse-filter-grid > :first-child input {
+    padding-left: 2.25rem !important;
+  }
+
+  .warehouse-filter-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.35rem !important;
+    overflow: visible !important;
+  }
+
+  .warehouse-filter-actions button {
+    width: 100% !important;
+    height: 2.15rem !important;
+    min-height: 2.15rem !important;
+    min-width: 0 !important;
+    padding-inline: 0.35rem !important;
+    font-size: 0.58rem !important;
+    line-height: 1.05 !important;
+    white-space: normal !important;
+  }
+
+  .warehouse-filter-actions button > span:first-child {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+  }
+
+  .warehouse-mobile-orders {
+    gap: 0.45rem !important;
+    padding: 0.45rem !important;
+  }
+
+  .warehouse-mobile-orders article {
+    border-radius: 0.75rem !important;
+    padding: 0.55rem !important;
+  }
+
+  .warehouse-mobile-orders article p {
+    line-height: 1.15 !important;
+  }
+
+  .warehouse-mobile-orders article > div:first-child p:first-child {
+    font-size: 0.7rem !important;
+  }
+
+  .warehouse-mobile-orders article > div:first-child p:nth-child(2) {
+    margin-top: 0.2rem !important;
+    font-size: 0.58rem !important;
+  }
+
+  .warehouse-mobile-order-meta {
+    margin-top: 0.45rem !important;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 0.85fr) !important;
+    gap: 0.35rem !important;
+    padding: 0.45rem !important;
+    font-size: 0.6rem !important;
+  }
+
+  .warehouse-mobile-order-meta > div:nth-child(2) {
+    display: contents !important;
+  }
+
+  .warehouse-mobile-order-meta p {
+    font-size: 0.58rem !important;
+  }
+
+  .warehouse-mobile-order-meta p.text-\[10px\] {
+    font-size: 0.48rem !important;
+  }
+
+  .warehouse-mobile-order-actions {
+    margin-top: 0.45rem !important;
+    gap: 0.35rem !important;
+  }
+
+  .warehouse-mobile-order-actions button {
+    height: 2.15rem !important;
+    min-height: 2.15rem !important;
+    min-width: 0 !important;
+    padding-inline: 0.3rem !important;
+    font-size: 0.58rem !important;
+    white-space: nowrap !important;
+  }
+
+  .warehouse-mobile-order-actions svg {
+    width: 0.8rem !important;
+    height: 0.8rem !important;
+  }
+}
+
+@media (max-width: 374px) {
+  .warehouse-filter-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .warehouse-mobile-order-actions button {
+    font-size: 0.53rem !important;
+  }
+}
+
+@media (pointer: coarse) {
+  .page-shell-main button:not([role="switch"]),
+  .page-shell-main a[role="button"] {
+    min-height: 40px;
+  }
+}
+
+/* Mobil üst bar: sayfanın başında kalır, içerikle beraber ekranda takip etmez. */
+@media (max-width: 767px) {
+  .page-shell-header {
+    position: relative !important;
+    inset-block-start: auto !important;
+    z-index: 70 !important;
+    padding: 0.35rem 0.45rem 0 !important;
+    transform: none !important;
+    background: color-mix(in oklab, var(--background) 94%, transparent) !important;
+    backdrop-filter: blur(18px) !important;
+  }
+
+  .dashboard-top-header-card {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.35rem !important;
+    overflow: visible !important;
+    padding: 0.4rem !important;
+    border-radius: 15px !important;
+  }
+
+  .dashboard-header-center,
+  .dashboard-header-actions {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    gap: 0.22rem !important;
+  }
+
+  .dashboard-header-center {
+    display: flex !important;
+    align-items: center !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard-header-actions {
+    align-items: center !important;
+    display: grid !important;
+    grid-template-columns: minmax(2.2rem, 1fr) minmax(2.2rem, 1fr) minmax(6.8rem, 2.1fr) minmax(2.2rem, 1fr) minmax(2.2rem, 1fr) !important;
+    justify-content: flex-start !important;
+    justify-items: stretch !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+  }
+
+  .header-notification-action {
+    order: 5 !important;
+    margin-left: 0 !important;
+    min-width: 0 !important;
+  }
+
+  .header-selected-customer {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 2.45rem !important;
+    max-width: 100% !important;
+    flex-basis: auto !important;
+    gap: 0.45rem !important;
+    padding: 0.28rem 0.55rem !important;
+  }
+
+  .header-selected-customer > svg {
+    width: 1rem !important;
+    height: 1rem !important;
+  }
+
+  .header-selected-customer-name {
+    overflow: hidden !important;
+    font-size: 0.86rem !important;
+    line-height: 1.1 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .header-selected-customer-code {
+    margin-top: 0.1rem !important;
+    font-size: 0.62rem !important;
+    line-height: 1 !important;
+  }
+
+  .header-customer-action-group {
+    display: contents !important;
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  .header-customer-select-button {
+    order: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
+    padding-inline: 0.48rem !important;
+    font-size: 0.65rem !important;
+    gap: 0.32rem !important;
+  }
+
+  .header-cart-shortcut-button,
+  .dashboard-header-actions > div > button,
+  .mobile-header-logout,
+  .dashboard-header-profile-edit,
+  .header-profile-icon-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 2.12rem !important;
+    min-height: 2.12rem !important;
+    justify-self: stretch !important;
+  }
+
+  .header-cart-shortcut-button {
+    order: 2 !important;
+  }
+
+  .mobile-header-logout {
+    order: 2 !important;
+  }
+
+  .header-theme-switch {
+    order: 3 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 2.12rem !important;
+    min-height: 2.12rem !important;
+  }
+
+  .header-theme-switch-labels {
+    font-size: 0.58rem !important;
+    gap: 0.1rem !important;
+  }
+
+  .header-theme-switch-label-light svg,
+  .header-theme-switch-label-dark svg {
+    width: 0.68rem !important;
+    height: 0.68rem !important;
+  }
+
+  .header-color-picker {
+    order: 4 !important;
+    min-width: 0 !important;
+    justify-self: stretch !important;
+  }
+
+  .header-color-picker .header-icon-button {
+    height: 2.12rem !important;
+    width: 100% !important;
+  }
+
+  .header-color-picker .header-icon-button button {
+    width: 100% !important;
+    justify-content: center !important;
+    padding-inline: 0 !important;
+  }
+
+  .header-market-rates {
+    display: none !important;
+  }
+
+  .dashboard-header-center .header-date-pill {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .dashboard-header-profile {
+    order: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 2.12rem !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+
+  .dashboard-header-profile > span:first-child {
+    width: 1.72rem !important;
+    height: 1.72rem !important;
+    font-size: 0.58rem !important;
+  }
+
+  .dashboard-header-profile > span:last-child > span:first-child,
+  .dashboard-header-profile > span:last-child > span:last-child {
+    display: none !important;
+  }
+
+  .dashboard-header-profile > span:last-child {
+    display: none !important;
+  }
+
+  .dashboard-header-profile-name {
+    max-width: 8.5rem !important;
+    font-size: 0.72rem !important;
+  }
+
+  .dashboard-header-actions:has(.header-customer-select-button) {
+    grid-template-columns: minmax(0, 1fr) minmax(3.4rem, 0.52fr) minmax(2.35rem, 0.42fr) !important;
+    grid-auto-rows: 2.35rem !important;
+  }
+
+  .dashboard-header-actions:has(.header-customer-select-button) .header-customer-select-button {
+    grid-column: 1;
+    grid-row: 1;
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+  }
+
+  .dashboard-header-actions:has(.header-customer-select-button) .header-cart-shortcut-button {
+    grid-column: 2;
+    grid-row: 1;
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+  }
+
+  .dashboard-header-actions:has(.header-customer-select-button) .mobile-header-logout {
+    grid-column: 3;
+    grid-row: 1;
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+  }
+
+  .dashboard-header-actions:has(.header-customer-select-button) .header-theme-switch {
+    grid-column: 1;
+    grid-row: 2;
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+  }
+
+  .dashboard-header-actions:has(.header-customer-select-button) .header-color-picker {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .dashboard-header-actions:has(.header-customer-select-button) .header-notification-action {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .app-mobile-nav {
+    margin-top: 0.35rem !important;
+    border-radius: 12px !important;
+  }
+
+  .app-mobile-nav-trigger {
+    min-height: 40px !important;
+    padding: 0.5rem 0.65rem !important;
+  }
+}
+
+/* Müşteri seçimi: telefon ve dar tabletlerde sıkışık tablo yerine okunur kartlar. */
+@media (max-width: 899px) {
+  .admin-customers-page {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .admin-customers-page .dashboard-panel-card > [data-slot="card-content"] {
+    padding: 0.55rem !important;
+  }
+
+  .admin-customer-filter {
+    padding: 0.6rem !important;
+  }
+
+  .customer-filter-actions {
+    width: 100% !important;
+  }
+
+  .customer-filter-actions > * {
+    min-width: 0 !important;
+    white-space: normal !important;
+    line-height: 1.15 !important;
+  }
+
+  .admin-customer-list {
+    overflow: visible !important;
+    border-radius: 16px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .admin-customer-list > div {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .admin-customer-list [data-slot="table"] {
+    display: block !important;
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  .admin-customer-list colgroup,
+  .admin-customer-list [data-slot="table-header"] {
+    display: none !important;
+  }
+
+  .admin-customer-list [data-slot="table-body"] {
+    display: grid !important;
+    gap: 0.65rem !important;
+  }
+
+  .admin-customer-list [data-slot="table-row"] {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem 0.65rem !important;
+    overflow: hidden !important;
+    border: 1px solid var(--brand-border) !important;
+    border-left: 4px solid transparent !important;
+    border-radius: 15px !important;
+    padding: 0.72rem !important;
+    background: var(--surface) !important;
+    box-shadow: 0 14px 28px -26px rgba(0, 0, 0, 0.7) !important;
+  }
+
+  .admin-customer-list [data-slot="table-row"]:focus-visible {
+    border-left-color: var(--brand-primary) !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"] {
+    display: block !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    text-align: left !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:not([colspan])::before {
+    display: block;
+    margin-bottom: 0.18rem;
+    color: var(--muted-foreground);
+    font-size: 0.58rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(1)::before { content: "Kod"; }
+  .admin-customer-list [data-slot="table-cell"]:nth-child(2)::before { content: "Ünvan"; }
+  .admin-customer-list [data-slot="table-cell"]:nth-child(3)::before { content: "İl / İlçe"; }
+  .admin-customer-list [data-slot="table-cell"]:nth-child(4)::before { content: "Telefon"; }
+  .admin-customer-list [data-slot="table-cell"]:nth-child(5)::before { content: "Cari Borç"; }
+  .admin-customer-list [data-slot="table-cell"]:nth-child(6)::before { content: "Sepet"; }
+  .admin-customer-list [data-slot="table-cell"]:nth-child(7)::before { content: "Bakiye Siparişi"; }
+  .admin-customer-list [data-slot="table-cell"]:nth-child(8)::before { content: "İşlem"; }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(2),
+  .admin-customer-list [data-slot="table-cell"]:nth-child(8),
+  .admin-customer-list [data-slot="table-cell"][colspan] {
+    grid-column: 1 / -1 !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"] > div,
+  .admin-customer-list [data-slot="table-cell"] > span,
+  .admin-customer-list [data-slot="table-cell"] > button {
+    max-width: 100% !important;
+    margin-inline: 0 !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"] > div {
+    justify-content: flex-start !important;
+    padding-right: 0 !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"] p,
+  .admin-customer-list [data-slot="table-cell"] span {
+    text-align: left !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(8) button {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 379px) {
+  .header-selected-customer-code,
+  .dashboard-header-profile {
+    display: none !important;
+  }
+
+  .dashboard-header-actions {
+    flex-wrap: wrap !important;
+  }
+
+  .customer-filter-actions {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* 29.07: operasyon ekranlarında gerçek telefon yoğunluğu ve güvenli açılır panel. */
+@media (max-width: 767px) {
+  .notification-popover {
+    position: fixed !important;
+    top: 4.35rem !important;
+    right: 0.5rem !important;
+    left: 0.5rem !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: calc(100dvh - 4.85rem) !important;
+    border-radius: 14px !important;
+  }
+
+  .notification-popover > div:first-child {
+    padding: 0.55rem 0.7rem !important;
+  }
+
+  .notification-popover > div:nth-child(2) {
+    max-height: calc(100dvh - 9rem) !important;
+    padding: 0.4rem !important;
+  }
+
+  .notification-popover > div:nth-child(2) > div {
+    margin-bottom: 0.35rem !important;
+    border-radius: 12px !important;
+  }
+
+  .notification-popover button {
+    min-height: 32px !important;
+  }
+
+  .point-sales-footer {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.3rem !important;
+    padding: 0.35rem !important;
+    border-radius: 12px !important;
+  }
+
+  .point-sales-footer > div:first-child,
+  .point-sales-footer > button {
+    min-width: 0 !important;
+    min-height: 44px !important;
+    height: auto !important;
+    border-radius: 9px !important;
+    padding: 0.25rem !important;
+    font-size: 0.58rem !important;
+    line-height: 1.05 !important;
+  }
+
+  .point-sales-footer > div:first-child {
+    min-height: 44px !important;
+    gap: 0.2rem !important;
+  }
+
+  .point-sales-footer > div:first-child button {
+    border-radius: 7px !important;
+    padding: 0.15rem !important;
+    font-size: 0.55rem !important;
+  }
+
+  .point-sales-footer > button span {
+    max-width: 100% !important;
+    font-size: 0.5rem !important;
+    line-height: 1 !important;
+    letter-spacing: 0.03em !important;
+    white-space: normal !important;
+  }
+
+  .point-sales-footer > button span + span {
+    font-size: 0.68rem !important;
+  }
+
+  .point-sales-footer > button svg {
+    width: 0.8rem !important;
+    height: 0.8rem !important;
+    flex: 0 0 auto !important;
+  }
+
+  .point-sales-footer .point-total-card {
+    grid-column: 1 / -1 !important;
+    min-height: 0 !important;
+    gap: 0.18rem !important;
+    padding: 0.35rem !important;
+    border-radius: 9px !important;
+  }
+
+  .point-sales-footer .point-total-card > div {
+    min-height: 0 !important;
+    grid-template-columns: minmax(54px, 0.8fr) 24px minmax(72px, 1fr) !important;
+    gap: 0.25rem !important;
+    padding: 0.16rem 0.3rem !important;
+    font-size: 0.58rem !important;
+    line-height: 1.05 !important;
+  }
+
+  .point-sales-footer .point-total-card > div span {
+    min-width: 0 !important;
+    font-size: inherit !important;
+  }
+
+  .point-sales-footer .point-total-card > div:nth-child(3) span:last-child {
+    font-size: 1rem !important;
+  }
+
+  .pos-day-end-page {
+    min-height: 100dvh !important;
+    padding: 0.3rem !important;
+    gap: 0.35rem !important;
+  }
+
+  .pos-day-end-toolbar {
+    gap: 0.4rem !important;
+    padding: 0.45rem !important;
+    border-radius: 11px !important;
+  }
+
+  .pos-day-end-title {
+    gap: 0.45rem !important;
+  }
+
+  .pos-day-end-title > span {
+    width: 2.15rem !important;
+    height: 2.15rem !important;
+    border-radius: 10px !important;
+  }
+
+  .pos-day-end-title > span svg {
+    width: 1rem !important;
+    height: 1rem !important;
+  }
+
+  .pos-day-end-title h1 {
+    font-size: 1rem !important;
+    line-height: 1.05 !important;
+  }
+
+  .pos-day-end-title p {
+    margin-top: 0.15rem !important;
+    font-size: 0.55rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .pos-day-end-controls {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 0.3rem !important;
+  }
+
+  .pos-day-end-controls > button,
+  .pos-day-end-controls > a,
+  .pos-day-end-controls > * > a {
+    min-width: 0 !important;
+    height: 2rem !important;
+    padding-inline: 0.35rem !important;
+    border-radius: 9px !important;
+    font-size: 0.55rem !important;
+    white-space: nowrap !important;
+  }
+
+  .pos-day-end-controls > button svg,
+  .pos-day-end-controls > a svg,
+  .pos-day-end-controls > * > a svg {
+    width: 0.75rem !important;
+    height: 0.75rem !important;
+  }
+
+  .pos-day-end-controls > div:has(.day-end-session-select) {
+    grid-column: 1 / -1 !important;
+    min-width: 0 !important;
+  }
+
+  .day-end-session-select {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 2.15rem !important;
+    padding-inline: 0.55rem !important;
+    border-radius: 9px !important;
+    font-size: 0.58rem !important;
+  }
+
+  .day-end-date-control {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    height: 2.15rem !important;
+    justify-content: space-between !important;
+    border-radius: 9px !important;
+  }
+
+  .day-end-date-control input {
+    width: min(9rem, calc(100% - 4.5rem)) !important;
+    height: 1.65rem !important;
+    font-size: 0.65rem !important;
+  }
+
+  .pos-day-end-page > .grid {
+    gap: 0.35rem !important;
+  }
+
+  .moderator-panel-page {
+    gap: 0.45rem !important;
+  }
+
+  .moderator-users-section {
+    padding: 0.45rem !important;
+    border-radius: 12px !important;
+  }
+
+  .moderator-user-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.3rem !important;
+  }
+
+  .moderator-user-stats > div {
+    height: 2rem !important;
+    padding-inline: 0.45rem !important;
+    border-radius: 8px !important;
+  }
+
+  .moderator-user-stats span:first-child {
+    font-size: 0.5rem !important;
+    letter-spacing: 0.05em !important;
+  }
+
+  .moderator-user-stats span:last-child {
+    font-size: 0.9rem !important;
+  }
+
+  .moderator-user-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.3rem !important;
+  }
+
+  .moderator-user-actions > * {
+    min-width: 0 !important;
+    height: 2rem !important;
+    padding-inline: 0.35rem !important;
+    border-radius: 8px !important;
+    font-size: 0.55rem !important;
+    white-space: normal !important;
+  }
+
+  .moderator-users-section input {
+    height: 2.2rem !important;
+    font-size: 0.68rem !important;
+  }
+
+  .moderator-users-section .overflow-x-auto {
+    overflow-x: hidden !important;
+  }
+
+  .moderator-users-table {
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    font-size: 0.58rem !important;
+  }
+
+  .moderator-users-table th:nth-child(3),
+  .moderator-users-table th:nth-child(4),
+  .moderator-users-table th:nth-child(5),
+  .moderator-users-table td:nth-child(3),
+  .moderator-users-table td:nth-child(4),
+  .moderator-users-table td:nth-child(5) {
+    display: none !important;
+  }
+
+  .moderator-users-table th,
+  .moderator-users-table td {
+    padding: 0.3rem !important;
+  }
+
+  .moderator-users-table th:nth-child(1) { width: 45% !important; }
+  .moderator-users-table th:nth-child(2) { width: 37% !important; }
+  .moderator-users-table th:nth-child(6) { width: 18% !important; }
+
+  .moderator-users-table td p,
+  .moderator-users-table td span {
+    font-size: 0.55rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .moderator-users-table td:nth-child(6) > div {
+    gap: 0.2rem !important;
+  }
+
+  .moderator-users-table td:nth-child(6) button {
+    width: 1.75rem !important;
+    min-width: 1.75rem !important;
+    height: 1.75rem !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    font-size: 0 !important;
+  }
+
+  .moderator-users-table td:nth-child(6) button svg {
+    width: 0.75rem !important;
+    height: 0.75rem !important;
+  }
+
+  .warehouse-mobile-orders article {
+    padding: 0.45rem !important;
+  }
+
+  .warehouse-mobile-order-actions button {
+    min-height: 2rem !important;
+    font-size: 0.58rem !important;
+  }
+}
+
+@media (max-width: 359px) {
+  .pos-day-end-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .point-sales-footer > button,
+  .point-sales-footer > div:first-child {
+    min-height: 40px !important;
+  }
+}
+
+/* 29.07 mobil kullanılabilirlik: masaüstünü ezmek yerine ekran bazlı yeniden yerleşim. */
+@media (max-width: 767px) {
+  /* Ürün arama: ilk ekranda sonuçlara daha erken ulaşılır. */
+  .admin-catalog-page {
+    gap: 0.5rem !important;
+  }
+
+  .admin-catalog-page .dashboard-panel-card > [data-slot="card-header"] {
+    gap: 0.45rem !important;
+    padding: 0.55rem !important;
+  }
+
+  .product-search-actions {
+    grid-template-columns: minmax(0, 1fr) repeat(3, auto) !important;
+    gap: 0.35rem !important;
+  }
+
+  .product-search-actions > div:first-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  .product-search-actions input {
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+    font-size: 0.78rem !important;
+  }
+
+  .product-search-actions > button {
+    width: auto !important;
+    min-width: 0 !important;
+    height: 2.15rem !important;
+    min-height: 2.15rem !important;
+    padding-inline: 0.65rem !important;
+    font-size: 0.68rem !important;
+    white-space: nowrap !important;
+  }
+
+  .product-search-actions > button:last-child {
+    min-width: 6.5rem !important;
+  }
+
+  .product-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.35rem !important;
+    padding: 0.45rem !important;
+  }
+
+  .product-filter-grid > div {
+    min-width: 0 !important;
+  }
+
+  .product-filter-grid [data-slot="select-trigger"] {
+    width: 100% !important;
+    height: 2.15rem !important;
+    min-height: 2.15rem !important;
+    padding-inline: 0.55rem !important;
+    font-size: 0.68rem !important;
+  }
+
+  .product-filter-grid span.text-\[9px\] {
+    font-size: 0.52rem !important;
+  }
+
+  .admin-catalog-page [data-slot="card-content"] {
+    padding: 0.55rem !important;
+  }
+
+  .admin-catalog-page [data-slot="card-content"] > p.mb-3 {
+    margin-bottom: 0.45rem !important;
+    padding: 0.5rem 0.65rem !important;
+    font-size: 0.7rem !important;
+  }
+
+  /* Müşteri seçimi: daha kısa filtre ve yoğun ama okunur kartlar. */
+  .admin-customer-filter {
+    gap: 0.4rem !important;
+    padding: 0.5rem !important;
+  }
+
+  .admin-customer-filter input {
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+    font-size: 0.76rem !important;
+  }
+
+  .customer-filter-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.35rem !important;
+  }
+
+  .customer-filter-actions > * {
+    min-height: 2.15rem !important;
+    height: 2.15rem !important;
+    padding-inline: 0.45rem !important;
+    border-radius: 10px !important;
+    font-size: 0.62rem !important;
+  }
+
+  .admin-customer-list [data-slot="table-body"] {
+    gap: 0.45rem !important;
+  }
+
+  .admin-customer-list [data-slot="table-row"] {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) !important;
+    gap: 0.35rem 0.55rem !important;
+    padding: 0.52rem !important;
+    border-radius: 12px !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:not([colspan])::before {
+    margin-bottom: 0.12rem !important;
+    font-size: 0.5rem !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"] {
+    font-size: 0.68rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(8) button {
+    min-height: 2.1rem !important;
+    height: 2.1rem !important;
+    font-size: 0.65rem !important;
+  }
+
+  /* Ledger: telefonda yatay sıkıştırılmış tablo yerine gerçek hareket kartları. */
+  .ledger-mobile-cards {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .ledger-mobile-card {
+    display: grid;
+    gap: 0.55rem;
+    overflow: hidden;
+    border: 1px solid var(--brand-border);
+    border-radius: 14px;
+    padding: 0.65rem;
+    background: color-mix(in oklab, var(--surface) 92%, transparent);
+    box-shadow: 0 14px 30px -28px rgba(0, 0, 0, 0.85);
+  }
+
+  .ledger-mobile-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.7rem;
+  }
+
+  .ledger-mobile-card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 0.65rem;
+  }
+
+  .ledger-mobile-label {
+    margin-bottom: 0.15rem;
+    color: var(--muted-foreground);
+    font-size: 0.5rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .ledger-mobile-amounts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .ledger-mobile-amounts > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    border-radius: 10px;
+    padding: 0.45rem 0.55rem;
+    background: var(--surface-soft);
+  }
+
+  .ledger-mobile-amounts span {
+    color: var(--muted-foreground);
+    font-size: 0.58rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .ledger-mobile-amounts strong {
+    min-width: 0;
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  /* POS: toplam alanı telefonda iki kolon + tam genişlik özet olarak akar. */
+  .point-sale-fit-screen .point-sales-footer {
+    width: 100% !important;
+    min-width: 0 !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem !important;
+    overflow: visible !important;
+    padding: 0.45rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > div:first-child,
+  .point-sale-fit-screen .point-sales-footer > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 48px !important;
+    padding: 0.35rem !important;
+    font-size: 0.66rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > button span {
+    font-size: 0.58rem !important;
+    white-space: normal !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > button span + span {
+    font-size: 0.76rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    padding: 0.45rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div {
+    display: grid !important;
+    grid-template-columns: minmax(4.8rem, 1fr) 2rem minmax(5rem, 1fr) !important;
+    gap: 0.35rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 0.3rem 0.45rem !important;
+    font-size: 0.66rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div span:last-child {
+    min-width: 0 !important;
+    overflow: visible !important;
+    text-align: right !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div:nth-child(3) span:last-child {
+    font-size: 1.05rem !important;
+  }
+
+  /* Mal kabul: masaüstü başlık ölçülerini taşımadan iki iş alanını sıraya koyar. */
+  .mal-kabul-workspace {
+    gap: 0.6rem !important;
+  }
+
+  .mal-kabul-summary {
+    padding: 0.65rem !important;
+  }
+
+  .mal-kabul-summary > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.45rem !important;
+  }
+
+  .mal-kabul-summary > div > div:nth-child(5),
+  .mal-kabul-summary > div > div:last-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  .mal-kabul-summary > div > div:last-child {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .mal-kabul-summary p {
+    font-size: 0.64rem !important;
+  }
+
+  .mal-kabul-summary p.text-sm {
+    font-size: 0.72rem !important;
+  }
+
+  .mal-kabul-panels {
+    min-height: 0 !important;
+  }
+
+  .mal-kabul-panels > div,
+  .mal-kabul-panels > aside {
+    min-height: 0 !important;
+    padding: 0.65rem !important;
+  }
+
+  .mal-kabul-panels h2 {
+    font-size: 1rem !important;
+  }
+
+  .mal-kabul-panels .text-xs.font-black.uppercase {
+    font-size: 0.56rem !important;
+    letter-spacing: 0.08em !important;
+  }
+
+  .mal-kabul-panels aside button.grid {
+    grid-template-columns: 32px minmax(0, 1fr) !important;
+  }
+
+  .mal-kabul-panels aside button.grid > span:last-child {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  .mal-kabul-panels aside button.grid > span:last-child > span {
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
+  }
+
+  /* Raf adresleri: mobilde dokuz alanı tek kolon uzatmak yerine iki kolonlu kart. */
+  .rack-addresses-page {
+    gap: 0.6rem !important;
+  }
+
+  .rack-addresses-page > section:first-child > div:first-child {
+    gap: 0.65rem !important;
+    padding: 0.75rem !important;
+  }
+
+  .rack-addresses-page > section:first-child > div:first-child > div:first-child {
+    align-items: flex-start !important;
+    gap: 0.65rem !important;
+  }
+
+  .rack-addresses-page > section:first-child > div:first-child > div:first-child > div:first-child {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    border-radius: 12px !important;
+  }
+
+  .rack-addresses-page h1 {
+    font-size: 1.15rem !important;
+  }
+
+  .rack-addresses-page h1 + p {
+    font-size: 0.68rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .rack-addresses-page > section:first-child > div:nth-child(2) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.45rem !important;
+    padding: 0.6rem !important;
+  }
+
+  .rack-addresses-page > section:first-child > div:nth-child(2) > div:first-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  .rack-addresses-page > section:first-child > div:nth-child(2) input,
+  .rack-addresses-page > section:first-child > div:nth-child(2) select,
+  .rack-addresses-page > section:first-child > div:nth-child(2) button,
+  .rack-addresses-page > section:first-child > div:nth-child(2) > div {
+    height: 2.45rem !important;
+    min-height: 2.45rem !important;
+    border-radius: 11px !important;
+    font-size: 0.66rem !important;
+  }
+
+  .rack-address-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem 0.65rem !important;
+    padding: 0.65rem !important;
+  }
+
+  .rack-address-row > div:nth-child(2),
+  .rack-address-row > div:nth-child(8) {
+    grid-column: 1 / -1 !important;
+  }
+
+  .rack-address-row > div:nth-child(9) {
+    align-items: flex-end !important;
+  }
+
+  .rack-address-row input {
+    height: 2.4rem !important;
+    min-height: 2.4rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  .rack-address-row button {
+    width: 2.4rem !important;
+    height: 2.4rem !important;
+  }
+
+  /* Customer Users: tablo yerine tek satırda işlem yapılabilen yoğun kartlar. */
+  .customer-users-page {
+    gap: 0.6rem !important;
+  }
+
+  .customer-users-page > section:first-child {
+    padding: 0.65rem !important;
+  }
+
+  .customer-users-page > section:first-child h2 {
+    font-size: 1.1rem !important;
+  }
+
+  .customer-users-page > section:first-child p {
+    font-size: 0.68rem !important;
+  }
+
+  .customer-users-page > section:first-child input {
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+  }
+
+  .customer-users-list-head {
+    display: none !important;
+  }
+
+  .customer-users-list > div:last-child {
+    display: grid !important;
+    gap: 0.45rem !important;
+    padding: 0.45rem !important;
+  }
+
+  .customer-user-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    min-height: 0 !important;
+    gap: 0.2rem 0.65rem !important;
+    border: 1px solid var(--brand-border) !important;
+    border-radius: 12px !important;
+    padding: 0.55rem !important;
+    background: var(--surface-soft) !important;
+  }
+
+  .customer-user-row > span:nth-child(1),
+  .customer-user-row > span:nth-child(2) {
+    grid-column: 1 !important;
+  }
+
+  .customer-user-row > span:nth-child(1) {
+    font-size: 0.7rem !important;
+  }
+
+  .customer-user-row > span:nth-child(2) {
+    max-width: 13rem !important;
+    font-size: 0.68rem !important;
+  }
+
+  .customer-user-row > span:nth-child(3) {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    font-size: 0.68rem !important;
+    text-align: right !important;
+  }
+
+  .customer-user-row > div:last-child {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+  }
+
+  .customer-user-row button {
+    height: 2rem !important;
+    min-height: 2rem !important;
+    border-radius: 9px !important;
+    padding-inline: 0.55rem !important;
+    font-size: 0.62rem !important;
+  }
+
+  /* Raporlar: kontroller telefon boyutunda, veri tabloları okunur yatay alanda. */
+  .reports-pro-screen {
+    gap: 0.55rem !important;
+    margin-inline: 0 !important;
+    padding: 0.55rem !important;
+    border-radius: 14px !important;
+  }
+
+  .reports-pro-screen h1,
+  .reports-pro-screen h2 {
+    font-size: 1.05rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .reports-pro-screen button,
+  .reports-pro-screen input,
+  .reports-pro-screen [data-slot="select-trigger"] {
+    min-height: 2.25rem !important;
+    height: 2.25rem !important;
+    border-radius: 10px !important;
+    padding-inline: 0.55rem !important;
+    font-size: 0.66rem !important;
+  }
+
+  .reports-pro-screen .overflow-x-auto {
+    max-width: calc(100vw - 2rem) !important;
+    overflow-x: auto !important;
+    overscroll-behavior-inline: contain;
+  }
+
+  .reports-pro-screen table {
+    min-width: 720px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .reports-pro-screen th,
+  .reports-pro-screen td {
+    padding: 0.45rem !important;
+    white-space: nowrap !important;
+  }
+
+  /* Moderator: kritik kolonları saklamadan okunur yatay tablo. */
+  .moderator-panel-page {
+    gap: 0.65rem !important;
+  }
+
+  .moderator-users-section {
+    padding: 0.65rem !important;
+  }
+
+  .moderator-user-stats > div {
+    height: 2.45rem !important;
+  }
+
+  .moderator-user-stats span:first-child {
+    font-size: 0.56rem !important;
+  }
+
+  .moderator-user-actions > * {
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+    font-size: 0.62rem !important;
+  }
+
+  .moderator-users-section .overflow-x-auto {
+    max-width: calc(100vw - 2rem) !important;
+    overflow-x: auto !important;
+    scrollbar-width: thin;
+  }
+
+  .moderator-users-table {
+    min-width: 720px !important;
+    table-layout: auto !important;
+    font-size: 0.68rem !important;
+  }
+
+  .moderator-users-table th:nth-child(3),
+  .moderator-users-table th:nth-child(4),
+  .moderator-users-table th:nth-child(5),
+  .moderator-users-table td:nth-child(3),
+  .moderator-users-table td:nth-child(4),
+  .moderator-users-table td:nth-child(5) {
+    display: table-cell !important;
+  }
+
+  .moderator-users-table th,
+  .moderator-users-table td {
+    width: auto !important;
+    padding: 0.5rem !important;
+  }
+
+  .moderator-users-table td p,
+  .moderator-users-table td span {
+    font-size: 0.66rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .moderator-users-table td:nth-child(6) button {
+    width: 2rem !important;
+    min-width: 2rem !important;
+    height: 2rem !important;
+    font-size: 0 !important;
+  }
+}
+
+@media (max-width: 379px) {
+  .product-search-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .product-search-actions > button {
+    width: 100% !important;
+    padding-inline: 0.35rem !important;
+    font-size: 0.6rem !important;
+  }
+
+  .product-search-actions > button:last-child {
+    min-width: 0 !important;
+  }
+
+  .ledger-mobile-card-body {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/*
+ * POS mobile footer — keep this block last so desktop min-width rules cannot
+ * leak into the phone layout.
+ */
+@media (max-width: 767px) {
+  .point-sale-fit-screen,
+  .point-sale-fit-screen > *,
+  .point-sale-fit-screen .point-table,
+  .point-sale-fit-screen .point-cart-body,
+  .point-sale-fit-screen .point-sales-footer {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .point-sale-fit-screen .point-table {
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .point-sale-fit-screen .point-cart-head {
+    display: none !important;
+  }
+
+  .point-sale-fit-screen .point-cart-body {
+    width: 100% !important;
+    min-height: 3rem !important;
+    overflow: visible !important;
+  }
+
+  .point-sale-fit-screen .point-cart-empty {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 3rem !important;
+    padding: 0.65rem 0.75rem !important;
+    overflow: hidden !important;
+    color: var(--point-muted-strong) !important;
+    font-size: 0.68rem !important;
+    line-height: 1.35 !important;
+    text-align: center !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-flow: row !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 0.42rem !important;
+    padding: 0.48rem !important;
+    overflow: hidden !important;
+    border-radius: 14px !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > div:first-child,
+  .point-sale-fit-screen .point-sales-footer > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 3.25rem !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0.4rem !important;
+    border-radius: 11px !important;
+    overflow: hidden !important;
+    font-size: 0.7rem !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > div:first-child {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.28rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > div:first-child button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 2.35rem !important;
+    padding: 0.25rem !important;
+    font-size: 0.63rem !important;
+    line-height: 1 !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > button {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 0.28rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > button span {
+    max-width: 100% !important;
+    font-size: 0.58rem !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0.02em !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > button span + span {
+    width: 100% !important;
+    font-size: 0.74rem !important;
+    line-height: 1.15 !important;
+    white-space: nowrap !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer > button svg {
+    width: 0.92rem !important;
+    height: 0.92rem !important;
+    flex: 0 0 auto !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card {
+    grid-column: 1 / -1 !important;
+    display: grid !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    gap: 0.25rem !important;
+    padding: 0.45rem !important;
+    overflow: hidden !important;
+    border-radius: 11px !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div {
+    display: grid !important;
+    grid-template-columns: minmax(4.4rem, 1fr) auto minmax(4.9rem, auto) !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 0.32rem !important;
+    padding: 0.32rem 0.4rem !important;
+    overflow: hidden !important;
+    font-size: 0.64rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div > span {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div > span:nth-child(2),
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div > span:last-child {
+    text-overflow: clip !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div:nth-child(3) > span:first-child {
+    font-size: 0.6rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div:nth-child(3) > span:nth-child(2) {
+    font-size: 0.76rem !important;
+  }
+
+  .point-sale-fit-screen .point-sales-footer .point-total-card > div:nth-child(3) > span:last-child {
+    font-size: 1rem !important;
+    line-height: 1 !important;
+  }
+}
+
+.header-cart-shortcut-button {
+  height: 3.05rem !important;
+  width: 3.8rem !important;
+  min-width: 3.8rem !important;
+}
+
+.header-cart-shortcut-button svg {
+  height: 1.45rem !important;
+  width: 1.45rem !important;
+}
+
+.header-theme-switch {
+  position: relative;
+  display: inline-flex;
+  height: 2.55rem;
+  width: 8rem;
+  min-width: 8rem;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(244, 198, 67, 0.3);
+  border-radius: 999px;
+  padding: 0.24rem;
+  isolation: isolate;
+  color: #f8faf7;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.header-theme-switch.is-light {
+  background:
+    radial-gradient(circle at 18% 50%, rgba(255, 220, 92, 0.28) 0 18%, transparent 42%),
+    linear-gradient(135deg, #0d2b1f 0%, #123b2a 58%, #071c14 100%);
+  box-shadow:
+    0 12px 24px -18px rgba(5, 24, 16, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.28);
+}
+
+.header-theme-switch.is-dark {
+  background:
+    radial-gradient(circle at 86% 24%, rgba(105, 123, 154, 0.42) 0 18%, transparent 44%),
+    linear-gradient(135deg, #08140f 0%, #10261d 45%, #0a0f19 100%);
+  border-color: rgba(151, 170, 184, 0.3);
+  box-shadow:
+    0 16px 30px -20px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -12px 20px rgba(0, 0, 0, 0.34);
+}
+
+.header-theme-switch-track {
+  position: absolute;
+  inset: 0.25rem;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.035)),
+    rgba(2, 14, 10, 0.46);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.header-theme-switch-thumb {
+  position: absolute;
+  top: 0.32rem;
+  z-index: 2;
+  display: inline-flex;
+  height: 1.9rem;
+  width: calc(50% - 0.36rem);
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  transition:
+    left 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.header-theme-switch.is-light .header-theme-switch-thumb {
+  left: 0.32rem;
+  background:
+    radial-gradient(circle at 24% 20%, rgba(255, 255, 255, 0.85) 0 15%, transparent 42%),
+    linear-gradient(180deg, #ffe477 0%, #f7bd22 64%, #d6970b 100%);
+  color: #173014;
+  box-shadow:
+    0 7px 14px -8px rgba(251, 191, 36, 0.85),
+    0 0 0 1px rgba(255, 243, 178, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.header-theme-switch.is-dark .header-theme-switch-thumb {
+  left: calc(50% + 0.04rem);
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.26) 0 15%, transparent 42%),
+    linear-gradient(180deg, #8090ad 0%, #536079 58%, #31394c 100%);
+  color: #ffffff;
+  box-shadow:
+    0 8px 16px -9px rgba(6, 10, 20, 0.9),
+    0 0 0 1px rgba(216, 226, 244, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.header-theme-switch-labels {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 0.08rem;
+  font-size: 0.66rem;
+  font-weight: 1000;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.header-theme-switch-labels > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 0;
+  height: 1.9rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.32);
+  transition:
+    color 180ms ease,
+    opacity 180ms ease,
+    text-shadow 180ms ease;
+}
+
+.header-theme-switch.is-light .header-theme-switch-label-light {
+  color: #112214;
+  text-shadow: none;
+}
+
+.header-theme-switch.is-light .header-theme-switch-label-dark {
+  color: rgba(238, 247, 241, 0.82);
+}
+
+.header-theme-switch.is-dark .header-theme-switch-label-light {
+  color: rgba(220, 232, 225, 0.78);
+}
+
+.header-theme-switch.is-dark .header-theme-switch-label-dark {
+  color: #ffffff;
+}
+
+/* BOS light theme canonical layer. Dark mode selectors above remain the visual source of truth. */
+html[data-ui-theme="light"] body,
+html[data-ui-theme="light"] .app-shell-root,
+html[data-ui-theme="light"] .app-layout-frame,
+html[data-ui-theme="light"] .page-shell-main,
+html[data-ui-theme="light"] .app-content-region {
+  background: var(--light-bg, #f4f7f5) !important;
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .page-shell-main::before,
+html[data-ui-theme="light"] .app-shell-root .app-content-region::before {
+  display: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-header, .dashboard-top-header-card, .customers-header-card, .search-header-card, .dashboard-header-center, .dashboard-header-actions, .dashboard-header-profile, .header-market-rates, .header-date-pill, .header-selected-customer, .dashboard-currency-card, .app-mobile-nav) {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 8px 24px rgba(16, 39, 29, 0.05) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where([data-slot="card"], .dashboard-panel-card, .dashboard-panel-soft, .dashboard-quick-card, .dashboard-control-hero, .admin-control-hero, .admin-overview-grid, .ledger-table-scroll, .ledger-mobile-card, .warehouse-summary-card, .product-search-panel, .orders-card, .returns-card) {
+  background: var(--light-surface, #ffffff) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 8px 24px rgba(16, 39, 29, 0.05) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region, .page-shell-header, .dashboard-top-header-card, .point-sale-screen, .pos-day-end-page) :where(h1, h2, h3, h4, h5, h6, strong, label, th, .font-black, .font-extrabold) {
+  color: var(--light-text-primary, #10271d) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region, .page-shell-header, .dashboard-top-header-card, .point-sale-screen, .pos-day-end-page) :where(.text-white, [class*="text-white/"], .text-slate-50, .text-slate-100, .text-slate-200, .text-slate-300, .text-emerald-50, .text-emerald-100, .text-green-100, .text-lime-100, .text-yellow-100, .text-cyan-100, .text-sky-100, .text-blue-100, .text-violet-100, .text-purple-100, .text-fuchsia-100, .text-pink-100, .text-rose-100, .text-red-100, .text-orange-100, .text-amber-50, .text-amber-100) {
+  color: var(--light-text-primary, #10271d) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region, .page-shell-header, .dashboard-top-header-card, .point-sale-screen, .pos-day-end-page) :where(.text-slate-400, .text-slate-500, .text-zinc-400, .text-zinc-500, .text-neutral-400, .text-neutral-500, [class*="text-slate-4"], [class*="text-slate-5"], [class*="text-white/6"], [class*="text-white/7"], [class*="text-white/8"], [class*="text-emerald-100/"], [class*="text-green-100/"], [class*="text-lime-100/"], [class*="text-cyan-100/"], [class*="text-sky-100/"], [class*="text-fuchsia-100/"], [class*="text-rose-100/"], [class*="text-red-100/"], [class*="text-amber-100/"]) {
+  color: var(--light-text-secondary, #50645a) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region, .page-shell-header, .dashboard-top-header-card, .point-sale-screen, .pos-day-end-page) :where(input, textarea, select, [role="combobox"]) {
+  background: #ffffff !important;
+  border: 1px solid #ccdad2 !important;
+  color: var(--light-text-primary, #10271d) !important;
+  box-shadow: inset 0 1px 0 rgba(16, 39, 29, 0.04) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(input, textarea)::placeholder {
+  color: var(--light-text-muted, #718278) !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(input, textarea, select, [role="combobox"]):focus,
+html[data-ui-theme="light"] .app-shell-root :where(input, textarea, select, [role="combobox"]):focus-visible {
+  border-color: var(--light-brand, #14633f) !important;
+  box-shadow: 0 0 0 3px rgba(20, 99, 63, 0.14) !important;
+  outline: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(table) {
+  background: #ffffff !important;
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(thead, [data-slot="table-header"]) {
+  background: #edf4f0 !important;
+  color: #173528 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(thead, thead *, [data-slot="table-head"]) {
+  color: #173528 !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(tbody tr, [data-slot="table-row"], .ledger-mobile-card) {
+  border-color: var(--light-border, #d4e0d9) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(tbody tr:hover) {
+  background: var(--light-surface-soft, #f7faf8) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.app-sidebar, .app-sidebar-dashboard, .app-sidebar-light) {
+  background:
+    radial-gradient(circle at 50% 8%, rgba(79, 208, 131, 0.16) 0%, transparent 15rem),
+    linear-gradient(180deg, #102b20 0%, #0b241a 55%, #081d15 100%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 34px 0 58px -54px rgba(3, 16, 10, 0.92) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.app-sidebar::before, .app-sidebar-dashboard::before, .app-sidebar-light::before) {
+  opacity: 0.72 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.app-sidebar img, .app-sidebar svg, .app-sidebar-dashboard img, .app-sidebar-light img) {
+  filter: none !important;
+  opacity: 1 !important;
+  mix-blend-mode: normal !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.app-sidebar-nav-label, .app-sidebar-system, .app-sidebar-system *, .app-sidebar-light .app-sidebar-nav-label) {
+  color: rgba(255, 255, 255, 0.9) !important;
+  opacity: 1 !important;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.36) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.app-sidebar-nav-link[aria-current="page"], .app-sidebar-nav-link.is-active) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(244, 198, 67, 0.46) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.app-sidebar-system button) {
+  background: rgba(201, 46, 50, 0.18) !important;
+  border-color: rgba(255, 180, 180, 0.28) !important;
+  color: #ffe5e5 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-theme-switch) {
+  width: 8rem !important;
+  min-width: 8rem !important;
+  border-color: rgba(20, 99, 63, 0.28) !important;
+  color: #f8faf7 !important;
+  box-shadow:
+    0 12px 24px rgba(16, 39, 29, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-theme-switch.is-dark) {
+  background:
+    radial-gradient(circle at 86% 24%, rgba(105, 123, 154, 0.42) 0 18%, transparent 44%),
+    linear-gradient(135deg, #08140f 0%, #10261d 45%, #0a0f19 100%) !important;
+  border-color: rgba(20, 99, 63, 0.34) !important;
+  color: #f4f8f5 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-theme-switch-labels > span) {
+  opacity: 0.98 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-theme-switch.is-light .header-theme-switch-label-light) {
+  color: #112214 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-theme-switch.is-light .header-theme-switch-label-dark) {
+  color: rgba(238, 247, 241, 0.82) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-theme-switch.is-dark .header-theme-switch-label-light) {
+  color: rgba(220, 232, 225, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-theme-switch.is-dark .header-theme-switch-label-dark) {
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-cart-shortcut-button) {
+  min-width: 56px !important;
+  padding-inline: 0.72rem !important;
+  background:
+    radial-gradient(circle at 35% 18%, rgba(255, 255, 255, 0.72) 0 14%, transparent 34%),
+    linear-gradient(180deg, #b96d24 0%, #7d3f16 58%, #3d1d0a 100%) !important;
+  border-color: rgba(255, 218, 132, 0.62) !important;
+  color: #fff7d1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-cart-shortcut-button *) {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-selected-customer-active) {
+  background: linear-gradient(135deg, #143c2a 0%, #0d2a1d 100%) !important;
+  border-color: #2f7653 !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.header-selected-customer-active, .header-selected-customer-active *) {
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(button:disabled, button[disabled], [aria-disabled="true"]) {
+  opacity: 1 !important;
+  background: #e6ebe8 !important;
+  border-color: #d5ddd8 !important;
+  color: #7b8b83 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(button:disabled *, button[disabled] *, [aria-disabled="true"] *) {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-red"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-red"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="to-red"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-rose"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-rose"] {
+  background: linear-gradient(135deg, #ef3340 0%, #c92e32 56%, #a92327 100%) !important;
+  border-color: rgba(169, 35, 39, 0.42) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(201, 46, 50, 0.18) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-yellow"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-yellow"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-amber"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-amber"],
+html[data-ui-theme="light"] .app-shell-root :where(.point-yellow-action-button) {
+  color: #172017 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.product-campaign-row, .warehouse-transfer-row) {
+  background: #ffff00 !important;
+  color: #000000 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.product-campaign-row *, .warehouse-transfer-row *) {
+  color: #000000 !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.DialogContent, [role="dialog"], [data-radix-dialog-content]) {
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen {
+  --point-bg: #f4f7f5;
+  --point-card: #ffffff;
+  --point-panel: #ffffff;
+  --point-panel-soft: #f7faf8;
+  --point-control: #ffffff;
+  --point-control-strong: #edf3ef;
+  --point-text: #10271d;
+  --point-muted: #718278;
+  --point-muted-strong: #50645a;
+  --point-border: #d4e0d9;
+  --point-border-strong: #b8cbc0;
+  --point-accent: #14633f;
+  --point-accent-strong: #105234;
+  --point-accent-soft: #e2f0e8;
+  --point-success: #168a50;
+  --point-danger: #c92e32;
+  background: var(--point-bg) !important;
+  border-color: var(--point-border) !important;
+  color: var(--point-text) !important;
+  box-shadow: 0 8px 24px rgba(16, 39, 29, 0.05) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen :where(.point-sale-system-card, .point-info-card, .point-panel, .point-table, .point-cart-body, .point-cart-empty, .point-sales-footer, .point-total-card, .point-cart-row, .point-admin-page, .point-admin-page > div, .point-sale-screen-card) {
+  background: #ffffff !important;
+  border-color: var(--point-border) !important;
+  color: var(--point-text) !important;
+  box-shadow: 0 1px 2px rgba(16, 39, 29, 0.04), 0 8px 24px rgba(16, 39, 29, 0.05) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen :where(.point-table, .point-cart-body, .point-cart-empty, .point-sales-footer, .point-total-card) :where([class*="bg-[#0"], [class*="bg-[#1"], [class*="bg-black/"], [class*="bg-white/["], [class*="bg-[linear-gradient"], [class*="bg-[radial-gradient"]) {
+  background: #f7faf8 !important;
+  border-color: #d4e0d9 !important;
+  color: #10271d !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen :where(.point-total-card) {
+  border-color: #c99400 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page {
+  background: #f4f7f5 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.pos-day-end-toolbar, .pos-day-end-page > div, .pos-day-end-page section, .pos-day-end-page aside) {
+  background: #ffffff !important;
+  border-color: #d4e0d9 !important;
+  color: #10271d !important;
+  box-shadow: 0 1px 2px rgba(16, 39, 29, 0.04), 0 8px 24px rgba(16, 39, 29, 0.05) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(section[class*="!bg-"], section[class*="bg-[linear-gradient"], div[class*="bg-[linear-gradient"], div[class*="bg-[#0"], div[class*="bg-[#1"]) {
+  background: #ffffff !important;
+  border-color: #d4e0d9 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(section > div:first-child, .grid[class*="grid-cols"][class*="border-b"]) {
+  background: #edf4f0 !important;
+  border-color: #d4e0d9 !important;
+  color: #173528 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(section > div:first-child *, .grid[class*="grid-cols"][class*="border-b"] *) {
+  color: #173528 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.text-white, [class*="text-white/"], [class*="text-[#f0"], [class*="text-[#d6"], [class*="text-[#dfe"], [class*="text-[#bff"], [class*="text-[#062"]) {
+  color: #10271d !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .app-sidebar .app-sidebar-nav-label,
+html[data-ui-theme="light"] .app-shell-root .app-sidebar-dashboard .app-sidebar-nav-label,
+html[data-ui-theme="light"] .app-shell-root .app-sidebar-light .app-sidebar-nav-label,
+html[data-ui-theme="light"] .app-shell-root .app-sidebar .app-sidebar-system button,
+html[data-ui-theme="light"] .app-shell-root .app-sidebar-dashboard .app-sidebar-system button,
+html[data-ui-theme="light"] .app-shell-root .app-sidebar-light .app-sidebar-system button {
+  color: rgba(255, 255, 255, 0.9) !important;
+  opacity: 1 !important;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.36) !important;
+}
+
+/* App-wide light theme audit pass: convert inherited dark surfaces inside
+   content regions while leaving the intentional dark sidebar untouched. */
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot)[class*="bg-[#0"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot)[class*="bg-[#1"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot)[class*="bg-black/"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot)[class*="bg-slate-9"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot)[class*="bg-zinc-9"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot)[class*="bg-neutral-9"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot)[class*="bg-green-9"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot)[class*="bg-emerald-9"] {
+  background: var(--light-surface, #ffffff) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 8px 24px rgba(16, 39, 29, 0.05) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-[linear-gradient"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(section, article, aside, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-[radial-gradient"] {
+  background: linear-gradient(180deg, var(--light-surface, #ffffff) 0%, var(--light-surface-soft, #f7faf8) 100%) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where([class*="border-white/"], [class*="border-slate-8"], [class*="border-green-9"], [class*="border-emerald-9"]) {
+  border-color: var(--light-border, #d4e0d9) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where([class*="text-white"], [class*="text-slate-"], [class*="text-zinc-"], [class*="text-neutral-"], [class*="text-emerald-"], [class*="text-green-"], [class*="text-lime-"], [class*="text-cyan-"], [class*="text-sky-"], [class*="text-blue-"], [class*="text-violet-"], [class*="text-purple-"], [class*="text-fuchsia-"], [class*="text-amber-"], [class*="text-yellow-"]) {
+  color: var(--light-text-primary, #10271d) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(p, span, small, td, dd, li)[class*="/"],
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(.text-muted-foreground, [class*="placeholder:text-"]) {
+  color: var(--light-text-secondary, #50645a) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.dashboard-empty-state, .empty-state, .point-cart-empty, .point-empty-state, .reports-empty-state, .pos-empty-state),
+html[data-ui-theme="light"] .app-shell-root :where([class*="min-h-52"], [class*="min-h-[90px]"], [class*="min-h-[124px]"], [class*="min-h-32"]):has(> :where(svg, p, div)) {
+  background: #f8fbf9 !important;
+  border: 1px dashed var(--light-border-strong, #b8cbc0) !important;
+  color: var(--light-text-secondary, #50645a) !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.reports-pro-screen, .point-admin-shell, .warehouse-shipment-clean, .point-sale-screen, .pos-day-end-page) {
+  background: var(--light-bg, #f4f7f5) !important;
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.reports-pro-screen, .point-admin-shell, .warehouse-shipment-clean) :where(section, article, aside, div, table):not(button):not(a)[class*="bg-[#0"],
+html[data-ui-theme="light"] .app-shell-root :where(.reports-pro-screen, .point-admin-shell, .warehouse-shipment-clean) :where(section, article, aside, div, table):not(button):not(a)[class*="bg-[linear-gradient"] {
+  background: var(--light-surface, #ffffff) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(tbody, tbody tr, tbody td, .TableBody, [data-slot="table-body"]) {
+  background: var(--light-surface, #ffffff) !important;
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(tbody tr:nth-child(even)) {
+  background: var(--light-surface-soft, #f7faf8) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where([role="dialog"], [data-radix-popper-content-wrapper] > *, [data-radix-popover-content], [data-radix-dropdown-menu-content], [data-radix-select-content]) {
+  background: var(--light-surface, #ffffff) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.05),
+    0 22px 54px rgba(16, 39, 29, 0.13) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.sonner-toast, [data-sonner-toast]) {
+  background: var(--light-surface, #ffffff) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-red"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-red"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="to-red"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-rose"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-rose"] {
+  background: linear-gradient(135deg, #ef3340 0%, #c92e32 56%, #a92327 100%) !important;
+  border-color: rgba(169, 35, 39, 0.42) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-red"] *,
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-red"] *,
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="to-red"] *,
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-rose"] *,
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-rose"] * {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-yellow"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-yellow"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-amber"],
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-amber"] {
+  color: #172017 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-yellow"] *,
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-yellow"] *,
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="bg-amber"] *,
+html[data-ui-theme="light"] .app-shell-root :where(button, a)[class*="from-amber"] * {
+  color: #172017 !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .header-cart-shortcut-button {
+  min-width: 64px !important;
+  padding-inline: 0.9rem !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] {
+  --point-bg: #f4f7f5;
+  --point-panel: #ffffff;
+  --point-panel-soft: #f7faf8;
+  --point-control: #ffffff;
+  --point-control-strong: #edf3ef;
+  --point-border: #d4e0d9;
+  --point-border-strong: #b8cbc0;
+  --point-text: #10271d;
+  --point-muted: #718278;
+  --point-muted-strong: #50645a;
+  --point-accent: #14633f;
+  --point-accent-strong: #105234;
+  --point-accent-soft: #e2f0e8;
+  --point-success: #168a50;
+  --point-danger: #c92e32;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-product-panel,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-customer-panel,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-sales-footer,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-table,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-cart-body,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-cart-empty {
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%) !important;
+  border-color: var(--point-border, #d4e0d9) !important;
+  color: var(--point-text, #10271d) !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 8px 24px rgba(16, 39, 29, 0.05) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-cart-head {
+  background: linear-gradient(90deg, #edf4f0 0%, #e3eee8 100%) !important;
+  border-color: var(--point-border, #d4e0d9) !important;
+  color: #173528 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-total-card {
+  animation: none !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%) !important;
+  border-color: #c99400 !important;
+  color: #10271d !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 10px 26px rgba(201, 148, 0, 0.11) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-total-card > div {
+  background: #ffffff !important;
+  border-color: #d4e0d9 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-total-card span,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-product-panel label,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen[data-point-theme="dark"] .point-product-panel p {
+  color: #10271d !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-product-panel,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-total-card,
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-sales-footer .point-total-card {
+  --point-light-panel-image: none;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: var(--point-light-panel-image) !important;
+  border-color: var(--point-border, #d4e0d9) !important;
+  color: var(--point-text, #10271d) !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 8px 24px rgba(16, 39, 29, 0.05) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-total-card {
+  border-color: #c99400 !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 10px 26px rgba(201, 148, 0, 0.11) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-total-card > div {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-color: #d4e0d9 !important;
+  color: #10271d !important;
+}
+
+@layer components {
+  html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-product-panel,
+  html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-total-card,
+  html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-sales-footer .point-total-card {
+    --point-light-panel-image: none;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: var(--point-light-panel-image) !important;
+    border-color: var(--point-border, #d4e0d9) !important;
+    color: var(--point-text, #10271d) !important;
+    box-shadow:
+      0 1px 2px rgba(16, 39, 29, 0.04),
+      0 8px 24px rgba(16, 39, 29, 0.05) !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-total-card {
+    border-color: #c99400 !important;
+    box-shadow:
+      0 1px 2px rgba(16, 39, 29, 0.04),
+      0 10px 26px rgba(201, 148, 0, 0.11) !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .point-sale-screen.point-sale-fit-screen[data-point-theme="dark"] .point-total-card > div {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    border-color: #d4e0d9 !important;
+    color: #10271d !important;
+  }
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f6faf7 100%) !important;
+  border: 1px solid var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 16px 34px rgba(16, 39, 29, 0.08) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-icon {
+  background: #e6f4ec !important;
+  border-color: #b8d7c7 !important;
+  color: #14633f !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-refresh-button {
+  background: #ffffff !important;
+  border-color: #bdd2c6 !important;
+  color: #143527 !important;
+  box-shadow: 0 8px 18px rgba(16, 39, 29, 0.07) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-refresh-button:hover {
+  background: #eef7f2 !important;
+  border-color: #86b79b !important;
+  color: #0f2d20 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-row {
+  background: #ffffff !important;
+  border-color: #d1ded6 !important;
+  color: #10271d !important;
+  box-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.04),
+    0 10px 22px rgba(16, 39, 29, 0.06) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-row:hover {
+  background: #f2faf5 !important;
+  border-color: #83b899 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-status {
+  background: #eef7f2 !important;
+  border-color: #9fceb4 !important;
+  color: #14553a !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-meta {
+  color: #315f47 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-error {
+  color: #b4232a !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-summary {
+  background: #f7faf8 !important;
+  border-color: #d1ded6 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-summary-card {
+  background: #ffffff !important;
+  border-color: #d8e4dd !important;
+  color: #10271d !important;
+  box-shadow: 0 8px 18px rgba(16, 39, 29, 0.05) !important;
+}
+
+/* Global mobile usability pass: compact, consistent operational screens. */
+@media (max-width: 767px) {
+  .app-shell-root .page-shell-main {
+    gap: 0.55rem !important;
+  }
+
+  .app-shell-root .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.65rem !important;
+  }
+
+  .app-shell-root .space-y-5 > :not([hidden]) ~ :not([hidden]),
+  .app-shell-root .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.75rem !important;
+  }
+
+  .app-shell-root [data-slot="card"],
+  .app-shell-root .dashboard-panel-card,
+  .app-shell-root .dashboard-panel-soft,
+  .app-shell-root .dashboard-empty-state,
+  .app-shell-root .admin-customer-filter,
+  .app-shell-root .ledger-filter-card,
+  .app-shell-root .warehouse-filter-card {
+    border-radius: 13px !important;
+  }
+
+  .app-shell-root [data-slot="card-content"],
+  .app-shell-root .dashboard-panel-card > [data-slot="card-content"] {
+    padding: 0.65rem !important;
+  }
+
+  .app-shell-root h1 {
+    font-size: 1.35rem !important;
+    line-height: 1.1 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .app-shell-root h2 {
+    font-size: 1.08rem !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .app-shell-root h3 {
+    font-size: 0.98rem !important;
+    line-height: 1.18 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .app-shell-root p,
+  .app-shell-root span,
+  .app-shell-root label {
+    min-width: 0;
+  }
+
+  .app-shell-root button,
+  .app-shell-root a[role="button"],
+  .app-shell-root [data-slot="button"] {
+    min-height: 2.25rem;
+    border-radius: 11px !important;
+  }
+
+  .app-shell-root input,
+  .app-shell-root select,
+  .app-shell-root textarea,
+  .app-shell-root [role="combobox"] {
+    min-height: 2.35rem !important;
+    border-radius: 11px !important;
+  }
+
+  .app-shell-root :where(.grid, .flex) {
+    min-width: 0;
+  }
+
+  .app-shell-root :where(.text-4xl, .text-5xl, .text-6xl) {
+    font-size: 1.6rem !important;
+    line-height: 1.08 !important;
+  }
+
+  .app-shell-root :where(.rounded-3xl, .rounded-\[24px\], .rounded-\[26px\], .rounded-\[28px\], .rounded-\[30px\], .rounded-\[32px\]) {
+    border-radius: 14px !important;
+  }
+
+  .app-shell-root :where(.p-5, .p-6, .p-7, .p-8) {
+    padding: 0.75rem !important;
+  }
+
+  .app-shell-root :where(.px-5, .px-6, .px-7, .px-8) {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  .app-shell-root :where(.py-5, .py-6, .py-7, .py-8) {
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+  }
+
+  .admin-customers-page {
+    gap: 0.55rem !important;
+  }
+
+  .admin-customers-page .admin-customer-filter {
+    padding: 0.5rem !important;
+  }
+
+  .admin-customers-page .admin-customer-filter > .grid {
+    grid-template-columns: minmax(0, 1fr) 4.25rem 4.25rem !important;
+    gap: 0.45rem !important;
+  }
+
+  .admin-customers-page .admin-customer-filter > .grid > div:first-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  .admin-customers-page .admin-dashboard-input {
+    height: 2.4rem !important;
+    padding-left: 2.25rem !important;
+    font-size: 0.9rem !important;
+  }
+
+  .admin-customers-page .admin-customer-filter button,
+  .admin-customers-page .admin-customer-filter [role="combobox"] {
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+    padding-inline: 0.5rem !important;
+    font-size: 0.68rem !important;
+    line-height: 1.05 !important;
+  }
+
+  .admin-customers-page .customer-filter-actions {
+    grid-column: 1 / -1 !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.45rem !important;
+  }
+
+  .admin-customers-page .customer-filter-actions > * {
+    width: 100% !important;
+  }
+
+  .admin-customer-list [data-slot="table-body"] {
+    gap: 0.45rem !important;
+  }
+
+  .admin-customer-list [data-slot="table-row"] {
+    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr) !important;
+    gap: 0.38rem 0.55rem !important;
+    padding: 0.55rem !important;
+    border-radius: 12px !important;
+    box-shadow: 0 10px 22px -22px rgba(0, 0, 0, 0.78) !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:not([colspan])::before {
+    margin-bottom: 0.12rem !important;
+    font-size: 0.52rem !important;
+    letter-spacing: 0.05em !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(8)::before {
+    content: "F Kodu" !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(9)::before {
+    content: "İşlem" !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"] p,
+  .admin-customer-list [data-slot="table-cell"] span,
+  .admin-customer-list [data-slot="table-cell"] strong {
+    font-size: 0.76rem !important;
+    line-height: 1.18 !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(2) p {
+    font-size: 0.9rem !important;
+    line-height: 1.18 !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(5),
+  .admin-customer-list [data-slot="table-cell"]:nth-child(7) {
+    padding: 0.35rem 0.45rem !important;
+    border-radius: 10px !important;
+    background: color-mix(in oklab, var(--surface-soft) 78%, transparent) !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(8) button,
+  .admin-customer-list [data-slot="table-cell"]:nth-child(9) button {
+    height: 2.15rem !important;
+    min-height: 2.15rem !important;
+    font-size: 0.72rem !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(9) {
+    grid-column: 1 / -1 !important;
+  }
+
+  .ledger-filter-strip,
+  .product-filter-mobile .product-filter-grid,
+  .warehouse-filter-card [data-slot="card-content"] {
+    scrollbar-width: none;
+  }
+
+  .ledger-filter-strip::-webkit-scrollbar,
+  .product-results-scroll::-webkit-scrollbar,
+  .admin-customer-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .virtual-pos-main-grid,
+  .virtual-pos-form-grid,
+  .virtual-pos-action-grid,
+  .virtual-pos-summary-grid,
+  .point-product-entry-grid,
+  .point-customer-summary-grid,
+  .orders-filter-grid,
+  .reports-filter-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .virtual-pos-action-grid,
+  .customer-filter-actions,
+  .warehouse-mobile-order-actions {
+    align-items: stretch !important;
+  }
+
+  .virtual-pos-action-grid button,
+  .warehouse-mobile-order-actions button,
+  .customer-filter-actions button {
+    width: 100% !important;
+  }
+
+  .product-cart-dialog [data-slot="dialog-header"],
+  .product-cart-dialog [data-slot="dialog-footer"] {
+    padding: 0.65rem !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .admin-customers-page .customer-filter-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .admin-customer-list [data-slot="table-row"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .admin-customer-list [data-slot="table-cell"]:nth-child(2),
+  .admin-customer-list [data-slot="table-cell"]:nth-child(8),
+  .admin-customer-list [data-slot="table-cell"]:nth-child(9),
+  .admin-customer-list [data-slot="table-cell"][colspan] {
+    grid-column: auto !important;
+  }
+}
+
+/* BOS light theme premium sweep: normalize every operational screen. */
+html[data-ui-theme="light"] .app-shell-root {
+  --light-action-green: #087a52;
+  --light-action-green-hover: #066440;
+  --light-action-red: #d71920;
+  --light-action-red-hover: #b31218;
+  --light-action-amber: #dca80d;
+  --light-action-blue: #1476a8;
+  --light-elevated-shadow:
+    0 1px 2px rgba(16, 39, 29, 0.05),
+    0 18px 42px rgba(16, 39, 29, 0.08);
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-branch-dashboard-page, .point-sale-screen, .pos-day-end-page) {
+  color: var(--light-text-primary, #10271d) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(section, article, aside, form, [data-slot="card"], [data-slot="card-content"], [data-slot="card-header"]) {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+  box-shadow: var(--light-elevated-shadow) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(section, article, aside, form, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-[#0"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(section, article, aside, form, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-[#1"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(section, article, aside, form, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-black/"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(section, article, aside, form, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-emerald-9"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(section, article, aside, form, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-red-950"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(section, article, aside, form, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-[linear-gradient"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(section, article, aside, form, div, table, tbody, tfoot):not(button):not(a):not([role="button"])[class*="bg-[radial-gradient"] {
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%) !important;
+  border-color: var(--light-border, #d4e0d9) !important;
+  color: var(--light-text-primary, #10271d) !important;
+  text-shadow: none !important;
+  box-shadow: var(--light-elevated-shadow) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(h1, h2, h3, h4, h5, h6, label, th, strong, .font-black, .font-extrabold) {
+  color: var(--light-text-primary, #10271d) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(p, span, small, td, dd, li, svg)[class*="text-"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where([class*="text-white"], [class*="text-slate-"], [class*="text-emerald-"], [class*="text-green-"], [class*="text-red-"], [class*="text-amber-"], [class*="text-yellow-"], [class*="text-sky-"], [class*="text-blue-"], [class*="text-cyan-"], [class*="text-violet-"], [class*="text-purple-"]) {
+  color: var(--light-text-primary, #10271d) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(p, span, small, dd, li)[class*="/"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(.text-muted-foreground) {
+  color: var(--light-text-secondary, #50645a) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(input, textarea, select, [role="combobox"]) {
+  background: #ffffff !important;
+  border-color: #bfd0c7 !important;
+  color: var(--light-text-primary, #10271d) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(16, 39, 29, 0.04),
+    0 1px 2px rgba(16, 39, 29, 0.03) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(input, textarea)::placeholder {
+  color: #6d7f75 !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(thead, [data-slot="table-header"], [class*="border-b"][class*="grid-cols"]) {
+  background: #eaf2ee !important;
+  border-color: #cbdad2 !important;
+  color: #123528 !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(tbody, tbody tr, tbody td, [data-slot="table-body"], [data-slot="table-row"], .rack-address-row) {
+  background: #ffffff !important;
+  border-color: #dbe7e0 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(tbody tr:nth-child(even), .rack-address-row:nth-child(even)) {
+  background: #f8fbf9 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page, .admin-collections-page, .reports-pro-screen, .point-sale-screen, .pos-day-end-page) :where(.dashboard-empty-state, .empty-state, .point-cart-empty, .point-empty-state, .reports-empty-state, .pos-empty-state, [class*="Kayıt yok"], [class*="kaydı yok"]) {
+  background: #f7faf8 !important;
+  border: 1px dashed #bed0c6 !important;
+  color: #50645a !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where([class*="border-[#ffff00]"], [class*="bg-[#ffff00]"], [class*="text-[#ffff00]"]) {
+  border-color: #d6b915 !important;
+  background: #fff9c7 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="bg-emerald"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="from-emerald"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="bg-green"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="from-green"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(.point-save-button:not(:disabled), .point-primary-button:not(:disabled), .cart-primary-button:not(:disabled)) {
+  background: linear-gradient(135deg, var(--light-action-green) 0%, var(--light-action-green-hover) 100%) !important;
+  border-color: rgba(6, 100, 64, 0.48) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 34px -24px rgba(8, 122, 82, 0.72) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="bg-red"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="from-red"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="to-red"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="bg-rose"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="from-rose"],
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"]))[class*="!bg-[linear-gradient"] {
+  background: linear-gradient(135deg, #ff4b4f 0%, var(--light-action-red) 58%, var(--light-action-red-hover) 100%) !important;
+  border-color: rgba(179, 18, 24, 0.5) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 38px -24px rgba(215, 25, 32, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button, a[role="button"]):not(:disabled):not([aria-disabled="true"]) :where(svg, span) {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.customer-complaint-page, .point-expenses-page, .rack-addresses-page) :where(button[disabled], button:disabled, [aria-disabled="true"]) {
+  background: #e5ebe8 !important;
+  border-color: #d5ddd8 !important;
+  color: #7a8981 !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .customer-complaint-page form {
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%) !important;
+  border-color: #cbdad2 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .customer-complaint-page form > div:first-child {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page [data-slot="card-header"],
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-panel [data-slot="card-header"] {
+  background: #eef6f2 !important;
+  border-color: #d3e2da !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page button[type="button"]:not(:disabled):not([class*="bg-red"]):not([class*="from-red"]):not([class*="bg-emerald"]):not([class*="from-emerald"]),
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page button[type="button"]:not(:disabled):not([class*="bg-red"]):not([class*="from-red"]):not([class*="bg-emerald"]):not([class*="from-emerald"]) {
+  background: #ffffff !important;
+  border: 1px solid #c7d7cf !important;
+  color: #173528 !important;
+  box-shadow: 0 8px 20px -18px rgba(16, 39, 29, 0.45) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page button[type="button"]:not(:disabled):hover,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page button[type="button"]:not(:disabled):hover {
+  background: #eef7f2 !important;
+  border-color: #93b9a6 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where([class*="evenRow"], [class*="oddRow"]),
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.grid)[class*="border-b"] {
+  background: #ffffff !important;
+  border-color: #dbe7e0 !important;
+  color: #10271d !important;
+}
+
+/* Light mode action color final pass: keep command colors vivid after page sweeps. */
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-red"], [class*="from-red"], [class*="to-red"], [class*="bg-rose"], [class*="from-rose"], [class*="to-rose"]) {
+  background: linear-gradient(135deg, #ff4b4f 0%, #d71920 58%, #b31218 100%) !important;
+  border-color: rgba(179, 18, 24, 0.5) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 38px -24px rgba(215, 25, 32, 0.8) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-emerald"], [class*="from-emerald"], [class*="to-emerald"], [class*="bg-green"], [class*="from-green"], [class*="to-green"], .point-save-button, .point-primary-button, .cart-primary-button, .admin-primary-action, .btn-success) {
+  background: linear-gradient(135deg, #0b8a5d 0%, #087a52 54%, #066440 100%) !important;
+  border-color: rgba(6, 100, 64, 0.5) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 34px -24px rgba(8, 122, 82, 0.76) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-amber"], [class*="from-amber"], [class*="to-amber"], [class*="bg-yellow"], [class*="from-yellow"], [class*="to-yellow"], .point-yellow-action-button) {
+  background: linear-gradient(135deg, #fff2a0 0%, #f2c230 52%, #c98d08 100%) !important;
+  border-color: rgba(178, 125, 8, 0.48) !important;
+  color: #172017 !important;
+  box-shadow: 0 16px 34px -24px rgba(201, 141, 8, 0.74) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-red"], [class*="from-red"], [class*="to-red"], [class*="bg-rose"], [class*="from-rose"], [class*="to-rose"], [class*="bg-emerald"], [class*="from-emerald"], [class*="to-emerald"], [class*="bg-green"], [class*="from-green"], [class*="to-green"], .point-save-button, .point-primary-button, .cart-primary-button, .admin-primary-action, .btn-success) :where(svg, span, p, strong) {
+  color: inherit !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-amber"], [class*="from-amber"], [class*="to-amber"], [class*="bg-yellow"], [class*="from-yellow"], [class*="to-yellow"], .point-yellow-action-button) :where(svg, span, p, strong) {
+  color: #172017 !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button[disabled], button:disabled, [aria-disabled="true"]) {
+  background: #e5ebe8 !important;
+  border-color: #d5ddd8 !important;
+  color: #7a8981 !important;
+  box-shadow: none !important;
+}
+
+/* Light mode hardening: keep operational pages readable, not half-dark. */
+html[data-ui-theme="light"] .app-shell-root {
+  --bos-light-page: #f4f9f6;
+  --bos-light-panel: #ffffff;
+  --bos-light-panel-soft: #f7fbf9;
+  --bos-light-panel-tint: #eef8f3;
+  --bos-light-border: #cfded6;
+  --bos-light-border-strong: #aac6b8;
+  --bos-light-text: #08231a;
+  --bos-light-muted: #52675d;
+  --bos-light-green: #087a52;
+  --bos-light-green-strong: #055f3f;
+  --bos-light-red: #db1f27;
+  --bos-light-red-strong: #ad141b;
+  --bos-light-amber: #f3c332;
+  --bos-light-amber-strong: #c98d08;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(
+  .point-expenses-page,
+  .mal-kabul-workspace,
+  .pos-day-end-page,
+  .point-admin-page,
+  .point-branch-dashboard-page,
+  .warehouse-page,
+  .warehouse-shipment-clean,
+  .rack-addresses-page,
+  .customer-complaint-page,
+  .admin-collections-page,
+  .reports-pro-screen,
+  .point-sale-screen
+) {
+  background: var(--bos-light-page) !important;
+  color: var(--bos-light-text) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(
+  .point-expenses-page,
+  .mal-kabul-workspace,
+  .pos-day-end-page,
+  .point-admin-page,
+  .point-branch-dashboard-page,
+  .warehouse-page,
+  .warehouse-shipment-clean,
+  .rack-addresses-page,
+  .customer-complaint-page,
+  .admin-collections-page,
+  .reports-pro-screen,
+  .point-sale-screen
+) :where(section, article, aside, form, [data-slot="card"], [data-slot="card-content"], [data-slot="card-header"]) {
+  background: linear-gradient(180deg, var(--bos-light-panel) 0%, var(--bos-light-panel-soft) 100%) !important;
+  border-color: var(--bos-light-border) !important;
+  color: var(--bos-light-text) !important;
+  box-shadow: 0 1px 2px rgba(8, 35, 26, 0.04), 0 18px 42px rgba(8, 35, 26, 0.08) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(
+  .point-expenses-page,
+  .mal-kabul-workspace,
+  .pos-day-end-page,
+  .point-admin-page,
+  .point-branch-dashboard-page,
+  .warehouse-page,
+  .warehouse-shipment-clean,
+  .rack-addresses-page,
+  .customer-complaint-page,
+  .admin-collections-page,
+  .reports-pro-screen,
+  .point-sale-screen
+) :where(div, section, article, aside, form, table, thead, tbody, tfoot, tr, td):not(button):not(a):not([role="button"]):where(
+  [class*="bg-[#0"],
+  [class*="bg-[#1"],
+  [class*="bg-black/"],
+  [class*="bg-slate-9"],
+  [class*="bg-emerald-9"],
+  [class*="bg-red-9"],
+  [class*="bg-[linear-gradient"],
+  [class*="bg-[radial-gradient"]
+) {
+  background: var(--bos-light-panel) !important;
+  border-color: var(--bos-light-border) !important;
+  color: var(--bos-light-text) !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(
+  .point-expenses-page,
+  .mal-kabul-workspace,
+  .pos-day-end-page,
+  .point-admin-page,
+  .point-branch-dashboard-page,
+  .warehouse-page,
+  .warehouse-shipment-clean,
+  .rack-addresses-page,
+  .customer-complaint-page,
+  .admin-collections-page,
+  .reports-pro-screen,
+  .point-sale-screen
+) :where(h1, h2, h3, h4, h5, h6, label, th, td, p, span, small, strong, div, li)[class*="text-"] {
+  color: var(--bos-light-text) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(
+  .point-expenses-page,
+  .mal-kabul-workspace,
+  .pos-day-end-page,
+  .point-admin-page,
+  .point-branch-dashboard-page,
+  .warehouse-page,
+  .warehouse-shipment-clean,
+  .rack-addresses-page,
+  .customer-complaint-page,
+  .admin-collections-page,
+  .reports-pro-screen,
+  .point-sale-screen
+) :where(.text-muted-foreground, [class*="text-white/"], [class*="text-slate-3"], [class*="text-slate-4"], [class*="text-slate-5"], [class*="text-emerald-100/"], [class*="text-green-100/"]) {
+  color: var(--bos-light-muted) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .rack-addresses-page) :where(input, textarea, select, [role="combobox"]) {
+  background: #ffffff !important;
+  border-color: var(--bos-light-border-strong) !important;
+  color: var(--bos-light-text) !important;
+  box-shadow: inset 0 1px 0 rgba(8, 35, 26, 0.04), 0 0 0 1px rgba(8, 122, 82, 0.04) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .rack-addresses-page) :where(input, textarea)::placeholder {
+  color: #687b72 !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page button[type="button"]:not(:disabled) {
+  background: #ffffff !important;
+  border-color: var(--bos-light-border-strong) !important;
+  color: var(--bos-light-text) !important;
+  box-shadow: 0 12px 28px -24px rgba(8, 35, 26, 0.55) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page button[type="button"]:not(:disabled):hover {
+  background: var(--bos-light-panel-tint) !important;
+  border-color: #6fac91 !important;
+  color: var(--bos-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page button[type="button"]:not(:disabled)[class*="bg-emerald"],
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page button[type="button"]:not(:disabled)[class*="ring-emerald"] {
+  background: linear-gradient(135deg, #0c8c60 0%, var(--bos-light-green) 55%, var(--bos-light-green-strong) 100%) !important;
+  border-color: rgba(5, 95, 63, 0.55) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 38px -24px rgba(8, 122, 82, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page button[type="button"]:not(:disabled)[class*="bg-emerald"] *,
+html[data-ui-theme="light"] .app-shell-root .point-expenses-page button[type="button"]:not(:disabled)[class*="ring-emerald"] * {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .pos-day-end-page, .point-sale-screen, .warehouse-page, .rack-addresses-page, .customer-complaint-page, .admin-collections-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-red"], [class*="from-red"], [class*="to-red"], [class*="bg-rose"], [class*="from-rose"], [class*="to-rose"], [class*="!bg-[linear-gradient"]) {
+  background: linear-gradient(135deg, #ff5156 0%, var(--bos-light-red) 58%, var(--bos-light-red-strong) 100%) !important;
+  border-color: rgba(173, 20, 27, 0.52) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 38px -24px rgba(219, 31, 39, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .pos-day-end-page, .point-sale-screen, .warehouse-page, .rack-addresses-page, .customer-complaint-page, .admin-collections-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-emerald"], [class*="from-emerald"], [class*="to-emerald"], [class*="bg-green"], [class*="from-green"], [class*="to-green"], .point-save-button, .point-primary-button, .cart-primary-button, .admin-primary-action, .btn-success) {
+  background: linear-gradient(135deg, #0c8c60 0%, var(--bos-light-green) 55%, var(--bos-light-green-strong) 100%) !important;
+  border-color: rgba(5, 95, 63, 0.55) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 38px -24px rgba(8, 122, 82, 0.76) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .pos-day-end-page, .point-sale-screen, .warehouse-page, .rack-addresses-page, .customer-complaint-page, .admin-collections-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-amber"], [class*="from-amber"], [class*="to-amber"], [class*="bg-yellow"], [class*="from-yellow"], [class*="to-yellow"], [class*="bg-[#f5cf54]"], .point-yellow-action-button) {
+  background: linear-gradient(135deg, #fff3a3 0%, var(--bos-light-amber) 52%, var(--bos-light-amber-strong) 100%) !important;
+  border-color: rgba(201, 141, 8, 0.5) !important;
+  color: #172017 !important;
+  box-shadow: 0 16px 34px -24px rgba(201, 141, 8, 0.74) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .pos-day-end-page, .point-sale-screen, .warehouse-page, .rack-addresses-page, .customer-complaint-page, .admin-collections-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-red"], [class*="from-red"], [class*="to-red"], [class*="bg-rose"], [class*="from-rose"], [class*="to-rose"], [class*="bg-emerald"], [class*="from-emerald"], [class*="to-emerald"], [class*="bg-green"], [class*="from-green"], [class*="to-green"], .point-save-button, .point-primary-button, .cart-primary-button, .admin-primary-action, .btn-success) :where(svg, span, p, strong) {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .pos-day-end-page, .point-sale-screen, .warehouse-page, .rack-addresses-page, .customer-complaint-page, .admin-collections-page) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-amber"], [class*="from-amber"], [class*="to-amber"], [class*="bg-yellow"], [class*="from-yellow"], [class*="to-yellow"], [class*="bg-[#f5cf54]"], .point-yellow-action-button) :where(svg, span, p, strong) {
+  color: #172017 !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .pos-day-end-page, .point-sale-screen, .warehouse-page, .rack-addresses-page, .customer-complaint-page, .admin-collections-page) :where(button:disabled, button[disabled], [aria-disabled="true"]) {
+  background: #e8eeeb !important;
+  border-color: #d5dfda !important;
+  color: #73847b !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.point-expenses-page, .mal-kabul-workspace, .pos-day-end-page, .point-sale-screen, .warehouse-page, .rack-addresses-page, .customer-complaint-page, .admin-collections-page) :where(button:disabled, button[disabled], [aria-disabled="true"]) :where(svg, span, p, strong) {
+  color: #73847b !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .mal-kabul-workspace .mal-kabul-summary,
+html[data-ui-theme="light"] .app-shell-root .mal-kabul-workspace .mal-kabul-panels,
+html[data-ui-theme="light"] .app-shell-root .mal-kabul-workspace .mal-kabul-panels > div,
+html[data-ui-theme="light"] .app-shell-root .mal-kabul-workspace .mal-kabul-panels > aside {
+  background: var(--bos-light-panel) !important;
+  border-color: var(--bos-light-border) !important;
+  color: var(--bos-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .mal-kabul-workspace :where(.border-dashed, [class*="min-h-72"], [class*="min-h-48"]) {
+  background: #fbfdfc !important;
+  border-color: #cbdcd3 !important;
+  color: var(--bos-light-muted) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.grid, .flex, div):not(button):not(a)[class*="bg-[#0"],
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.grid, .flex, div):not(button):not(a)[class*="bg-[#1"],
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.grid, .flex, div):not(button):not(a)[class*="bg-[linear-gradient"] {
+  background: #ffffff !important;
+  border-color: var(--bos-light-border) !important;
+  color: var(--bos-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.space-y-2, .space-y-3)[class*="rounded"] {
+  background: #ffffff !important;
+  border-color: var(--bos-light-border) !important;
+  color: var(--bos-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where([class*="tabular-nums"], [class*="font-black"]) {
+  color: var(--bos-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where([class*="bg-[#0"], [class*="bg-[#1"]) :where([class*="text-white"], [class*="text-[#f"], [class*="text-[#d"], [class*="text-[#b"]) {
+  color: var(--bos-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where([class*="bg-[#0"], [class*="bg-[#1"]) :where([class*="text-white/"], [class*="text-[#a"], [class*="text-[#9"]) {
+  color: var(--bos-light-muted) !important;
+}
+
+/* Final light-mode contrast contract for every operational command button. */
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button, a[role="button"]) {
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-[#0"],
+  [class*="bg-[#1"],
+  [class*="bg-slate"],
+  [class*="from-slate"],
+  [class*="to-slate"],
+  [class*="bg-zinc"],
+  [class*="from-zinc"],
+  [class*="bg-neutral"],
+  [class*="from-neutral"],
+  [class*="bg-black/"]
+) {
+  background: #ffffff !important;
+  border-color: #bdd2c6 !important;
+  color: #10271d !important;
+  box-shadow: 0 8px 20px -18px rgba(16, 39, 29, 0.48) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-[#0"],
+  [class*="bg-[#1"],
+  [class*="bg-slate"],
+  [class*="from-slate"],
+  [class*="to-slate"],
+  [class*="bg-zinc"],
+  [class*="from-zinc"],
+  [class*="bg-neutral"],
+  [class*="from-neutral"],
+  [class*="bg-black/"]
+):hover {
+  background: #eef7f2 !important;
+  border-color: #87b69b !important;
+  color: #08231a !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(
+  .virtual-pos-workspace,
+  .pos-day-end-page,
+  .point-sale-screen,
+  .admin-collections-page
+) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-slate"],
+  [class*="from-slate"],
+  [class*="to-slate"],
+  [class*="#334155"],
+  [class*="#111827"]
+) {
+  background: linear-gradient(135deg, #53657b 0%, #26364a 56%, #0f172a 100%) !important;
+  border-color: rgba(15, 23, 42, 0.38) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 30px -22px rgba(15, 23, 42, 0.72) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-red"],
+  [class*="from-red"],
+  [class*="to-red"],
+  [class*="bg-rose"],
+  [class*="from-rose"],
+  [class*="to-rose"],
+  [class*="border-red"],
+  [class*="text-red"]
+) {
+  background: linear-gradient(135deg, #ff5156 0%, #db1f27 58%, #ad141b 100%) !important;
+  border-color: rgba(173, 20, 27, 0.52) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 34px -22px rgba(219, 31, 39, 0.76) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-green"],
+  [class*="from-green"],
+  [class*="to-green"],
+  [class*="bg-emerald"],
+  [class*="from-emerald"],
+  [class*="to-emerald"],
+  [class*="border-emerald"],
+  [class*="text-emerald"],
+  .point-primary-button,
+  .point-save-button,
+  .cart-primary-button,
+  .admin-primary-action,
+  .btn-success
+) {
+  background: linear-gradient(135deg, #0d915f 0%, #087a52 55%, #055f3f 100%) !important;
+  border-color: rgba(5, 95, 63, 0.55) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 34px -22px rgba(8, 122, 82, 0.72) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-yellow"],
+  [class*="from-yellow"],
+  [class*="to-yellow"],
+  [class*="bg-amber"],
+  [class*="from-amber"],
+  [class*="to-amber"],
+  [class*="border-amber"],
+  [class*="text-amber"],
+  [class*="bg-[#f5cf54]"],
+  .point-yellow-action-button
+) {
+  background: linear-gradient(135deg, #fff4a8 0%, #f3c332 52%, #c98d08 100%) !important;
+  border-color: rgba(201, 141, 8, 0.52) !important;
+  color: #172017 !important;
+  box-shadow: 0 14px 30px -22px rgba(201, 141, 8, 0.7) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-red"],
+  [class*="from-red"],
+  [class*="to-red"],
+  [class*="bg-rose"],
+  [class*="from-rose"],
+  [class*="to-rose"],
+  [class*="border-red"],
+  [class*="text-red"],
+  [class*="bg-green"],
+  [class*="from-green"],
+  [class*="to-green"],
+  [class*="bg-emerald"],
+  [class*="from-emerald"],
+  [class*="to-emerald"],
+  [class*="border-emerald"],
+  [class*="text-emerald"],
+  .point-primary-button,
+  .point-save-button,
+  .cart-primary-button,
+  .admin-primary-action,
+  .btn-success
+) :where(svg, span, p, strong) {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-yellow"],
+  [class*="from-yellow"],
+  [class*="to-yellow"],
+  [class*="bg-amber"],
+  [class*="from-amber"],
+  [class*="to-amber"],
+  [class*="border-amber"],
+  [class*="text-amber"],
+  [class*="bg-[#f5cf54]"],
+  .point-yellow-action-button
+) :where(svg, span, p, strong) {
+  color: #172017 !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(
+  .virtual-pos-workspace,
+  .pos-day-end-page,
+  .point-sale-screen,
+  .admin-collections-page
+) :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where(
+  [class*="bg-slate"],
+  [class*="from-slate"],
+  [class*="to-slate"],
+  [class*="#334155"],
+  [class*="#111827"]
+) :where(svg, span, p, strong) {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .reports-pro-screen :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-[#0"], [class*="bg-[#1"], [class*="bg-slate"], [class*="from-slate"]) {
+  background: #ffffff !important;
+  border-color: #bdd2c6 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .reports-pro-screen :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-[#0"], [class*="bg-[#1"], [class*="bg-slate"], [class*="from-slate"]) :where(svg, span, p, strong) {
+  color: #10271d !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .reports-pro-screen :where(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):where([class*="bg-[#0"], [class*="bg-[#1"], [class*="bg-slate"], [class*="from-slate"]):hover {
+  background: #eef7f2 !important;
+  border-color: #87b69b !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:disabled, button[disabled], [aria-disabled="true"]) {
+  background: #e7eeea !important;
+  border-color: #d4dfd9 !important;
+  color: #6f8278 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-content-region) :where(button:disabled, button[disabled], [aria-disabled="true"]) :where(svg, span, p, strong) {
+  color: #6f8278 !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+/* Light mode operational contrast lock: final override for every work screen. */
+html[data-ui-theme="light"] .app-shell-root {
+  --primary-foreground: #ffffff;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button, a[role="button"]) {
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="bg-[var(--brand-primary)]"],
+  [class*="from-[var(--brand-primary)]"],
+  [class*="#2f9e61"],
+  [class*="#39b56f"],
+  [class*="#0d915f"],
+  [class*="#0c8c60"],
+  [class*="#087a52"],
+  [class*="#055f3f"],
+  [class*="bg-green"],
+  [class*="from-green"],
+  [class*="to-green"],
+  [class*="bg-emerald"],
+  [class*="from-emerald"],
+  [class*="to-emerald"],
+  .btn-success,
+  .point-primary-button,
+  .point-save-button,
+  .cart-primary-button,
+  .admin-primary-action
+) {
+  background: linear-gradient(135deg, #139461 0%, #087a52 55%, #055f3f 100%) !important;
+  border-color: rgba(5, 95, 63, 0.55) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 38px -24px rgba(8, 122, 82, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="#ff4a"],
+  [class*="#ff4b"],
+  [class*="#ff51"],
+  [class*="#ff61"],
+  [class*="#ef4444"],
+  [class*="#dc2626"],
+  [class*="#db1f27"],
+  [class*="#d71920"],
+  [class*="#c51616"],
+  [class*="#b91c1c"],
+  [class*="#ad141b"],
+  [class*="#8d070d"],
+  [class*="#8f1717"],
+  [class*="bg-red"],
+  [class*="from-red"],
+  [class*="to-red"],
+  [class*="bg-rose"],
+  [class*="from-rose"],
+  [class*="to-rose"],
+  [class*="border-red"],
+  [class*="text-red"]
+) {
+  background: linear-gradient(135deg, #ff5156 0%, #db1f27 58%, #ad141b 100%) !important;
+  border-color: rgba(173, 20, 27, 0.52) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 38px -24px rgba(219, 31, 39, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="#f5cf54"],
+  [class*="#f3c332"],
+  [class*="#c98d08"],
+  [class*="#fbbf24"],
+  [class*="bg-yellow"],
+  [class*="from-yellow"],
+  [class*="to-yellow"],
+  [class*="bg-amber"],
+  [class*="from-amber"],
+  [class*="to-amber"],
+  [class*="border-amber"],
+  [class*="text-amber"],
+  .point-yellow-action-button
+) {
+  background: linear-gradient(135deg, #fff3a3 0%, #f3c332 52%, #c98d08 100%) !important;
+  border-color: rgba(201, 141, 8, 0.52) !important;
+  color: #172017 !important;
+  box-shadow: 0 16px 34px -24px rgba(201, 141, 8, 0.72) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(
+  .virtual-pos-workspace,
+  .pos-day-end-page,
+  .point-sale-screen,
+  .admin-collections-page,
+  .warehouse-page
+) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="#0b1625"],
+  [class*="#111827"],
+  [class*="#1e293b"],
+  [class*="#26384e"],
+  [class*="#334155"],
+  [class*="bg-slate"],
+  [class*="from-slate"],
+  [class*="to-slate"]
+) {
+  background: linear-gradient(135deg, #53657b 0%, #26364a 56%, #0f172a 100%) !important;
+  border-color: rgba(15, 23, 42, 0.4) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 34px -24px rgba(15, 23, 42, 0.74) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .reports-pro-screen :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="#0a1c2c"],
+  [class*="#0b1625"],
+  [class*="#102b42"],
+  [class*="#122237"],
+  [class*="bg-[#0"],
+  [class*="bg-[#1"]
+) {
+  background: #ffffff !important;
+  border-color: #bdd2c6 !important;
+  color: #10271d !important;
+  box-shadow: 0 10px 24px -20px rgba(16, 39, 29, 0.46) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="bg-[var(--brand-primary)]"],
+  [class*="from-[var(--brand-primary)]"],
+  [class*="#2f9e61"],
+  [class*="#39b56f"],
+  [class*="#0d915f"],
+  [class*="#0c8c60"],
+  [class*="#087a52"],
+  [class*="#055f3f"],
+  [class*="bg-green"],
+  [class*="from-green"],
+  [class*="to-green"],
+  [class*="bg-emerald"],
+  [class*="from-emerald"],
+  [class*="to-emerald"],
+  [class*="#ff4a"],
+  [class*="#ff4b"],
+  [class*="#ff51"],
+  [class*="#ff61"],
+  [class*="#ef4444"],
+  [class*="#dc2626"],
+  [class*="#db1f27"],
+  [class*="#d71920"],
+  [class*="#c51616"],
+  [class*="#b91c1c"],
+  [class*="#ad141b"],
+  [class*="#8d070d"],
+  [class*="#8f1717"],
+  [class*="bg-red"],
+  [class*="from-red"],
+  [class*="to-red"],
+  [class*="bg-rose"],
+  [class*="from-rose"],
+  [class*="to-rose"],
+  [class*="border-red"],
+  [class*="text-red"],
+  .btn-success,
+  .point-primary-button,
+  .point-save-button,
+  .cart-primary-button,
+  .admin-primary-action
+) :is(svg, span, p, strong, small) {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="#f5cf54"],
+  [class*="#f3c332"],
+  [class*="#c98d08"],
+  [class*="#fbbf24"],
+  [class*="bg-yellow"],
+  [class*="from-yellow"],
+  [class*="to-yellow"],
+  [class*="bg-amber"],
+  [class*="from-amber"],
+  [class*="to-amber"],
+  [class*="border-amber"],
+  [class*="text-amber"],
+  .point-yellow-action-button
+) :is(svg, span, p, strong, small) {
+  color: #172017 !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(
+  .virtual-pos-workspace,
+  .pos-day-end-page,
+  .point-sale-screen,
+  .admin-collections-page,
+  .warehouse-page
+) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="#0b1625"],
+  [class*="#111827"],
+  [class*="#1e293b"],
+  [class*="#26384e"],
+  [class*="#334155"],
+  [class*="bg-slate"],
+  [class*="from-slate"],
+  [class*="to-slate"]
+) :is(svg, span, p, strong, small) {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .reports-pro-screen :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+  [class*="#0a1c2c"],
+  [class*="#0b1625"],
+  [class*="#102b42"],
+  [class*="#122237"],
+  [class*="bg-[#0"],
+  [class*="bg-[#1"]
+) :is(svg, span, p, strong, small) {
+  color: #10271d !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:disabled, button[disabled], a[role="button"][aria-disabled="true"]) {
+  background: #e8eeeb !important;
+  border-color: #d2ddd8 !important;
+  color: #65786f !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:disabled, button[disabled], a[role="button"][aria-disabled="true"]) :is(svg, span, p, strong, small) {
+  color: #65786f !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean {
+  background:
+    radial-gradient(circle at top left, rgba(8, 122, 82, 0.09) 0%, transparent 25%),
+    linear-gradient(180deg, #f8fbf9 0%, #eef6f1 100%) !important;
+  border-color: #cfe0d7 !important;
+  color: #10271d !important;
+  box-shadow: 0 22px 54px -42px rgba(16, 39, 29, 0.38) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean .point-product-panel {
+  background: #ffffff !important;
+  border-color: #d4e0d9 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean .warehouse-summary-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f4faf6 100%) !important;
+  border: 1px solid #cfe0d7 !important;
+  color: #10271d !important;
+  box-shadow: 0 12px 28px -22px rgba(16, 39, 29, 0.36) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean .warehouse-summary-card :where(.text-white, [class*="text-white"], [class*="text-[#e"], [class*="text-[#c"], [class*="text-[#d"]) {
+  color: #10271d !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean .warehouse-summary-card :where([class*="bg-[#1f6b45"], [class*="bg-[#0d3b52"], [class*="bg-[#3a2050"], [class*="bg-[#4d4310"]) {
+  background: #ffffff !important;
+  border-color: #bdd2c6 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean .point-table {
+  background: #ffffff !important;
+  border-color: #d4e0d9 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean .point-table > div:first-child,
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean thead,
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean [data-slot="table-header"] {
+  background: #eef6f1 !important;
+  border-color: #cbdad2 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean .point-table > div:first-child :where(p, span, strong, svg),
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean th {
+  color: #10271d !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean :where(input, textarea) {
+  background: #ffffff !important;
+  border-color: #b9d0bd !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean :where(input, textarea)::placeholder {
+  color: #60756a !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean :where(.point-primary-button:not(:disabled)) {
+  background: linear-gradient(135deg, #2fa463 0%, #087a52 100%) !important;
+  border-color: rgba(8, 122, 82, 0.48) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean :where(.point-secondary-button:not(:disabled)) {
+  background: #ffffff !important;
+  border-color: #bdd2c6 !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .warehouse-shipment-clean :where(.point-primary-button:not(:disabled), .point-secondary-button:not(:disabled)) :where(svg, span) {
+  color: inherit !important;
+  stroke: currentColor !important;
 }

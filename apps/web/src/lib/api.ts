@@ -55,6 +55,7 @@ export type CustomerSummary = {
   branch_name?: string | null;
   source_system?: string | null;
   source_reference?: string | null;
+  e_invoice_user?: boolean;
   contact_name?: string | null;
   email?: string | null;
   city: string | null;
@@ -74,6 +75,7 @@ export type CustomerSummary = {
     currency: string;
   };
   balance_source?: "b2b" | "logo";
+  customer_user_feature_permissions?: string[] | null;
   salesperson?: SalespersonSummary | null;
   meta?: {
     address?: string | null;
@@ -90,6 +92,8 @@ export type ApiUser = {
   region_name?: string | null;
   branch_code?: string | null;
   branch_name?: string | null;
+  logo_cashbox_code?: string | null;
+  logo_cashbox_name?: string | null;
   selected_customer_id: number | null;
   name: string;
   username: string;
@@ -99,6 +103,7 @@ export type ApiUser = {
   roles: ApiRole[];
   menu_permissions: string[];
   feature_permissions?: string[];
+  permissions_updated_at?: string | null;
   dealer?: ApiDealer | null;
   selectedCustomer?: CustomerSummary | null;
 };
@@ -279,6 +284,7 @@ export type ModeratorUserRecord = {
   is_active: boolean;
   menu_permissions: string[];
   feature_permissions: string[];
+  permissions_updated_at?: string | null;
   created_at: string | null;
   assigned_customers_count: number;
   dealer: {
@@ -370,12 +376,15 @@ export type CustomerUserRecord = {
   name: string;
   username: string;
   special_discount_rate: string | null;
+  allowed_brand_ids: number[] | null;
+  brand_discounts: CustomerBrandDiscount[];
   user: {
     id: number;
     username: string;
     is_active: boolean;
     menu_permissions: string[];
     feature_permissions: string[];
+    permissions_updated_at?: string | null;
   } | null;
 };
 
@@ -397,7 +406,11 @@ export type CustomerUsersResponse = {
   limit: number;
   menu_permissions: CustomerUserPermissionOption[];
   feature_permissions: CustomerUserFeaturePermissionOption[];
+  system_settings: {
+    complaint_mail_to: string;
+  };
   default_menu_permissions: string[];
+  brands: Array<{ id: number; name: string }>;
 };
 
 export type CursorResponse<T> = {
@@ -409,6 +422,7 @@ export type CursorResponse<T> = {
   current_page?: number;
   total_pages?: number;
   search_backend?: string;
+  meta?: Record<string, unknown>;
 };
 
 export type ProductPreviousPurchase = {
@@ -423,6 +437,37 @@ export type ProductPreviousPurchase = {
   line_total?: string | null;
   currency?: string | null;
   ordered_at?: string | null;
+};
+
+export type ProductPreviousPurchaseHistoryItem = {
+  date?: string | null;
+  document_no?: string | null;
+  description?: string | null;
+  quantity: number;
+  unit?: string | null;
+  unit_price: number;
+  net_price: number;
+  discounts: number[];
+  gross_total: number;
+  net_total: number;
+};
+
+export type ProductPreviousPurchaseHistorySummary = {
+  purchase_count: number;
+  total_quantity: number;
+  total_net_amount: number;
+  last_purchase_date?: string | null;
+  last_quantity?: number | null;
+  last_net_price?: number | null;
+  last_unit?: string | null;
+};
+
+export type ProductPreviousPurchasesResponse = {
+  customer_id: number;
+  customer_code: string;
+  product_code: string;
+  summary: ProductPreviousPurchaseHistorySummary;
+  items: ProductPreviousPurchaseHistoryItem[];
 };
 
 export type ProductSearchItem = {
@@ -562,6 +607,7 @@ export type CustomerListItem = {
   branch_name?: string | null;
   source_system?: string | null;
   source_reference?: string | null;
+  price_group?: string | null;
   last_synced_at?: string | null;
   balance_summary: {
     total_due: string;
@@ -570,6 +616,15 @@ export type CustomerListItem = {
   };
   balance_source?: "b2b" | "logo";
   has_cart: boolean;
+};
+
+export type CustomerPriceGroupOption = {
+  code: string;
+  label: string;
+};
+
+export type CustomerListMeta = {
+  price_groups?: CustomerPriceGroupOption[];
 };
 
 export type CartItemDto = {
@@ -762,6 +817,8 @@ export type OrderDetailResponse = {
       sales_price_type_label?: string | null;
       payment_method?: string | null;
       shipping_method: string | null;
+      target_warehouse_code?: string | null;
+      target_warehouse_name?: string | null;
       note: string | null;
     };
     invoice?: {
@@ -805,6 +862,9 @@ export type OrderDetailResponse = {
       logo_stock?: {
         available_total: number;
         erzurum_depo_available_total?: number | null;
+        print_warehouse_code?: string | null;
+        print_warehouse_name?: string | null;
+        print_warehouse_available_total?: number | null;
         reserved_total: number;
         updated_at: string | null;
       };
@@ -1140,6 +1200,26 @@ export type LedgerEntryDto = {
   sales_price_type_label?: string | null;
   shipping_method?: string | null;
   shipping_method_label?: string | null;
+  logo_invoice_detail?: {
+    invoice_ref?: string | null;
+    trcode?: number | null;
+    document_kind?: string | null;
+    total: string;
+    lines: Array<{
+      logo_line_ref?: string | null;
+      line_no?: number | null;
+      product_code?: string | null;
+      product_name?: string | null;
+      quantity: string;
+      unit?: string | null;
+      unit_price: string;
+      discount_total: string;
+      vat_rate: string;
+      vat_amount: string;
+      line_total: string;
+      description?: string | null;
+    }>;
+  } | null;
   payment_method?: string | null;
 };
 
@@ -1292,6 +1372,8 @@ export type PosSaleItemDto = {
   unit_price: string;
   vat_rate: string;
   line_total: string;
+  unit_price_vat_included?: string | null;
+  line_total_vat_included?: string | null;
 };
 
 export type PosPaymentDto = {
@@ -1447,6 +1529,9 @@ export type PosDayEndReport = {
     grand_total_cancelled: string;
     expense_count: number;
     expense_total: string;
+    cash_expense_total: string;
+    bank_expense_total: string;
+    bank_deposit_total: string;
     expected_cash: string | null;
     net_total: string;
   };
@@ -1663,6 +1748,13 @@ export type WarehouseReadyOrderItem = {
     payment_method?: string | null;
     shipping_method: string | null;
     note: string | null;
+    document_type?: string | null;
+    document_label?: string | null;
+    transfer_status?: string | null;
+    transfer_source_warehouse_code?: string | null;
+    transfer_source_warehouse_name?: string | null;
+    transfer_target_warehouse_code?: string | null;
+    transfer_target_warehouse_name?: string | null;
   };
   invoice?: {
     id: number | null;
@@ -1704,9 +1796,16 @@ export type WarehouseReadyOrderItem = {
   } | null;
 };
 
+export type CustomerBrandDiscount = {
+  brand_id: number;
+  discount_1: string | number;
+  discount_2: string | number;
+  discount_3: string | number;
+};
+
 export type FinanceDefinitionDto = {
   id: number;
-  type: "bank" | "pos_device" | "card_type" | "factory" | "expense_category";
+  type: "bank" | "pos_device" | "card_type" | "factory" | "expense_category" | "shipping_rule";
   code: string;
   name: string;
   logo_code: string | null;
@@ -1714,6 +1813,15 @@ export type FinanceDefinitionDto = {
   meta: Record<string, unknown> | null;
   sort_order: number;
   is_active: boolean;
+};
+
+export type CustomerComplaintResponse = {
+  data: {
+    id: number;
+    status: string;
+    sent_at: string | null;
+  };
+  message?: string;
 };
 
 export type WarehouseShipmentItemDto = {
@@ -1763,6 +1871,8 @@ export type WarehouseShelfProduct = {
   warehouse_code: string;
   warehouse_name: string;
   shelf_address?: string | null;
+  shelf_updated_at?: string | null;
+  shelf_updated_by?: string | null;
   editable: boolean;
   logo_ref?: string | null;
 };
@@ -1774,6 +1884,30 @@ export type WarehouseShelfResponse = {
     name: string;
     editable: boolean;
   };
+  warehouses?: Array<{
+    code: string;
+    name: string;
+    editable: boolean;
+  }>;
+  can_choose_warehouse?: boolean;
+};
+
+export type CollectionApprovalRecord = {
+  id: number;
+  customer_id: number;
+  customer_code: string | null;
+  customer_name: string | null;
+  method: "check" | "note";
+  method_label: string;
+  amount: string;
+  currency: string;
+  reference_no: string | null;
+  document_no: string | null;
+  due_date: string | null;
+  valor_days: number | string | null;
+  sender_name: string | null;
+  sender_username: string | null;
+  created_at: string | null;
 };
 
 export type WarehouseShipmentState = {
@@ -1814,6 +1948,15 @@ export type WarehouseShipmentState = {
       code: string | null;
       name: string | null;
     };
+    origin?: {
+      document_type?: "warehouse_transfer" | "shipment_invoice" | string | null;
+      document_label?: string | null;
+      transfer_status?: string | null;
+      transfer_source_warehouse_code?: string | null;
+      transfer_source_warehouse_name?: string | null;
+      transfer_target_warehouse_code?: string | null;
+      transfer_target_warehouse_name?: string | null;
+    };
   };
   remaining_items: WarehouseShipmentItemDto[];
   shipped_items: WarehouseShipmentItemDto[];
@@ -1837,6 +1980,7 @@ export type WarehouseShipmentState = {
   }>;
   message?: string;
   gonderilen_tutar?: string;
+  logo_document_type?: "warehouse_transfer" | "shipment_invoice" | string | null;
 };
 
 export type PurchaseReceiptItemPayload = {
@@ -1845,6 +1989,11 @@ export type PurchaseReceiptItemPayload = {
   expected_quantity: number;
   accepted_quantity: number;
   note?: string | null;
+  warehouse_code?: string | null;
+  warehouse_name?: string | null;
+  shelf_address?: string | null;
+  current_stock?: number | null;
+  new_total_stock?: number | null;
 };
 
 export type PurchaseReceiptRecord = {
@@ -1986,6 +2135,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (error) {
     if (timeoutController.signal.aborted && !requestSignal?.aborted) {
       throw new ApiClientError("İstek zaman aşımına uğradı. Lütfen tekrar deneyin.", 408);
+    }
+
+    if (error instanceof TypeError) {
+      throw new ApiClientError("Sunucuya ulaşılamadı. Bağlantıyı kontrol edip tekrar deneyin.", 0);
     }
 
     throw error;
@@ -2195,6 +2348,7 @@ export async function listCustomers(params: {
   q?: string;
   has_cart?: boolean;
   has_order_balance?: boolean;
+  price_group?: string;
   source_system?: "logo" | "b2b";
   selection_mode?: boolean;
   fast?: boolean;
@@ -2203,7 +2357,7 @@ export async function listCustomers(params: {
   limit?: number;
   cache_bust?: number;
 }) {
-  return apiFetch<CursorResponse<CustomerListItem>>(`/api/customers${toSearch(params)}`);
+  return apiFetch<CursorResponse<CustomerListItem> & { meta?: CustomerListMeta }>(`/api/customers${toSearch(params)}`);
 }
 
 export async function listPosCustomers(params?: {
@@ -2235,15 +2389,26 @@ export async function searchProducts(params: {
   cursor?: string;
   page?: number;
   dealer_id?: number;
+  customer_id?: number;
   include_equivalents?: boolean;
 }, init?: RequestInit) {
   return apiFetch<CursorResponse<ProductSearchItem>>(`/api/products/search${toSearch(params)}`, init);
+}
+
+export async function getProductPreviousPurchases(productCode: string, params: {
+  customer_id?: number;
+  limit?: number;
+}) {
+  return apiFetch<ProductPreviousPurchasesResponse>(
+    `/api/products/previous-purchases${toSearch({ ...params, product_code: productCode })}`
+  );
 }
 
 export async function searchPosProductsQuick(params: {
   q: string;
   limit?: number;
   dealer_id?: number;
+  customer_id?: number;
   in_stock?: boolean;
   code_only?: boolean;
 }) {
@@ -2343,8 +2508,19 @@ export async function createOrder(payload?: {
   dealer_id?: number;
   note?: string;
   checkout_summary_mode?: "detailed" | "excluded" | "included";
+  item_checkout_summary_modes?: Record<number | string, "detailed" | "excluded" | "included">;
+  checkout_grand_total?: number;
+  shipping_fee_amount?: number;
+  selected_product_ids?: number[];
   payment_method?: string;
   sales_price_type?: string;
+  warehouse_transfer_request?: boolean;
+  shipping_target_warehouse_code?: string | null;
+  shipping_target_warehouse_name?: string | null;
+  transfer_source_warehouse_code?: string | null;
+  transfer_source_warehouse_name?: string | null;
+  transfer_target_warehouse_code?: string | null;
+  transfer_target_warehouse_name?: string | null;
 }) {
   return apiFetch<OrderCreateResponse>("/api/orders", {
     method: "POST",
@@ -2497,6 +2673,24 @@ export async function uploadCustomerCardRequestAttachment(
   );
 }
 
+export async function createCustomerComplaint(payload: {
+  subject: string;
+  message: string;
+  attachment?: File | null;
+}) {
+  const formData = new FormData();
+  formData.set("subject", payload.subject);
+  formData.set("message", payload.message);
+  if (payload.attachment) {
+    formData.set("attachment", payload.attachment);
+  }
+
+  return apiFetch<CustomerComplaintResponse>("/api/customer-complaints", {
+    method: "POST",
+    body: formData,
+  });
+}
+
 export async function updateCustomerCardRequestStatus(
   customerCardRequestId: number,
   payload: {
@@ -2531,6 +2725,8 @@ export async function createCustomerUser(customerId: number, payload: {
   menu_permissions?: string[];
   feature_permissions?: string[];
   special_discount_rate?: number | null;
+  allowed_brand_ids?: number[];
+  brand_discounts?: CustomerBrandDiscount[];
 }) {
   return apiFetch<{ data: CustomerUserRecord }>(`/api/customer-users/${customerId}`, {
     method: "POST",
@@ -2694,6 +2890,8 @@ export async function listCustomerCollections(
     date_to?: string;
     per_page?: number;
     page?: number;
+    include_summary?: boolean;
+    compact?: boolean;
   }
 ) {
   return apiFetch<CustomerCollectionsResponse>(
@@ -2701,9 +2899,28 @@ export async function listCustomerCollections(
   );
 }
 
-export async function listFinanceDefinitions(type?: FinanceDefinitionDto["type"], includeInactive = false) {
+export async function updateModeratorSystemSettings(payload: { complaint_mail_to: string }) {
+  return apiFetch<{ message: string; system_settings: { complaint_mail_to: string } }>("/api/moderator/system-settings", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listCollectionApprovals() {
+  return apiFetch<{ data: CollectionApprovalRecord[] }>("/api/collections/approvals");
+}
+
+export async function listFinanceDefinitions(
+  type?: FinanceDefinitionDto["type"],
+  includeInactive = false,
+  scope?: "turkey" | "batum"
+) {
   return apiFetch<{ data: FinanceDefinitionDto[] }>(
-    `/api/finance-definitions${toSearch({ ...(type ? { type } : {}), include_inactive: includeInactive || undefined })}`
+    `/api/finance-definitions${toSearch({
+      ...(type ? { type } : {}),
+      include_inactive: includeInactive || undefined,
+      scope,
+    })}`
   );
 }
 
@@ -2755,7 +2972,16 @@ export async function fetchCampaignProgress(customerId: number) {
   );
 }
 
-export async function createFinanceDefinition(payload: Omit<FinanceDefinitionDto, "id">) {
+export async function createFinanceDefinition(payload: {
+  type: FinanceDefinitionDto["type"];
+  code: string;
+  name: string;
+  logo_code?: string | null;
+  logo_name?: string | null;
+  meta?: Record<string, unknown> | null;
+  sort_order?: number;
+  is_active?: boolean;
+}) {
   return apiFetch<{ data: FinanceDefinitionDto }>("/api/admin/finance-definitions", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -2994,6 +3220,8 @@ export async function createPosExpense(payload: {
   finance_definition_id?: number;
   amount: number;
   category: string;
+  logo_expense_account_code?: string;
+  logo_expense_account_name?: string;
   note?: string;
   expense_date?: string;
   meta?: Record<string, unknown>;
@@ -3083,6 +3311,12 @@ export async function listPosSales(params?: {
   return apiFetch<CursorResponse<PosSaleListItemDto>>(`/api/pos/sales${toSearch(params ?? {})}`);
 }
 
+export async function getPosDeliveryBalance(customerId?: number | null) {
+  return apiFetch<{ data: { count: number; amount: string; source: "logo" | "b2b"; synced_at: string | null } }>(
+    `/api/pos/sales/delivery-balance${toSearch({ customer_id: customerId ?? undefined })}`
+  );
+}
+
 export async function getPosSale(posSaleId: number) {
   return apiFetch<{ data: PosSaleDto }>(`/api/pos/sales/${posSaleId}`);
 }
@@ -3095,6 +3329,48 @@ export async function getPosDayEndReport(params?: {
   date_to?: string;
 }) {
   return apiFetch<{ data: PosDayEndReport }>(`/api/pos/reports/day-end${toSearch(params ?? {})}`);
+}
+
+export async function approveCustomerCollection(customerId: number, collectionId: number) {
+  return apiFetch<{ collection: CollectionRecord; message?: string }>(
+    `/api/customers/${customerId}/collections/${collectionId}/approve`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export async function rejectCustomerCollection(customerId: number, collectionId: number, reason?: string) {
+  return apiFetch<{ collection: CollectionRecord; message?: string }>(
+    `/api/customers/${customerId}/collections/${collectionId}/reject`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }
+  );
+}
+
+export async function savePosDayEnd(params?: {
+  pos_session_id?: number;
+  cashbox_id?: number;
+  date?: string;
+  date_from?: string;
+  date_to?: string;
+}) {
+  return apiFetch<{
+    data: PosDayEndReport & {
+      day_end_export?: {
+        status: string;
+        cash_amount: string;
+        card_amount: string;
+        external_ref?: string | null;
+        last_error?: string | null;
+      };
+    };
+  }>("/api/pos/reports/day-end/save", {
+    method: "POST",
+    body: JSON.stringify(params ?? {}),
+  });
 }
 
 export async function listWarehouseReadyOrders(params?: {
@@ -3127,6 +3403,7 @@ export async function listWarehouseStaff() {
 export async function listWarehouseShelves(params?: {
   q?: string;
   warehouse_code?: string;
+  include_equivalents?: boolean;
   limit?: number;
 }) {
   return apiFetch<WarehouseShelfResponse>(`/api/warehouse/shelves${toSearch(params ?? {})}`);
@@ -3172,6 +3449,43 @@ export async function createPurchaseReceipt(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function listPurchaseReceipts(params?: {
+  status?: string;
+  warehouse_transfers?: boolean;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (params?.warehouse_transfers !== undefined) {
+    search.set("warehouse_transfers", params.warehouse_transfers ? "1" : "0");
+  }
+  if (params?.limit) {
+    search.set("limit", String(params.limit));
+  }
+
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return apiFetch<{ data: PurchaseReceiptRecord[] }>(`/api/purchase-receipts${suffix}`);
+}
+
+export async function getPurchaseReceipt(receiptId: number | string) {
+  return apiFetch<{ data: PurchaseReceiptRecord }>(`/api/purchase-receipts/${receiptId}`);
+}
+
+export async function approvePurchaseReceipt(
+  receiptId: number | string,
+  items?: Array<{ id: number; accepted_quantity: number }>,
+) {
+  return apiFetch<{ data: PurchaseReceiptRecord; message?: string }>(
+    `/api/purchase-receipts/${receiptId}/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify(items ? { items } : {}),
+    }
+  );
 }
 
 export async function getWarehouseShipment(shipmentId: number | string) {
@@ -3291,4 +3605,48 @@ export async function finalizeWarehouseShipment(
       body: JSON.stringify(payload ?? {}),
     }
   );
+}
+
+export type AppNotificationDto = {
+  id: number;
+  type: string;
+  title: string;
+  body: string | null;
+  url: string | null;
+  status: "unread" | "read" | "archived";
+  meta: Record<string, unknown> | null;
+  created_at: string | null;
+  read_at: string | null;
+  archived_at: string | null;
+};
+
+export type AppNotificationsResponse = {
+  data: AppNotificationDto[];
+  unread_count: number;
+};
+
+export async function listNotifications(params?: { status?: "active" | "unread" | "read" | "all"; limit?: number }) {
+  const search = new URLSearchParams();
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (params?.limit) {
+    search.set("limit", String(params.limit));
+  }
+
+  const query = search.toString();
+
+  return apiFetch<AppNotificationsResponse>(`/api/notifications${query ? `?${query}` : ""}`);
+}
+
+export async function markNotificationRead(notificationId: number | string) {
+  return apiFetch<{ data: AppNotificationDto }>(`/api/notifications/${notificationId}/read`, {
+    method: "PATCH",
+  });
+}
+
+export async function archiveNotification(notificationId: number | string) {
+  return apiFetch<{ data: AppNotificationDto }>(`/api/notifications/${notificationId}/archive`, {
+    method: "PATCH",
+  });
 }

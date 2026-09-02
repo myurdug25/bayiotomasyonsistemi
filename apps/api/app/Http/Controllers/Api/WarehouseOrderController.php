@@ -65,7 +65,15 @@ class WarehouseOrderController extends Controller
                 'note',
                 'created_at',
             ])
-            ->whereIn('status', ['approved', 'picking', 'packed']);
+            ->where(function (Builder $statusQuery): void {
+                $statusQuery
+                    ->whereIn('status', ['approved', 'picking', 'packed'])
+                    ->orWhere(function (Builder $customerPendingQuery): void {
+                        $customerPendingQuery
+                            ->where('status', 'pending')
+                            ->whereHas('user.roles', fn (Builder $roleQuery): Builder => $roleQuery->where('slug', 'customer'));
+                    });
+            });
 
         if (! $user->hasRole('admin')) {
             $query->where('dealer_id', $user->dealer_id);
@@ -77,7 +85,7 @@ class WarehouseOrderController extends Controller
             $targetWarehouse = app(WarehouseBranchResolver::class)->targetWarehouse($user);
             $targetWarehouseCode = trim((string) ($targetWarehouse['code'] ?? ''));
 
-            if (in_array($targetWarehouseCode, ['1', '2', '3'], true)) {
+            if (in_array($targetWarehouseCode, ['1', '2', '3', '4'], true)) {
                 $this->applyReadyOrderWarehouseScope($query, $targetWarehouseCode);
             }
         }
@@ -221,27 +229,111 @@ class WarehouseOrderController extends Controller
     private function applyReadyOrderWarehouseScope(Builder $query, string $warehouseCode): void
     {
         $query->where(function (Builder $builder) use ($warehouseCode): void {
+            $builder->whereExists(function ($syncQuery) use ($warehouseCode): void {
+                $syncQuery
+                    ->selectRaw('1')
+                    ->from('integration_sync_states')
+                    ->whereColumn('integration_sync_states.entity_id', 'orders.id')
+                    ->where('system', 'logo')
+                    ->where('domain', 'warehouse-transfer-orders')
+                    ->where('direction', 'outbound')
+                    ->where('entity_type', Order::class)
+                    ->where('meta->transfer_source_warehouse_code', $warehouseCode);
+            });
+
             if ($warehouseCode === '1') {
-                $this->whereOrderBranch($builder, ['ERZURUM']);
-                $builder->orWhere(function (Builder $cargoBuilder): void {
-                    $this->whereShippingMethod($cargoBuilder, 'kargo');
-                    $this->whereOrderBranch($cargoBuilder, ['TRABZON', 'SAMSUN']);
+                $builder->orWhere(function (Builder $normalBuilder): void {
+                    $this->whereNotWarehouseTransferOrder($normalBuilder);
+                    $normalBuilder->where(function (Builder $normalScope): void {
+                        $normalScope
+                            ->where(function (Builder $warehouseCreator): void {
+                                $this->whereOrderCreatedByWarehouseBranch($warehouseCreator, ['ERZURUM']);
+                            })
+                            ->orWhere(function (Builder $salesOrder): void {
+                                $this->whereOrderNotCreatedByWarehouse($salesOrder);
+                                $salesOrder->where(function (Builder $salesScope): void {
+                                    $this->whereOrderBranch($salesScope, ['ERZURUM']);
+                                    $salesScope->orWhere(function (Builder $cargoBuilder): void {
+                                        $this->whereShippingMethod($cargoBuilder, 'kargo');
+                                        $this->whereOrderBranch($cargoBuilder, ['TRABZON', 'SAMSUN']);
+                                    });
+                                });
+                            });
+                    });
                 });
 
                 return;
             }
 
             if ($warehouseCode === '2') {
-                $this->whereOrderBranch($builder, ['TRABZON']);
-                $this->whereNotShippingMethod($builder, 'kargo');
+                $builder->orWhere(function (Builder $normalBuilder): void {
+                    $this->whereNotWarehouseTransferOrder($normalBuilder);
+                    $normalBuilder->where(function (Builder $normalScope): void {
+                        $normalScope
+                            ->where(function (Builder $warehouseCreator): void {
+                                $this->whereOrderCreatedByWarehouseBranch($warehouseCreator, ['TRABZON']);
+                            })
+                            ->orWhere(function (Builder $salesOrder): void {
+                                $this->whereOrderNotCreatedByWarehouse($salesOrder);
+                                $this->whereOrderBranch($salesOrder, ['TRABZON']);
+                                $this->whereNotShippingMethod($salesOrder, 'kargo');
+                            });
+                    });
+                });
 
                 return;
             }
 
             if ($warehouseCode === '3') {
-                $this->whereOrderBranch($builder, ['SAMSUN']);
-                $this->whereNotShippingMethod($builder, 'kargo');
+                $builder->orWhere(function (Builder $normalBuilder): void {
+                    $this->whereNotWarehouseTransferOrder($normalBuilder);
+                    $normalBuilder->where(function (Builder $normalScope): void {
+                        $normalScope
+                            ->where(function (Builder $warehouseCreator): void {
+                                $this->whereOrderCreatedByWarehouseBranch($warehouseCreator, ['SAMSUN']);
+                            })
+                            ->orWhere(function (Builder $salesOrder): void {
+                                $this->whereOrderNotCreatedByWarehouse($salesOrder);
+                                $this->whereOrderBranch($salesOrder, ['SAMSUN']);
+                                $this->whereNotShippingMethod($salesOrder, 'kargo');
+                            });
+                    });
+                });
+
+                return;
             }
+
+            if ($warehouseCode === '4') {
+                $builder->orWhere(function (Builder $normalBuilder): void {
+                    $this->whereNotWarehouseTransferOrder($normalBuilder);
+                    $normalBuilder->where(function (Builder $normalScope): void {
+                        $normalScope
+                            ->where(function (Builder $warehouseCreator): void {
+                                $this->whereOrderCreatedByWarehouseBranch($warehouseCreator, ['BATUM']);
+                            })
+                            ->orWhere(function (Builder $salesOrder): void {
+                                $this->whereOrderNotCreatedByWarehouse($salesOrder);
+                                $this->whereOrderBranch($salesOrder, ['BATUM']);
+                                $this->whereNotShippingMethod($salesOrder, 'kargo');
+                            });
+                    });
+                });
+            }
+        });
+    }
+
+    private function whereNotWarehouseTransferOrder(Builder $query): void
+    {
+        $query->whereNotExists(function ($syncQuery): void {
+            $syncQuery
+                ->selectRaw('1')
+                ->from('integration_sync_states')
+                ->whereColumn('integration_sync_states.entity_id', 'orders.id')
+                ->where('system', 'logo')
+                ->where('domain', 'warehouse-transfer-orders')
+                ->where('direction', 'outbound')
+                ->where('entity_type', Order::class)
+                ->where('meta->document_type', 'warehouse_transfer');
         });
     }
 
@@ -277,6 +369,34 @@ class WarehouseOrderController extends Controller
     }
 
     /**
+     * Depo/point kullanıcıları normal cari satışı yaptığında, carinin plasiyer
+     * şubesi değil işlemi açan depocunun kendi deposu yetkilidir.
+     *
+     * @param  list<string>  $branches
+     */
+    private function whereOrderCreatedByWarehouseBranch(Builder $query, array $branches): void
+    {
+        $query->whereHas('user', function (Builder $userQuery) use ($branches): void {
+            $userQuery->whereHas('roles', function (Builder $roleQuery): void {
+                $roleQuery->whereIn('slug', ['warehouse', 'point']);
+            });
+
+            $this->whereUserBranch($userQuery, $branches);
+        });
+    }
+
+    private function whereOrderNotCreatedByWarehouse(Builder $query): void
+    {
+        $query->where(function (Builder $creatorQuery): void {
+            $creatorQuery
+                ->whereDoesntHave('user')
+                ->orWhereDoesntHave('user.roles', function (Builder $roleQuery): void {
+                    $roleQuery->whereIn('slug', ['warehouse', 'point']);
+                });
+        });
+    }
+
+    /**
      * @param  list<string>  $branches
      */
     private function whereUserBranch(Builder $query, array $branches): void
@@ -290,6 +410,7 @@ class WarehouseOrderController extends Controller
             'ERZURUM' => ['ahmet.arac', 'erzurum.merkez', 'mudur.erzurum', 'erz.depo', 'erzurum.depo'],
             'TRABZON' => ['trabzon.point', 'trabzon.depo'],
             'SAMSUN' => ['samsun.point', 'samsun.depo'],
+            'BATUM' => ['batum', 'batum.depo'],
         ];
 
         $usernames = collect($branches)

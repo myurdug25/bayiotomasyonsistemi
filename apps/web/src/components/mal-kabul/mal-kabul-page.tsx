@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Barcode,
   CheckCircle2,
+  ChevronsRight,
   ClipboardCheck,
   ClipboardList,
   DatabaseZap,
@@ -16,9 +18,15 @@ import {
   Truck,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createPurchaseReceipt, type PurchaseReceiptRecord } from "@/lib/api";
+import {
+  approvePurchaseReceipt,
+  createPurchaseReceipt,
+  getPurchaseReceipt,
+  listPurchaseReceipts,
+  type PurchaseReceiptRecord,
+} from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,7 +53,7 @@ const emptyLine: DraftLine = {
 };
 
 const panelClass =
-  "border-[var(--brand-border)] bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[0_18px_34px_-28px_rgba(33,52,22,0.28)]";
+  "rounded-[26px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(9,34,27,0.96)_0%,rgba(8,20,28,0.96)_52%,rgba(20,52,37,0.94)_100%)] shadow-[0_26px_70px_-44px_rgba(16,185,129,0.7)]";
 
 function nextLineId() {
   return `line-${Date.now()}-${Math.round(Math.random() * 10000)}`;
@@ -62,6 +70,7 @@ function toSafeQuantity(value: string) {
 }
 
 export function MalKabulPage() {
+  const queryClient = useQueryClient();
   const [documentNo, setDocumentNo] = useState("");
   const [supplier, setSupplier] = useState("");
   const [warehouse, setWarehouse] = useState("");
@@ -70,10 +79,61 @@ export function MalKabulPage() {
   const [draftLine, setDraftLine] = useState<DraftLine>(emptyLine);
   const [lines, setLines] = useState<ReceiptLine[]>([]);
   const [lastReceipt, setLastReceipt] = useState<PurchaseReceiptRecord | null>(null);
+  const [selectedTransferId, setSelectedTransferId] = useState<number | null>(null);
+  const [selectedTransferLineIds, setSelectedTransferLineIds] = useState<Set<number>>(new Set());
+  const [selectedTransferLineId, setSelectedTransferLineId] = useState<number | null>(null);
+
+  const transferReceiptsQuery = useQuery({
+    queryKey: ["purchase-receipts", "warehouse-transfers", "draft"],
+    queryFn: () => listPurchaseReceipts({ status: "draft", warehouse_transfers: true, limit: 50 }),
+    staleTime: 10_000,
+  });
+
+  const transferReceipts = useMemo(() => transferReceiptsQuery.data?.data ?? [], [transferReceiptsQuery.data?.data]);
+  const lastReceiptLogoState = lastReceipt?.logo_sync_status ?? lastReceipt?.status ?? null;
+  const lastReceiptIsSynced = lastReceiptLogoState === "synced" || Boolean(lastReceipt?.logo_external_ref);
+  const lastReceiptIsFailed = lastReceiptLogoState === "failed";
+  const lastReceiptBadgeLabel = lastReceiptIsSynced ? "Gönderildi" : lastReceiptIsFailed ? "Hata" : "Kuyrukta";
+  const lastReceiptBadgeClass = lastReceiptIsSynced
+    ? "w-fit bg-emerald-700 text-white"
+    : lastReceiptIsFailed
+      ? "w-fit bg-red-700 text-white"
+      : "w-fit bg-amber-500 text-amber-950";
+  const selectedTransfer = useMemo(
+    () => transferReceipts.find((receipt) => receipt.id === selectedTransferId) ?? transferReceipts[0] ?? null,
+    [selectedTransferId, transferReceipts]
+  );
+  const stagedTransferItemIds = useMemo(
+    () => new Set(
+      lines
+        .filter((line) => line.id.startsWith("transfer-"))
+        .map((line) => Number(line.id.replace("transfer-", "")))
+        .filter(Number.isFinite)
+    ),
+    [lines]
+  );
+  const availableTransferItems = useMemo(() => {
+    if (!selectedTransfer) {
+      return [];
+    }
+
+    return selectedTransfer.items.filter((item) => !stagedTransferItemIds.has(item.id));
+  }, [selectedTransfer, stagedTransferItemIds]);
+  const selectedTransferLine = useMemo(() => {
+    if (!selectedTransfer) {
+      return null;
+    }
+
+    if (selectedTransferLineId !== null) {
+      return selectedTransfer.items.find((item) => item.id === selectedTransferLineId) ?? selectedTransfer.items[0] ?? null;
+    }
+
+    return selectedTransfer.items.find((item) => selectedTransferLineIds.has(item.id)) ?? selectedTransfer.items[0] ?? null;
+  }, [selectedTransfer, selectedTransferLineId, selectedTransferLineIds]);
 
   const totals = useMemo(
-    () =>
-      lines.reduce(
+    () => {
+      return lines.reduce(
         (accumulator, line) => {
           accumulator.expected += line.expectedQuantity;
           accumulator.accepted += line.acceptedQuantity;
@@ -82,7 +142,8 @@ export function MalKabulPage() {
           return accumulator;
         },
         { expected: 0, accepted: 0, difference: 0 }
-      ),
+      );
+    },
     [lines]
   );
 
@@ -122,7 +183,49 @@ export function MalKabulPage() {
     setNote("");
     setDraftLine(emptyLine);
     setLines([]);
+    setSelectedTransferId(null);
+    setSelectedTransferLineIds(new Set());
+    setSelectedTransferLineId(null);
   };
+
+  const pollReceiptLogoStatus = useCallback((receiptId: number) => {
+    let attempts = 0;
+
+    const poll = async () => {
+      attempts += 1;
+
+      try {
+        const response = await getPurchaseReceipt(receiptId);
+        const latest = response.data;
+        setLastReceipt(latest);
+
+        const logoState = latest.logo_sync_status ?? latest.status;
+        if (logoState === "synced" || logoState === "failed" || latest.logo_external_ref || attempts >= 18) {
+          if (logoState === "synced" || latest.logo_external_ref) {
+            toast.success(`${latest.receipt_no} Logo'ya gönderildi.`);
+          }
+
+          return;
+        }
+      } catch {
+        if (attempts >= 3) {
+          return;
+        }
+      }
+
+      window.setTimeout(poll, 2500);
+    };
+
+    window.setTimeout(poll, 1800);
+  }, []);
+
+  const rememberReceiptAndPoll = useCallback(
+    (receipt: PurchaseReceiptRecord) => {
+      setLastReceipt(receipt);
+      pollReceiptLogoStatus(receipt.id);
+    },
+    [pollReceiptLogoStatus]
+  );
 
   const saveReceiptMutation = useMutation({
     mutationFn: () =>
@@ -142,7 +245,7 @@ export function MalKabulPage() {
         })),
       }),
     onSuccess: (response) => {
-      setLastReceipt(response.data);
+      rememberReceiptAndPoll(response.data);
       toast.success(`${response.data.receipt_no} Logo kuyruğuna alındı.`);
       resetDraft();
     },
@@ -151,7 +254,41 @@ export function MalKabulPage() {
     },
   });
 
+  const approveTransferMutation = useMutation({
+    mutationFn: (receipt: PurchaseReceiptRecord) => approvePurchaseReceipt(
+      receipt.id,
+      lines
+        .filter((line) => line.id.startsWith("transfer-"))
+        .map((line) => ({
+          id: Number(line.id.replace("transfer-", "")),
+          accepted_quantity: line.acceptedQuantity,
+        })),
+    ),
+    onSuccess: (response) => {
+      toast.success(response.message ?? "Depo transferi Logo kuyruğuna alındı.");
+      rememberReceiptAndPoll(response.data);
+      setSelectedTransferId(null);
+      setSelectedTransferLineIds(new Set());
+      setSelectedTransferLineId(null);
+      setLines([]);
+      void queryClient.invalidateQueries({ queryKey: ["purchase-receipts", "warehouse-transfers", "draft"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Mal kabul onaylanamadı.");
+    },
+  });
+
   const prepareReceipt = () => {
+    if (selectedTransfer) {
+      if (!lines.some((line) => line.id.startsWith("transfer-"))) {
+        toast.error("Mal kabul için soldan ürün seçip sağ listeye gönderin.");
+        return;
+      }
+
+      approveTransferMutation.mutate(selectedTransfer);
+      return;
+    }
+
     if (lines.length === 0) {
       toast.error("Mal kabul için en az bir ürün satırı ekleyin.");
       return;
@@ -160,8 +297,241 @@ export function MalKabulPage() {
     saveReceiptMutation.mutate();
   };
 
+  const selectTransfer = (receipt: PurchaseReceiptRecord) => {
+    setSelectedTransferId(receipt.id);
+    setSelectedTransferLineIds(new Set());
+    setSelectedTransferLineId(receipt.items[0]?.id ?? null);
+    setDocumentNo(receipt.document_no ?? receipt.receipt_no ?? "");
+    setSupplier(receipt.supplier_name ?? "");
+    setWarehouse(receipt.warehouse_name ?? receipt.warehouse_code ?? "");
+    setReceivedAt(String(receipt.received_at ?? new Date().toISOString()).slice(0, 10));
+    setNote(receipt.note ?? "");
+    setLines([]);
+  };
+
+  const toggleTransferLine = (lineId: number, checked: boolean) => {
+    setSelectedTransferLineIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(lineId);
+        setSelectedTransferLineId(lineId);
+      } else {
+        next.delete(lineId);
+        setSelectedTransferLineId((current) => {
+          if (current !== lineId) {
+            return current;
+          }
+
+          const first = next.values().next();
+
+          return first.done ? null : Number(first.value);
+        });
+      }
+      return next;
+    });
+  };
+
+  const transferItemToLine = (item: PurchaseReceiptRecord["items"][number]): ReceiptLine => ({
+    id: `transfer-${item.id}`,
+    productCode: item.product_code ?? "",
+    productName: item.product_name,
+    expectedQuantity: Number(item.expected_quantity ?? 0),
+    acceptedQuantity: Number(item.accepted_quantity ?? 0),
+    note: item.note ?? "",
+  });
+
+  const sendTransferItems = (itemIds: number[]) => {
+    if (!selectedTransfer) {
+      return;
+    }
+
+    const ids = new Set(itemIds);
+    const itemsToStage = selectedTransfer.items.filter((item) => ids.has(item.id) && !stagedTransferItemIds.has(item.id));
+
+    if (itemsToStage.length === 0) {
+      toast.error("Sağa gönderilecek ürün seçin.");
+      return;
+    }
+
+    setLines((current) => [...current, ...itemsToStage.map(transferItemToLine)]);
+    setSelectedTransferLineIds((current) => {
+      const next = new Set(current);
+      for (const item of itemsToStage) {
+        next.delete(item.id);
+      }
+      return next;
+    });
+    setSelectedTransferLineId(itemsToStage[0]?.id ?? selectedTransferLineId);
+  };
+
+  const sendSelectedTransferItems = () => {
+    sendTransferItems([...selectedTransferLineIds]);
+  };
+
+  const sendAllTransferItems = () => {
+    sendTransferItems(availableTransferItems.map((item) => item.id));
+  };
+
+  const selectProductLine = (line: ReceiptLine) => {
+    if (!line.id.startsWith("transfer-")) {
+      return;
+    }
+
+    const id = Number(line.id.replace("transfer-", ""));
+    if (Number.isFinite(id)) {
+      setSelectedTransferLineId(id);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      <Card className={panelClass}>
+        <CardHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="flex items-center gap-3 text-xl font-black text-[var(--brand-primary-strong)]">
+              <Truck className="h-6 w-6 text-[var(--brand-primary)]" />
+              Depolar Arası Transfer Mal Kabul
+            </CardTitle>
+            <Badge variant="secondary" className="w-fit px-3 py-1 text-xs font-black">
+              Bekleyen: {transferReceipts.length}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {transferReceiptsQuery.isLoading ? (
+            <div className="flex items-center gap-2 rounded-2xl border border-[var(--brand-border)] bg-[var(--surface)] px-4 py-5 text-sm font-black text-[var(--muted-foreground)]">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Bekleyen transferler yükleniyor
+            </div>
+          ) : transferReceipts.length ? (
+            <div className="grid gap-3 xl:grid-cols-[1fr_0.95fr]">
+              <div className="overflow-hidden rounded-[22px] border border-[var(--brand-border)] bg-[var(--surface)]">
+                <div className="grid grid-cols-[1fr_0.9fr_0.9fr_0.45fr] gap-3 border-b border-[var(--brand-border)] bg-[var(--surface-soft)] px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)] max-lg:hidden">
+                  <span>Transfer</span>
+                  <span>Gönderen</span>
+                  <span>Hedef Depo</span>
+                  <span className="text-right">Adet</span>
+                </div>
+                <div className="divide-y divide-[var(--brand-border)]">
+                  {transferReceipts.map((receipt) => {
+                    const totalAccepted = receipt.items.reduce((sum, item) => sum + Number(item.accepted_quantity ?? 0), 0);
+                    const isSelected = receipt.id === selectedTransfer?.id;
+
+                    return (
+                      <button
+                        key={receipt.id}
+                        type="button"
+                        className={[
+                          "grid w-full gap-3 px-4 py-4 text-left transition lg:grid-cols-[1fr_0.9fr_0.9fr_0.45fr] lg:items-center",
+                          isSelected ? "bg-emerald-500/10 ring-1 ring-inset ring-emerald-300/60" : "hover:bg-white/5",
+                        ].join(" ")}
+                        onClick={() => selectTransfer(receipt)}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-[var(--foreground)]">{receipt.document_no ?? receipt.receipt_no}</p>
+                          <p className="mt-1 truncate text-xs font-semibold text-[var(--muted-foreground)]">{receipt.note}</p>
+                        </div>
+                        <p className="truncate text-sm font-black text-[var(--brand-primary-strong)]">{receipt.supplier_name ?? "-"}</p>
+                        <p className="truncate text-sm font-black text-[var(--brand-primary-strong)]">{receipt.warehouse_name ?? receipt.warehouse_code ?? "-"}</p>
+                        <p className="text-sm font-black text-[var(--foreground)] lg:text-right">{totalAccepted}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-[var(--brand-border)] bg-[var(--surface)] p-4">
+                {selectedTransfer ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Seçili Transfer</p>
+                        <p className="mt-1 text-base font-black text-[var(--foreground)]">{selectedTransfer.note ?? selectedTransfer.document_no}</p>
+                      </div>
+                      <Badge variant="secondary" className="w-fit px-3 py-1 text-xs font-black">
+                        {selectedTransfer.items.length} satır
+                      </Badge>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        className="h-10 rounded-xl bg-[var(--brand-primary)] px-4 text-xs font-black text-[var(--primary-foreground)] hover:opacity-95"
+                        disabled={availableTransferItems.length === 0}
+                        onClick={sendAllTransferItems}
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                        Tümünü Gönder
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 rounded-xl px-4 text-xs font-black"
+                        disabled={selectedTransferLineIds.size === 0}
+                        onClick={sendSelectedTransferItems}
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                        Seçilenleri Gönder
+                      </Button>
+                    </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-[var(--brand-border)]">
+                      {availableTransferItems.length > 0 ? (
+                        availableTransferItems.map((item) => (
+                          <label
+                            key={item.id}
+                            className={[
+                              "grid cursor-pointer grid-cols-[28px_1fr_72px] gap-3 border-b border-[var(--brand-border)] px-3 py-3 transition last:border-b-0",
+                              selectedTransferLine?.id === item.id ? "bg-emerald-500/10" : "hover:bg-white/5",
+                            ].join(" ")}
+                            onClick={() => setSelectedTransferLineId(item.id)}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-4 w-4 accent-emerald-500"
+                              checked={selectedTransferLineIds.has(item.id)}
+                              onChange={(event) => toggleTransferLine(item.id, event.target.checked)}
+                              onClick={(event) => event.stopPropagation()}
+                            />
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-black text-[var(--foreground)]">{item.product_code ?? "-"}</span>
+                              <span className="block truncate text-xs font-semibold text-[var(--muted-foreground)]">{item.product_name}</span>
+                            </span>
+                            <span className="text-right text-sm font-black text-[var(--brand-primary-strong)]">{item.accepted_quantity}</span>
+                          </label>
+                        ))
+                      ) : (
+                        <div className="px-3 py-7 text-center">
+                          <PackageCheck className="mx-auto h-8 w-8 text-[var(--brand-primary)]" />
+                          <p className="mt-3 text-sm font-black text-[var(--brand-primary-strong)]">Solda bekleyen ürün kalmadı</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedTransferLine ? (
+                      <div className="grid gap-2 rounded-2xl border border-emerald-300/40 bg-emerald-500/10 p-3 text-sm sm:grid-cols-2">
+                        <p><span className="font-black">Ürün Kodu:</span> {selectedTransferLine.product_code ?? "-"}</p>
+                        <p><span className="font-black">Gönderilen:</span> {selectedTransferLine.expected_quantity}</p>
+                        <p><span className="font-black">Kabul:</span> {selectedTransferLine.accepted_quantity}</p>
+                        <p><span className="font-black">Satır Notu:</span> {selectedTransferLine.note ?? "-"}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-[var(--brand-border)] bg-[var(--surface)] px-4 py-8 text-center">
+              <PackageCheck className="mx-auto h-9 w-9 text-[var(--brand-primary)]" />
+              <p className="mt-3 text-base font-black text-[var(--brand-primary-strong)]">Mal kabul bekleyen transfer yok</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--muted-foreground)]">
+                Depo transferi tamamlanınca burada hedef depo onayına düşer.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
         <Card className={panelClass}>
           <CardHeader>
@@ -291,7 +661,15 @@ export function MalKabulPage() {
                   const isMissing = line.acceptedQuantity < line.expectedQuantity;
 
                   return (
-                    <div key={line.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[1fr_1.4fr_0.7fr_0.7fr_0.8fr_44px] lg:items-center">
+                    <div
+                      key={line.id}
+                      className={[
+                        "grid gap-3 px-4 py-4 transition lg:grid-cols-[1fr_1.4fr_0.7fr_0.7fr_0.8fr_44px] lg:items-center",
+                        line.id.startsWith("transfer-") ? "cursor-pointer hover:bg-white/5" : "",
+                        selectedTransferLine && line.id === `transfer-${selectedTransferLine.id}` ? "bg-emerald-500/10" : "",
+                      ].join(" ")}
+                      onClick={() => selectProductLine(line)}
+                    >
                       <p className="truncate text-sm font-black text-[var(--brand-primary-strong)]">{line.productCode || "-"}</p>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-black text-[var(--foreground)]">{line.productName}</p>
@@ -324,16 +702,16 @@ export function MalKabulPage() {
             </Button>
             <Button
               type="button"
-              className="h-11 rounded-xl px-5 font-black"
-              disabled={saveReceiptMutation.isPending}
+              className="h-11 rounded-[16px] bg-[linear-gradient(135deg,#ff5b5b_0%,#dc2626_48%,#991b1b_100%)] px-6 font-black text-white shadow-[0_18px_40px_-24px_rgba(239,68,68,0.95)] hover:brightness-110"
+              disabled={saveReceiptMutation.isPending || approveTransferMutation.isPending}
               onClick={prepareReceipt}
             >
-              {saveReceiptMutation.isPending ? (
+              {saveReceiptMutation.isPending || approveTransferMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              Kaydet ve Logo Kuyruğuna Al
+              Kaydet
             </Button>
           </div>
         </CardContent>
@@ -352,7 +730,7 @@ export function MalKabulPage() {
                 </p>
               </div>
             </div>
-            <Badge className="w-fit bg-emerald-700 text-white">Kuyrukta</Badge>
+            <Badge className={lastReceiptBadgeClass}>{lastReceiptBadgeLabel}</Badge>
           </CardContent>
         </Card>
       ) : null}

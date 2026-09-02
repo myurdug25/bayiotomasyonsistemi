@@ -9,6 +9,7 @@ use App\Models\CampaignProduct;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Services\Campaign\CampaignProgressService;
+use App\Support\Products\ProductSearchCacheRevision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -91,36 +92,52 @@ class CampaignController extends Controller
         $validated = $request->validated();
 
         $synced = 0;
+        $created = 0;
+        $updated = 0;
+        $deactivated = 0;
         $skipped = 0;
 
-        DB::transaction(function () use ($validated, &$synced, &$skipped): void {
+        DB::transaction(function () use ($validated, &$synced, &$created, &$updated, &$deactivated, &$skipped): void {
             $incomingRefs = collect($validated['campaigns'])
                 ->pluck('source_reference')
                 ->all();
 
             // Artık gönderilmeyen kampanyaları pasif yap
-            Campaign::whereNotIn('source_reference', $incomingRefs)
+            $deactivated += Campaign::whereNotIn('source_reference', $incomingRefs)
                 ->where('is_active', true)
                 ->update(['is_active' => false]);
 
             foreach ($validated['campaigns'] as $row) {
-                $campaign = Campaign::updateOrCreate(
-                    ['source_reference' => $row['source_reference']],
-                    [
-                        'code' => $row['code'],
-                        'name' => $row['name'],
-                        'description' => $row['description'] ?? null,
-                        'customer_group' => $row['customer_group'] ?? null,
-                        'target_quantity' => (int) $row['target_quantity'],
-                        'discount_percent' => isset($row['discount_percent']) ? (int) $row['discount_percent'] : null,
-                        'group_field' => $row['group_field'] ?? 'specode',
-                        'starts_at' => $row['starts_at'] ?? null,
-                        'ends_at' => $row['ends_at'] ?? null,
-                        'is_active' => (bool) ($row['is_active'] ?? true),
-                        'meta' => $row['meta'] ?? null,
-                        'last_synced_at' => now(),
-                    ]
-                );
+                $wasActive = Campaign::query()
+                    ->where('source_reference', $row['source_reference'])
+                    ->value('is_active');
+                $campaign = Campaign::firstOrNew(['source_reference' => $row['source_reference']]);
+                $wasExisting = $campaign->exists;
+                $campaign->fill([
+                    'code' => $row['code'],
+                    'name' => $row['name'],
+                    'description' => $row['description'] ?? null,
+                    'customer_group' => $row['customer_group'] ?? null,
+                    'target_quantity' => (int) $row['target_quantity'],
+                    'discount_percent' => isset($row['discount_percent']) ? (int) $row['discount_percent'] : null,
+                    'group_field' => $row['group_field'] ?? 'specode',
+                    'starts_at' => $row['starts_at'] ?? null,
+                    'ends_at' => $row['ends_at'] ?? null,
+                    'is_active' => (bool) ($row['is_active'] ?? true),
+                    'meta' => $row['meta'] ?? null,
+                    'last_synced_at' => now(),
+                ]);
+                $campaign->save();
+
+                if ($wasExisting) {
+                    $updated++;
+                } else {
+                    $created++;
+                }
+
+                if ($wasActive === true && ! $campaign->is_active) {
+                    $deactivated++;
+                }
 
                 // Kampanya ürünlerini güncelle
                 if (isset($row['products']) && is_array($row['products'])) {
@@ -130,9 +147,13 @@ class CampaignController extends Controller
                 $synced++;
             }
         });
+        ProductSearchCacheRevision::bump();
 
         return response()->json([
             'synced' => $synced,
+            'created' => $created,
+            'updated' => $updated,
+            'deactivated' => $deactivated,
             'skipped' => $skipped,
             'message' => "Kampanya sync tamamlandı: {$synced} kampanya güncellendi.",
         ]);

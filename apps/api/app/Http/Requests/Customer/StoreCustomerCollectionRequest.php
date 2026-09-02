@@ -68,14 +68,14 @@ class StoreCustomerCollectionRequest extends FormRequest
                 'date',
             ],
             'reference_fields.valor_days' => [
-                Rule::requiredIf(fn () => (string) $this->input('method') === 'check'),
+                Rule::requiredIf(fn () => in_array((string) $this->input('method'), ['check', 'note'], true)),
                 'integer',
                 'min:0',
             ],
             'reference_fields.requires_manager_approval' => ['nullable'],
             'reference_fields.manager_approval_reason' => ['nullable', 'string', 'max:120'],
             'reference_fields.note_no' => [
-                Rule::requiredIf(fn () => (string) $this->input('method') === 'note'),
+                'nullable',
                 'string',
                 'max:64',
             ],
@@ -136,6 +136,11 @@ class StoreCustomerCollectionRequest extends FormRequest
                 Rule::requiredIf(fn () => (string) $this->input('method') === 'transfer'),
                 'string',
                 'max:64',
+            ],
+            'reference_fields.finance_definition_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_definitions', 'id')->where('is_active', true),
             ],
             'meta' => ['nullable', 'array'],
         ];

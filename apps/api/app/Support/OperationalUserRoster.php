@@ -54,7 +54,7 @@ final class OperationalUserRoster
 
             self::salesperson('mehmet.atacan', 'MEHMET ATACAN', 'BATUM', 'Batum'),
             self::salesperson('tugay.buyukkal', 'TUGAY BÜYÜKKAL', 'BATUM', 'Batum', 'E,F,I,G,J,L'),
-            self::salesperson('turgay.buyukkal', 'TURGAY BÜYÜKKAL', 'BATUM', 'Batum', 'E,F,I,G,J,L'),
+            self::salesperson('turgay.buyukkal', 'TURGAY BÜYÜKKAL', 'ERZURUM', 'Erzurum', 'E,F,I,G,J,L'),
 
             self::dealerAdmin('ornek.musteri', 'Ornek Musteri'),
             self::dealerAdmin('bayi.admin', 'Bayi Yöneticisi'),
@@ -151,8 +151,7 @@ final class OperationalUserRoster
         ?string $branchCode,
         ?string $branchName,
         ?string $logoCustomerSpecode4 = null
-    ): array
-    {
+    ): array {
         return self::definition(
             $username,
             $name,
@@ -231,8 +230,7 @@ final class OperationalUserRoster
         ?string $branchCode,
         ?string $branchName,
         string $customerScope = 'branch'
-    ): array
-    {
+    ): array {
         return self::definition($username, $name, ['warehouse'], MenuPermissions::fromRoles(['warehouse']), $branchCode, $branchName, $customerScope);
     }
 

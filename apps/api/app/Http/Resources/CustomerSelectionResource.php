@@ -2,8 +2,12 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Customer;
 use App\Models\User;
+use App\Services\Users\UserPermissionService;
+use App\Support\Pricing\CustomerPriceListResolver;
 use App\Support\Pricing\DisplayCurrency;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -40,6 +44,8 @@ class CustomerSelectionResource extends JsonResource
             'branch_name' => $this->branch_name,
             'source_system' => $this->source_system,
             'source_reference' => $this->source_reference,
+            'price_group' => app(CustomerPriceListResolver::class)->resolveGroupCode($meta),
+            'e_invoice_user' => $this->isLogoEInvoiceUser($meta),
             'last_synced_at' => $this->last_synced_at,
             'balance_summary' => [
                 'total_due' => number_format($totalDue, 2, '.', ''),
@@ -48,6 +54,9 @@ class CustomerSelectionResource extends JsonResource
             ],
             'balance_source' => $balanceSource,
             'has_cart' => (bool) ($this->has_draft_cart ?? false),
+            'customer_user_feature_permissions' => $request->is('api/context') || $request->is('api/context/customer')
+                ? $this->customerUserFeaturePermissions($this->resource)
+                : null,
         ];
     }
 
@@ -113,6 +122,67 @@ class CustomerSelectionResource extends JsonResource
         return in_array(mb_strtoupper($normalized, 'UTF-8'), ['NULL', 'NIL', 'N/A', 'YOK', '-'], true)
             ? null
             : $normalized;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private function isLogoEInvoiceUser(array $meta): bool
+    {
+        foreach ($this->logoEInvoiceUserPaths() as $path) {
+            $value = data_get($meta, $path);
+
+            if ($value !== null && $this->truthyLogoFlag($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function logoEInvoiceUserPaths(): array
+    {
+        return [
+            'integrations.logo.payload.e_invoice_user',
+            'integrations.logo.payload.e_invoice',
+            'integrations.logo.payload.e_fatura',
+            'integrations.logo.payload.raw.EINVOICE',
+            'integrations.logo.payload.raw.EINVOICEUSER',
+            'integrations.logo.payload.raw.EINVOICE_USER',
+            'integrations.logo.payload.raw.ACCEPTEINV',
+            'integrations.logo.payload.raw.EFATURA',
+            'integrations.logo.payload.raw.E_FATURA',
+        ];
+    }
+
+    private function truthyLogoFlag(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (float) $value !== 0.0;
+        }
+
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return false;
+        }
+
+        return in_array(mb_strtoupper($normalized, 'UTF-8'), [
+            '1',
+            'TRUE',
+            'YES',
+            'EVET',
+            'E',
+            'ON',
+            'AKTIF',
+            'AKTİF',
+        ], true);
     }
 
     /**
@@ -256,6 +326,10 @@ class CustomerSelectionResource extends JsonResource
             return false;
         }
 
+        if ($this->normalizeUserCode($user->username) === 'TURGAY.BUYUKKAL') {
+            return false;
+        }
+
         return $this->normalizeUserCode($user->branch_code) === 'BATUM'
             || $this->normalizeUserCode($user->region_code) === 'BATUM';
     }
@@ -265,5 +339,45 @@ class CustomerSelectionResource extends JsonResource
         $normalized = trim((string) $value);
 
         return $normalized !== '' ? mb_strtoupper($normalized, 'UTF-8') : null;
+    }
+
+    /**
+     * Seçili cari için /customer-users ekranında tanımlanan özellikleri taşır.
+     *
+     * @return list<string>|null
+     */
+    private function customerUserFeaturePermissions(mixed $resource): ?array
+    {
+        if (! $resource instanceof Customer) {
+            return null;
+        }
+
+        $username = $this->usernameFromCustomerCode($resource->code);
+        $customerUser = User::query()
+            ->select(['id', 'selected_customer_id', 'username', 'feature_permissions', 'permissions_updated_at'])
+            ->whereHas('roles', fn (Builder $query) => $query->where('slug', 'customer'))
+            ->where(function (Builder $query) use ($resource, $username): void {
+                $query->where('selected_customer_id', $resource->id);
+
+                if ($username !== '') {
+                    $query->orWhereRaw('LOWER(username) = ?', [$username]);
+                }
+            })
+            ->orderByRaw('CASE WHEN selected_customer_id = ? THEN 0 ELSE 1 END', [$resource->id])
+            ->first();
+
+        return $customerUser instanceof User
+            ? app(UserPermissionService::class)->featurePermissions($customerUser)
+            : null;
+    }
+
+    private function usernameFromCustomerCode(?string $code): string
+    {
+        $username = mb_strtolower(trim((string) $code));
+        $username = preg_replace('/\s+/', '-', $username) ?? '';
+        $username = preg_replace('/[^a-z0-9._-]+/', '-', $username) ?? '';
+        $username = trim($username, '.-_');
+
+        return $username;
     }
 }

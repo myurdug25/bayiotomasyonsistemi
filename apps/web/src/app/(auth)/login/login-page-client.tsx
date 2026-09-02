@@ -119,6 +119,10 @@ function resolvePostLoginPath(args: {
     return "/dashboard";
   }
 
+  if (isWarehouseOnly) {
+    return "/warehouse";
+  }
+
   if (isSalesperson) {
     const safeNext =
       rawSafeNext && (rawSafeNext === "/pos" || rawSafeNext.startsWith("/pos/"))
@@ -165,13 +169,6 @@ function resolvePostLoginPath(args: {
       : isAdmin && rawSafeNext && (rawSafeNext === "/moderator" || rawSafeNext.startsWith("/moderator/"))
           ? null
         : rawSafeNext;
-
-  if (isWarehouseOnly) {
-    if (safeNext && (safeNext === "/warehouse" || safeNext.startsWith("/warehouse/"))) {
-      return safeNext;
-    }
-    return "/warehouse";
-  }
 
   if (isModeratorOnly) {
     return "/moderator/users";

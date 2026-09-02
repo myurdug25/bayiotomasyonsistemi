@@ -21,6 +21,7 @@ class DayEndReportResource extends JsonResource
             'report_tables' => $this['report_tables'] ?? [],
             'cancelled' => $this['cancelled'] ?? [],
             'logo_sync' => $this['logo_sync'] ?? [],
+            'day_end_export' => $this['day_end_export'] ?? null,
             'generated_at' => $this['generated_at'] ?? null,
         ];
     }

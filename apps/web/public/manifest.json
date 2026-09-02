@@ -1,16 +1,20 @@
 {
-  "id": "/",
-  "name": "PowerSA B2B",
-  "short_name": "PowerSA B2B",
-  "description": "PowerSA B2B bayi ve operasyon paneli",
+  "id": "/?app=bos",
+  "name": "BOS - Bayi Otomasyon Sistemi",
+  "short_name": "BOS",
+  "description": "BOS bayi, satış, stok ve operasyon paneli",
   "lang": "tr",
   "dir": "ltr",
   "start_url": "/",
   "scope": "/",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "theme_color": "#12362f",
-  "background_color": "#071312",
+  "orientation": "any",
+  "theme_color": "#07150f",
+  "background_color": "#07150f",
   "categories": ["business", "productivity"],
   "icons": [
     {

@@ -29,6 +29,7 @@ class SearchProductsRequest extends FormRequest
             'stok_turu' => ['nullable', 'string', 'max:32'],
             'vehicle_id' => ['nullable', 'integer', 'exists:vehicles,id'],
             'dealer_id' => ['nullable', 'integer', 'exists:dealers,id'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'in_stock' => ['nullable', 'boolean'],
             'include_equivalents' => ['nullable', 'boolean'],
             'sort' => ['nullable', Rule::in(['price_asc', 'price_desc', 'stock_desc'])],

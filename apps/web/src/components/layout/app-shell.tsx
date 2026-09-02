@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpen,
+  Archive,
+  Bell,
   Building2,
   Check,
+  CheckCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -21,6 +24,8 @@ import {
   Gauge,
   HandCoins,
   LogOut,
+  Menu,
+  Moon,
   NotebookPen,
   Palette,
   PackageCheck,
@@ -31,6 +36,7 @@ import {
   Settings,
   ShieldCheck,
   ShoppingCart,
+  Sun,
   UserPlus,
   UserRound,
   UserRoundCog,
@@ -52,7 +58,11 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   getTcmbMarketRates,
+  archiveNotification,
   listCustomers,
+  listNotifications,
+  markNotificationRead,
+  type AppNotificationDto,
   type ApiUser,
   type TcmbMarketRatesResponse,
   updateProfile,
@@ -104,7 +114,12 @@ const LEGACY_UI_COLOR_MAP: Record<string, string> = {
 };
 
 function resolveUiTheme(): UiTheme {
-  return "dark";
+  if (typeof window === "undefined") {
+    return "dark";
+  }
+
+  const storedTheme = window.localStorage.getItem(UI_THEME_STORAGE_KEY);
+  return storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark";
 }
 
 function isHexColor(value: string | null | undefined): value is string {
@@ -211,7 +226,7 @@ function HeaderMarketRates({
     >
       <Wallet className="h-4 w-4 shrink-0 text-[var(--brand-primary)]" />
       {rates.length > 0 ? (
-        <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+        <div className="header-rate-stack flex min-w-0 flex-col items-stretch justify-center gap-0.5 whitespace-nowrap">
           {rates.map((rate) => (
             <span key={rate.code} className="header-rate-chip">
               <span>{rate.code}</span>
@@ -316,6 +331,15 @@ const SIDEBAR_ITEMS: NavItem[] = [
     allowedRoles: ["admin", "dealer_admin", "salesperson", "customer"],
   },
   {
+    href: "/dilek-sikayet",
+    label: "Dilek / Şikayet",
+    permissionKey: "customer-complaints",
+    icon: FileText,
+    emojiAsset: "/sidebar/dilek-sikayet.svg",
+    tileGradient: "from-[#ffff00] via-[#ffff00] to-[#fff95a]",
+    allowedRoles: ["customer"],
+  },
+  {
     href: "/customers",
     label: "Müşteri",
     permissionKey: "customers",
@@ -397,6 +421,15 @@ const SIDEBAR_ITEMS: NavItem[] = [
     allowedRoles: ["admin", "warehouse"],
   },
   {
+    href: "/warehouse/rack-addresses",
+    label: "Raf Adresi Güncelle",
+    permissionKey: "rack-addresses",
+    icon: Archive,
+    emojiAsset: "/sidebar/raf-adresi-guncelle-altin.svg",
+    tileGradient: "from-[#ffff00] via-[#ffff00] to-[#fff95a]",
+    allowedRoles: ["admin", "dealer_admin", "warehouse", "point", "cashier"],
+  },
+  {
     href: "/moderator/users",
     label: "Moderatör",
     permissionKey: "moderator",
@@ -413,6 +446,16 @@ const SIDEBAR_ITEMS: NavItem[] = [
     emojiAsset: "/dashboard-icons/fixed/ekstra.webp",
     tileGradient: "from-[#b8d8c0] to-[#5a8f6a]",
     allowedRoles: ["admin", "dealer_admin", "salesperson"],
+  },
+  {
+    href: "/extra",
+    label: "İşlemler",
+    permissionKey: "extra",
+    icon: PackageCheck,
+    emojiAsset: "/sidebar/islemler.svg",
+    tileGradient: "from-[#9fd8c6] via-[#4aa587] to-[#17634d]",
+    allowedRoles: ["admin", "warehouse", "point", "cashier", "dealer_admin", "salesperson"],
+    hiddenFromSidebar: true,
   },
   {
     href: "/pos/expenses",
@@ -458,6 +501,15 @@ const MODERATOR_SECTION_ITEMS: NavItem[] = [
     label: "Notlar",
     icon: NotebookPen,
     tileGradient: "from-[#b7efe1] via-[#72c8b4] to-[#327a71]",
+    allowedRoles: ["admin", "moderator"],
+  },
+  {
+    href: "/moderator/finance",
+    label: "Finans Tanımları",
+    permissionKey: "moderator",
+    icon: Wallet,
+    emojiAsset: "/dashboard-icons/fixed/raporlar.webp",
+    tileGradient: "from-[#f2d37a] to-[#a66b13]",
     allowedRoles: ["admin", "moderator"],
   },
   {
@@ -516,9 +568,19 @@ const MODERATOR_SECTION_ITEMS: NavItem[] = [
   },
 ];
 
+const BATUM_OPERATIONS_ITEM: NavItem = {
+  href: "/extra",
+  label: "İşlemler",
+  icon: PackageCheck,
+  emojiAsset: "/sidebar/islemler.svg",
+  tileGradient: "from-[#9fd8c6] via-[#4aa587] to-[#17634d]",
+  allowedRoles: ["admin", "warehouse", "point", "cashier"],
+};
+
 const ADMIN_SIDEBAR_LABEL_OVERRIDES: Record<string, string> = {
   "/customers": "Müşteriler",
   "/orders": "Siparişler",
+  "/dilek-sikayet": "Dilek / Şikayet",
   "/warehouse": "Depo",
   "/pos": "Hızlı Satış",
 };
@@ -531,6 +593,7 @@ const DASHBOARD_TOP_DOCK_ORDER = [
   "/collections",
   "/cart",
   "/orders",
+  "/dilek-sikayet",
   "/ledger",
 ];
 
@@ -542,11 +605,13 @@ const SIDEBAR_PRIORITY_ORDER = [
   "/collections",
   "/cart",
   "/orders",
+  "/dilek-sikayet",
   "/ledger",
   "/new-customer-card",
   "/returns",
   "/pos",
   "/warehouse",
+  "/warehouse/rack-addresses",
   "/moderator",
   "/mal-kabul",
   "/reports",
@@ -594,6 +659,7 @@ function sortNavItemsForPath(items: NavItem[], pathname: string) {
 
 const MODERATOR_PRIORITY_ORDER = [
   "/notes",
+  "/moderator/finance",
   "/pos/expenses",
   "/pos/day-end",
   "/moderator/users/new",
@@ -781,6 +847,23 @@ function canAccessNavItem(item: NavItem, roleSlugs: string[], menuPermissions: S
   return item.allowedRoles === undefined || item.allowedRoles.some((role) => roleSlugs.includes(role));
 }
 
+function isBatumSidebarScope(
+  user?: Pick<ApiUser, "branch_code" | "branch_name" | "username"> | null,
+  selectedCustomer?: { code?: string | null; title?: string | null; branch_code?: string | null; branch_name?: string | null } | null
+) {
+  const values = [
+    user?.branch_code,
+    user?.branch_name,
+    user?.username,
+    selectedCustomer?.branch_code,
+    selectedCustomer?.branch_name,
+    selectedCustomer?.code,
+    selectedCustomer?.title,
+  ];
+
+  return values.some((value) => String(value ?? "").toLocaleUpperCase("tr-TR").includes("BATUM"));
+}
+
 function requiresCustomerSelection(roleSlugs: string[]) {
   return roleSlugs.includes("salesperson");
 }
@@ -870,10 +953,10 @@ function getPageMeta(
   pathname: string,
   roleSlugs: string[],
   selectedCustomer?: { code?: string | null; title?: string | null; branch_code?: string | null; branch_name?: string | null } | null,
-  user?: Pick<ApiUser, "branch_code" | "branch_name"> | null
+  user?: Pick<ApiUser, "branch_code" | "branch_name" | "username"> | null
 ): { title: string; subtitle: string } {
   if (pathname.startsWith("/pos/expenses")) {
-    return { title: "Masraf", subtitle: "Point masraf kayıt ekranı" };
+    return { title: "MASRAF YÖNETİMİ", subtitle: "Point masraf kayıt ekranı" };
   }
 
   if (pathname.startsWith("/pos/day-end")) {
@@ -912,6 +995,10 @@ function getPageMeta(
   }
 
   if (pathname.startsWith("/moderator")) {
+    if (pathname.startsWith("/moderator/finance")) {
+      return { title: "Finans Tanımları", subtitle: "Banka, POS, gider ve kargo/otobüs ücretlerini yönet" };
+    }
+
     if (pathname.startsWith("/moderator/users/new")) {
       return { title: "Kullanıcı Oluştur", subtitle: "Yeni kullanıcı ve menü erişimlerini belirle" };
     }
@@ -942,7 +1029,7 @@ function getPageMeta(
   }
 
   if (pathname.startsWith("/customer-users")) {
-    return { title: "Müşteri Kullanıcı", subtitle: "Carilere müşteri paneli girişi aç" };
+    return { title: "MÜŞTERİ KULLANICILARI", subtitle: "Carilere müşteri paneli girişi aç" };
   }
 
   if (pathname.startsWith("/search")) {
@@ -950,19 +1037,23 @@ function getPageMeta(
   }
 
   if (pathname.startsWith("/catalogs")) {
-    return { title: "Kataloglar", subtitle: "Marka katalogları ve öne çıkan ürün koleksiyonları" };
+    return { title: "Kataloglar Sayfası", subtitle: "Marka katalogları ve öne çıkan ürün koleksiyonları" };
   }
 
   if (pathname.startsWith("/mal-kabul")) {
-    return { title: "Satınalma / Mal Kabul", subtitle: "Gelen ürün, irsaliye ve kabul kontrol ekranı" };
+    return { title: "MAL KABUL SAYFASI", subtitle: "Gelen ürün, irsaliye ve kabul kontrol ekranı" };
+  }
+
+  if (pathname.startsWith("/satinalma")) {
+    return { title: "SATINALMA SAYFASI", subtitle: "Satınalma ve mal kabul operasyonları" };
   }
 
   if (pathname.startsWith("/extra")) {
-    return { title: "Satınalma / Mal Kabul", subtitle: "Gelen ürün, irsaliye ve kabul kontrol ekranı" };
+    return { title: "İşlemler Sayfası", subtitle: "Tahsilat ve masraf işlemleri" };
   }
 
   if (pathname.startsWith("/new-customer-card")) {
-    return { title: "Yeni Cari Kart", subtitle: "Yeni müşteri başvurusu ve takip ekranı" };
+    return { title: "YENİ CARİ KARTI", subtitle: "Yeni müşteri başvurusu ve takip ekranı" };
   }
 
   if (pathname.startsWith("/cart")) {
@@ -998,15 +1089,15 @@ function getPageMeta(
   }
 
   if (pathname.startsWith("/warehouse/shipments/new")) {
-    return { title: "Sevkiyat Oluştur", subtitle: "Siparişten yeni sevkiyat başlat" };
+    return { title: "SEVKİYAT YÖNETİMİ", subtitle: "Siparişten yeni sevkiyat başlat" };
   }
 
   if (pathname.startsWith("/warehouse/shipments")) {
-    return { title: "Sevkiyat Detayı", subtitle: "Barkod ve sevkiyat kalem kontrolü" };
+    return { title: "SEVKİYAT YÖNETİMİ", subtitle: "Barkod ve sevkiyat kalem kontrolü" };
   }
 
   if (pathname.startsWith("/warehouse")) {
-    return { title: "Depo Siparişleri", subtitle: "Onaylı siparişleri incele ve sipariş formunu yazdır" };
+    return { title: "DEPO OPERASYONLARI", subtitle: "Onaylı siparişleri incele ve sipariş formunu yazdır" };
   }
 
   if (pathname.startsWith("/collections")) {
@@ -1022,17 +1113,22 @@ function getPageMeta(
   }
 
   if (pathname.startsWith("/reports")) {
-    return { title: "Raporlama Merkezi", subtitle: "Tahsilat, satış, cari ve kullanıcı performans analizleri" };
+    return { title: "RAPORLAR SAYFASI", subtitle: "Tahsilat, satış, cari ve kullanıcı performans analizleri" };
   }
 
   if (pathname.startsWith("/notes")) {
-    return { title: "Notlar", subtitle: "Günlük notlar, takip ve küçük görevler" };
+    return { title: "NOTLAR SAYFASI", subtitle: "Günlük notlar, takip ve küçük görevler" };
   }
 
   if (pathname.startsWith("/pos")) {
-    return isPosOnlyRole(roleSlugs)
-      ? { title: "Hızlı Satış", subtitle: "Point bayi için hızlı satış ekranı" }
-      : { title: "Hızlı Satış", subtitle: "Kompakt satış, kaydet ve yazdır ekranı" };
+    const branchIdentity = String(
+      `${user?.branch_code ?? ""} ${user?.branch_name ?? ""} ${user?.username ?? ""}`
+    ).toLocaleUpperCase("tr-TR");
+    const branchLabel = ["BATUM", "TRABZON", "SAMSUN", "ERZURUM"].find((branch) => branchIdentity.includes(branch)) ?? "ERZURUM";
+    return {
+      title: `${branchLabel} HIZLI SATIŞ`,
+      subtitle: "Kompakt satış, kaydet ve yazdır ekranı",
+    };
   }
 
   return { title: "Powersa B2B", subtitle: "Operasyon paneli" };
@@ -1061,6 +1157,7 @@ function SidebarAppIcon({
   const renderedAsset = emojiAsset?.startsWith("/apple-icons/sidebar/")
     ? emojiAsset.replace("/apple-icons/sidebar/", "/apple-icons/sidebar-balanced/").replace(/\.webp$/, ".png")
     : emojiAsset;
+  const isNotesIcon = label.toLocaleLowerCase("tr-TR") === "notlar";
 
   return (
     <span
@@ -1086,10 +1183,11 @@ function SidebarAppIcon({
       )}
       <span
         className={cn(
-          "relative inline-flex items-center justify-center transition-all duration-200",
+          "relative inline-flex max-h-full max-w-full items-center justify-center transition-all duration-200",
           useSidebarAsset
             ? "h-[96px] w-[96px] bg-transparent"
             : "h-[72px] w-[72px] overflow-hidden rounded-[22px]",
+          isNotesIcon && "app-sidebar-notes-tile",
           useSidebarAsset
             ? ""
             : cn("bg-gradient-to-br", darkMode ? "border border-white/12" : "border border-white/16", tileGradient),
@@ -1138,7 +1236,12 @@ function SidebarAppIcon({
               priority={false}
             />
           ) : (
-            <Icon className="relative z-[2] h-9 w-9 text-white [filter:drop-shadow(0_10px_12px_rgba(0,0,0,0.34))]" />
+            <Icon
+              className={cn(
+                "relative z-[2] h-9 w-9 text-white [filter:drop-shadow(0_10px_12px_rgba(0,0,0,0.34))]",
+                isNotesIcon && "app-sidebar-notes-icon"
+              )}
+            />
         )}
         {useSidebarAsset ? null : <span className="pointer-events-none absolute bottom-3 h-2.5 w-11 rounded-full bg-black/14 blur-[1px]" />}
       </span>
@@ -1218,6 +1321,14 @@ function SidebarMenu({
             priority
           />
         </Link>
+        {!collapsed ? (
+          <span className="app-sidebar-boss-lockup" aria-label="BOS - Bayi Otomasyon Sistemi">
+            <span className="app-sidebar-boss-title">BOS</span>
+            <span className="app-sidebar-boss-subtitle" aria-hidden="true">
+              Bayi Otomasyon Sistemi
+            </span>
+          </span>
+        ) : null}
       </div>
 
       <div className="app-sidebar-nav-region min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-4 pt-5">
@@ -1415,12 +1526,49 @@ function DashboardTopDockIcon({
   );
 }
 
+function ThemeModeToggle({
+  theme,
+  onThemeChange,
+}: {
+  theme: UiTheme;
+  onThemeChange: (theme: UiTheme) => void;
+}) {
+  const darkMode = theme === "dark";
+
+  return (
+    <button
+      type="button"
+      aria-label={darkMode ? "Açık moda geç" : "Koyu moda geç"}
+      title={darkMode ? "Koyu mod aktif" : "Açık mod aktif"}
+      className={cn("header-theme-switch", darkMode ? "is-dark" : "is-light")}
+      onClick={() => onThemeChange(darkMode ? "light" : "dark")}
+    >
+      <span className="header-theme-switch-track" aria-hidden="true" />
+      <span className="header-theme-switch-thumb" aria-hidden="true" />
+      <span className="header-theme-switch-labels">
+        <span className="header-theme-switch-label-light">
+          <Sun className="h-3.5 w-3.5" />
+          Açık
+        </span>
+        <span className="header-theme-switch-label-dark">
+          Koyu
+          <Moon className="h-3.5 w-3.5" />
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function ColorThemePicker({
   accent,
+  theme,
   onSelect,
+  onThemeChange,
 }: {
   accent: string;
+  theme: UiTheme;
   onSelect: (accent: string) => void;
+  onThemeChange: (theme: UiTheme) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1453,7 +1601,7 @@ function ColorThemePicker({
   }, [open]);
 
   return (
-    <div ref={rootRef} className="relative z-[90]">
+    <div ref={rootRef} className="header-color-picker relative z-[90]">
       <div className="header-icon-button flex h-10 overflow-hidden rounded-2xl border border-[var(--brand-border)] bg-[var(--surface)] text-[var(--brand-primary-strong)] shadow-sm">
         <button
           type="button"
@@ -1475,7 +1623,30 @@ function ColorThemePicker({
           )}
         >
           <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--surface-soft)] px-3 py-2.5">
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-[var(--brand-primary)]">Tema Rengi</p>
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-[var(--brand-primary)]">Tema Modu</p>
+            <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl border border-[var(--brand-border)] bg-[var(--surface)] p-1">
+              {(["dark", "light"] as UiTheme[]).map((option) => {
+                const active = option === theme;
+
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    className={cn(
+                      "rounded-lg px-2 py-1.5 text-[11px] font-black transition",
+                      active
+                        ? "bg-[var(--brand-primary)] text-[var(--primary-foreground)] shadow-sm"
+                        : "text-[var(--muted-foreground)] hover:bg-[var(--surface-soft)] hover:text-[var(--brand-primary-strong)]"
+                    )}
+                    onClick={() => onThemeChange(option)}
+                  >
+                    {option === "dark" ? "Koyu Mod" : "Açık Mod"}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="mt-3 text-[11px] font-extrabold uppercase tracking-[0.12em] text-[var(--brand-primary)]">Tema Rengi</p>
             <div className="mt-2 flex items-center gap-3">
               <span
                 className="h-10 w-10 rounded-xl border border-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]"
@@ -1641,14 +1812,35 @@ function ProfileEditDialog({
   );
 }
 
+function formatNotificationTime(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return new Intl.DateTimeFormat("tr-TR", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "";
+  }
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { status, user, selectedCustomer, logout, refresh } = useSession();
   const { cartData } = useCart();
   const [uiTheme, setUiTheme] = useState<UiTheme>("dark");
   const [uiAccent, setUiAccent] = useState<string>(DEFAULT_UI_ACCENT);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationRootRef = useRef<HTMLDivElement | null>(null);
+  const mobileNavRef = useRef<HTMLDetailsElement | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
     username: "",
@@ -1669,6 +1861,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     [sidebarOrderSection, user?.id]
   );
   const menuPermissionSet = useMemo(() => new Set(user?.menu_permissions ?? []), [user?.menu_permissions]);
+  const batumSidebarScope = useMemo(() => isBatumSidebarScope(user, selectedCustomer), [selectedCustomer, user]);
   const warehouseOnlyRole = useMemo(() => isWarehouseOnlyRole(roleSlugs), [roleSlugs]);
   const dealerAdminPanelRole = useMemo(() => isDealerAdminPanelRole(roleSlugs), [roleSlugs]);
   const posOnlyRole = useMemo(() => isPosOnlyRole(roleSlugs), [roleSlugs]);
@@ -1687,8 +1880,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const customerSelectionRequired = useMemo(() => requiresCustomerSelection(roleSlugs), [roleSlugs]);
   const panelTitle = useMemo(() => resolvePanelTitle(roleSlugs), [roleSlugs]);
   const showCustomerCountBadge = useMemo(
-    () => roleSlugs.includes("admin") || roleSlugs.includes("salesperson"),
-    [roleSlugs]
+    () => roleSlugs.includes("admin") || roleSlugs.includes("salesperson") || batumSidebarScope,
+    [batumSidebarScope, roleSlugs]
   );
   const customerCountQuery = useQuery({
     queryKey: [
@@ -1711,13 +1904,69 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     refetchInterval: 15 * 60_000,
     retry: 1,
   });
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications", user?.id ?? null],
+    queryFn: () => listNotifications({ status: "active", limit: 20 }),
+    enabled: status === "authenticated" && Boolean(user),
+    refetchInterval: 12_000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const markNotificationReadMutation = useMutation({
+    mutationFn: markNotificationRead,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+  const archiveNotificationMutation = useMutation({
+    mutationFn: archiveNotification,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+  const notifications = notificationsQuery.data?.data ?? [];
+  const unreadNotificationCount =
+    notificationsQuery.data?.unread_count ?? notifications.filter((notification) => notification.status === "unread").length;
   const cartLineCount = cartData?.totals.line_count ?? 0;
   const cartDistinctLineCount = cartData?.items.length ?? 0;
   const cartBadge = cartLineCount > 0 ? String(cartLineCount) : undefined;
   const cartSecondaryBadge = cartDistinctLineCount > 0 ? String(cartDistinctLineCount) : undefined;
+
+  useEffect(() => {
+    const closeMobileNavOutside = (event: PointerEvent) => {
+      const menu = mobileNavRef.current;
+      if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) {
+        menu.removeAttribute("open");
+      }
+    };
+
+    document.addEventListener("pointerdown", closeMobileNavOutside);
+    return () => document.removeEventListener("pointerdown", closeMobileNavOutside);
+  }, []);
+
+  useEffect(() => {
+    mobileNavRef.current?.removeAttribute("open");
+  }, [pathname]);
+
   useEffect(() => {
     setSidebarItemOrder(readSidebarItemOrder(sidebarOrderKey));
   }, [sidebarOrderKey]);
+  useEffect(() => {
+    setNotificationsOpen(false);
+  }, [pathname]);
+  const handleNotificationClick = useCallback(
+    async (notification: AppNotificationDto) => {
+      if (notification.status === "unread") {
+        await markNotificationReadMutation.mutateAsync(notification.id);
+      }
+
+      setNotificationsOpen(false);
+      if (notification.url) {
+        router.push(notification.url);
+      }
+    },
+    [markNotificationReadMutation, router]
+  );
   const accessibleNavItems = useMemo(
     () => {
       const isSalesperson = roleSlugs.includes("salesperson");
@@ -1726,7 +1975,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const sourceItems = isModeratorRoute ? MODERATOR_SECTION_ITEMS : SIDEBAR_ITEMS;
 
       const items = sourceItems
-        .filter((item) => canAccessNavItem(item, roleSlugs, menuPermissionSet))
+        .filter(
+          (item) =>
+            canAccessNavItem(item, roleSlugs, menuPermissionSet) ||
+            (batumSidebarScope && (item.href === "/collections" || item.href === "/pos/expenses"))
+        )
         .map((item) => {
           const label = isSalesperson
             ? item.href === "/dashboard"
@@ -1776,7 +2029,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           };
         });
 
-      const scopedItems = items;
+      const visibleItems = batumSidebarScope
+        ? items.map((item) =>
+            item.href === "/collections" || item.href === "/pos/expenses"
+              ? { ...item, hiddenFromSidebar: true }
+              : item.href === "/extra"
+                ? {
+                    ...item,
+                    label: BATUM_OPERATIONS_ITEM.label,
+                    icon: BATUM_OPERATIONS_ITEM.icon,
+                    emojiAsset: BATUM_OPERATIONS_ITEM.emojiAsset,
+                    tileGradient: BATUM_OPERATIONS_ITEM.tileGradient,
+                    hiddenFromSidebar: false,
+                  }
+              : item
+          )
+        : items;
+
+      const scopedItems =
+        batumSidebarScope && !visibleItems.some((item) => item.href === BATUM_OPERATIONS_ITEM.href && !item.hiddenFromSidebar)
+          ? [...visibleItems, BATUM_OPERATIONS_ITEM]
+          : visibleItems;
 
       if (posOnlyRole) {
         return scopedItems;
@@ -1784,7 +2057,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       return isModeratorRoute ? sortModeratorNavItemsByPriority(scopedItems) : sortNavItemsForPath(scopedItems, pathname);
     },
-    [cartBadge, cartSecondaryBadge, customerCountQuery.data?.total_count, dealerAdminPanelRole, menuPermissionSet, pathname, posOnlyRole, roleSlugs]
+    [batumSidebarScope, cartBadge, cartSecondaryBadge, customerCountQuery.data?.total_count, dealerAdminPanelRole, menuPermissionSet, pathname, posOnlyRole, roleSlugs]
   );
   const sidebarItems = useMemo(
     () => accessibleNavItems.filter((item) => !item.hiddenFromSidebar),
@@ -1867,14 +2140,77 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [dealerAdminPanelRole, menuPermissionSet, moderatorStandaloneMode, pathname, posOnlyRole, roleSlugs, sidebarItems, warehouseStandaloneMode]);
   const isCustomerRoute = pathname === "/customers" || pathname.startsWith("/customers/");
   const isPosExpensesRoute = pathname === "/pos/expenses" || pathname.startsWith("/pos/expenses/");
+  const isExtraRoute = pathname === "/extra" || pathname.startsWith("/extra/");
   const isNotesRoute = pathname === "/notes" || pathname.startsWith("/notes/");
+  const isPurchaseRoute = pathname === "/satinalma" || pathname.startsWith("/satinalma/");
+  const isNewCustomerCardRoute = pathname === "/new-customer-card" || pathname.startsWith("/new-customer-card/");
+  const isReportsRoute = pathname === "/reports" || pathname.startsWith("/reports/");
+  const isCustomerUsersRoute = pathname === "/customer-users" || pathname.startsWith("/customer-users/");
+  const isModeratorUsersRoute = pathname === "/moderator/users" || pathname.startsWith("/moderator/users/");
   const isWarehouseRoute = pathname === "/warehouse" || pathname.startsWith("/warehouse/");
+  const isWarehouseHomeRoute = pathname === "/warehouse";
+  const isWarehouseShipmentsRoute = pathname === "/warehouse/shipments" || pathname.startsWith("/warehouse/shipments/");
+  const isWarehouseTitleRoute = isWarehouseHomeRoute || isWarehouseShipmentsRoute;
+  const isPosHomeRoute = pathname === "/pos";
+  const isCustomerHeaderRoute =
+    isCustomerRoute ||
+    pathname === "/collections" ||
+    pathname.startsWith("/collections/") ||
+    pathname === "/cart" ||
+    pathname.startsWith("/cart/") ||
+    pathname === "/search" ||
+    pathname.startsWith("/search/") ||
+    pathname === "/orders" ||
+    pathname.startsWith("/orders/") ||
+    pathname === "/ledger" ||
+    pathname.startsWith("/ledger/") ||
+    pathname === "/returns" ||
+    pathname.startsWith("/returns/");
+  const showNamedPageHeader =
+    isPosHomeRoute ||
+    isNotesRoute ||
+    isPurchaseRoute ||
+    isNewCustomerCardRoute ||
+    isWarehouseTitleRoute ||
+    isReportsRoute ||
+    isPosExpensesRoute ||
+    isCustomerUsersRoute ||
+    isModeratorUsersRoute ||
+    pathname === "/catalogs" ||
+    pathname.startsWith("/catalogs/") ||
+    pathname === "/extra" ||
+    pathname.startsWith("/extra/") ||
+    pathname === "/irsaliye-dokum" ||
+    pathname.startsWith("/irsaliye-dokum/");
+  const isContextFreePage =
+    isPosHomeRoute ||
+    isNotesRoute ||
+    isPurchaseRoute ||
+    isNewCustomerCardRoute ||
+    isWarehouseRoute ||
+    isReportsRoute ||
+    isPosExpensesRoute ||
+    isCustomerUsersRoute ||
+    isModeratorUsersRoute ||
+    isWarehouseShipmentsRoute ||
+    pathname === "/extra" ||
+    pathname.startsWith("/extra/") ||
+    pathname === "/catalogs" ||
+    pathname.startsWith("/catalogs/") ||
+    pathname === "/mal-kabul" ||
+    pathname.startsWith("/mal-kabul/") ||
+    pathname === "/irsaliye-dokum" ||
+    pathname.startsWith("/irsaliye-dokum/");
   const showCustomerContext =
+    isCustomerHeaderRoute ||
+    (!isWarehouseHomeRoute &&
+    !isContextFreePage &&
     !warehouseStandaloneMode &&
     !moderatorStandaloneMode &&
     !(pathname === "/moderator" || pathname.startsWith("/moderator/")) &&
-    (!posOnlyRole || isCustomerRoute || Boolean(selectedCustomer));
+    (!posOnlyRole || isCustomerRoute || Boolean(selectedCustomer)));
   const isSalesperson = roleSlugs.includes("salesperson");
+  const isCustomerUser = roleSlugs.includes("customer");
   const showSalespersonCustomerSelectionOnly = isSalesperson && isCustomerRoute;
   const usePointStandaloneShell = false;
   const pointOnlyShell = usePointStandaloneShell && posOnlyRole;
@@ -1944,6 +2280,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [profileDialogOpen, user]);
 
   useEffect(() => {
+    if (!notificationsOpen) {
+      return;
+    }
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!notificationRootRef.current?.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [notificationsOpen]);
+
+  useEffect(() => {
+    setNotificationsOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
     if (!user || status !== "authenticated") {
       return;
     }
@@ -1953,7 +2318,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (posOnlyRole && !pathname.startsWith("/notes") && !isPathAllowed(pathname, accessibleNavItems)) {
+    if (posOnlyRole && !pathname.startsWith("/notes") && !isExtraRoute && !isPathAllowed(pathname, accessibleNavItems)) {
       router.replace("/pos");
       return;
     }
@@ -1963,13 +2328,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (customerSelectionRequired && !selectedCustomer && !isCustomerRoute && !isNotesRoute && !isPosExpensesRoute) {
+    if (customerSelectionRequired && !selectedCustomer && !isCustomerRoute && !isContextFreePage) {
       const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
       router.replace(`/customers${next}`);
       return;
     }
 
-    if (!isPathAllowed(pathname, accessibleNavItems) && !isPosExpensesRoute) {
+    if (!isPathAllowed(pathname, accessibleNavItems) && !isPosExpensesRoute && !isExtraRoute) {
       router.replace(fallbackPath);
     }
   }, [
@@ -1982,6 +2347,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     accessibleNavItems,
     user,
     isCustomerRoute,
+    isExtraRoute,
+    isContextFreePage,
     isNotesRoute,
     isPosExpensesRoute,
     isWarehouseRoute,
@@ -2006,7 +2373,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pageMeta = useMemo(() => getPageMeta(pathname, roleSlugs, selectedCustomer, user), [pathname, roleSlugs, selectedCustomer, user]);
   const isDashboardRoute = pathname.startsWith("/dashboard");
   const isSearchRoute = pathname.startsWith("/search");
-  const hidePointPosPageHeader = posOnlyRole && pathname === "/pos";
+  const hidePointPosPageHeader = false;
   const showPageTitle = !isDashboardRoute && !isCustomerRoute && Boolean(pageMeta.title || pageMeta.subtitle);
   const isAdminDashboardRoute = isDashboardRoute && roleSlugs.includes("admin");
   const isDarkMode = uiTheme === "dark";
@@ -2027,6 +2394,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const currentUserName = user?.name?.trim() || "Kullanıcı";
   const currentUserDisplayName = currentUserName.toLocaleUpperCase("tr-TR");
   const currentUserPhone = user?.phone?.trim() || "Telefon yok";
+  const customerSalespersonName = selectedCustomer?.salesperson?.name?.trim() || "Plasiyer yok";
+  const customerSalespersonPhone = selectedCustomer?.salesperson?.phone?.trim() || "Telefon yok";
+  const customerManagerName =
+    typeof selectedCustomer?.meta?.manager_name === "string" && selectedCustomer.meta.manager_name.trim() !== ""
+      ? selectedCustomer.meta.manager_name.trim()
+      : typeof selectedCustomer?.meta?.supervisor_name === "string" && selectedCustomer.meta.supervisor_name.trim() !== ""
+        ? selectedCustomer.meta.supervisor_name.trim()
+        : "Müdür yok";
+  const customerManagerPhone =
+    typeof selectedCustomer?.meta?.manager_phone === "string" && selectedCustomer.meta.manager_phone.trim() !== ""
+      ? selectedCustomer.meta.manager_phone.trim()
+      : typeof selectedCustomer?.meta?.supervisor_phone === "string" && selectedCustomer.meta.supervisor_phone.trim() !== ""
+        ? selectedCustomer.meta.supervisor_phone.trim()
+        : "Telefon yok";
   const userAvatarStyle: CSSProperties | undefined = user?.avatar_url
     ? { backgroundImage: `url(${user.avatar_url})` }
     : undefined;
@@ -2054,6 +2435,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const normalizedAccent = normalizeUiAccent(nextAccent);
     setUiAccent(normalizedAccent);
     applyUiAccent(normalizedAccent);
+  };
+
+  const updateUiTheme = (nextTheme: UiTheme) => {
+    setUiTheme(nextTheme);
+    applyUiTheme(nextTheme);
   };
 
   const updateProfileForm = (patch: Partial<ProfileFormState>) => {
@@ -2202,7 +2588,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <div className="flex flex-wrap items-center gap-3 rounded-[18px] border border-[#17392b] bg-[linear-gradient(180deg,rgba(8,25,19,0.94)_0%,rgba(3,14,12,0.96)_100%)] px-4 py-3 shadow-[0_24px_54px_-48px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)]">
             <Link
-              href={dashboardSidebarItems.some((item) => item.href === "/customers") ? "/customers" : "#"}
+              href={!isCustomerUser && dashboardSidebarItems.some((item) => item.href === "/customers") ? "/customers" : "#"}
               className="inline-flex h-12 min-w-[238px] items-center justify-between gap-3 rounded-[14px] border border-[#1b3f31] bg-[#06130f] px-4 text-sm font-bold text-[#e8f1e9] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#68d37c]/60"
             >
               <span className="inline-flex min-w-0 items-center gap-3">
@@ -2211,7 +2597,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {selectedCustomer ? `${selectedCustomer.code} · ${selectedCustomer.title}` : "Müşteri seçimi"}
                 </span>
               </span>
-              <ChevronDown className="h-4 w-4 shrink-0 text-[#e8f1e9]" />
+              {!isCustomerUser ? <ChevronDown className="h-4 w-4 shrink-0 text-[#e8f1e9]" /> : null}
             </Link>
 
             <div className="inline-flex h-12 items-center gap-3 rounded-[14px] border border-[#1b3f31] bg-[#06130f] px-4 text-sm font-bold text-[#e8f1e9] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
@@ -2252,8 +2638,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (showSalespersonCustomerSelectionOnly) {
     return (
-      <div className="app-shell-root min-h-screen bg-[var(--background)] text-[var(--foreground)]" style={shellStyle}>
-        <main className="min-h-screen px-3 py-3 lg:px-6 lg:py-4">
+      <div className="app-shell-root min-h-screen overflow-x-hidden bg-[var(--background)] text-[var(--foreground)]" style={shellStyle}>
+        <Button
+          type="button"
+          variant="outline"
+          aria-label="Çıkış yap"
+          title="Çıkış yap"
+          className="fixed right-3 top-3 z-[120] h-10 rounded-xl border-red-300/35 bg-red-950/90 px-3 text-xs font-black text-red-100 shadow-xl backdrop-blur-md hover:bg-red-900 hover:text-white lg:hidden"
+          onClick={() => {
+            void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+          }}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Çıkış
+        </Button>
+        <main className="page-shell-main min-h-screen min-w-0 px-3 py-3 lg:px-6 lg:py-4">
           <div className="mx-auto w-full max-w-[1840px]">
             {children}
             <NfsSoftCredit className="mt-6 pb-2" />
@@ -2265,8 +2664,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (pointQuickSalesShell) {
     return (
-      <div className="app-shell-root min-h-screen bg-[#06130e] text-[#eef8ef]" style={shellStyle}>
-        <main className="min-h-screen p-2 sm:p-3 lg:p-4">
+      <div className="app-shell-root min-h-screen overflow-x-hidden bg-[#06130e] text-[#eef8ef]" style={shellStyle}>
+        <Button
+          type="button"
+          variant="outline"
+          aria-label="Çıkış yap"
+          title="Çıkış yap"
+          className="fixed right-3 top-3 z-[120] h-10 rounded-xl border-red-300/35 bg-red-950/90 px-3 text-xs font-black text-red-100 shadow-xl backdrop-blur-md hover:bg-red-900 hover:text-white lg:hidden"
+          onClick={() => {
+            void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+          }}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Çıkış
+        </Button>
+        <main className="page-shell-main min-h-screen min-w-0 p-2 sm:p-3 lg:p-4">
           {children}
           <NfsSoftCredit dark className="mt-4 pb-2 text-[#9eb0a3]" />
         </main>
@@ -2276,8 +2688,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (pointOnlyShell) {
     return (
-      <div className="app-shell-root min-h-screen bg-[#06130e] text-[#eef8ef]" style={shellStyle}>
-        <main className="min-h-screen p-2 sm:p-3 lg:p-4">
+      <div className="app-shell-root min-h-screen overflow-x-hidden bg-[#06130e] text-[#eef8ef]" style={shellStyle}>
+        <Button
+          type="button"
+          variant="outline"
+          aria-label="Çıkış yap"
+          title="Çıkış yap"
+          className="fixed right-3 top-3 z-[120] h-10 rounded-xl border-red-300/35 bg-red-950/90 px-3 text-xs font-black text-red-100 shadow-xl backdrop-blur-md hover:bg-red-900 hover:text-white lg:hidden"
+          onClick={() => {
+            void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+          }}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Çıkış
+        </Button>
+        <main className="page-shell-main min-h-screen min-w-0 p-2 sm:p-3 lg:p-4">
           <div
             className="point-sale-screen min-h-[calc(100vh-32px)] rounded-[28px] border border-[#1e4333] bg-[#071a12] p-3 text-[#eef8ef] shadow-[0_30px_90px_-54px_rgba(0,0,0,0.9)] sm:p-4"
             data-point-theme="light"
@@ -2292,8 +2717,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (posDayEndStandaloneShell) {
     return (
-      <div className="app-shell-root min-h-screen !bg-[#121a15] !text-[#f4f8f5]" style={shellStyle}>
-        <main className="min-h-screen p-0">
+      <div className="app-shell-root min-h-screen overflow-x-hidden !bg-[#121a15] !text-[#f4f8f5]" style={shellStyle}>
+        <Button
+          type="button"
+          variant="outline"
+          aria-label="Çıkış yap"
+          title="Çıkış yap"
+          className="fixed right-3 top-3 z-[120] h-10 rounded-xl border-red-300/35 bg-red-950/90 px-3 text-xs font-black text-red-100 shadow-xl backdrop-blur-md hover:bg-red-900 hover:text-white lg:hidden"
+          onClick={() => {
+            void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+          }}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Çıkış
+        </Button>
+        <main className="page-shell-main min-h-screen min-w-0 p-0">
           <div className="w-full">
             {children}
             <NfsSoftCredit dark className="px-3 pb-2 text-[#9eaca1]" />
@@ -2306,7 +2744,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
       <div
         className={cn(
-          "app-shell-root min-h-screen bg-[var(--background)] text-[var(--foreground)]",
+          "app-shell-root min-h-screen overflow-x-hidden bg-[var(--background)] text-[var(--foreground)]",
           isDashboardRoute ? "dashboard-shell font-medium" : ""
         )}
         style={shellStyle}
@@ -2335,6 +2773,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+                }}
+                className={cn(
+                  "absolute bottom-4 left-2 right-2 z-30 inline-flex h-11 items-center justify-center rounded-2xl border text-[var(--sidebar-foreground)] transition hover:-translate-y-0.5 hover:text-white",
+                  isDashboardRoute && !isDarkMode
+                    ? "border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100"
+                    : "border-red-300/20 bg-[linear-gradient(180deg,rgba(127,29,29,0.58)_0%,rgba(69,10,10,0.64)_100%)] text-red-100"
+                )}
+                aria-label="Çıkış yap"
+                title="Çıkış yap"
+              >
+                <LogOut className="h-5 w-5" />
+              </button>
             </div>
           ) : (
             <SidebarMenu
@@ -2356,7 +2810,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <div className="app-content-region relative z-10 flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className={cn("page-shell-header sticky top-0 z-[70] px-3 pt-2 lg:px-4 xl:px-5", hidePointPosPageHeader && "hidden")}>
+          <header className={cn("page-shell-header z-[70] px-3 pt-2 lg:sticky lg:top-0 lg:px-4 xl:px-5", hidePointPosPageHeader && "hidden")}>
             <div
               className={cn(
                 "dashboard-top-header-card grid grid-cols-1 gap-2 rounded-[16px] px-3 py-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,max-content)] xl:items-center xl:gap-3 xl:px-4",
@@ -2423,7 +2877,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
 
               <div className="dashboard-header-center">
-                {!showCustomerContext || isDashboardRoute ? (
+                {showNamedPageHeader && !isDashboardRoute ? (
+                  <div className="header-date-pill">
+                    <HeaderIcon className="h-4 w-4 shrink-0 text-[var(--brand-primary)]" />
+                    <p>{pageMeta.title}</p>
+                  </div>
+                ) : !showCustomerContext || isDashboardRoute ? (
                   <>
                     {isDashboardRoute ? (
                       <div className="header-date-pill">
@@ -2442,42 +2901,178 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </>
                 ) : null}
                 {showCustomerContext && !isDashboardRoute ? (
-                  <div className={cn("header-selected-customer flex items-center gap-3", selectedCustomer && "header-selected-customer-active")}>
+                  <div className={cn("header-selected-customer flex min-w-0 items-center gap-3", selectedCustomer && "header-selected-customer-active")}>
                     <Users className="h-5 w-5 shrink-0 text-emerald-100/90" />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/75">
-                        Seçili Cari
-                      </span>
                       <p className="header-selected-customer-name">
                         {selectedCustomer ? dashboardCustomerDisplayTitle : "Müşteri seçilmedi"}
                       </p>
                       {selectedCustomer ? <span className="header-selected-customer-code">{dashboardCustomerCode}</span> : null}
                     </span>
-                    <span className="header-customer-action-group">
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="dashboard-header-actions min-w-0">
+                {showCustomerContext && !isDashboardRoute ? (
+                  <span className="header-customer-action-group header-customer-action-group-floating">
+                    {!isCustomerUser ? (
                       <Link
-                        href="/customers"
+                        href={`/customers?next=${encodeURIComponent(pathname)}`}
                         className="header-customer-select-button"
                         title="Cari seç"
                       >
                         <Users className="h-4 w-4" />
                         <span>Cari Seç</span>
                       </Link>
-                      <Link
-                        href="/cart"
-                        className="header-cart-shortcut-button"
-                        title="Sepete git"
-                        aria-label="Sepete git"
-                      >
-                        <ShoppingCart className="h-4 w-4" />
-                        {cartLineCount > 0 ? <span>{cartLineCount}</span> : null}
-                      </Link>
-                    </span>
+                    ) : null}
+                    <Link
+                      href="/cart"
+                      className="header-cart-shortcut-button"
+                      title="Sepete git"
+                      aria-label="Sepete git"
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      {cartLineCount > 0 ? <span>{cartLineCount}</span> : null}
+                    </Link>
+                  </span>
+                ) : null}
+                {user ? (
+                  <div ref={notificationRootRef} className="header-notification-action relative">
+                    <button
+                      type="button"
+                      className={cn(
+                        "relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--brand-border)] bg-[var(--surface)] text-[var(--brand-primary-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary)]",
+                        notificationsOpen && "border-[var(--brand-primary)] text-[var(--brand-primary)]"
+                      )}
+                      aria-label="Bildirimler"
+                      title="Bildirimler"
+                      onClick={() => setNotificationsOpen((open) => !open)}
+                    >
+                      <Bell className="h-5 w-5" />
+                      {unreadNotificationCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-black text-white shadow-[0_8px_18px_-8px_rgba(239,68,68,0.95)]">
+                          {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                        </span>
+                      ) : null}
+                    </button>
+                    {notificationsOpen ? (
+                      <div className="notification-popover absolute right-0 top-12 z-[110] w-[min(380px,calc(100vw-24px))] overflow-hidden rounded-[22px] border border-emerald-300/20 bg-[#071711]/95 text-slate-100 shadow-[0_30px_80px_-36px_rgba(0,0,0,0.95)] backdrop-blur-xl">
+                        <div className="flex items-center justify-between border-b border-emerald-300/15 px-4 py-3">
+                          <span>
+                            <span className="block text-sm font-black">Bildirimler</span>
+                            <span className="text-[11px] font-bold text-emerald-100/55">
+                              {unreadNotificationCount > 0 ? `${unreadNotificationCount} okunmadı` : "Yeni bildirim yok"}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            className="rounded-full border border-emerald-300/15 px-3 py-1 text-[11px] font-black text-emerald-100/70 hover:border-emerald-300/40 hover:text-emerald-100"
+                            onClick={() => void notificationsQuery.refetch()}
+                          >
+                            Yenile
+                          </button>
+                        </div>
+                        <div className="max-h-[420px] overflow-y-auto p-2">
+                          {notifications.length > 0 ? (
+                            notifications.map((notification) => (
+                              <div
+                                key={notification.id}
+                                className={cn(
+                                  "group mb-2 overflow-hidden rounded-[18px] border text-left transition",
+                                  notification.status === "unread"
+                                    ? "border-red-400/35 bg-red-500/10"
+                                    : "border-emerald-300/12 bg-white/[0.035]"
+                                )}
+                              >
+                                <button
+                                  type="button"
+                                  className="block w-full px-3 py-3 text-left"
+                                  onClick={() => void handleNotificationClick(notification)}
+                                >
+                                  <span className="flex items-start justify-between gap-3">
+                                    <span className="min-w-0">
+                                      <span className="block text-sm font-black text-white">{notification.title}</span>
+                                      {notification.body ? (
+                                        <span className="mt-1 block text-xs font-semibold leading-relaxed text-emerald-50/70">
+                                          {notification.body}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                    <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-100/45">
+                                      {formatNotificationTime(notification.created_at)}
+                                    </span>
+                                  </span>
+                                </button>
+                                <div className="flex justify-end gap-2 border-t border-emerald-300/10 px-3 py-2">
+                                  {notification.status === "unread" ? (
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-black text-emerald-100/70 hover:bg-emerald-300/10 hover:text-emerald-100"
+                                      onClick={() => void markNotificationReadMutation.mutateAsync(notification.id)}
+                                    >
+                                      <CheckCheck className="h-3.5 w-3.5" /> Okundu
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-black text-emerald-100/60 hover:bg-emerald-300/10 hover:text-emerald-100"
+                                    onClick={() => void archiveNotificationMutation.mutateAsync(notification.id)}
+                                  >
+                                    <Archive className="h-3.5 w-3.5" /> Arşivle
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center text-sm font-bold text-emerald-100/55">
+                              <Bell className="h-8 w-8 text-emerald-100/35" />
+                              Bildirim bulunmuyor.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
-              </div>
-
-              <div className="dashboard-header-actions">
+                {user ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    aria-label="Çıkış yap"
+                    title="Çıkış yap"
+                    className="mobile-header-logout hidden h-10 w-10 shrink-0 rounded-full border-red-300/35 bg-red-950/75 text-red-100 hover:border-red-200/60 hover:bg-red-900 hover:text-white max-lg:inline-flex"
+                    onClick={() => void logout().then(() => router.replace("/login?v=20260605-login-fast"))}
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                ) : null}
                 <HeaderMarketRates payload={marketRatesQuery.data} loading={marketRatesQuery.isLoading} />
+                {isCustomerUser ? (
+                  <div className="hidden min-w-[260px] max-w-[360px] grid-cols-2 gap-2 xl:grid">
+                    <div className="flex min-w-0 items-center gap-2 rounded-[15px] border border-emerald-300/16 bg-black/16 px-3 py-2">
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#d6f8de,#48b878)] text-[10px] font-black text-[#073019] shadow-[0_10px_22px_-14px_rgba(74,222,128,0.8)]">
+                        {initialsFromName(customerSalespersonName)}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-[9px] font-black uppercase tracking-[0.16em] text-emerald-100/45">Bağlı Plasiyer</span>
+                        <span className="mt-0.5 block truncate text-[11px] font-black text-emerald-50">{customerSalespersonName}</span>
+                        <span className="mt-0.5 block truncate text-[10px] font-bold text-emerald-100/55">{customerSalespersonPhone}</span>
+                      </span>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2 rounded-[15px] border border-emerald-300/16 bg-black/16 px-3 py-2">
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#f8e8a2,#b78a1b)] text-[10px] font-black text-[#2b2106] shadow-[0_10px_22px_-14px_rgba(250,204,21,0.85)]">
+                        {initialsFromName(customerManagerName)}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-[9px] font-black uppercase tracking-[0.16em] text-emerald-100/45">Bağlı Müdür</span>
+                        <span className="mt-0.5 block truncate text-[11px] font-black text-emerald-50">{customerManagerName}</span>
+                        <span className="mt-0.5 block truncate text-[10px] font-bold text-emerald-100/55">{customerManagerPhone}</span>
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
                 {showPointBranchHeaderProfile ? (
                   <div className="dashboard-header-profile">
                     <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--brand-primary)_0%,var(--brand-accent)_100%)] text-[12px] font-black text-white">
@@ -2495,7 +3090,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </span>
                     </span>
                   </div>
-                ) : !isAdminDashboardRoute && user ? (
+                ) : !isAdminDashboardRoute && user && !isCustomerUser ? (
                   <div className="dashboard-header-profile">
                     <span
                       className={cn(
@@ -2522,10 +3117,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                 ) : null}
                 {isDashboardRoute && !isAdminDashboardRoute ? null : (
-                  <ColorThemePicker
-                    accent={uiAccent}
-                    onSelect={updateUiAccent}
-                  />
+                  <>
+                    <ThemeModeToggle theme={uiTheme} onThemeChange={updateUiTheme} />
+                    <ColorThemePicker
+                      accent={uiAccent}
+                      theme={uiTheme}
+                      onSelect={updateUiAccent}
+                      onThemeChange={updateUiTheme}
+                    />
+                  </>
                 )}
                 {isAdminDashboardRoute ? (
                   <Button
@@ -2545,8 +3145,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            <div className={cn("mt-2 px-0 py-0 lg:hidden", sidebarCollapsed && "hidden")}>
-              <div className="flex gap-2 overflow-x-auto">
+            <details ref={mobileNavRef} className="app-mobile-nav mt-2 lg:hidden">
+              <summary className="app-mobile-nav-trigger">
+                <Menu className="h-5 w-5" />
+                <span>Menü</span>
+                <span className="ml-auto text-[11px] font-black text-[var(--muted-foreground)]">
+                  {currentHeaderItem?.label ?? "Modüller"}
+                </span>
+              </summary>
+              <div className="app-mobile-nav-grid">
                 {dashboardSidebarItems.map((item) => {
                   const Icon = item.icon;
                   const active = isNavItemActive(pathname, currentHash, item);
@@ -2555,8 +3162,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <Link
                       key={item.href}
                       href={item.href}
+                      onClick={() => mobileNavRef.current?.removeAttribute("open")}
                       className={cn(
-                        "flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-semibold",
+                        "app-mobile-nav-link flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-semibold",
                         active
                           ? "border-[var(--brand-primary)] bg-[var(--brand-primary)] text-[var(--primary-foreground)]"
                           : "border-[var(--brand-border)] bg-[var(--surface)] text-[var(--brand-primary-strong)]"
@@ -2568,10 +3176,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   );
                 })}
               </div>
-            </div>
+            </details>
           </header>
 
-          <main className={cn("page-shell-main flex-1 px-4 py-3 lg:px-6 lg:py-4", isDashboardRoute && "text-[0.98rem]")}>
+          <main className={cn("page-shell-main min-w-0 flex-1 px-4 py-3 lg:px-6 lg:py-4", isDashboardRoute && "text-[0.98rem]")}>
             {children}
             <NfsSoftCredit className="mt-6 pb-2" />
           </main>

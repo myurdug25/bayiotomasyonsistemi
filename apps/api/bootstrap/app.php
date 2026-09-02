@@ -3,12 +3,14 @@
 use App\Console\Commands\Logo\BackfillLogoCollectionsCommand;
 use App\Console\Commands\Logo\ReplayLogoWriteEventsCommand;
 use App\Console\Commands\Products\ReindexProductsSearchCommand;
+use App\Console\Commands\Users\DeactivateInactiveCustomerUsersCommand;
 use App\Console\Commands\Users\SyncOperationalUsersCommand;
 use App\Http\Middleware\ApiPerformanceLogger;
 use App\Http\Middleware\EnsureUserHasMenuPermission;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\SanitizeInputStrings;
 use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\TrackCustomerUserActivity;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -23,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ReplayLogoWriteEventsCommand::class,
         ReindexProductsSearchCommand::class,
         SyncOperationalUsersCommand::class,
+        DeactivateInactiveCustomerUsersCommand::class,
     ])
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
@@ -53,6 +56,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('api', [
             SanitizeInputStrings::class,
             ApiPerformanceLogger::class,
+            TrackCustomerUserActivity::class,
         ]);
         $middleware->alias([
             'menu' => EnsureUserHasMenuPermission::class,

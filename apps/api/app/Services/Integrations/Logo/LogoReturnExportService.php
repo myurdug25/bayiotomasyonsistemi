@@ -146,6 +146,8 @@ class LogoReturnExportService
         $customerMeta = is_array($customer?->meta) ? $customer->meta : [];
         $productSnapshot = is_array($returnRequest->product_snapshot) ? $returnRequest->product_snapshot : [];
         $orderSnapshot = is_array($returnRequest->order_snapshot) ? $returnRequest->order_snapshot : [];
+        $warehouseCode = $this->nullableString($orderSnapshot['warehouse_code'] ?? null);
+        $warehouseName = $this->nullableString($orderSnapshot['warehouse_name'] ?? null);
         $orderItem = $returnRequest->orderItem;
         $product = $orderItem?->product;
         $productMeta = is_array($product?->meta) ? $product->meta : [];
@@ -167,6 +169,8 @@ class LogoReturnExportService
             'order_no' => $returnRequest->order?->order_no ?? ($orderSnapshot['order_no'] ?? null),
             'order_item_id' => $returnRequest->order_item_id,
             'request_no' => $returnRequest->request_no,
+            'warehouse_code' => $warehouseCode,
+            'warehouse_name' => $warehouseName,
             'return_date' => optional($returnRequest->reviewed_at ?? $returnRequest->created_at)?->toDateString(),
             'request_type' => $returnRequest->request_type,
             'status' => $returnRequest->status,
@@ -229,6 +233,8 @@ class LogoReturnExportService
                 'stock_iocode' => 1,
                 'invoice_grpcode' => 2,
                 'stock_grpcode' => 2,
+                'warehouse_code' => $warehouseCode,
+                'warehouse_name' => $warehouseName,
                 'target_tables' => ['INVOICE', 'STFICHE', 'STLINE'],
                 'stock_ref' => data_get($productMeta, 'integrations.logo.external_ref'),
                 'unitset_ref' => data_get($logoPayload, 'unitset_ref') ?? data_get($logoPayload, 'raw.UNITSETREF'),
@@ -248,6 +254,8 @@ class LogoReturnExportService
                     'invoice_trcode' => 3,
                     'stock_trcode' => 3,
                     'stock_iocode' => 1,
+                    'warehouse_code' => $warehouseCode,
+                    'warehouse_name' => $warehouseName,
                     'target_tables' => ['INVOICE', 'STFICHE', 'STLINE'],
                 ],
             ],

@@ -436,6 +436,18 @@ class PosSaleService
                 ]);
             }
 
+            $existingLogoState = $this->latestPosSaleLogoState($sale);
+            if (
+                $sale->document_type === 'delivery'
+                && $existingLogoState instanceof IntegrationSyncState
+                && $existingLogoState->status === 'synced'
+                && $this->nullableString($existingLogoState->external_ref) === null
+            ) {
+                throw ValidationException::withMessages([
+                    'logo' => ['Logo irsaliye referansı bulunamadı. Mevcut Logo kaydı bulunmadan yeni irsaliye oluşturulamaz.'],
+                ]);
+            }
+
             if (! $sale->posSession instanceof PosSession) {
                 throw ValidationException::withMessages([
                     'sale' => ['POS session relation is missing.'],
@@ -675,6 +687,15 @@ class PosSaleService
             }
 
             $this->assertCanOperateSession($user, $sale->posSession);
+            $this->assertDocumentCanBeDeleted($sale);
+
+            $existingLogoState = $this->latestPosSaleLogoState($sale);
+            $logoExternalRef = $this->nullableString($existingLogoState?->external_ref);
+            $shouldQueueLogoDelete = $sale->document_type === 'delivery'
+                && $existingLogoState instanceof IntegrationSyncState
+                && $existingLogoState->status === 'synced'
+                && $logoExternalRef !== null
+                && str_starts_with($logoExternalRef, 'STFICHE-');
 
             if ($sale->status === 'paid') {
                 $this->restoreSaleStock($sale);
@@ -700,6 +721,15 @@ class PosSaleService
                 ->where('source', 'pos_sale')
                 ->where('source_id', $sale->id)
                 ->delete();
+
+            if ($shouldQueueLogoDelete) {
+                $sale->status = 'cancelled';
+                $sale->save();
+
+                $this->queueSaleDeleteForLogoExport($sale, $logoExternalRef);
+
+                return;
+            }
 
             IntegrationSyncEvent::query()
                 ->where('entity_type', PosSale::class)
@@ -808,6 +838,87 @@ class PosSaleService
         }
     }
 
+    private function assertDocumentCanBeDeleted(PosSale $sale): void
+    {
+        if ($sale->created_at === null || $sale->created_at->format('Y-m') !== now()->format('Y-m')) {
+            throw ValidationException::withMessages([
+                'sale' => ['Yalnızca içinde bulunulan aya ait irsaliye belgeleri silinebilir.'],
+            ]);
+        }
+
+        if (! $this->isDayEndProtectedRetailSale($sale)) {
+            return;
+        }
+
+        $session = $sale->posSession;
+        $dayEndQueuedOrSynced = $session instanceof PosSession
+            && IntegrationSyncState::query()
+                ->where('system', 'logo')
+                ->where('domain', 'pos-day-ends')
+                ->where('direction', 'outbound')
+                ->where('entity_type', PosSession::class)
+                ->where('entity_id', (int) $session->id)
+                ->whereIn('status', ['queued', 'synced'])
+                ->exists();
+
+        if (
+            $session instanceof PosSession
+            && (
+                $session->status === 'closed'
+                || $session->closed_at !== null
+                || $dayEndQueuedOrSynced
+            )
+        ) {
+            throw ValidationException::withMessages([
+                'sale' => ['Gün sonu kaydı alınmış perakende nakit veya kredi kartı satış irsaliyeleri silinemez.'],
+            ]);
+        }
+    }
+
+    private function isDayEndProtectedRetailSale(PosSale $sale): bool
+    {
+        $customer = $sale->customer;
+        if (! $customer instanceof Customer) {
+            return false;
+        }
+
+        $text = $this->normalizeDayEndCustomerText(trim((string) $customer->code.' '.(string) $customer->name));
+        if ($text === '') {
+            return false;
+        }
+
+        foreach ([
+            'BATUM PERAKENDE NAKIT SATIS',
+            'BATUM PERAKENDE KREDI KARTI SATIS',
+            'ERZURUM POINT NAKIT SATIS',
+            'ERZURUM POINT KREDI KARTI SATIS',
+            'TRABZON POINT PERAKENDE NAKIT SATIS',
+            'TRABZON POINT PERAKENDE KREDI KARTI SATIS',
+            'SAMSUN DEPO NAKIT SATIS',
+            'SAMSUN DEPO KREDI KARTI SATIS',
+        ] as $protectedCustomerName) {
+            if (str_contains($text, $protectedCustomerName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizeDayEndCustomerText(string $value): string
+    {
+        $normalized = mb_strtoupper(trim($value), 'UTF-8');
+
+        return strtr($normalized, [
+            'Ç' => 'C',
+            'Ğ' => 'G',
+            'İ' => 'I',
+            'Ö' => 'O',
+            'Ş' => 'S',
+            'Ü' => 'U',
+        ]);
+    }
+
     private function pointCurrencyForSale(PosSale $sale, User $user): string
     {
         $sale->loadMissing('posSession.cashbox', 'posSession.openedBy');
@@ -819,11 +930,34 @@ class PosSaleService
     {
         $session?->loadMissing('cashbox', 'openedBy');
 
+        $userBranchSignals = [
+            $user->username,
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+            $session?->openedBy?->username,
+            $session?->openedBy?->branch_code,
+            $session?->openedBy?->branch_name,
+            $session?->openedBy?->region_code,
+            $session?->openedBy?->region_name,
+        ];
+
+        foreach ($userBranchSignals as $value) {
+            if ($this->isTurkeyPointSignal($value)) {
+                return self::POINT_CURRENCY;
+            }
+        }
+
         $batumSignals = [
             $user->branch_code,
+            $user->branch_name,
             $user->region_code,
+            $user->region_name,
             $session?->openedBy?->branch_code,
+            $session?->openedBy?->branch_name,
             $session?->openedBy?->region_code,
+            $session?->openedBy?->region_name,
             $session?->cashbox?->code,
             $session?->cashbox?->name,
         ];
@@ -835,6 +969,15 @@ class PosSaleService
         }
 
         return self::POINT_CURRENCY;
+    }
+
+    private function isTurkeyPointSignal(mixed $value): bool
+    {
+        $normalized = $this->normalizePointCurrencySignal($value);
+
+        return str_contains($normalized, 'ERZURUM')
+            || str_contains($normalized, 'TRABZON')
+            || str_contains($normalized, 'SAMSUN');
     }
 
     private function isBatumPointSignal(mixed $value): bool
@@ -849,6 +992,17 @@ class PosSaleService
     private function normalizePointCurrencySignal(mixed $value): string
     {
         return mb_strtoupper(trim((string) $value), 'UTF-8');
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 
     private function restoreSaleStock(PosSale $sale): void
@@ -958,12 +1112,18 @@ class PosSaleService
 
     private function usesUserScopedCashbox(User $user): bool
     {
-        if ($user->hasRole('dealer_admin') || $user->hasRole('admin')) {
+        if ($user->hasRole('admin')) {
             return false;
         }
 
-        return $user->hasAnyRole(['cashier', 'point'])
-            || in_array('pos', MenuPermissions::forUser($user), true);
+        $hasPosMenu = in_array('pos', MenuPermissions::forUser($user), true);
+        $hasOwnLogoCashbox = $this->nullableString($user->logo_cashbox_code) !== null;
+
+        if ($user->hasRole('dealer_admin')) {
+            return $hasPosMenu && $hasOwnLogoCashbox;
+        }
+
+        return $user->hasAnyRole(['cashier', 'point']) || $hasPosMenu;
     }
 
     private function resolveReceiptNo(?string $receiptNo = null): string
@@ -1011,25 +1171,76 @@ class PosSaleService
 
     private function queueSaleForLogoExport(PosSale $sale): void
     {
+        $existingLogoState = $this->latestPosSaleLogoState($sale);
+        $existingExternalRef = $this->nullableString($existingLogoState?->external_ref);
+        $isLogoDeliveryUpdate = $sale->document_type === 'delivery'
+            && $existingLogoState instanceof IntegrationSyncState
+            && $existingLogoState->status === 'synced'
+            && $existingExternalRef !== null
+            && str_starts_with($existingExternalRef, 'STFICHE-');
+
         $this->syncState->record(
             system: 'logo',
             domain: 'pos-sales',
             direction: 'outbound',
             entity: $sale,
-            externalRef: null,
+            externalRef: $isLogoDeliveryUpdate ? $existingExternalRef : null,
             status: 'queued',
             error: null,
             meta: [
                 'export_key' => 'B2B-POSSALE-'.$sale->id,
                 'document_type' => $sale->document_type,
                 'receipt_no' => $sale->receipt_no,
+                'operation' => $isLogoDeliveryUpdate ? 'update' : 'create',
+                'logo_external_ref' => $isLogoDeliveryUpdate ? $existingExternalRef : null,
             ],
             payload: [
                 'pos_sale_id' => $sale->id,
                 'receipt_no' => $sale->receipt_no,
                 'document_type' => $sale->document_type,
+                'operation' => $isLogoDeliveryUpdate ? 'update' : 'create',
+                'logo_external_ref' => $isLogoDeliveryUpdate ? $existingExternalRef : null,
             ],
         );
+    }
+
+    private function queueSaleDeleteForLogoExport(PosSale $sale, string $logoExternalRef): void
+    {
+        $this->syncState->record(
+            system: 'logo',
+            domain: 'pos-sales',
+            direction: 'outbound',
+            entity: $sale,
+            externalRef: $logoExternalRef,
+            status: 'queued',
+            error: null,
+            meta: [
+                'export_key' => 'B2B-POSSALE-'.$sale->id,
+                'document_type' => $sale->document_type,
+                'receipt_no' => $sale->receipt_no,
+                'operation' => 'delete',
+                'logo_external_ref' => $logoExternalRef,
+            ],
+            payload: [
+                'pos_sale_id' => $sale->id,
+                'receipt_no' => $sale->receipt_no,
+                'document_type' => $sale->document_type,
+                'operation' => 'delete',
+                'logo_external_ref' => $logoExternalRef,
+            ],
+        );
+    }
+
+    private function latestPosSaleLogoState(PosSale $sale): ?IntegrationSyncState
+    {
+        return IntegrationSyncState::query()
+            ->where('system', 'logo')
+            ->where('domain', 'pos-sales')
+            ->where('direction', 'outbound')
+            ->where('entity_type', PosSale::class)
+            ->where('entity_id', (int) $sale->id)
+            ->latest('id')
+            ->first();
     }
 
     private function toCents(float $value): int

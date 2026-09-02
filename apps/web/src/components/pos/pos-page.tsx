@@ -44,8 +44,9 @@ import {
   listPosExpenses,
   listPosCustomers,
   listPosSales,
+  getPosDeliveryBalance,
   openPosSession,
-  searchPosProductsQuick,
+  searchProducts,
   type CollectionRecord,
   type CustomerListItem,
   type LedgerEntryDto,
@@ -87,10 +88,9 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-const QUICK_SEARCH_LIMIT = 20;
 const CUSTOMER_LIMIT = 50;
 const BATUM_POINT_DISPLAY_CURRENCY_LABEL = "GEL";
-const ERZURUM_POINT_DISPLAY_CURRENCY_LABEL = "TL";
+const TURKEY_POINT_DISPLAY_CURRENCY_LABEL = "";
 const BATUM_POINT_LEDGER_CURRENCY = "GEL";
 const ERZURUM_POINT_LEDGER_CURRENCY = "TRY";
 const DEFAULT_VAT_RATE = 20;
@@ -199,6 +199,50 @@ function visiblePointStockColumns(featurePermissionSet: Set<string>, roleSlugs: 
   return selectedColumns.length > 0 ? selectedColumns : POINT_STOCK_COLUMNS;
 }
 
+function pointOwnStockColumn(identityText: string): PointStockColumn {
+  if (identityText.includes("TRABZON")) {
+    return POINT_STOCK_COLUMNS.find((column) => column.key === "trabzon") ?? POINT_STOCK_COLUMNS[2];
+  }
+
+  if (identityText.includes("SAMSUN")) {
+    return POINT_STOCK_COLUMNS.find((column) => column.key === "samsun") ?? POINT_STOCK_COLUMNS[3];
+  }
+
+  if (identityText.includes("BATUM")) {
+    return POINT_STOCK_COLUMNS.find((column) => column.key === "batum") ?? POINT_STOCK_COLUMNS[4];
+  }
+
+  return POINT_STOCK_COLUMNS.find((column) => column.key === "erz-point") ?? POINT_STOCK_COLUMNS[1];
+}
+
+function productScopedToPointWarehouse(product: ProductSearchItem, column: PointStockColumn): ProductSearchItem {
+  const [row] = pointStockRows(product, [column]);
+
+  if (!row || row.stock === null) {
+    return product;
+  }
+
+  return {
+    ...product,
+    available_total: row.stock,
+    shelf_address: row.shelfAddress ?? product.shelf_address ?? null,
+    stock_locations: product.stock_locations?.filter((location) => {
+      const haystack = [
+        normalizePointStockText(location.branch),
+        normalizePointStockText(location.warehouse_code),
+        normalizePointStockText(`${location.branch} ${location.warehouse_code ?? ""}`),
+      ].filter(Boolean);
+
+      return column.aliases.some((alias) => {
+        const normalizedAlias = normalizePointStockText(alias);
+        const numericAlias = /^\d+$/.test(normalizedAlias);
+
+        return haystack.some((value) => (numericAlias ? value === normalizedAlias : value.includes(normalizedAlias)));
+      });
+    }),
+  };
+}
+
 function getCustomerInitials(customer: Pick<CustomerListItem, "title" | "code">): string {
   const source = customer.title || customer.code;
   const parts = source
@@ -297,14 +341,6 @@ type ReceiptPrintSale = {
   items: ReceiptPrintSaleItem[];
 };
 
-function createEmptyPointCartItemsBySaleType(): Record<PosSaleType, PosCartItem[]> {
-  return {
-    cash: [],
-    card: [],
-    transfer: [],
-  };
-}
-
 type MovementRow = {
   id: string;
   created_at: string;
@@ -330,18 +366,24 @@ function getMinimumEditablePriceCents(originalUnitPriceCents: number): number {
 function formatPointAmount(value: number | string, currencyLabel = BATUM_POINT_DISPLAY_CURRENCY_LABEL): string {
   const amount = typeof value === "number" ? value : Number(value);
 
-  return Number.isFinite(amount)
-    ? `${currencyLabel} ${amount.toLocaleString("tr-TR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`
-    : "-";
+  if (!Number.isFinite(amount)) {
+    return "-";
+  }
+
+  const formattedAmount = amount.toLocaleString("tr-TR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return currencyLabel ? `${formattedAmount} ${currencyLabel}` : formattedAmount;
 }
 
 function formatPointAmountNumber(value: number | string, currencyLabel = BATUM_POINT_DISPLAY_CURRENCY_LABEL): string {
   const formatted = formatPointAmount(value, currencyLabel);
 
-  return formatted.startsWith(`${currencyLabel} `)
+  return currencyLabel && formatted.endsWith(` ${currencyLabel}`)
+    ? formatted.slice(0, -(currencyLabel.length + 1))
+    : formatted.startsWith(`${currencyLabel} `)
     ? formatted.slice(currencyLabel.length + 1)
     : formatted;
 }
@@ -481,11 +523,7 @@ function productMatchesPointStockCode(product: ProductSearchItem, rawQuery: stri
   const normalizedSku = normalizeLookupCode(product.sku);
   const normalizedOem = normalizeLookupCode(product.oem ?? "");
 
-  return (
-    normalizedSku === normalizedCodeQuery ||
-    normalizedSku.includes(normalizedCodeQuery) ||
-    (normalizedOem !== "" && (normalizedOem === normalizedCodeQuery || normalizedOem.includes(normalizedCodeQuery)))
-  );
+  return normalizedSku === normalizedCodeQuery || (normalizedOem !== "" && normalizedOem === normalizedCodeQuery);
 }
 
 function isAnonymousPointCustomer(customer: CustomerListItem | null | undefined): boolean {
@@ -541,30 +579,6 @@ function formatPointProductDisplayPrice(
   const vatRate = normalizeVatRate(product.vat_rate);
 
   return formatPointAmount(fromCents(displayPriceCents(unitNetPriceCents, vatRate, includesVat)), currencyLabel);
-}
-
-function getPointSaleContextLabel(saleType: PosSaleType): string {
-  if (saleType === "card") {
-    return "BATUM PERAKENDE KREDİ KARTI SATIŞ";
-  }
-
-  if (saleType === "transfer") {
-    return "BATUM DEPO (SİPARİŞ)";
-  }
-
-  return "BATUM PERAKENDE NAKİT SATIŞ";
-}
-
-function getNonBatumPointSaleContextLabel(saleType: PosSaleType): string {
-  if (saleType === "card") {
-    return "Kredi Kartı Satış";
-  }
-
-  if (saleType === "transfer") {
-    return "Depo (Sipariş)";
-  }
-
-  return "Nakit Satış";
 }
 
 function resolvePointDefaultCustomerId(
@@ -688,9 +702,9 @@ function formatReceiptAmount(value: string | number, currencyLabel = BATUM_POINT
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
-  const suffix = currencyLabel === ERZURUM_POINT_DISPLAY_CURRENCY_LABEL ? "₺" : currencyLabel;
+  const suffix = currencyLabel.trim();
 
-  return `${formatted} ${suffix}`;
+  return suffix ? `${formatted} ${suffix}` : formatted;
 }
 
 function formatReceiptDate(value: string): string {
@@ -1125,7 +1139,7 @@ function openLinePrintWindow(item: PosCartItem, currencyLabel = BATUM_POINT_DISP
 export function PosPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, selectCustomer: syncContextCustomer } = useSession();
+  const { user, selectCustomer: syncContextCustomer, clearCustomer: clearContextCustomer } = useSession();
   const quickInputRef = useRef<HTMLInputElement | null>(null);
   const pointProductCodeInputRef = useRef<HTMLInputElement | null>(null);
   const pointQtyInputRef = useRef<HTMLInputElement | null>(null);
@@ -1134,6 +1148,7 @@ export function PosPage() {
   const customerListLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const pointPrintAfterSaveRef = useRef(false);
   const pointSessionBootstrapAttemptedRef = useRef(false);
+  const pointProductLookupContextRef = useRef(0);
   const roleSlugs = useMemo(() => user?.roles.map((role) => role.slug) ?? [], [user?.roles]);
   const featurePermissionSet = useMemo(() => new Set(user?.feature_permissions ?? []), [user?.feature_permissions]);
   const hasPointRole = roleSlugs.includes("point");
@@ -1141,8 +1156,29 @@ export function PosPage() {
   const isAdminRole = roleSlugs.includes("admin");
   const canAccessPosExpenses = isAdminRole || (user?.menu_permissions?.includes("pos-expenses") ?? false);
   const canAccessPosDayEnd = isAdminRole || (user?.menu_permissions?.includes("pos-day-end") ?? false);
+  const pointIdentityText = useMemo(
+    () =>
+      normalizeCustomerText(
+        [
+          user?.username,
+          user?.branch_code,
+          user?.branch_name,
+          user?.region_code,
+          user?.region_name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      ),
+    [user?.branch_code, user?.branch_name, user?.region_code, user?.region_name, user?.username]
+  );
+  const isOperationalPosAccount =
+    hasPosMenuPermission &&
+    !isAdminRole &&
+    ["ERZURUM", "TRABZON", "SAMSUN", "BATUM"].some((branch) => pointIdentityText.includes(branch));
   const hasStandalonePosMenuAccess =
-    hasPosMenuPermission && !roleSlugs.some((role) => role === "admin" || role === "dealer_admin" || role === "cashier");
+    hasPosMenuPermission &&
+    !roleSlugs.some((role) => role === "admin" || role === "cashier") &&
+    (!roleSlugs.includes("dealer_admin") || isOperationalPosAccount);
   const usePointSpecificPosFlow = true;
   const isPointRole = usePointSpecificPosFlow && (hasPointRole || hasStandalonePosMenuAccess);
   const isBatumPointFlowByUser = useMemo(
@@ -1155,10 +1191,33 @@ export function PosPage() {
       ].some(includesBatum),
     [user?.branch_code, user?.branch_name, user?.region_code, user?.region_name]
   );
+  const pointBranchName = useMemo(() => {
+    if (pointIdentityText.includes("TRABZON")) {
+      return "Trabzon";
+    }
+
+    if (pointIdentityText.includes("SAMSUN")) {
+      return "Samsun";
+    }
+
+    if (pointIdentityText.includes("BATUM")) {
+      return "Batum";
+    }
+
+    return "Erzurum";
+  }, [pointIdentityText]);
+  const ownPointStockColumn = useMemo(
+    () => pointOwnStockColumn(pointIdentityText),
+    [pointIdentityText]
+  );
   const visiblePointProductStockColumns = useMemo(() => {
     const permittedColumns = visiblePointStockColumns(featurePermissionSet, roleSlugs);
 
-    if (!isPointRole || !isBatumPointFlowByUser) {
+    if (isPointRole) {
+      return [ownPointStockColumn];
+    }
+
+    if (!isBatumPointFlowByUser) {
       return permittedColumns;
     }
 
@@ -1166,33 +1225,43 @@ export function PosPage() {
     const scopedColumns = POINT_BATUM_PRODUCT_STOCK_COLUMNS.filter((column) => permittedKeys.has(column.key));
 
     return scopedColumns.length > 0 ? scopedColumns : POINT_BATUM_PRODUCT_STOCK_COLUMNS;
-  }, [featurePermissionSet, isPointRole, isBatumPointFlowByUser, roleSlugs]);
+  }, [featurePermissionSet, isPointRole, isBatumPointFlowByUser, ownPointStockColumn, roleSlugs]);
   const canAccessPos =
     hasPointRole ||
     hasPosMenuPermission ||
     roleSlugs.some((role) => role === "admin" || role === "dealer_admin" || role === "cashier");
   const isErzurumPointFlow = canAccessPos && !isBatumPointFlowByUser;
   const erzurumPointCustomerParams = null;
+  const posSessionScopeKey = useMemo(
+    () =>
+      [
+        user?.id ?? "guest",
+        user?.username ?? "-",
+        user?.branch_code ?? "-",
+        user?.region_code ?? "-",
+        pointBranchName,
+        roleSlugs.join(","),
+      ].join("|"),
+    [pointBranchName, roleSlugs, user?.branch_code, user?.id, user?.region_code, user?.username]
+  );
 
   const [quickQuery, setQuickQuery] = useState("");
   const [activeQuickIndex, setActiveQuickIndex] = useState(0);
   const [quickQtyInput, setQuickQtyInput] = useState("1");
   const [cartItems, setCartItems] = useState<PosCartItem[]>([]);
-  const [pointCartItemsBySaleType, setPointCartItemsBySaleType] = useState<Record<PosSaleType, PosCartItem[]>>(
-    () => createEmptyPointCartItemsBySaleType()
-  );
   const [discountInput, setDiscountInput] = useState("0");
   const [rememberedCustomers, setRememberedCustomers] = useState<CustomerListItem[]>([]);
   const [pointProductCodeInput, setPointProductCodeInput] = useState("");
   const [pointQtyInput, setPointQtyInput] = useState("1");
   const [pointPriceInput, setPointPriceInput] = useState("");
-  const [pointCartPriceInputs, setPointCartPriceInputs] = useState<Record<number, string>>({});
+  const [, setPointCartPriceInputs] = useState<Record<number, string>>({});
   const [pointFocusedInput, setPointFocusedInput] = useState<"qty" | "price" | null>(null);
   const [pointReceiptNoInput, setPointReceiptNoInput] = useState("");
   const [pointProductLookupPending, setPointProductLookupPending] = useState(false);
   const [pointDraftProduct, setPointDraftProduct] = useState<ProductSearchItem | null>(null);
   const [pointProductDialogOpen, setPointProductDialogOpen] = useState(false);
   const [pointProductDialogQuery, setPointProductDialogQuery] = useState("");
+  const [pointProductDialogShowAll, setPointProductDialogShowAll] = useState(false);
   const [activePointCartProductId, setActivePointCartProductId] = useState<number | null>(null);
   const [clock, setClock] = useState(() => new Date());
 
@@ -1222,7 +1291,7 @@ export function PosPage() {
     resolver: zodResolver(posHeaderSchema),
     defaultValues: {
       sale_type: "cash",
-      document_type: "invoice",
+      document_type: "delivery",
       customer_id: null,
     },
   });
@@ -1279,8 +1348,8 @@ export function PosPage() {
   const expenseCategory = useWatch({ control: expenseForm.control, name: "category" });
   const collectionMethod = useWatch({ control: collectionForm.control, name: "method" });
 
-  const debouncedQuickQuery = useDebouncedValue(quickQuery, 120);
-  const debouncedPointProductDialogQuery = useDebouncedValue(pointProductDialogQuery, 180);
+  const debouncedQuickQuery = useDebouncedValue(quickQuery, 80);
+  const debouncedPointProductDialogQuery = useDebouncedValue(pointProductDialogQuery, 80);
   const debouncedCustomerQuery = useDebouncedValue(customerQuery, 300);
 
   useEffect(() => {
@@ -1289,15 +1358,30 @@ export function PosPage() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    setCartItems([]);
+    setSelectedPosCartItemIds([]);
+    setPointDraftProduct(null);
+    setPointProductCodeInput("");
+    setPointProductDialogQuery("");
+    setPointSaveResult(null);
+    setManualCustomerOverride(consumePointResetAfterSaleFlag());
+    posForm.reset({
+      sale_type: "cash",
+      document_type: "delivery",
+      customer_id: null,
+    });
+  }, [posForm, posSessionScopeKey]);
+
   const currentSessionQuery = useQuery({
-    queryKey: ["pos", "session", "current"],
+    queryKey: ["pos", "session", "current", posSessionScopeKey],
     queryFn: () => getCurrentPosSession(),
     refetchInterval: 20_000,
-    enabled: canAccessPos,
+    enabled: canAccessPos && Boolean(user?.id),
   });
 
   const posExpensesQuery = useQuery({
-    queryKey: ["pos", "expenses", currentSessionQuery.data?.data?.id ?? null],
+    queryKey: ["pos", "expenses", posSessionScopeKey, currentSessionQuery.data?.data?.id ?? null],
     queryFn: () =>
       listPosExpenses({
         pos_session_id: currentSessionQuery.data?.data?.id ?? undefined,
@@ -1308,7 +1392,7 @@ export function PosPage() {
   });
 
   const selectedCustomerCollectionsQuery = useQuery({
-    queryKey: ["pos", "customer-collections", selectedCustomerId ?? null],
+    queryKey: ["pos", "customer-collections", posSessionScopeKey, selectedCustomerId ?? null],
     queryFn: () => {
       if (!selectedCustomerId) {
         throw new Error("No selected customer");
@@ -1324,6 +1408,7 @@ export function PosPage() {
     queryKey: [
       "pos",
       isPointRole || isErzurumPointFlow ? "dealer-customers" : "point-customers",
+      posSessionScopeKey,
       isErzurumPointFlow ? `special-customer:${ERZURUM_POINT_SPECIAL_CODE}` : "no-special-customer",
     ],
     queryFn: () =>
@@ -1339,8 +1424,9 @@ export function PosPage() {
     enabled: canAccessPos,
   });
   const effectivePosDealerId =
-    user?.dealer_id ??
+    rememberedCustomers.find((customer) => customer.id === selectedCustomerId)?.dealer_id ??
     pointCustomersQuery.data?.data.find((customer) => customer.id === selectedCustomerId)?.dealer_id ??
+    user?.dealer_id ??
     pointCustomersQuery.data?.data[0]?.dealer_id ??
     undefined;
 
@@ -1348,6 +1434,7 @@ export function PosPage() {
     queryKey: [
       "pos",
       "customers",
+      posSessionScopeKey,
       debouncedCustomerQuery,
       isErzurumPointFlow ? `special-customer:${ERZURUM_POINT_SPECIAL_CODE}` : "no-special-customer",
     ],
@@ -1365,34 +1452,118 @@ export function PosPage() {
   });
 
   const quickSearchQuery = useQuery({
-    queryKey: ["pos", "quick-search", debouncedQuickQuery],
-    queryFn: () =>
-      searchPosProductsQuick({
-        q: debouncedQuickQuery,
-        dealer_id: effectivePosDealerId,
-        in_stock: false,
-        limit: QUICK_SEARCH_LIMIT,
-      }),
+    queryKey: [
+      "pos",
+      "quick-search",
+      posSessionScopeKey,
+      selectedCustomerId ?? null,
+      debouncedQuickQuery,
+      pointProductDialogShowAll,
+    ],
+    queryFn: ({ signal }) =>
+      searchProducts(
+        {
+          q: debouncedQuickQuery,
+          dealer_id: effectivePosDealerId,
+          customer_id: selectedCustomerId ?? undefined,
+          in_stock: false,
+          include_equivalents: pointProductDialogShowAll,
+          limit: 12,
+        },
+        { signal }
+      ),
     enabled: canAccessPos && debouncedQuickQuery.trim().length >= 2,
-    staleTime: 20_000,
+    retry: 0,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60_000,
+    gcTime: 15 * 60_000,
   });
 
   const pointProductDialogSearchQuery = useQuery({
-    queryKey: ["pos", "point-product-dialog-search", debouncedPointProductDialogQuery],
-    queryFn: () =>
-      searchPosProductsQuick({
-        q: debouncedPointProductDialogQuery.trim(),
-        dealer_id: effectivePosDealerId,
-        in_stock: false,
-        limit: QUICK_SEARCH_LIMIT,
-      }),
+    queryKey: [
+      "pos",
+      "point-product-dialog-search",
+      posSessionScopeKey,
+      selectedCustomerId ?? null,
+      debouncedPointProductDialogQuery,
+      pointProductDialogShowAll,
+    ],
+    queryFn: ({ signal }) =>
+      searchProducts(
+        {
+          q: debouncedPointProductDialogQuery.trim(),
+          dealer_id: effectivePosDealerId,
+          customer_id: selectedCustomerId ?? undefined,
+          in_stock: false,
+          include_equivalents: pointProductDialogShowAll,
+          limit: 12,
+        },
+        { signal }
+      ),
     enabled:
       canAccessPos &&
-      isPointRole &&
       pointProductDialogOpen &&
       debouncedPointProductDialogQuery.trim().length >= 2,
-    staleTime: 20_000,
+    retry: 0,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60_000,
+    gcTime: 15 * 60_000,
   });
+
+  useEffect(() => {
+    const query = debouncedPointProductDialogQuery.trim();
+
+    if (
+      !canAccessPos ||
+      !pointProductDialogOpen ||
+      query.length < 2 ||
+      !pointProductDialogSearchQuery.data
+    ) {
+      return;
+    }
+
+    const oppositeShowAll = !pointProductDialogShowAll;
+    const oppositeQueryKey = [
+      "pos",
+      "point-product-dialog-search",
+      posSessionScopeKey,
+      selectedCustomerId ?? null,
+      debouncedPointProductDialogQuery,
+      oppositeShowAll,
+    ];
+
+    void queryClient.prefetchQuery({
+      queryKey: oppositeQueryKey,
+      queryFn: ({ signal }) =>
+        searchProducts(
+          {
+            q: query,
+            dealer_id: effectivePosDealerId,
+            customer_id: selectedCustomerId ?? undefined,
+            in_stock: false,
+            include_equivalents: oppositeShowAll,
+            limit: 12,
+          },
+          { signal }
+        ),
+      staleTime: 5 * 60_000,
+      gcTime: 15 * 60_000,
+    });
+  }, [
+    canAccessPos,
+    debouncedPointProductDialogQuery,
+    effectivePosDealerId,
+    pointProductDialogOpen,
+    pointProductDialogSearchQuery.data,
+    pointProductDialogShowAll,
+    posSessionScopeKey,
+    queryClient,
+    selectedCustomerId,
+  ]);
 
   const movementQuery = useQuery({
     queryKey: ["pos", "stock-movements", movementProduct?.product_id],
@@ -1448,6 +1619,14 @@ export function PosPage() {
     refetchInterval: 15_000,
   });
 
+  const deliveryBalanceQuery = useQuery({
+    queryKey: ["pos", "delivery-balance", user?.id ?? null, selectedCustomerId ?? null],
+    queryFn: () => getPosDeliveryBalance(selectedCustomerId ?? null),
+    enabled: canAccessPos && isPointRole && Boolean(selectedCustomerId),
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
+
   const openSessionMutation = useMutation({
     mutationFn: openPosSession,
     onSuccess: (response) => {
@@ -1495,7 +1674,6 @@ export function PosPage() {
         );
       }
       setCartItems([]);
-      setPointCartItemsBySaleType(createEmptyPointCartItemsBySaleType());
       setDiscountInput("0");
       setQuickQuery("");
       setActiveQuickIndex(0);
@@ -1505,6 +1683,9 @@ export function PosPage() {
       setPointPriceInput("");
       setPointCartPriceInputs({});
       setPointReceiptNoInput("");
+      setManualCustomerOverride(true);
+      posForm.setValue("customer_id", null, { shouldDirty: true, shouldValidate: true });
+      void clearContextCustomer().catch(() => undefined);
       setPaymentDialogOpen(false);
       paymentForm.reset({ cash_received: 0, reference_note: "" });
       notifyPosDayEndRefresh("sale", response.data.session.id);
@@ -1647,7 +1828,7 @@ export function PosPage() {
   }, [isPointRole, pointCustomers]);
 
   useEffect(() => {
-    if (isPointRole || manualCustomerOverride) {
+    if (isPointRole || isAdminRole || manualCustomerOverride) {
       return;
     }
 
@@ -1657,42 +1838,20 @@ export function PosPage() {
     }
 
     posForm.setValue("customer_id", defaultCustomerId, { shouldDirty: true, shouldValidate: true });
-  }, [defaultCustomerBySaleType, isPointRole, manualCustomerOverride, posForm, saleType, selectedCustomerId]);
+  }, [defaultCustomerBySaleType, isAdminRole, isPointRole, manualCustomerOverride, posForm, saleType, selectedCustomerId]);
 
   useEffect(() => {
-    if (selectedCustomerId) {
-      const customer = customersById[selectedCustomerId] ?? null;
-      if (customer && !isAnonymousPointCustomer(customer)) {
-        posForm.setValue("document_type", "delivery", { shouldDirty: true, shouldValidate: true });
-      } else {
-        posForm.setValue("document_type", "invoice", { shouldDirty: true, shouldValidate: true });
-      }
-    } else {
-      posForm.setValue("document_type", "invoice", { shouldDirty: true, shouldValidate: true });
-    }
-  }, [selectedCustomerId, posForm, customersById]);
+    posForm.setValue("document_type", "delivery", { shouldDirty: false, shouldValidate: true });
+  }, [selectedCustomerId, posForm]);
 
   const selectedCustomer = selectedCustomerId ? customersById[selectedCustomerId] ?? null : null;
   const selectedCustomerIsAnonymous = isPointRole && isAnonymousPointCustomer(selectedCustomer);
-  const isBatumPointFlow = isPointRole && (
-    isBatumPointFlowByUser ||
-    Boolean(
-      selectedCustomer &&
-        ([
-          selectedCustomer.branch_code,
-          selectedCustomer.branch_name,
-          selectedCustomer.region_code,
-          selectedCustomer.region_name,
-          selectedCustomer.title,
-        ].some(includesBatum) || selectedCustomer.code?.trim().startsWith("120-00-") === true)
-    )
-  );
-  const pointSaleAppliesVat = Boolean(selectedCustomer) && !selectedCustomerIsAnonymous;
-  const pointPriceIncludesVat = pointSaleAppliesVat && isVatIncludedPointCustomer(selectedCustomer);
-  const pointDisplayCurrencyLabel = isBatumPointFlow
+  const pointSaleAppliesVat = Boolean(selectedCustomer) && (isBatumPointFlowByUser || !selectedCustomerIsAnonymous);
+  const pointPriceIncludesVat = isBatumPointFlowByUser || (pointSaleAppliesVat && isVatIncludedPointCustomer(selectedCustomer));
+  const pointDisplayCurrencyLabel = pointBranchName === "Batum"
     ? BATUM_POINT_DISPLAY_CURRENCY_LABEL
-    : ERZURUM_POINT_DISPLAY_CURRENCY_LABEL;
-  const pointLedgerCurrency = isBatumPointFlow ? BATUM_POINT_LEDGER_CURRENCY : ERZURUM_POINT_LEDGER_CURRENCY;
+    : TURKEY_POINT_DISPLAY_CURRENCY_LABEL;
+  const pointLedgerCurrency = pointBranchName === "Batum" ? BATUM_POINT_LEDGER_CURRENCY : ERZURUM_POINT_LEDGER_CURRENCY;
   const formatCurrency = useCallback(
     (value: number | string) => formatPointAmount(value, pointDisplayCurrencyLabel),
     [pointDisplayCurrencyLabel]
@@ -1849,7 +2008,7 @@ export function PosPage() {
     [visiblePointProductStockColumns]
   );
   const pointProductDialogGridMinWidth = 500 + visiblePointProductStockColumns.length * 112;
-  const activeCartItems = isPointRole ? pointCartItemsBySaleType[saleType] ?? [] : cartItems;
+  const activeCartItems = cartItems;
   const visibleCartItems = useMemo(
     () => activeCartItems.filter((item) => item.qty > 0),
     [activeCartItems]
@@ -1882,10 +2041,6 @@ export function PosPage() {
   useEffect(() => {
     setSelectedPosCartItemIds((previous) => previous.filter((id) => visibleCartItemIdSet.has(id)));
   }, [visibleCartItemIdSet]);
-  const pointSaleContextLabel = useMemo(
-    () => (isBatumPointFlow ? getPointSaleContextLabel(saleType) : getNonBatumPointSaleContextLabel(saleType)),
-    [isBatumPointFlow, saleType]
-  );
   const pointDisplayedProductName = pointDraftProduct?.name ?? "";
   const pointDisplayedProductShelf = pointDraftProduct?.shelf_address ?? null;
   const pointDisplayedProductStock = pointDraftProduct?.available_total ?? null;
@@ -1947,17 +2102,9 @@ export function PosPage() {
 
   const updateActiveCartItems = useCallback(
     (updater: (previous: PosCartItem[]) => PosCartItem[]) => {
-      if (isPointRole) {
-        setPointCartItemsBySaleType((previous) => ({
-          ...previous,
-          [saleType]: updater(previous[saleType] ?? []),
-        }));
-        return;
-      }
-
       setCartItems(updater);
     },
-    [isPointRole, saleType]
+    []
   );
 
   useEffect(() => {
@@ -2072,36 +2219,6 @@ export function PosPage() {
     });
   }, [updateActiveCartItems]);
 
-  const setItemQty = useCallback((productId: number, qty: number) => {
-    const nextQty = Math.max(1, Math.trunc(qty));
-
-    updateActiveCartItems((previous) =>
-      previous.map((item) =>
-        item.product_id === productId
-          ? {
-              ...item,
-              qty: nextQty,
-            }
-          : item
-      )
-    );
-  }, [updateActiveCartItems]);
-
-  const setItemUnitPriceCents = useCallback((productId: number, unitPriceCents: number) => {
-    const nextUnitPriceCents = Math.max(0, Math.trunc(unitPriceCents));
-
-    updateActiveCartItems((previous) =>
-      previous.map((item) =>
-        item.product_id === productId
-          ? {
-              ...item,
-              unit_price_cents: nextUnitPriceCents,
-            }
-          : item
-      )
-    );
-  }, [updateActiveCartItems]);
-
   const removeItem = useCallback((productId: number) => {
     updateActiveCartItems((previous) => previous.filter((item) => item.product_id !== productId));
     setSelectedPosCartItemIds((previous) => previous.filter((id) => id !== productId));
@@ -2177,13 +2294,14 @@ export function PosPage() {
 
   const selectPointDraftProduct = useCallback(
     (product: ProductSearchItem) => {
-      const parsedNetPrice = Number(product.net_price ?? 0);
+      const scopedProduct = productScopedToPointWarehouse(product, ownPointStockColumn);
+      const parsedNetPrice = Number(scopedProduct.net_price ?? 0);
       const unitNetPriceCents = toCents(Number.isFinite(parsedNetPrice) ? parsedNetPrice : 0);
-      const vatRate = normalizeVatRate(product.vat_rate);
+      const vatRate = normalizeVatRate(scopedProduct.vat_rate);
 
-      setPointDraftProduct(product);
-      setActivePointCartProductId(product.id);
-      setPointProductCodeInput(product.sku);
+      setPointDraftProduct(scopedProduct);
+      setActivePointCartProductId(scopedProduct.id);
+      setPointProductCodeInput(scopedProduct.sku);
       setPointQtyInput("1");
       setPointPriceInput(fromCents(displayPriceCents(unitNetPriceCents, vatRate, pointPriceIncludesVat)).replace(".", ","));
       window.setTimeout(() => {
@@ -2191,8 +2309,22 @@ export function PosPage() {
         pointQtyInputRef.current?.select();
       }, 30);
     },
-    [pointPriceIncludesVat]
+    [ownPointStockColumn, pointPriceIncludesVat]
   );
+
+  const focusPointQtyInput = useCallback(() => {
+    window.setTimeout(() => {
+      pointQtyInputRef.current?.focus();
+      pointQtyInputRef.current?.select();
+    }, 10);
+  }, []);
+
+  const focusPointPriceInput = useCallback(() => {
+    window.setTimeout(() => {
+      pointPriceInputRef.current?.focus();
+      pointPriceInputRef.current?.select();
+    }, 10);
+  }, []);
 
   const openPointProductDialog = useCallback(() => {
     setPointProductDialogQuery(pointProductCodeInput.trim());
@@ -2544,14 +2676,14 @@ export function PosPage() {
       const showToast = options?.showToast ?? true;
       const manualOverride = options?.manualOverride ?? true;
 
-      if (
-        manualOverride &&
-        selectedCustomerId !== null &&
-        selectedCustomerId !== customer.id &&
-        visibleCartItems.length > 0
-      ) {
-        setPendingCustomerSelection({ customer, options });
-        return;
+      if (selectedCustomerId !== customer.id) {
+        pointProductLookupContextRef.current += 1;
+        void queryClient.cancelQueries({ queryKey: ["pos", "quick-search"] });
+        void queryClient.cancelQueries({ queryKey: ["pos", "point-product-dialog-search"] });
+        clearActiveCart();
+        setQuickQuery("");
+        setPointProductDialogQuery("");
+        setPointSaveResult(null);
       }
 
       rememberCustomer(customer);
@@ -2562,8 +2694,9 @@ export function PosPage() {
         setCustomerDialogOpen(false);
       }
 
+      void syncContextCustomer(customer.id).catch(() => undefined);
+
       if (isPointRole) {
-        void syncContextCustomer(customer.id).catch(() => undefined);
         window.setTimeout(() => pointProductCodeInputRef.current?.focus(), 10);
       }
 
@@ -2571,7 +2704,7 @@ export function PosPage() {
         toast.success(`${customer.code} seçildi`);
       }
     },
-    [isPointRole, posForm, rememberCustomer, selectedCustomerId, syncContextCustomer, visibleCartItems.length]
+    [clearActiveCart, isPointRole, posForm, queryClient, rememberCustomer, selectedCustomerId, syncContextCustomer]
   );
 
   const applyPendingCustomerSelection = useCallback(() => {
@@ -2645,15 +2778,25 @@ export function PosPage() {
     }
 
     setPointProductLookupPending(true);
+    const lookupContext = pointProductLookupContextRef.current;
+    const lookupCustomerId = selectedCustomerId ?? null;
 
     try {
-      const response = await searchPosProductsQuick({
+      const response = await searchProducts({
         q: rawQuery,
         dealer_id: effectivePosDealerId,
+        customer_id: selectedCustomerId ?? undefined,
         in_stock: false,
+        include_equivalents: pointProductDialogShowAll,
         limit: 5,
-        code_only: true,
       });
+
+      if (
+        lookupContext !== pointProductLookupContextRef.current ||
+        (posForm.getValues("customer_id") ?? null) !== lookupCustomerId
+      ) {
+        return;
+      }
 
       const match = response.data.find((product) => productMatchesPointStockCode(product, rawQuery)) ?? null;
 
@@ -2669,7 +2812,7 @@ export function PosPage() {
     } finally {
       setPointProductLookupPending(false);
     }
-  }, [effectivePosDealerId, pointProductCodeInput, pointProductLookupPending, selectPointDraftProduct]);
+  }, [effectivePosDealerId, pointProductCodeInput, pointProductDialogShowAll, pointProductLookupPending, posForm, selectPointDraftProduct, selectedCustomerId]);
 
   const addPointDraftLine = useCallback(() => {
     if (!pointDraftProduct) {
@@ -2705,6 +2848,16 @@ export function PosPage() {
     setPointPriceInput("");
     window.setTimeout(() => pointProductCodeInputRef.current?.focus(), 10);
   }, [pointDraftProduct, pointPriceIncludesVat, pointPriceInput, pointQtyInput, upsertCartItem]);
+
+  const commitPointPriceInput = useCallback(() => {
+    if (pointDraftProduct) {
+      addPointDraftLine();
+      return;
+    }
+
+    pointProductCodeInputRef.current?.focus();
+    pointProductCodeInputRef.current?.select();
+  }, [addPointDraftLine, pointDraftProduct]);
 
   const restoreDefaultCustomer = () => {
     const candidate = defaultCustomerBySaleType[saleType];
@@ -2909,7 +3062,7 @@ export function PosPage() {
 
       <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-5">
-          <section className="rounded-[22px] border border-[var(--brand-border)] bg-[var(--surface)] p-5 shadow-[0_20px_48px_-40px_rgba(10,32,20,0.48)]">
+          <section className="hidden rounded-[22px] border border-[var(--brand-border)] bg-[var(--surface)] p-5 shadow-[0_20px_48px_-40px_rgba(10,32,20,0.48)]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[12px] font-black uppercase tracking-[0.14em] text-[var(--muted-foreground)]">1. Müşteri</p>
@@ -2985,7 +3138,7 @@ export function PosPage() {
                       pointDraftProduct &&
                       productMatchesPointStockCode(pointDraftProduct, pointProductCodeInput)
                     ) {
-                      addPointDraftLine();
+                      focusPointQtyInput();
                       return;
                     }
 
@@ -3022,23 +3175,40 @@ export function PosPage() {
                     <div>
                       <label className="mb-1 block text-xs font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Adet</label>
                       <Input
+                        ref={pointQtyInputRef}
                         type="number"
                         min={1}
                         step={1}
                         value={pointQtyInput}
                         onChange={(event) => setPointQtyInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          focusPointPriceInput();
+                        }}
                         className="h-14 rounded-[14px] text-center text-xl font-black"
                       />
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Fiyat</label>
                       <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        ref={pointPriceInputRef}
+                        type="text"
+                        inputMode="decimal"
                         value={pointPriceInput}
-                        readOnly
-                        className="h-14 cursor-not-allowed rounded-[14px] bg-black/10 text-xl font-black opacity-85"
+                        onChange={(event) => setPointPriceInput(event.target.value.replace(/[^\d.,]/g, ""))}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          commitPointPriceInput();
+                        }}
+                        className="h-14 rounded-[14px] text-xl font-black"
                       />
                     </div>
                     <div>
@@ -3717,7 +3887,7 @@ export function PosPage() {
                       />
                     </div>
 
-                    <div className="mt-4">
+                    <div className="mt-4 hidden">
                       <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">
                         {selectedCustomerIsAnonymous ? "Ödeme Tipi" : "Satış Tipi"}
                       </label>
@@ -3803,7 +3973,7 @@ export function PosPage() {
                               pointDraftProduct &&
                               productMatchesPointStockCode(pointDraftProduct, pointProductCodeInput)
                             ) {
-                              addPointDraftLine();
+                              focusPointQtyInput();
                               return;
                             }
 
@@ -3854,22 +4024,40 @@ export function PosPage() {
                         <div>
                           <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">Miktar</label>
                           <Input
+                            ref={pointQtyInputRef}
                             type="number"
                             min={1}
                             step={1}
                             value={pointQtyInput}
                             onChange={(event) => setPointQtyInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              focusPointPriceInput();
+                            }}
                             className="h-11 rounded-2xl"
                           />
                         </div>
                         <div>
                           <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">Fiyat</label>
                           <Input
+                            ref={pointPriceInputRef}
                             type="number"
                             min={0}
                             step="0.01"
                             value={pointPriceInput}
                             onChange={(event) => setPointPriceInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              commitPointPriceInput();
+                            }}
                             className="h-11 rounded-2xl"
                           />
                         </div>
@@ -3894,7 +4082,7 @@ export function PosPage() {
             ) : (
               <>
                 <div className="grid gap-4 2xl:grid-cols-[1fr_0.75fr]">
-                  <div className="rounded-3xl border border-[var(--brand-border)] bg-[var(--surface)] p-4">
+                  <div className="hidden rounded-3xl border border-[var(--brand-border)] bg-[var(--surface)] p-4">
                     <div className="mb-3 flex items-center gap-2">
                       <CreditCard className="h-5 w-5 text-[var(--brand-primary)]" />
                       <h3 className="text-lg font-black text-[var(--brand-primary-strong)]">Satış Tipi</h3>
@@ -3983,10 +4171,21 @@ export function PosPage() {
                 </div>
 
                 <div className="relative">
-                  <h3 className="mb-3 flex items-center gap-2 text-lg font-black text-[var(--brand-primary-strong)]">
-                    <Barcode className="h-5 w-5 text-[var(--brand-primary)]" />
-                    Ürün Ekle
-                  </h3>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-2 text-lg font-black text-[var(--brand-primary-strong)]">
+                      <Barcode className="h-5 w-5 text-[var(--brand-primary)]" />
+                      Ürün Ekle
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 rounded-xl border-[#8d7d26] bg-[#241f0b] px-3 text-xs font-black text-[#faee56] hover:bg-[#342d0d] hover:text-[#fff77e]"
+                      onClick={() => setPointProductDialogShowAll((current) => !current)}
+                    >
+                      {pointProductDialogShowAll ? "Sadece E Göster" : "E + H Göster"}
+                    </Button>
+                  </div>
                   <div className="relative">
                     <Barcode className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--muted-foreground)]" />
                     <Input
@@ -4306,7 +4505,18 @@ export function PosPage() {
                 </div>
               </div>
               <div>
-                <p className="mb-2 text-sm font-black text-[var(--muted-foreground)]">Ürün</p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-black text-[var(--muted-foreground)]">Ürün</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-xl border-[#8d7d26] bg-[#241f0b] px-3 text-[11px] font-black text-[#faee56] hover:bg-[#342d0d] hover:text-[#fff77e]"
+                    onClick={() => setPointProductDialogShowAll((current) => !current)}
+                  >
+                    {pointProductDialogShowAll ? "Sadece E Göster" : "E + H Göster"}
+                  </Button>
+                </div>
                 <div className="relative">
                   <Barcode className="pointer-events-none absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-[var(--muted-foreground)]" />
                   <Input
@@ -4455,65 +4665,6 @@ export function PosPage() {
   const pointRetailContentV2 = (
     <div className="space-y-3 xl:space-y-4">
 	            <div className="space-y-3 xl:space-y-4">
-        <section className="point-panel rounded-[18px] border p-3 xl:p-4">
-          <div
-            className={cn(
-              "grid gap-3 xl:items-center",
-              isBatumPointFlowByUser
-                ? "xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_430px]"
-                : "xl:grid-cols-1"
-            )}
-          >
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--point-muted-strong)] xl:text-xs">
-                {isBatumPointFlowByUser ? "Batum POS" : "Erzurum Hızlı Satış"}
-              </p>
-              <h1 className="mt-1 truncate text-2xl font-black tracking-tight text-white xl:text-3xl 2xl:text-4xl">
-                {isBatumPointFlowByUser ? pointSaleContextLabel : "ERZURUM HIZLI SATIŞ"}
-              </h1>
-              <p className="mt-1 text-xs font-bold text-[var(--point-muted-strong)] xl:text-sm">
-                {isBatumPointFlowByUser
-                  ? "Ürün aramada sadece Erz. Depo ve Batum stokları gösterilir. Fiyat alanı Batum satışında KDV dahil çalışır."
-                  : "Cari seç, stok kodunu okut, sepete ekle. Kaydet satış irsaliyesi oluşturur; Yazdır fiş çıktısı alır."}
-              </p>
-            </div>
-            {isBatumPointFlowByUser ? (
-              <div className="grid grid-cols-2 gap-2">
-                {POINT_ANONYMOUS_SALE_TYPE_OPTIONS.map((option) => {
-                  const isSelected = saleType === option.value;
-
-                  return (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      variant="outline"
-                      className={cn(
-                        "h-12 rounded-[14px] text-sm font-black xl:h-14 xl:text-base",
-                        isSelected
-                          ? "point-yellow-action-button"
-                          : "point-secondary-button text-[var(--point-muted-strong)]"
-                      )}
-                      onClick={() => {
-                        if (option.value !== saleType) {
-                          setPointCartPriceInputs({});
-                          setActivePointCartProductId(null);
-                        }
-
-                        posForm.setValue("sale_type", option.value, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        });
-                      }}
-                    >
-                      {option.value === "cash" ? <Wallet className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
-                      {option.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        </section>
         <section className="point-panel point-customer-panel rounded-[18px] border p-2">
           <div className="grid gap-2 xl:grid-cols-[168px_minmax(0,1fr)] xl:items-stretch 2xl:grid-cols-[200px_minmax(0,1fr)]">
             <Button
@@ -4610,7 +4761,7 @@ export function PosPage() {
                       pointDraftProduct &&
                       productMatchesPointStockCode(pointDraftProduct, pointProductCodeInput)
                     ) {
-                      addPointDraftLine();
+                      focusPointQtyInput();
                       return;
                     }
 
@@ -4681,7 +4832,7 @@ export function PosPage() {
                     }
 
                     event.preventDefault();
-                    addPointDraftLine();
+                    focusPointPriceInput();
                   }}
                   inputMode="numeric"
                   className={cn(
@@ -4711,7 +4862,9 @@ export function PosPage() {
                 <Input
                   ref={pointPriceInputRef}
                   value={pointPriceInput}
-                  readOnly
+                  onChange={(event) => {
+                    setPointPriceInput(event.target.value.replace(/[^\d.,]/g, ""));
+                  }}
                   onFocus={(event) => {
                     setPointFocusedInput("price");
                     event.currentTarget.select();
@@ -4725,18 +4878,12 @@ export function PosPage() {
                     }
 
                     event.preventDefault();
-                    if (pointDraftProduct) {
-                      addPointDraftLine();
-                      return;
-                    }
-
-                    pointProductCodeInputRef.current?.focus();
-                    pointProductCodeInputRef.current?.select();
+                    commitPointPriceInput();
                   }}
                   inputMode="decimal"
                   placeholder="0,00"
                   className={cn(
-                    "h-12 cursor-not-allowed rounded-none border-0 bg-transparent text-center text-lg font-black text-white/85 shadow-none focus-visible:ring-0 xl:h-14 xl:text-xl 2xl:h-16",
+                    "h-12 rounded-none border-0 bg-transparent text-center text-lg font-black text-white shadow-none focus-visible:ring-0 xl:h-14 xl:text-xl 2xl:h-16",
                     pointFocusedInput === "price" && "text-[#faee56]"
                   )}
                 />
@@ -4747,10 +4894,10 @@ export function PosPage() {
               type="button"
               onClick={addPointDraftLine}
               disabled={!pointDraftProduct}
-              className="hidden"
+              className="h-11 w-full rounded-[12px] bg-[#1f9d62] text-sm font-black text-white hover:bg-[#197f50] xl:hidden"
             >
               <Plus className="h-4 w-4 xl:h-5 xl:w-5" />
-              Sepete Ekle
+              Ürünü Ekle
             </Button>
           </div>
         </section>
@@ -4791,7 +4938,14 @@ export function PosPage() {
         </div>
       </div>
 
-      <section className="point-table overflow-x-auto rounded-[12px] border">
+      <section
+        key={visibleCartItems.length === 0 ? "empty-cart" : "filled-cart"}
+        className={cn(
+          "point-table max-w-full rounded-[12px] border",
+          visibleCartItems.length === 0 ? "overflow-hidden" : "overflow-x-auto"
+        )}
+      >
+        {visibleCartItems.length > 0 ? (
 	        <div className="point-cart-head grid min-w-[960px] grid-cols-[40px_38px_124px_minmax(230px,1fr)_96px_76px_96px_112px] border-b border-[var(--point-border)] bg-[linear-gradient(135deg,#1f6b45_0%,#2f7650_55%,#416650_100%)] text-xs font-black text-[#e6f3e9] xl:min-w-[1070px] xl:grid-cols-[44px_44px_150px_minmax(260px,1fr)_118px_90px_116px_130px] xl:text-sm 2xl:min-w-[1208px] 2xl:grid-cols-[48px_48px_176px_minmax(300px,1fr)_140px_104px_130px_150px]">
 	          <div className="px-2 py-2 text-center xl:px-3 2xl:px-4">✓</div>
 	          <div className="px-2 py-2 xl:px-3 2xl:px-4">#</div>
@@ -4802,10 +4956,19 @@ export function PosPage() {
 	          <div className="px-2 py-2 text-center xl:px-3 2xl:px-4">{pointPriceIncludesVat ? "KDV Dahil" : "Fiyat"}</div>
 	          <div className="px-2 py-2 text-center xl:px-3 2xl:px-4">Tutar</div>
 	        </div>
-	        <div className="point-cart-body min-h-[46px] min-w-[960px] xl:min-h-[52px] xl:min-w-[1070px] 2xl:min-w-[1208px]">
+        ) : null}
+	        <div
+            className={cn(
+              "point-cart-body min-h-[46px] xl:min-h-[52px]",
+              visibleCartItems.length > 0 && "min-w-[960px] xl:min-w-[1070px] 2xl:min-w-[1208px]"
+            )}
+          >
           {visibleCartItems.length === 0 ? (
-            <div className="flex min-h-[46px] items-center justify-center text-sm font-black text-[var(--point-muted)] xl:min-h-[52px]">
-              Stok kodu ile ürünü getirin veya seçim penceresinden ürün seçin.
+            <div className="point-cart-empty flex min-h-[46px] items-center justify-center px-3 text-center text-sm font-black leading-5 text-[var(--point-muted)] xl:min-h-[52px]">
+              <span className="block w-full whitespace-normal break-words">
+                Stok kodu ile ürünü getirin
+                <span className="block sm:inline"> veya seçim penceresinden ürün seçin.</span>
+              </span>
             </div>
           ) : (
             visibleCartItems.map((item, index) => (
@@ -4840,42 +5003,20 @@ export function PosPage() {
 	                <div className="px-2 py-1 xl:px-3 xl:py-1.5 2xl:px-4">
                   <Input
                     value={item.qty}
-                    onChange={(event) => {
-                      const parsed = Number(event.target.value.replace(/[^\d]/g, ""));
-                      setItemQty(item.product_id, Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
-                    }}
+                    readOnly
                     onClick={(event) => event.stopPropagation()}
-                    onFocus={(event) => event.currentTarget.select()}
                     inputMode="numeric"
-                    className="h-7 rounded-[9px] border-[var(--point-border-strong)] bg-[var(--point-control)] text-center text-sm font-black xl:h-8 xl:text-base"
+                    className="h-7 cursor-not-allowed rounded-[9px] border-[var(--point-border-strong)] bg-[var(--point-control)] text-center text-sm font-black xl:h-8 xl:text-base"
                     aria-label={`${item.sku} adeti`}
                   />
                 </div>
                 <div className="px-2 py-1 xl:px-3 xl:py-1.5 2xl:px-4">
                   <Input
-                    value={
-                      pointCartPriceInputs[item.product_id] ??
-                      fromCents(displayPriceCents(item.unit_price_cents, item.vat_rate, pointPriceIncludesVat)).replace(".", ",")
-                    }
+                    value={fromCents(displayPriceCents(item.unit_price_cents, item.vat_rate, pointPriceIncludesVat)).replace(".", ",")}
                     readOnly
                     onClick={(event) => event.stopPropagation()}
-                    onFocus={(event) => event.currentTarget.select()}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") {
-                        return;
-                      }
-
-                      event.preventDefault();
-
-                      setPointCartPriceInputs((previous) => ({
-                        ...previous,
-                        [item.product_id]: fromCents(displayPriceCents(item.unit_price_cents, item.vat_rate, pointPriceIncludesVat)).replace(".", ","),
-                      }));
-                      pointProductCodeInputRef.current?.focus();
-                      pointProductCodeInputRef.current?.select();
-                    }}
                     inputMode="decimal"
-                    className="h-7 cursor-not-allowed rounded-[9px] border-[var(--point-border-strong)] bg-[var(--point-control)] text-center text-sm font-black opacity-85 xl:h-8 xl:text-base"
+                    className="h-7 cursor-not-allowed rounded-[9px] border-[var(--point-border-strong)] bg-[var(--point-control)] text-center text-sm font-black opacity-90 xl:h-8 xl:text-base"
                     aria-label={`${item.sku} fiyatı`}
                   />
                 </div>
@@ -4888,7 +5029,8 @@ export function PosPage() {
         </div>
       </section>
 
-      <footer className="point-panel point-sales-footer grid gap-2 rounded-[18px] border p-2 sm:grid-cols-2 lg:grid-cols-[78px_92px_112px_126px_104px_104px] xl:grid-cols-[78px_92px_112px_126px_104px_104px_minmax(214px,1.4fr)] 2xl:grid-cols-[86px_104px_130px_142px_126px_126px_minmax(248px,1.35fr)] 2xl:gap-3 2xl:rounded-[22px] 2xl:p-3">
+      <div className="point-sales-footer-scroll" role="region" aria-label="POS işlem ve toplam araçları">
+      <footer className="point-panel point-sales-footer grid gap-2 rounded-[18px] border p-2 sm:grid-cols-2 lg:grid-cols-[78px_92px_112px_126px_104px_104px] xl:grid-cols-[78px_92px_112px_126px_104px_104px_minmax(214px,1.2fr)] 2xl:grid-cols-[86px_104px_130px_142px_126px_126px_minmax(248px,1.2fr)] 2xl:gap-3 2xl:rounded-[22px] 2xl:p-3">
         <div className="grid h-full min-h-[58px] gap-1.5 xl:min-h-[64px] xl:gap-2 2xl:min-h-[78px]">
           {[
             { value: "delivery" as PosDocumentType, label: "İrsaliye" },
@@ -4963,7 +5105,9 @@ export function PosPage() {
           }}
         >
           <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--point-muted-strong)] xl:text-[10px] 2xl:text-[11px]">İrsaliye Tutarı</span>
-          <span className="text-sm font-black text-white xl:text-base 2xl:text-lg">{formatCurrency(fromCents(totals.grandTotalCents))}</span>
+          <span className="text-sm font-black text-white xl:text-base 2xl:text-lg">
+            {formatCurrency(selectedCustomer ? Number(deliveryBalanceQuery.data?.data.amount ?? 0) : 0)}
+          </span>
         </Button>
         <Button
           type="button"
@@ -5046,6 +5190,7 @@ export function PosPage() {
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 
@@ -5394,9 +5539,20 @@ export function PosPage() {
                   </section>
 
                   <section className="relative rounded-[24px] border border-[var(--brand-border)] bg-[var(--surface)] p-4">
-                    <h3 className="mb-3 flex items-center gap-2 text-lg font-black text-[var(--brand-primary-strong)]">
-                      <Barcode className="h-5 w-5" /> Ürün Seç
-                    </h3>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="flex items-center gap-2 text-lg font-black text-[var(--brand-primary-strong)]">
+                        <Barcode className="h-5 w-5" /> Ürün Seç
+                      </h3>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-xl border-[#8d7d26] bg-[#241f0b] px-3 text-xs font-black text-[#faee56] hover:bg-[#342d0d] hover:text-[#fff77e]"
+                        onClick={() => setPointProductDialogShowAll((current) => !current)}
+                      >
+                        {pointProductDialogShowAll ? "Sadece E Göster" : "E + H Göster"}
+                      </Button>
+                    </div>
                     <div className="relative">
                       <Barcode className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--muted-foreground)]" />
                       <Input
@@ -5533,31 +5689,43 @@ export function PosPage() {
                   Ürün adı veya stok kodu ile arayın, satıra dokunarak seçin.
                 </DialogDescription>
               </div>
-              <div className="hidden rounded-2xl border border-[#416650] bg-[#0c1a1d]/90 px-4 py-3 text-right sm:block">
-                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#8fa394]">Listelenen</p>
-                <p className="mt-1 text-2xl font-black text-[#faee56]">{pointProductDialogProducts.length}</p>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl border-[#8d7d26] bg-[#241f0b] px-4 text-xs font-black text-[#faee56] hover:bg-[#342d0d] hover:text-[#fff77e] sm:h-12 sm:text-sm"
+                  onClick={() => setPointProductDialogShowAll((current) => !current)}
+                >
+                  {pointProductDialogShowAll ? "Sadece E Göster" : "E + H Göster"}
+                </Button>
+                <div className="hidden rounded-2xl border border-[#416650] bg-[#0c1a1d]/90 px-4 py-3 text-right sm:block">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#8fa394]">Listelenen</p>
+                  <p className="mt-1 text-2xl font-black text-[#faee56]">{pointProductDialogProducts.length}</p>
+                </div>
               </div>
             </div>
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-4 p-5 sm:p-6">
-            <label className="relative block">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#8fa394]" />
-              <Input
-                value={pointProductDialogQuery}
-                onChange={(event) => setPointProductDialogQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" || pointProductDialogProducts.length === 0) {
-                    return;
-                  }
+            <div>
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#8fa394]" />
+                <Input
+                  value={pointProductDialogQuery}
+                  onChange={(event) => setPointProductDialogQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || pointProductDialogProducts.length === 0) {
+                      return;
+                    }
 
-                  event.preventDefault();
-                  selectPointProductFromDialog(pointProductDialogProducts[0]);
-                }}
-                placeholder="Stok kodu veya ürün adı ara"
-                className="h-14 rounded-2xl border-[#416650] bg-[#07120f] pl-12 text-base font-bold text-white shadow-none placeholder:text-[#879a91] focus-visible:ring-[#72bf82]/45"
-              />
-            </label>
+                    event.preventDefault();
+                    selectPointProductFromDialog(pointProductDialogProducts[0]);
+                  }}
+                  placeholder="Ürün kodu, adı, OEM veya rakip kod ara"
+                  className="h-14 rounded-2xl border-[#416650] bg-[#07120f] pl-12 text-base font-bold text-white shadow-none placeholder:text-[#879a91] focus-visible:ring-[#72bf82]/45"
+                />
+              </label>
+            </div>
 
             <div className="overflow-hidden rounded-[24px] border border-[#243d34] bg-[#071018]">
               <div className="overflow-x-auto">

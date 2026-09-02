@@ -1,5 +1,5 @@
-import { MalKabulPage } from "@/components/mal-kabul/mal-kabul-page";
+import { MalKabulWorkspacePage } from "@/components/mal-kabul/mal-kabul-workspace-page";
 
 export default function MalKabulRoutePage() {
-  return <MalKabulPage />;
+  return <MalKabulWorkspacePage />;
 }

@@ -147,6 +147,8 @@ class LogoReturnScrapExportService
         $customerMeta = is_array($customer?->meta) ? $customer->meta : [];
         $productSnapshot = is_array($returnRequest->product_snapshot) ? $returnRequest->product_snapshot : [];
         $orderSnapshot = is_array($returnRequest->order_snapshot) ? $returnRequest->order_snapshot : [];
+        $warehouseCode = $this->nullableString($orderSnapshot['warehouse_code'] ?? null);
+        $warehouseName = $this->nullableString($orderSnapshot['warehouse_name'] ?? null);
         $orderItem = $returnRequest->orderItem;
         $product = $orderItem?->product;
         $productMeta = is_array($product?->meta) ? $product->meta : [];
@@ -169,6 +171,8 @@ class LogoReturnScrapExportService
             'order_no' => $returnRequest->order?->order_no ?? ($orderSnapshot['order_no'] ?? null),
             'order_item_id' => $returnRequest->order_item_id,
             'request_no' => $returnRequest->request_no,
+            'warehouse_code' => $warehouseCode,
+            'warehouse_name' => $warehouseName,
             'scrap_date' => $scrapDate,
             'document_no' => $customerCode,
             'docode' => $customerCode,
@@ -219,6 +223,8 @@ class LogoReturnScrapExportService
                 'target_tables' => ['STFICHE', 'STLINE'],
                 'trcode' => 11,
                 'docode' => $customerCode,
+                'warehouse_code' => $warehouseCode,
+                'warehouse_name' => $warehouseName,
                 'stock_ref' => data_get($productMeta, 'integrations.logo.external_ref'),
                 'unitset_ref' => data_get($logoPayload, 'unitset_ref') ?? data_get($logoPayload, 'raw.UNITSETREF'),
                 'uom_ref' => data_get($logoPayload, 'logo_price.uomref') ?? data_get($logoPayload, 'raw.UOMREF'),

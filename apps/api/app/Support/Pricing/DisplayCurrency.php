@@ -64,6 +64,10 @@ class DisplayCurrency
             return false;
         }
 
+        if (self::normalizeCode($user->username) === 'TURGAY.BUYUKKAL') {
+            return false;
+        }
+
         return self::normalizeCode($user->branch_code) === 'BATUM'
             || self::normalizeCode($user->region_code) === 'BATUM';
     }

@@ -18,6 +18,7 @@ final class MenuPermissions
             ['key' => 'catalogs', 'label' => 'Kataloglar', 'href' => '/catalogs'],
             ['key' => 'cart', 'label' => 'Sepet', 'href' => '/cart'],
             ['key' => 'orders', 'label' => 'Siparişler', 'href' => '/orders'],
+            ['key' => 'customer-complaints', 'label' => 'Dilek / Şikayet', 'href' => '/dilek-sikayet'],
             ['key' => 'customers', 'label' => 'Müşteriler', 'href' => '/customers'],
             ['key' => 'customer-users', 'label' => 'Müşteri Kullanıcı', 'href' => '/customer-users'],
             ['key' => 'new-customer-card', 'label' => 'Yeni Cari Kart', 'href' => '/new-customer-card'],
@@ -29,6 +30,7 @@ final class MenuPermissions
             ['key' => 'pos-expenses', 'label' => 'POS Masraf', 'href' => '/pos/expenses'],
             ['key' => 'pos-day-end', 'label' => 'POS Gün Sonu', 'href' => '/pos/day-end'],
             ['key' => 'warehouse', 'label' => 'Depo', 'href' => '/warehouse'],
+            ['key' => 'rack-addresses', 'label' => 'Raf Adresi Güncelle', 'href' => '/warehouse/rack-addresses'],
             ['key' => 'moderator', 'label' => 'Moderatör', 'href' => '/moderator'],
             ['key' => 'extra', 'label' => 'Satınalma / Mal Kabul', 'href' => '/mal-kabul'],
             ['key' => 'virtual-pos', 'label' => 'Sanal Pos', 'href' => '/virtual-pos'],
@@ -83,7 +85,11 @@ final class MenuPermissions
             $roles[] = $roleSlug;
         }
 
-        if (in_array('admin', $roles, true)) {
+        if (
+            in_array('admin', $roles, true)
+            || in_array('global', $roles, true)
+            || in_array('global_user', $roles, true)
+        ) {
             return self::keys();
         }
 
@@ -132,6 +138,16 @@ final class MenuPermissions
             $permissions[] = 'customer-users';
         }
 
+        if (in_array('accounting', $roles, true) || in_array('muhasebe', $roles, true)) {
+            $permissions = array_merge($permissions, [
+                'dashboard',
+                'customers',
+                'ledger',
+                'collections',
+                'reports',
+            ]);
+        }
+
         if (in_array('point', $roles, true) || in_array('cashier', $roles, true)) {
             $permissions[] = 'pos';
             $permissions[] = 'notes';
@@ -151,6 +167,7 @@ final class MenuPermissions
                 'cart',
                 'orders',
                 'ledger',
+                'customer-complaints',
             ]);
         }
 
@@ -172,12 +189,14 @@ final class MenuPermissions
             'catalogs',
             'cart',
             'orders',
+            'customer-complaints',
             'customers',
             'new-customer-card',
             'ledger',
             'collections',
             'reports',
             'returns',
+            'rack-addresses',
             'extra',
             'virtual-pos',
             'delivery-notes',
@@ -195,7 +214,7 @@ final class MenuPermissions
             $roles[] = 'point';
         }
 
-        if (in_array('warehouse', $permissions, true)) {
+        if (in_array('warehouse', $permissions, true) || in_array('rack-addresses', $permissions, true)) {
             $roles[] = 'warehouse';
         }
 
@@ -215,10 +234,8 @@ final class MenuPermissions
      */
     public static function forUser(User $user): array
     {
-        $stored = is_array($user->menu_permissions) ? self::normalize($user->menu_permissions) : [];
-
-        if ($stored !== []) {
-            return $stored;
+        if ($user->menu_permissions !== null) {
+            return is_array($user->menu_permissions) ? self::normalize($user->menu_permissions) : [];
         }
 
         $roleSlugs = $user->relationLoaded('roles')

@@ -56,8 +56,19 @@ class CustomerPolicy
 
     public function collect(User $user, Customer $customer): bool
     {
-        return $user->hasAnyRole(['dealer_admin', 'salesperson', 'cashier', 'point'])
-            && $user->canAccessCustomer($customer);
+        if ($user->hasAnyRole(['admin', 'global', 'global_user'])) {
+            return true;
+        }
+
+        if ($user->hasAnyRole(['moderator', 'accounting', 'muhasebe'])) {
+            return $user->canAccessCustomer($customer)
+                || app(CustomerAccessScopeService::class)->hasUnrestrictedCustomerAccess($user);
+        }
+
+        $hasCollectionAccess = $user->hasAnyRole(['dealer_admin', 'salesperson', 'cashier', 'point'])
+            || count(array_intersect(MenuPermissions::forUser($user), ['collections', 'pos'])) > 0;
+
+        return $hasCollectionAccess && $user->canAccessCustomer($customer);
     }
 
     public function viewLedger(User $user, Customer $customer): bool

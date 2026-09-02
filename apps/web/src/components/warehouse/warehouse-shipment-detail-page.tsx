@@ -61,7 +61,7 @@ function toPlainMoney(value: string | number): string {
   const amount = Number(value);
 
   if (!Number.isFinite(amount)) {
-    return value;
+    return String(value);
   }
 
   return new Intl.NumberFormat("tr-TR", {
@@ -92,6 +92,15 @@ function formatDateTime(value: string | null | undefined): string {
 function displayText(value: string | number | null | undefined): string {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : "-";
+}
+
+function MobileShipmentDatum({ label, value }: { label: string; value: string | number }) {
+  return (
+    <span className="min-w-0 rounded-lg border border-white/10 bg-black/15 px-2.5 py-2">
+      <span className="block text-[9px] font-black uppercase tracking-[0.08em] text-[var(--point-muted)]">{label}</span>
+      <span className="mt-0.5 block truncate text-sm font-black text-[var(--point-text)]">{value}</span>
+    </span>
+  );
 }
 
 const SHIPMENT_INVOICE_ACTION_CLASSNAME =
@@ -320,6 +329,7 @@ function optimisticDeleteItem(
 export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [uiTheme, setUiTheme] = useState<"light" | "dark">("dark");
   const [barcode, setBarcode] = useState("");
   const [warning, setWarning] = useState<string | null>(null);
   const [packageNo, setPackageNo] = useState("1");
@@ -340,6 +350,19 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
   const queryClient = useQueryClient();
   const queryKey = useMemo(() => ["warehouse", "shipment", shipmentId] as const, [shipmentId]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const readTheme = () => {
+      setUiTheme(root.dataset.uiTheme === "light" ? "light" : "dark");
+    };
+
+    readTheme();
+    const observer = new MutationObserver(readTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-ui-theme"] });
+
+    return () => observer.disconnect();
+  }, []);
+
   const shipmentQuery = useQuery({
     queryKey,
     queryFn: () => getWarehouseShipment(shipmentId),
@@ -347,6 +370,13 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
   });
 
   const shipmentState = shipmentQuery.data?.data;
+  const isDepotTransfer = shipmentState?.shipment.origin?.document_type === "warehouse_transfer";
+  const hasShipmentBalance = Boolean(
+    shipmentState &&
+      !isDepotTransfer &&
+      shipmentState.totals.shipped_qty_total > 0 &&
+      shipmentState.totals.remaining_qty_total > 0
+  );
   const isReadOnly = shipmentState
     ? ["shipped", "partially_shipped", "cancelled"].includes(shipmentState.shipment.status.toLowerCase())
     : false;
@@ -555,8 +585,15 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
       setWarning(null);
       queryClient.setQueryData(queryKey, response);
       setFinalizeConfirmOpen(false);
-      toast.success(response.data.message ?? "Fatura Logo'ya aktarıldı");
-      printPageInPlace(printUrls.invoice);
+      const finalizedAsDepotTransfer = response.data.logo_document_type === "warehouse_transfer" || isDepotTransfer;
+      toast.success(
+        response.data.message ??
+          (finalizedAsDepotTransfer ? "Depo transferi mal kabule gönderildi" : "Fatura Logo'ya aktarıldı")
+      );
+      printPageInPlace(finalizedAsDepotTransfer ? printUrls.packingSlip : printUrls.invoice);
+      window.setTimeout(() => {
+        router.push("/warehouse");
+      }, 700);
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey });
@@ -768,7 +805,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
   return (
     <div
       className="point-sale-screen warehouse-shipment-clean space-y-2.5 rounded-[20px] border border-[var(--point-border)] bg-[#071018] p-2 text-[#eef8ef] shadow-[0_24px_70px_-54px_rgba(0,0,0,0.95)]"
-      data-point-theme="dark"
+      data-point-theme={uiTheme}
       onClick={() => setContextMenu(null)}
     >
       <section className="point-panel point-product-panel rounded-[16px] border p-2">
@@ -910,9 +947,24 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                 type="button"
                 variant="outline"
                 className="point-secondary-button h-14 w-full flex-col gap-1 rounded-[14px] text-center text-[10px] font-black"
-                onClick={() => printPageInPlace(printUrls.packingSlip)}
+                onClick={isDepotTransfer ? () => printPageInPlace(printUrls.packingSlip) : handleFinalizeInvoice}
+                disabled={!isDepotTransfer && (!hasShipmentBalance || finalizeMutation.isPending)}
+                title={
+                  isDepotTransfer
+                    ? "Transfer formunu aç"
+                    : hasShipmentBalance
+                      ? `${shipmentState.totals.remaining_qty_total} adet eksik ürünü bakiyeye gönder`
+                      : "Bakiyeye gönderilecek eksik ürün yok"
+                }
               >
-                <Printer className="h-4 w-4" /> Depo Transfer
+                {finalizeMutation.isPending && !isDepotTransfer ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isDepotTransfer ? (
+                  <Printer className="h-4 w-4" />
+                ) : (
+                  <PackagePlus className="h-4 w-4" />
+                )}
+                {isDepotTransfer ? "Transfer Formu" : "Bakiyeye Gönder"}
               </Button>
               <Button
                 type="button"
@@ -928,7 +980,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                 disabled={finalizeMutation.isPending || shipmentState.totals.shipped_qty_total <= 0}
               >
                 {finalizeMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
-                Fatura Aktar
+                {isDepotTransfer ? "Depolar Arası Transfer" : "Fatura Aktar"}
               </Button>
             </div>
           </div>
@@ -944,11 +996,58 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
         </div>
       ) : null}
 
-      <section className="point-table overflow-x-auto rounded-[14px] border">
+      <section className="point-table overflow-hidden rounded-[14px] border">
         <div className="px-4 py-3">
           <p className="text-sm font-black uppercase tracking-[0.12em] text-white">Sipariş Bilgileri</p>
         </div>
-        <div className="max-h-[30vh] min-w-[1140px] overflow-auto border-t border-[var(--point-border)] bg-[var(--point-control)]">
+        <div className="space-y-2 border-t border-[var(--point-border)] bg-[var(--point-control)] p-2 md:hidden">
+          {shipmentState.remaining_items.length === 0 ? (
+            <p className="py-8 text-center text-sm font-black text-[var(--point-muted)]">Kalan ürün yok.</p>
+          ) : (
+            shipmentState.remaining_items.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-xl border border-[var(--point-border)] bg-[var(--point-control-strong)] p-3 text-[var(--point-text)]"
+                onClick={() => {
+                  if (!scanMutation.isPending && !isReadOnly && item.remaining_qty > 0) {
+                    const command = parseScanCommand(barcode);
+                    scanByItem(item, command.hasQuantityPrefix ? command.qty : 1, command.hasQuantityPrefix);
+                  }
+                }}
+              >
+                <div className="flex min-w-0 items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black">{displayText(item.name)}</p>
+                    <p className="mt-0.5 text-xs font-bold text-[var(--point-muted-strong)]">{displayText(item.sku)}</p>
+                  </div>
+                  <span className="shrink-0 rounded-lg border border-amber-300/35 bg-amber-300/10 px-2 py-1 text-sm font-black text-[#faee56]">
+                    {item.remaining_qty} kalan
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <MobileShipmentDatum label="Raf" value={resolveShelfAddress(item)} />
+                  <MobileShipmentDatum label="Mevcut" value={item.logo_stock?.available_total ?? 0} />
+                  <MobileShipmentDatum label="Sipariş" value={item.ordered_qty} />
+                  <MobileShipmentDatum label="Fiyat" value={toPlainMoney(item.unit_price)} />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-3 h-10 w-full rounded-[10px] border-red-500/45 bg-red-500/10 text-xs font-black text-red-300"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    deleteShipmentItem(item);
+                  }}
+                  disabled={isReadOnly || deleteItemMutation.isPending}
+                >
+                  {deleteItemMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Sil
+                </Button>
+              </article>
+            ))
+          )}
+        </div>
+        <div className="hidden max-h-[30vh] min-w-[1140px] overflow-auto border-t border-[var(--point-border)] bg-[var(--point-control)] md:block">
           <Table className="text-[12px]">
               <TableHeader className="sticky top-0 z-10 bg-[linear-gradient(135deg,#1f6b45_0%,#2f7650_55%,#416650_100%)]">
               <TableRow className="border-b border-emerald-300/35 hover:bg-transparent">
@@ -1039,11 +1138,47 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
         </div>
       ) : null}
 
-      <section className="point-table overflow-x-auto rounded-[14px] border">
+      <section className="point-table overflow-hidden rounded-[14px] border">
         <div className="px-4 py-3">
           <p className="text-sm font-black uppercase tracking-[0.12em] text-white">Sevk Edilen Ürünler</p>
         </div>
-        <div className="min-w-[940px] border-t border-[var(--point-border)] bg-[var(--point-control)]">
+        <div className="space-y-2 border-t border-[var(--point-border)] bg-[var(--point-control)] p-2 md:hidden">
+          {shipmentState.shipped_items.length === 0 ? (
+            <p className="py-8 text-center text-sm font-black text-[var(--point-muted)]">Henüz sevk edilen ürün yok.</p>
+          ) : (
+            shipmentState.shipped_items.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-xl border border-[var(--point-border)] bg-[var(--point-control-strong)] p-3 text-[var(--point-text)]"
+                onClick={() => returnFullShippedItem(item)}
+              >
+                <div className="flex min-w-0 items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black">{displayText(item.name)}</p>
+                    <p className="mt-0.5 text-xs font-bold text-[var(--point-muted-strong)]">{displayText(item.sku)}</p>
+                  </div>
+                  <span className="shrink-0 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-sm font-black text-emerald-200">
+                    {item.shipped_qty} sevk
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-3 h-10 w-full rounded-[10px] border-red-500/45 bg-red-500/10 text-xs font-black text-red-300"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    deleteShipmentItem(item);
+                  }}
+                  disabled={isReadOnly || deleteItemMutation.isPending}
+                >
+                  {deleteItemMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Sevkten Kaldır
+                </Button>
+              </article>
+            ))
+          )}
+        </div>
+        <div className="hidden min-w-[940px] border-t border-[var(--point-border)] bg-[var(--point-control)] md:block">
           <Table className="text-[12px]">
             <TableHeader className="bg-[linear-gradient(135deg,#1f6b45_0%,#2f7650_55%,#416650_100%)]">
               <TableRow className="border-b border-emerald-300/35 hover:bg-transparent">
@@ -1230,15 +1365,27 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
         <DialogContent className="max-w-md rounded-[24px] border border-rose-400/30 bg-[#071018] p-0 text-[#eef8ef] shadow-[0_34px_110px_-42px_rgba(0,0,0,0.92)]">
           <DialogHeader className="border-b border-rose-500/20 bg-[linear-gradient(135deg,#261016_0%,#071018_58%,#13080b_100%)] px-6 py-5 pr-12 text-left">
             <DialogTitle className="text-xl font-black text-white">
-              Faturaya Aktarılsın mı?
+              {isDepotTransfer
+                ? "Depo Transferi Aktarılsın mı?"
+                : hasShipmentBalance
+                  ? "Eksik Ürünler Bakiyeye Gönderilsin mi?"
+                  : "Faturaya Aktarılsın mı?"}
             </DialogTitle>
             <DialogDescription className="text-sm font-semibold text-[#d7b8bd]">
-              Bu siparişi faturaya aktarmak istediğinize emin misiniz?
+              {isDepotTransfer
+                ? "Bu transferi hedef deponun mal kabul ekranına göndermek istediğinize emin misiniz?"
+                : hasShipmentBalance
+                  ? `${shipmentState.totals.shipped_qty_total} adet sevk edilecek, eksik ${shipmentState.totals.remaining_qty_total} adet müşterinin sipariş bakiyesine aktarılacak.`
+                  : "Bu siparişi faturaya aktarmak istediğinize emin misiniz?"}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 px-6 py-5 text-sm font-bold text-[#dcebe0]">
             <p>
-              İşlem tamamlanınca sevkiyat Logo satış faturası olarak aktarılır ve depo listesine dönülür.
+              {isDepotTransfer
+                ? "İşlem tamamlanınca hedef depo ürünü mal kabulde onaylar; Logo ambar fişi onaydan sonra oluşur."
+                : hasShipmentBalance
+                  ? "İrsaliye/fatura yalnız sevk edilen miktar üzerinden oluşur; eksik miktar Orders > Bakiye bölümünde açık kalır."
+                  : "İşlem tamamlanınca sevkiyat Logo satış faturası olarak aktarılır ve depo listesine dönülür."}
             </p>
             <p className="rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
               Sipariş: {displayText(shipment.order.order_no)} · Gönderilen adet: {shipmentState.totals.shipped_qty_total}

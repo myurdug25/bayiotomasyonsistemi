@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\Customer;
 use App\Models\User;
-use App\Support\CustomerFeaturePermissions;
-use App\Support\MenuPermissions;
+use App\Services\Users\UserPermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -49,14 +49,30 @@ class AuthController extends Controller
             ], HttpStatus::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        $isCustomerUser = $user->hasRole('customer');
+        $lastActivity = $user->last_activity_at ?? $user->updated_at ?? $user->created_at;
+        if ($isCustomerUser && $user->is_active && $lastActivity?->lt(now()->subDays(30))) {
+            $user->forceFill(['is_active' => false])->saveQuietly();
+
+            return response()->json([
+                'message' => 'Hesabınız pasif duruma alınmıştır. Lütfen mağaza ile iletişime geçiniz.',
+            ], HttpStatus::HTTP_FORBIDDEN);
+        }
+
         Auth::login($user, false);
 
         if (! $user->is_active) {
             Auth::guard('web')->logout();
 
             return response()->json([
-                'message' => 'Kullanıcı hesabı pasif.',
+                'message' => $isCustomerUser
+                    ? 'Hesabınız pasif duruma alınmıştır. Lütfen mağaza ile iletişime geçiniz.'
+                    : 'Kullanıcı hesabı pasif.',
             ], HttpStatus::HTTP_FORBIDDEN);
+        }
+
+        if ($isCustomerUser) {
+            $user->forceFill(['last_activity_at' => now()])->saveQuietly();
         }
 
         $user = $this->clearSelectedCustomer($user);
@@ -113,8 +129,15 @@ class AuthController extends Controller
             'selectedCustomer.salesperson:id,name,email,phone,avatar_url',
         ]);
 
-        $user->setAttribute('menu_permissions', MenuPermissions::forUser($user));
-        $user->setAttribute('feature_permissions', CustomerFeaturePermissions::forUser($user));
+        $this->ensureCustomerUserContext($user);
+        $user->load([
+            'selectedCustomer:id,dealer_id,salesperson_user_id,region_code,region_name,branch_code,branch_name,source_system,source_reference,code,name,contact_name,email,city,district,phone,tax_office,tax_number,credit_limit,is_active,meta,last_synced_at',
+            'selectedCustomer.salesperson:id,name,email,phone,avatar_url',
+        ]);
+
+        $permissions = app(UserPermissionService::class);
+        $user->setAttribute('menu_permissions', $permissions->menuPermissions($user));
+        $user->setAttribute('feature_permissions', $permissions->featurePermissions($user));
 
         return $user;
     }
@@ -125,10 +148,35 @@ class AuthController extends Controller
             return $user;
         }
 
+        if ($user->hasRole('customer')) {
+            return $user;
+        }
+
         $user->forceFill([
             'selected_customer_id' => null,
         ])->save();
 
         return $user->fresh() ?? $user;
+    }
+
+    private function ensureCustomerUserContext(User $user): void
+    {
+        if (! $user->hasRole('customer')) {
+            return;
+        }
+
+        if ($user->selectedCustomer instanceof Customer && $user->selectedCustomer->is_active) {
+            return;
+        }
+
+        $username = mb_strtolower(trim((string) $user->username));
+        $customer = Customer::query()
+            ->where('is_active', true)
+            ->whereRaw('LOWER(code) = ?', [$username])
+            ->first(['id']);
+
+        if ($customer instanceof Customer) {
+            $user->forceFill(['selected_customer_id' => $customer->id])->save();
+        }
     }
 }

@@ -119,6 +119,36 @@ function getShelfAddress(item: PrintOrderItem): string {
   return String(item.shelf_address ?? "").trim();
 }
 
+function resolvePrintWarehouse(order: PrintOrder): { code: string | null; name: string | null } {
+  return {
+    code: order.origin?.target_warehouse_code ?? null,
+    name: order.origin?.target_warehouse_name ?? null,
+  };
+}
+
+function warehouseStockLabel(warehouse: { code: string | null; name: string | null }): string {
+  const code = String(warehouse.code ?? "").trim();
+  const name = String(warehouse.name ?? "").toLocaleUpperCase("tr-TR");
+
+  if (code === "2" || name.includes("TRABZON")) {
+    return "Trabzon Stok";
+  }
+
+  if (code === "3" || name.includes("SAMSUN")) {
+    return "Samsun Stok";
+  }
+
+  if (code === "4" || name.includes("BATUM") || name.includes("BATUMI")) {
+    return "Batum Stok";
+  }
+
+  if (code === "0" || name.includes("POINT")) {
+    return "Point Stok";
+  }
+
+  return "Erz. Stok";
+}
+
 function HeaderInfo({
   order,
   barcodeDataUri,
@@ -243,12 +273,22 @@ function printableOrderNote(order: PrintOrder): string {
   return lines.join("\n");
 }
 
-function erzurumDepoStock(item: PrintOrderItem): number | null {
-  const value = item.logo_stock?.erzurum_depo_available_total;
+function printWarehouseStock(item: PrintOrderItem): number | null {
+  const value = item.logo_stock?.print_warehouse_available_total ?? item.logo_stock?.erzurum_depo_available_total;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function PrintableTable({ items, totalQuantity }: { items: PrintOrderItem[]; totalQuantity: number }) {
+function PrintableTable({
+  items,
+  totalQuantity,
+  printWarehouse,
+}: {
+  items: PrintOrderItem[];
+  totalQuantity: number;
+  printWarehouse: { code: string | null; name: string | null };
+}) {
+  const stockLabel = warehouseStockLabel(printWarehouse);
+
   return (
     <section className="mt-[3mm]">
       <table className="order-table w-full border-collapse text-[11px] leading-[1.14]">
@@ -261,7 +301,7 @@ function PrintableTable({ items, totalQuantity }: { items: PrintOrderItem[]; tot
             <th className="w-[26mm] text-center">Raf Adresi</th>
             <th className="w-[15mm] text-center">Miktar</th>
             <th className="w-[9mm] text-center">&nbsp;</th>
-            <th className="w-[18mm] text-center">Erz. Stok</th>
+            <th className="w-[21mm] text-center">{stockLabel}</th>
           </tr>
         </thead>
         <tbody>
@@ -273,7 +313,7 @@ function PrintableTable({ items, totalQuantity }: { items: PrintOrderItem[]; tot
             </tr>
           ) : (
             items.map((item, index) => {
-              const availableStock = erzurumDepoStock(item);
+              const availableStock = printWarehouseStock(item);
               const stockIsMissing = (availableStock ?? 0) < item.quantity;
 
               return (
@@ -369,6 +409,7 @@ export default function WarehouseOrderPrintPage() {
   const barcodeDataUri = buildBarcodeDataUri(printOrderNo);
   const customerAddress = String(customer?.address ?? "").trim();
   const customerLocation = destination || customerAddress || "Adres bilgisi yok";
+  const printWarehouse = resolvePrintWarehouse(order);
 
   return (
     <main className="min-h-screen bg-transparent print:bg-white px-4 py-5 text-[#222]">
@@ -505,7 +546,7 @@ export default function WarehouseOrderPrintPage() {
           senderName={senderName}
         />
         <OrderNote note={note} />
-        <PrintableTable items={order.items as PrintOrderItem[]} totalQuantity={totalQuantity} />
+        <PrintableTable items={order.items as PrintOrderItem[]} totalQuantity={totalQuantity} printWarehouse={printWarehouse} />
         <PageCountFooter />
       </section>
     </main>

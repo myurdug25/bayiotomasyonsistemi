@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { canUseThermalBrowserPrintFallback, printThermalReceipt, tryThermalReceiptNativeBridge } from "@/lib/thermal-print";
 import { cn } from "@/lib/utils";
 
 const INSTALLMENT_OPTIONS = ["1", "2", "3"] as const;
@@ -175,8 +176,49 @@ export function VirtualPosPage() {
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    if (!selectedCustomer || numericAmount <= 0) {
+      toast.error("Fiş yazdırmak için cari ve tutar bilgisi girin.");
+      return;
+    }
+
+    const receiptPayload = {
+      title: "SANAL POS FİŞİ",
+      customerCode: selectedCustomer.code,
+      customerTitle: selectedCustomer.title,
+      cashierName: user?.name ?? user?.username ?? null,
+      date: new Date().toLocaleString("tr-TR"),
+      lines: [
+        { label: "Tutar", value: formatMoney(numericAmount), strong: true },
+        { label: "Taksit", value: installment === "1" ? "Tek Çekim" : `${installment} Taksit` },
+        { label: "Kart", value: cardNumber ? maskedCard(cardNumber) : "" },
+        { label: "Kart Sahibi", value: cardHolder },
+      ],
+      totalLabel: "Toplam",
+      total: formatMoney(numericAmount),
+      note: description.trim() || "Sanal POS sağlayıcı entegrasyonu bekleyen ödeme talebidir.",
+      footer: "PowerSA B2B · BOS",
+    };
+
+    const bridgeResult = await tryThermalReceiptNativeBridge(receiptPayload);
+    if (bridgeResult.ok) {
+      toast.success("Fiş PowerSA yazdırma köprüsüne gönderildi.");
+      return;
+    }
+
+    if (!canUseThermalBrowserPrintFallback()) {
+      toast.error("BOS Print Bridge açılamadı. APK kurulu ve yazıcı seçili olmalı.");
+      return;
+    }
+
+    const opened = printThermalReceipt(receiptPayload);
+
+    if (!opened) {
+      toast.error("Yazdırma penceresi açılamadı. Tarayıcı popup iznini kontrol edin.");
+      return;
+    }
+
+    toast.error("BOS Print Bridge açılamadı. Masaüstü yazdırma ekranı açıldı.");
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -196,7 +238,7 @@ export function VirtualPosPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="virtual-pos-workspace space-y-4">
       <section className="rounded-[18px] border border-[var(--brand-border)] bg-[linear-gradient(135deg,var(--surface)_0%,var(--surface-soft)_100%)] px-5 py-5 shadow-[0_24px_54px_-44px_rgba(18,40,26,0.55)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -216,7 +258,7 @@ export function VirtualPosPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="virtual-pos-main-grid grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="rounded-[18px]">
           <CardHeader className="border-b border-[var(--brand-border)]">
             <CardTitle className="flex items-center gap-2 text-base font-black text-[var(--brand-primary-strong)]">
@@ -225,7 +267,7 @@ export function VirtualPosPage() {
           </CardHeader>
           <CardContent className="p-5">
             <form className="grid gap-4" onSubmit={handleSubmit}>
-              <div className="grid gap-5 xl:grid-cols-[minmax(360px,520px)_minmax(0,1fr)] xl:items-start">
+              <div className="virtual-pos-form-grid grid gap-5 xl:grid-cols-[minmax(360px,520px)_minmax(0,1fr)] xl:items-start">
                 <div className="relative aspect-[1.62/1] min-h-[210px] w-full overflow-hidden rounded-[24px] border border-white/15 bg-[radial-gradient(circle_at_18%_12%,rgba(255,255,255,0.20)_0%,transparent_32%),radial-gradient(circle_at_85%_18%,rgba(255,89,94,0.34)_0%,transparent_36%),linear-gradient(135deg,#152333_0%,#0b1424_48%,#451018_100%)] p-4 text-white shadow-[0_22px_56px_rgba(0,0,0,0.32)] sm:p-5">
                   <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-400/20 blur-2xl" />
                   <div className="absolute -bottom-14 left-8 h-32 w-32 rounded-full bg-emerald-300/14 blur-2xl" />
@@ -246,7 +288,7 @@ export function VirtualPosPage() {
                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">Kart Sahibi</p>
                       <p className="mt-1 max-w-[240px] truncate text-sm font-black tracking-[0.08em]">{displayCardHolder}</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-right sm:gap-4">
+                    <div className="virtual-pos-card-meta-grid grid grid-cols-2 gap-2 text-right sm:gap-4">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">AA/YY</p>
                         <p className="mt-1 font-mono text-sm font-black">{displayExpiry}</p>
@@ -262,7 +304,7 @@ export function VirtualPosPage() {
                 <div className="grid gap-3">
                   <section className="rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
                     <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">1 · Cari</p>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="virtual-pos-two-field-grid grid gap-3 md:grid-cols-2">
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Cari</span>
                         <Input value={selectedCustomer ? `${selectedCustomer.code} - ${selectedCustomer.title}` : ""} disabled />
@@ -298,7 +340,7 @@ export function VirtualPosPage() {
                         />
                       </label>
 
-                      <div className="grid gap-3 md:grid-cols-3">
+                      <div className="virtual-pos-card-detail-grid grid gap-3 md:grid-cols-3">
                         <label className="space-y-1.5">
                           <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">SKT</span>
                           <Input
@@ -340,7 +382,7 @@ export function VirtualPosPage() {
 
                   <section className="rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
                     <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">3 · Tutar / Açıklama</p>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="virtual-pos-two-field-grid grid gap-3 md:grid-cols-2">
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Tutar</span>
                         <Input
@@ -367,7 +409,7 @@ export function VirtualPosPage() {
                 <p className={cn("text-sm font-bold", validationMessage ? "text-[var(--muted-foreground)]" : "text-emerald-600")}>
                   {validationMessage ?? "Ödeme bilgileri hazır."}
                 </p>
-                <div className="grid min-w-0 gap-2 sm:grid-cols-3 lg:min-w-[430px]">
+                <div className="virtual-pos-action-grid grid min-w-0 gap-2 sm:grid-cols-3 lg:min-w-[430px]">
                   <Button
                     type="button"
                     className="h-11 rounded-[14px] border border-emerald-300/45 bg-[linear-gradient(135deg,#2dd36f_0%,#16a34a_52%,#0f6f35_100%)] px-3 text-sm font-black text-white shadow-[0_14px_30px_rgba(22,163,74,0.24)] hover:brightness-110"
@@ -410,7 +452,7 @@ export function VirtualPosPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="virtual-pos-summary-grid grid grid-cols-2 gap-3">
                 <div className="rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
                   <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Tutar</p>
                   <p className="mt-1 text-lg font-black text-[var(--brand-primary-strong)]">{formatMoney(numericAmount)}</p>

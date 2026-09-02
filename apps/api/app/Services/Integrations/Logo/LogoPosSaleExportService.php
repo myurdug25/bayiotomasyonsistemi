@@ -6,6 +6,7 @@ use App\Models\Dealer;
 use App\Models\IntegrationSyncState;
 use App\Models\PosSale;
 use App\Models\PosSaleItem;
+use App\Models\User;
 use App\Services\Integrations\IntegrationSyncStateService;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -58,11 +59,11 @@ class LogoPosSaleExportService
                 'items.product:id,sku,oem_code,name,unit,vat_rate,meta',
                 'payments',
                 'posSession.cashbox',
-                'posSession.openedBy:id,name,username,email,branch_code,branch_name,region_code',
-                'createdBy:id,name,username,email,branch_code,branch_name,region_code',
+                'posSession.openedBy:id,name,username,email,branch_code,branch_name,region_code,logo_customer_specode4',
+                'createdBy:id,name,username,email,branch_code,branch_name,region_code,logo_customer_specode4',
             ])
             ->whereIn('id', $states->pluck('entity_id')->map(fn ($id) => (int) $id)->all())
-            ->where('status', 'paid')
+            ->whereIn('status', ['paid', 'cancelled'])
             ->whereIn('document_type', ['delivery', 'invoice'])
             ->get()
             ->keyBy('id');
@@ -131,7 +132,7 @@ class LogoPosSaleExportService
                 error: $status === 'failed' ? $error : null,
                 meta: [
                     'acknowledged' => true,
-                    'export_key' => 'B2B-POSSALE-'.$sale->id,
+                    'export_key' => (string) data_get($record, 'export_key', 'B2B-POSSALE-'.$sale->id),
                     'payload' => is_array($record['meta'] ?? null) ? $record['meta'] : [],
                 ],
                 payload: $record,
@@ -153,14 +154,22 @@ class LogoPosSaleExportService
         $cashbox = $sale->posSession?->cashbox;
         $cashboxPayload = $this->normalizeCashboxPayload($cashbox?->id, $cashbox?->code, $cashbox?->name);
         $currency = $this->pointCurrency($cashboxPayload['code'] ?? $cashbox?->code, $cashboxPayload['name'] ?? $cashbox?->name);
+        [$salesperson, $salespersonCode] = $this->resolveLogoSalesperson($sale);
 
         return [
             'pos_sale_id' => $sale->id,
-            'export_key' => 'B2B-POSSALE-'.$sale->id,
+            'export_key' => (string) (data_get($state->meta, 'export_key') ?: 'B2B-POSSALE-'.$sale->id),
             'dealer_id' => $customer?->dealer_id,
             'customer_id' => $sale->customer_id,
             'customer_code' => $customer?->code,
             'customer_external_ref' => $customer?->source_reference,
+            'salesperson_code' => $salespersonCode,
+            'salesperson' => [
+                'id' => $salesperson?->id,
+                'name' => $salesperson?->name,
+                'username' => $salesperson?->username,
+                'logo_code' => $salespersonCode,
+            ],
             'receipt_no' => $sale->receipt_no,
             'date' => optional($sale->created_at)?->toDateString(),
             'sale_type' => $sale->sale_type,
@@ -173,7 +182,7 @@ class LogoPosSaleExportService
             'cashbox_id' => $cashboxPayload['id'] ?? null,
             'cashbox_code' => $cashboxPayload['code'] ?? null,
             'cashbox_name' => $cashboxPayload['name'] ?? null,
-            'logo' => $this->logoPayload($sale),
+            'logo' => $this->logoPayload($sale, $state),
             'sync_status' => $state->status,
             'sync_error' => $state->last_error,
             'items' => $this->transformItems($sale->items),
@@ -190,6 +199,7 @@ class LogoPosSaleExportService
                 'created_at' => optional($sale->created_at)?->toIso8601String(),
                 'updated_at' => optional($sale->updated_at)?->toIso8601String(),
                 'logo_external_ref' => $state->external_ref,
+                'operation' => data_get($state->meta, 'operation'),
                 'cashbox' => $cashboxPayload,
             ],
         ];
@@ -198,15 +208,20 @@ class LogoPosSaleExportService
     /**
      * @return array<string, mixed>
      */
-    private function logoPayload(PosSale $sale): array
+    private function logoPayload(PosSale $sale, IntegrationSyncState $state): array
     {
         $pointWarehouseNo = $this->pointWarehouseNo($sale);
+        $operation = $this->nullableString(data_get($state->meta, 'operation'));
+        $existingExternalRef = $this->nullableString(data_get($state->meta, 'logo_external_ref'))
+            ?? $this->nullableString($state->external_ref);
 
         $payload = [
-            'branch' => data_get($sale->meta_json, 'integrations.logo.branch') ?? $pointWarehouseNo,
+            'branch' => data_get($sale->meta_json, 'integrations.logo.branch') ?? $this->pointBranchNo($pointWarehouseNo),
             'department' => data_get($sale->meta_json, 'integrations.logo.department'),
             'source_index' => data_get($sale->meta_json, 'integrations.logo.source_index') ?? $pointWarehouseNo,
             'warehouse_no' => data_get($sale->meta_json, 'integrations.logo.warehouse_no') ?? $pointWarehouseNo,
+            'operation' => $operation,
+            'existing_external_ref' => $existingExternalRef,
         ];
 
         if ($sale->document_type === 'delivery') {
@@ -404,10 +419,57 @@ class LogoPosSaleExportService
         return $this->configuredPointWarehouseNo('erzurum_point_warehouse_no', $this->configuredPointWarehouseNo('point_warehouse_no', 0));
     }
 
+    /**
+     * @return array{0:?User,1:?string}
+     */
+    private function resolveLogoSalesperson(PosSale $sale): array
+    {
+        $sale->loadMissing('posSession.openedBy', 'createdBy');
+
+        foreach ([$sale->posSession?->openedBy, $sale->createdBy] as $candidate) {
+            $code = $this->singleLogoSalespersonCode($candidate);
+            if ($code !== null) {
+                return [$candidate, $code];
+            }
+        }
+
+        $fallback = $sale->posSession?->openedBy ?? $sale->createdBy;
+
+        return [$fallback, $this->nullableString($fallback?->username)];
+    }
+
+    private function singleLogoSalespersonCode(?User $user): ?string
+    {
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        $codes = collect(explode(',', (string) $user->logo_customer_specode4))
+            ->map(fn (string $code): string => trim($code))
+            ->filter()
+            ->values();
+
+        if ($codes->count() !== 1) {
+            return null;
+        }
+
+        return $this->nullableString($codes->first());
+    }
+
     private function configuredPointWarehouseNo(string $key, int $fallback): int
     {
         $value = config('integrations.pos.'.$key);
 
         return is_numeric($value) ? (int) $value : $fallback;
+    }
+
+    private function pointBranchNo(int $warehouseNo): int
+    {
+        return match ($warehouseNo) {
+            2 => 1, // Trabzon
+            3 => 2, // Samsun
+            4 => 3, // Batum
+            default => 0, // Erzurum / Erzurum Point
+        };
     }
 }

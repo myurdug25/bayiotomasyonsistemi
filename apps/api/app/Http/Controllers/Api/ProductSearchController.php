@@ -12,28 +12,36 @@ use App\Models\Product;
 use App\Models\ProductCodeAlias;
 use App\Models\User;
 use App\Models\VehicleProduct;
+use App\Services\Customers\CustomerAccessScopeService;
 use App\Services\Meilisearch\ProductSearchService;
 use App\Services\Pricing\ProductCampaignPricing;
+use App\Services\Products\EryazPreviousPurchaseHistoryService;
 use App\Support\CustomerFeaturePermissions;
+use App\Support\Pricing\CustomerPriceListResolver;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
 use App\Support\Products\ProductCodeNormalizer;
 use App\Support\Products\ProductImageDataUrl;
+use App\Support\Products\ProductSearchCacheRevision;
+use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class ProductSearchController extends Controller
 {
-    private const SEARCH_RESPONSE_CACHE_TTL_SECONDS = 300;
+    private const SEARCH_RESPONSE_CACHE_TTL_SECONDS = 900;
 
     private const SEARCH_RELATED_CACHE_TTL_SECONDS = 300;
 
-    private const SEARCH_RESPONSE_CACHE_VERSION = 12;
+    private const SEARCH_RESPONSE_CACHE_VERSION = 20;
 
     public function __invoke(
         SearchProductsRequest $request,
@@ -51,10 +59,26 @@ class ProductSearchController extends Controller
 
         $dealerId = $dealerContext['dealer_id'];
         $priceListId = $dealerContext['price_list_id'];
-        $stockScope = $this->resolveStockVisibilityScope($request->user());
-        $selectedCustomerId = $request->user()->selected_customer_id !== null
-            ? (int) $request->user()->selected_customer_id
+        $requestedCustomerId = isset($validated['customer_id'])
+            ? (int) $validated['customer_id']
             : null;
+        if ($requestedCustomerId !== null && ! $request->user()->hasAnyRole(['admin', 'moderator'])) {
+            $requestedCustomer = Customer::query()->find($requestedCustomerId);
+            if (
+                ! $requestedCustomer instanceof Customer
+                || ! app(CustomerAccessScopeService::class)
+                    ->canAccessCustomer($request->user(), $requestedCustomer)
+            ) {
+                $requestedCustomerId = null;
+            }
+        }
+        $selectedCustomerId = $requestedCustomerId
+            ?? ($request->user()->selected_customer_id !== null
+                ? (int) $request->user()->selected_customer_id
+                : null);
+        $priceListId = app(CustomerPriceListResolver::class)
+            ->resolve($selectedCustomerId, $priceListId) ?? $priceListId;
+        $stockScope = $this->resolveStockVisibilityScope($request->user(), $requestedCustomerId);
 
         $fitmentProductIds = $this->fitmentProductIds($validated['vehicle_id'] ?? null);
         if ($fitmentProductIds !== null && $fitmentProductIds === []) {
@@ -78,22 +102,24 @@ class ProductSearchController extends Controller
         $shouldResolveExactMatchGroups = $includeEquivalents
             && $this->shouldResolveExactCodeMatchGroups($searchQuery, $normalizedSearch);
         $exactMatchGroupCodes = [];
-        $canUseMeili = $searchQuery !== ''
+        $shouldAttemptMeili = $searchQuery !== ''
             && ! isset($validated['sort'])
-            && ! $this->shouldUseDatabaseForPunctuationInsensitiveSearch($searchQuery)
-            && ! ($isLikelyProductCodeSearch && $shouldResolveExactMatchGroups && $includeEquivalents);
+            && $meili->shouldAttemptSearch();
+        $canUseMeili = $shouldAttemptMeili;
 
         // For short, code-like queries, prefer Meili first to avoid the heavier DB-only search path.
         if ($canUseMeili) {
             try {
-                if ($meili->shouldAttemptSearch()) {
+                if ($shouldAttemptMeili) {
                     $meiliExactMatchGroupCodes = ($isLikelyProductCodeSearch && $shouldResolveExactMatchGroups)
                         ? $this->resolveExactCodeMatchGroupCodes($searchQuery, $normalizedSearch, true)
                         : [];
 
                     return $this->searchUsingMeili(
                         validated: $validated,
-                        q: $searchQuery,
+                        q: $isLikelyProductCodeSearch && $normalizedSearch !== null
+                            ? $normalizedSearch
+                            : $searchQuery,
                         dealerId: $dealerId,
                         selectedCustomerId: $selectedCustomerId,
                         priceListId: $priceListId,
@@ -159,6 +185,7 @@ class ProductSearchController extends Controller
         $cacheKey = $this->buildSearchResponseCacheKey(
             validated: $validated,
             dealerId: $dealerId,
+            userId: (int) $user->id,
             selectedCustomerId: $selectedCustomerId,
             priceListId: $priceListId,
             stockScope: $stockScope,
@@ -207,7 +234,8 @@ class ProductSearchController extends Controller
                 fitmentProductIds: $fitmentProductIds,
                 inStock: $inStock,
                 includeEquivalents: $includeEquivalents,
-                exactMatchGroupCodes: $exactMatchGroupCodes
+                exactMatchGroupCodes: $exactMatchGroupCodes,
+                user: $user
             );
 
             foreach ($filteredIds as $id) {
@@ -247,6 +275,7 @@ class ProductSearchController extends Controller
 
         $query = $this->baseProductQuery($dealerId, $priceListId, preferInlineLogoFilter: true)
             ->whereIn('products.id', $collectedIds);
+        $this->applyCustomerBrandScope($query, $user);
 
         $this->applyNonTextFilters(
             query: $query,
@@ -299,6 +328,7 @@ class ProductSearchController extends Controller
         $cacheKey = $this->buildSearchResponseCacheKey(
             validated: $validated,
             dealerId: $dealerId,
+            userId: (int) $user->id,
             selectedCustomerId: $selectedCustomerId,
             priceListId: $priceListId,
             stockScope: $stockScope,
@@ -314,6 +344,18 @@ class ProductSearchController extends Controller
         $preferInlineLogoFilter = $searchBackend === 'db_code_fast';
         $preferInlineSpecialCodeVisibility = false;
         $query = $this->baseProductQuery($dealerId, $priceListId, preferInlineLogoFilter: $preferInlineLogoFilter);
+        $this->applyCustomerBrandScope($query, $user);
+        $isAllProductsMode = trim((string) ($validated['q'] ?? '')) === ''
+            && $includeEquivalents
+            && empty($validated['brand_id'])
+            && empty($validated['category_id'])
+            && empty($validated['kod1'])
+            && empty($validated['kod2'])
+            && empty($validated['kod3'])
+            && empty($validated['specode4'])
+            && empty($validated['specode5'])
+            && empty($validated['stok_turu'])
+            && $fitmentProductIds === null;
 
         if (! empty($validated['q'])) {
             $search = trim((string) $validated['q']);
@@ -370,7 +412,8 @@ class ProductSearchController extends Controller
                     $preferInlineSpecialCodeVisibility = true;
 
                     if ($matchingProductIds === []) {
-                        $query->whereRaw('1 = 0');
+                        $this->applyLooseProductTextSearchConstraint($query, $search);
+                        $this->applyTextSearchRanking($query, $search, $normalizedSearch, false);
                     } else {
                         $query->whereIn('products.id', $matchingProductIds);
                         $this->applyIdSequenceOrder($query, $matchingProductIds);
@@ -385,12 +428,17 @@ class ProductSearchController extends Controller
 
                 $preferInlineSpecialCodeVisibility = false;
                 $query = $this->baseProductQuery($dealerId, $priceListId, preferInlineLogoFilter: $preferInlineLogoFilter);
+                $this->applyCustomerBrandScope($query, $user);
                 $this->applyLooseProductTextSearchConstraint($query, $search);
             }
 
             if ($exactMatchGroupCodes === [] && $shouldSearchCodeAliases) {
                 $this->applyTextSearchRanking($query, $search, $normalizedSearch, $shouldSearchCodeAliases);
             }
+        }
+
+        if ($isAllProductsMode) {
+            $preferInlineSpecialCodeVisibility = true;
         }
 
         $this->applyNonTextFilters(
@@ -468,6 +516,7 @@ class ProductSearchController extends Controller
     private function buildSearchResponseCacheKey(
         array $validated,
         int $dealerId,
+        int $userId,
         ?int $selectedCustomerId,
         int $priceListId,
         ?array $stockScope,
@@ -493,10 +542,15 @@ class ProductSearchController extends Controller
             'page' => isset($validated['page']) ? (int) $validated['page'] : null,
             'limit' => $limit,
             'dealer_id_effective' => $dealerId,
+            'user_id' => $userId,
             'price_list_id' => $priceListId,
             'selected_customer_id' => $selectedCustomerId,
+            'customer_scope_revision' => $selectedCustomerId !== null
+                ? Customer::query()->whereKey($selectedCustomerId)->value('updated_at')
+                : null,
             'stock_scope' => $this->normalizeStockScopeForCache($stockScope),
             'backend' => $searchBackend,
+            'data_revision' => ProductSearchCacheRevision::current(),
             'v' => self::SEARCH_RESPONSE_CACHE_VERSION,
         ];
 
@@ -531,7 +585,10 @@ class ProductSearchController extends Controller
 
     private function baseProductQuery(int $dealerId, int $priceListId, bool $preferInlineLogoFilter = false): Builder
     {
-        $netPriceSql = DealerNetPriceExpression::sql();
+        $netPriceSql = DealerNetPriceExpression::sql(
+            basePriceColumn: 'COALESCE(bp.list_price, fallback_bp.list_price)',
+            discountRateColumn: 'CASE WHEN bp.list_price IS NOT NULL THEN pl.discount_rate ELSE fallback_pl.discount_rate END',
+        );
 
         return Product::query()
             ->select([
@@ -554,8 +611,8 @@ class ProductSearchController extends Controller
             ->selectRaw($this->productSearchMetaSelectSql().' as meta')
             ->selectRaw($this->productHasEmbeddedImageSql().' as has_embedded_image')
             ->selectRaw("{$netPriceSql} as net_price")
-            ->selectRaw('bp.list_price as list_price')
-            ->selectRaw("COALESCE(dpo.currency, bp.currency, 'TRY') as currency")
+            ->selectRaw('COALESCE(bp.list_price, fallback_bp.list_price) as list_price')
+            ->selectRaw("COALESCE(dpo.currency, bp.currency, fallback_bp.currency, 'TRY') as currency")
             ->selectRaw('COALESCE(ss.available_total, 0) as available_total')
             ->leftJoin('brands', 'brands.id', '=', 'products.brand_id')
             ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
@@ -568,6 +625,14 @@ class ProductSearchController extends Controller
                 $join->on('pl.id', '=', 'bp.price_list_id')
                     ->where('pl.id', '=', $priceListId);
             })
+            ->leftJoin('dealers as pricing_dealer', function ($join) use ($dealerId) {
+                $join->on('pricing_dealer.id', '=', DB::raw((string) $dealerId));
+            })
+            ->leftJoin('base_prices as fallback_bp', function ($join) {
+                $join->on('fallback_bp.product_id', '=', 'products.id')
+                    ->on('fallback_bp.price_list_id', '=', 'pricing_dealer.price_list_id');
+            })
+            ->leftJoin('price_lists as fallback_pl', 'fallback_pl.id', '=', 'fallback_bp.price_list_id')
             ->leftJoin('dealer_price_overrides as dpo', function ($join) use ($dealerId) {
                 $join->on('dpo.product_id', '=', 'products.id')
                     ->where('dpo.dealer_id', '=', $dealerId);
@@ -732,8 +797,7 @@ class ProductSearchController extends Controller
         int $limit,
         ?string $search = null,
         ?string $normalizedSearch = null
-    ): array
-    {
+    ): array {
         if ($groupCodes === []) {
             return [];
         }
@@ -914,13 +978,27 @@ class ProductSearchController extends Controller
     {
         $escapedSearch = $this->escapeLike($search);
         $contains = '%'.$escapedSearch.'%';
+        $compactContains = '%'.$this->escapeLike(ProductCodeNormalizer::normalize($search)).'%';
 
-        $builder->where(function (Builder $searchQuery) use ($search, $contains): void {
+        $builder->where(function (Builder $searchQuery) use ($search, $contains, $compactContains): void {
             $searchQuery
                 ->whereLike('products.name', $contains, caseSensitive: false)
+                ->orWhereLike('products.description', $contains, caseSensitive: false)
                 ->orWhereLike('products.oem_code', $contains, caseSensitive: false)
                 ->orWhereLike('products.sku', $contains, caseSensitive: false)
-                ->orWhereLike('brands.name', $contains, caseSensitive: false);
+                ->orWhereLike('brands.name', $contains, caseSensitive: false)
+                ->orWhereExists(function ($aliasQuery) use ($contains, $compactContains): void {
+                    $aliasQuery
+                        ->selectRaw('1')
+                        ->from('product_code_aliases')
+                        ->whereColumn('product_code_aliases.product_id', 'products.id')
+                        ->where(function ($aliasSearch) use ($contains, $compactContains): void {
+                            $aliasSearch
+                                ->whereLike('product_code_aliases.code', $contains, caseSensitive: false)
+                                ->orWhereLike('product_code_aliases.brand_name', $contains, caseSensitive: false)
+                                ->orWhereRaw($this->normalizedProductCodeSql('product_code_aliases.code').' LIKE ?', [$compactContains]);
+                        });
+                });
 
             $this->applyKeywordProductTextSearchOr($searchQuery, $search);
         });
@@ -941,6 +1019,7 @@ class ProductSearchController extends Controller
 
                     $tokenQuery
                         ->whereLike('products.name', $rawContains, caseSensitive: false)
+                        ->orWhereLike('products.description', $rawContains, caseSensitive: false)
                         ->orWhereLike('products.oem_code', $rawContains, caseSensitive: false)
                         ->orWhereLike('products.sku', $rawContains, caseSensitive: false)
                         ->orWhereLike('brands.name', $rawContains, caseSensitive: false);
@@ -948,13 +1027,26 @@ class ProductSearchController extends Controller
                     if (mb_strlen($token['compact'], 'UTF-8') >= 2) {
                         $tokenQuery
                             ->orWhereRaw($this->normalizedProductCodeSql('products.name').' LIKE ?', [$compactContains])
+                            ->orWhereRaw($this->normalizedProductCodeSql('products.description').' LIKE ?', [$compactContains])
                             ->orWhereRaw($this->normalizedProductCodeSql('products.oem_code').' LIKE ?', [$compactContains])
                             ->orWhereRaw($this->normalizedProductCodeSql('products.sku').' LIKE ?', [$compactContains])
                             ->orWhereRaw($this->normalizedProductCodeSql('brands.name').' LIKE ?', [$compactContains]);
+
                     }
                 });
             }
         });
+    }
+
+    /**
+     * Logo JSON alanlarını canlı DB aramasında taramak çok pahalıdır.
+     * Bu alanlar Meilisearch indeksindeki search_text ile aranır.
+     *
+     * @return list<string>
+     */
+    private function productSearchMetaPaths(): array
+    {
+        return [];
     }
 
     private function canUseProductFullTextSearch(string $search): bool
@@ -1044,7 +1136,8 @@ class ProductSearchController extends Controller
         ?array $fitmentProductIds,
         bool $inStock,
         bool $includeEquivalents,
-        array $exactMatchGroupCodes
+        array $exactMatchGroupCodes,
+        User $user
     ): array {
         if ($ids === []) {
             return [];
@@ -1057,6 +1150,7 @@ class ProductSearchController extends Controller
             ->where(function (Builder $query): void {
                 $this->applyLogoProductFilter($query, preferInline: true);
             });
+        $this->applyCustomerBrandScope($query, $user);
 
         if (! empty($validated['brand_id'])) {
             $query->where('products.brand_id', (int) $validated['brand_id']);
@@ -1143,9 +1237,10 @@ class ProductSearchController extends Controller
         $previousPurchasesByProduct = $this->previousPurchasesByProduct($productIds, $selectedCustomerId, $cache);
         $vehicleFitmentsByProduct = $this->vehicleFitmentsByProduct($productIds, $cache);
         $specialDiscountRate = $this->customerSpecialDiscountRate($selectedCustomerId);
+        $brandDiscounts = $this->customerBrandDiscounts($selectedCustomerId);
         $campaignsByProduct = app(ProductCampaignPricing::class)->forProducts($productIds, $user, $selectedCustomerId);
 
-        return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $campaignsByProduct, $user) {
+        return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $brandDiscounts, $campaignsByProduct, $user) {
             $meta = $this->productMeta($item);
             $sourceCurrency = (string) ($item->currency ?? 'TRY');
             $rawNetPrice = $this->resolveHotPrice(
@@ -1154,8 +1249,14 @@ class ProductSearchController extends Controller
                 productId: (int) $item->id,
                 fallbackPrice: $item->net_price
             );
-            $rawListPrice = $item->list_price !== null ? number_format((float) $item->list_price, 2, '.', '') : $rawNetPrice;
-            $rawSpecialDiscountedPrice = $this->applySpecialDiscount($rawNetPrice, $specialDiscountRate);
+            // Liste fiyatı yalnızca referans gösterimidir. Siparişe taşınan
+            // net/kampanyalı fiyatı değiştirmeden cari satış fiyatının iki
+            // katını para hassasiyetinde üretir.
+            $rawListPrice = $this->doubleDisplayPrice($rawNetPrice);
+            $brandDiscountChain = $brandDiscounts[(int) ($item->brand_id ?? 0)] ?? [];
+            $rawSpecialDiscountedPrice = $brandDiscountChain !== []
+                ? $this->applyDiscountChain($rawNetPrice, $brandDiscountChain)
+                : $this->applySpecialDiscount($rawNetPrice, $specialDiscountRate);
             $imageUrl = $this->productImageUrl($item, $meta);
             $imageDataUrl = ProductImageDataUrl::fromMeta($meta);
 
@@ -1189,6 +1290,7 @@ class ProductSearchController extends Controller
                 'list_price' => DisplayCurrency::formatPrice($rawListPrice, $sourceCurrency, $user),
                 'currency' => DisplayCurrency::normalize($sourceCurrency, $user),
                 'special_discount_rate' => $specialDiscountRate !== null ? number_format($specialDiscountRate, 2, '.', '') : null,
+                'brand_discount_chain' => $brandDiscountChain,
                 'special_discounted_price' => DisplayCurrency::formatPrice($rawSpecialDiscountedPrice, $sourceCurrency, $user),
                 'campaigns' => $campaignsByProduct->get((int) $item->id, []),
                 'vat_rate' => $item->vat_rate !== null ? number_format((float) $item->vat_rate, 2, '.', '') : null,
@@ -1244,6 +1346,85 @@ class ProductSearchController extends Controller
         }
 
         return number_format((float) $netPrice * (1 - ($specialDiscountRate / 100)), 2, '.', '');
+    }
+
+    private function doubleDisplayPrice(?string $price): ?string
+    {
+        if ($price === null || ! is_numeric($price)) {
+            return null;
+        }
+
+        $normalized = trim((string) $price);
+        $negative = str_starts_with($normalized, '-');
+        $normalized = ltrim($normalized, '+-');
+        [$whole, $fraction] = array_pad(explode('.', $normalized, 2), 2, '');
+
+        $cents = ((int) preg_replace('/\D+/', '', $whole)) * 100
+            + (int) str_pad(substr(preg_replace('/\D+/', '', $fraction), 0, 2), 2, '0');
+        $doubled = $cents * 2;
+        $sign = $negative && $doubled > 0 ? '-' : '';
+
+        return sprintf('%s%d.%02d', $sign, intdiv($doubled, 100), $doubled % 100);
+    }
+
+    /**
+     * @return array<int, list<float>>
+     */
+    private function customerBrandDiscounts(?int $selectedCustomerId): array
+    {
+        if ($selectedCustomerId === null) {
+            return [];
+        }
+
+        $rows = data_get(Customer::query()->find($selectedCustomerId)?->meta, 'customer_user.brand_discounts', []);
+
+        return collect(is_array($rows) ? $rows : [])
+            ->filter(fn (mixed $row): bool => is_array($row) && isset($row['brand_id']))
+            ->mapWithKeys(fn (array $row): array => [
+                (int) $row['brand_id'] => [
+                    max(0.0, min(100.0, (float) ($row['discount_1'] ?? 0))),
+                    max(0.0, min(100.0, (float) ($row['discount_2'] ?? 0))),
+                    max(0.0, min(100.0, (float) ($row['discount_3'] ?? 0))),
+                ],
+            ])
+            ->all();
+    }
+
+    private function applyDiscountChain(?string $price, array $discounts): ?string
+    {
+        if ($price === null) {
+            return null;
+        }
+
+        $value = (float) $price;
+        foreach ($discounts as $discount) {
+            $value *= 1 - (max(0.0, min(100.0, (float) $discount)) / 100);
+        }
+
+        return number_format($value, 2, '.', '');
+    }
+
+    private function applyCustomerBrandScope(Builder $query, User $user): void
+    {
+        if (! $user->hasRole('customer') || $user->selected_customer_id === null) {
+            return;
+        }
+
+        $allowed = data_get(
+            Customer::query()->find((int) $user->selected_customer_id)?->meta,
+            'customer_user.allowed_brand_ids'
+        );
+
+        if (! is_array($allowed)) {
+            return;
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $allowed)));
+        if ($ids === []) {
+            $query->whereRaw('1 = 0');
+        } else {
+            $query->whereIn('products.brand_id', $ids);
+        }
     }
 
     /**
@@ -1821,15 +2002,23 @@ class ProductSearchController extends Controller
     /**
      * @return array{codes:list<string>,names:list<string>}|null
      */
-    private function resolveStockVisibilityScope($user): ?array
+    private function resolveStockVisibilityScope($user, ?int $requestedCustomerId = null): ?array
     {
         if ($user->hasAnyRole(['admin', 'moderator'])) {
+            if ($user->hasRole('moderator') && $user->feature_permissions !== null) {
+                return $this->resolveFeatureStockVisibilityScope($user);
+            }
+
             return null;
         }
 
         $userScope = $this->resolveUserSpecificStockVisibilityScope($user);
         if ($userScope !== null) {
             return $userScope;
+        }
+
+        if ($user->feature_permissions !== null) {
+            return $this->resolveFeatureStockVisibilityScope($user);
         }
 
         $scopes = [];
@@ -1948,20 +2137,131 @@ class ProductSearchController extends Controller
      */
     private function resolveUserSpecificStockVisibilityScope(User $user): ?array
     {
-        $warehouseKeys = match ($this->normalizeScopeText($user->username)) {
-            'ERZURUM.HIZLISATIS' => [
+        $username = $this->normalizeScopeText($user->username);
+        $identity = $this->normalizeScopeMatchText($this->normalizeScopeText(implode(' ', array_filter([
+            $user->username,
+            $user->email,
+            $user->name,
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+        ]))) ?? '');
+
+        $warehouseKeys = match (true) {
+            in_array($username, ['TURGAY.BUYUKKAL'], true) => [
+                'search.stock.warehouse.erzurum_depo',
+                'search.stock.warehouse.trabzon',
+                'search.stock.warehouse.samsun',
+            ],
+            str_contains($identity, 'TRABZON') && $this->scopeTextContainsToken($identity, 'POINT') => [
+                ...CustomerFeaturePermissions::stockWarehouseKeys(),
+            ],
+            str_contains($identity, 'SAMSUN') && $this->scopeTextContainsToken($identity, 'POINT') => [
+                ...CustomerFeaturePermissions::stockWarehouseKeys(),
+            ],
+            str_contains($identity, 'BATUM') => [
+                ...CustomerFeaturePermissions::stockWarehouseKeys(),
+            ],
+            str_contains($identity, 'ERZURUM') && (
+                $this->scopeTextContainsToken($identity, 'POINT')
+                || str_contains($identity, 'HIZLISATIS')
+            ) => [
                 'search.stock.warehouse.erzurum_point',
                 'search.stock.warehouse.erzurum_depo',
             ],
-            'AHMET.ARAC',
-            'HUSEYIN.OZGUNEY',
-            'MEHMET.AKSOY' => [
+            in_array($username, ['ERZURUM.HIZLISATIS', 'ERZURUM.POINT'], true) => [
+                'search.stock.warehouse.erzurum_point',
                 'search.stock.warehouse.erzurum_depo',
             ],
-            'BATUM' => [
-                'search.stock.warehouse.erzurum_depo',
-                'search.stock.warehouse.batum',
+            in_array($username, ['TRABZON.POINT', 'TRABZON.MERKEZ', 'TRABZON.HIZLISATIS'], true) => [
+                ...CustomerFeaturePermissions::stockWarehouseKeys(),
             ],
+            in_array($username, ['SAMSUN.POINT', 'SAMSUN.MERKEZ', 'SAMSUN.HIZLISATIS'], true) => [
+                ...CustomerFeaturePermissions::stockWarehouseKeys(),
+            ],
+            in_array($username, ['AHMET.ARAC', 'HUSEYIN.OZGUNEY', 'MEHMET.AKSOY'], true) => [
+                'search.stock.warehouse.erzurum_depo',
+            ],
+            in_array($username, ['BATUM', 'BATUM.POINT', 'BATUM.HIZLISATIS'], true) => [
+                ...CustomerFeaturePermissions::stockWarehouseKeys(),
+            ],
+            default => [],
+        };
+        if ($warehouseKeys === []) {
+            return null;
+        }
+
+        $selectedLookup = array_flip($warehouseKeys);
+        $codes = [];
+        $names = [];
+
+        foreach (CustomerFeaturePermissions::stockWarehouseDefinitions() as $warehouse) {
+            if (! isset($selectedLookup[$warehouse['key']])) {
+                continue;
+            }
+
+            foreach ($warehouse['codes'] as $code) {
+                $normalizedCode = $this->normalizeScopeText($code);
+                if ($normalizedCode !== null) {
+                    $codes[] = $normalizedCode;
+                }
+            }
+
+            foreach ($warehouse['names'] as $name) {
+                $normalizedName = $this->normalizeScopeText($name);
+                if ($normalizedName !== null) {
+                    $names[] = $normalizedName;
+                }
+            }
+        }
+
+        return [
+            'codes' => array_values(array_unique($codes)),
+            'names' => array_values(array_unique($names)),
+        ];
+    }
+
+    /**
+     * @return array{codes:list<string>,names:list<string>}|null
+     */
+    private function resolveSelectedCustomerStockVisibilityScope($user, ?int $requestedCustomerId = null): ?array
+    {
+        $selectedCustomerId = $requestedCustomerId
+            ?? ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
+
+        if ($selectedCustomerId === null) {
+            return null;
+        }
+
+        $customer = Customer::query()
+            ->select([
+                'id',
+                'code',
+                'name',
+                'salesperson_user_id',
+                'branch_code',
+                'branch_name',
+                'region_code',
+                'region_name',
+                'city',
+                'meta',
+            ])
+            ->with('salesperson:id,username,branch_code,branch_name,region_code,region_name')
+            ->find($selectedCustomerId);
+
+        if (! $customer instanceof Customer) {
+            return null;
+        }
+
+        $branchCode = app(WarehouseBranchResolver::class)->resolveBranchCode($user, $customer);
+        $warehouseKeys = match ($branchCode) {
+            'TRABZON' => ['search.stock.warehouse.trabzon'],
+            'SAMSUN' => ['search.stock.warehouse.samsun'],
+            'BATUM' => ['search.stock.warehouse.batum'],
+            'ERZURUM' => $this->selectedCustomerUsesErzurumPoint($customer)
+                ? ['search.stock.warehouse.erzurum_point', 'search.stock.warehouse.erzurum_depo']
+                : ['search.stock.warehouse.erzurum_depo'],
             default => [],
         };
 
@@ -1969,6 +2269,32 @@ class ProductSearchController extends Controller
             return null;
         }
 
+        return $this->stockScopeFromWarehouseKeys($warehouseKeys);
+    }
+
+    private function selectedCustomerUsesErzurumPoint(Customer $customer): bool
+    {
+        $identity = implode(' ', array_filter([
+            $customer->code,
+            $customer->name,
+            $customer->branch_code,
+            $customer->branch_name,
+            $customer->salesperson?->username,
+            $customer->salesperson?->branch_code,
+            $customer->salesperson?->branch_name,
+        ]));
+        $normalized = $this->normalizeScopeMatchText($this->normalizeScopeText($identity) ?? '');
+
+        return $this->scopeTextContainsToken($normalized, 'POINT')
+            || str_contains($normalized, 'HIZLI SATIS');
+    }
+
+    /**
+     * @param  list<string>  $warehouseKeys
+     * @return array{codes:list<string>,names:list<string>}
+     */
+    private function stockScopeFromWarehouseKeys(array $warehouseKeys): array
+    {
         $selectedLookup = array_flip($warehouseKeys);
         $codes = [];
         $names = [];
@@ -2013,6 +2339,7 @@ class ProductSearchController extends Controller
             'TRABZON' => ['search.stock.warehouse.trabzon'],
             'SAMSUN' => ['search.stock.warehouse.samsun'],
             'BATUM' => [
+                'search.stock.warehouse.erzurum_point',
                 'search.stock.warehouse.erzurum_depo',
                 'search.stock.warehouse.batum',
             ],
@@ -2108,30 +2435,11 @@ class ProductSearchController extends Controller
         int $productId,
         mixed $fallbackPrice
     ): ?string {
-        if ($fallbackPrice !== null) {
-            $key = "price:dealer:{$dealerId}:product:{$productId}";
-            $normalized = number_format((float) $fallbackPrice, 2, '.', '');
-            try {
-                $cache->put($key, $normalized, now()->addMinutes(5));
-            } catch (\Throwable) {
-                // Search results must remain available when the optional price cache is unavailable.
-            }
+        unset($cache, $dealerId, $productId);
 
-            return $normalized;
-        }
-
-        $key = "price:dealer:{$dealerId}:product:{$productId}";
-        try {
-            $cachedPrice = $cache->get($key);
-        } catch (\Throwable) {
-            return null;
-        }
-
-        if ($cachedPrice !== null) {
-            return (string) $cachedPrice;
-        }
-
-        return null;
+        return $fallbackPrice !== null
+            ? number_format((float) $fallbackPrice, 2, '.', '')
+            : null;
     }
 
     private function normalizeMetaValue(mixed $value): ?string
@@ -2255,6 +2563,89 @@ class ProductSearchController extends Controller
             'integrations.logo.payload.raw.DESCRIPTION_1',
             'integrations.logo.payload.raw.DESC',
             'integrations.logo.payload.raw.DESC1',
+        ]);
+    }
+
+    public function previousPurchases(
+        Request $request,
+        string $productCode,
+        EryazPreviousPurchaseHistoryService $history
+    ): JsonResponse {
+        return $this->previousPurchasesResponse($request, $productCode, $history);
+    }
+
+    public function previousPurchasesByQuery(
+        Request $request,
+        EryazPreviousPurchaseHistoryService $history
+    ): JsonResponse {
+        $validated = $request->validate([
+            'product_code' => ['required', 'string', 'max:191'],
+        ]);
+
+        return $this->previousPurchasesResponse($request, (string) $validated['product_code'], $history);
+    }
+
+    private function previousPurchasesResponse(
+        Request $request,
+        string $productCode,
+        EryazPreviousPurchaseHistoryService $history
+    ): JsonResponse {
+        $validated = $request->validate([
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $customerId = isset($validated['customer_id'])
+            ? (int) $validated['customer_id']
+            : ($request->user()->selected_customer_id !== null ? (int) $request->user()->selected_customer_id : null);
+
+        if ($customerId === null) {
+            return response()->json([
+                'message' => 'Önceki alımları görüntülemek için önce bir cari seçiniz.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $customer = Customer::query()->find($customerId);
+        if (! $customer instanceof Customer) {
+            return response()->json([
+                'message' => 'Seçili cari bulunamadı.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        if (! app(CustomerAccessScopeService::class)->canAccessCustomer($request->user(), $customer)) {
+            return response()->json([
+                'message' => 'Bu carinin önceki alımlarını görüntüleme yetkiniz yok.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $productCode = trim(urldecode($productCode));
+        if ($productCode === '') {
+            return response()->json([
+                'message' => 'Ürün kodu bulunamadı.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        try {
+            $payload = $history->fetch((string) $customer->code, $productCode, (int) ($validated['limit'] ?? 50));
+        } catch (Throwable $exception) {
+            Log::error('Eryaz previous purchases could not be fetched.', [
+                'customer_id' => $customer->id,
+                'customer_code' => $customer->code,
+                'product_code' => $productCode,
+                'exception' => $exception,
+            ]);
+
+            return response()->json([
+                'message' => 'Önceki alımlar şu anda alınamadı.',
+            ], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
+        return response()->json([
+            'customer_id' => (int) $customer->id,
+            'customer_code' => (string) $customer->code,
+            'product_code' => $productCode,
+            'summary' => $payload['summary'] ?? [],
+            'items' => $payload['items'] ?? [],
         ]);
     }
 
@@ -2596,21 +2987,24 @@ class ProductSearchController extends Controller
 
     private function resolveWarehouseShelfAddress(array $meta, array $warehouse, ?string $warehouseCode): ?string
     {
-        $direct = $this->resolveShelfAddress($warehouse);
-        if ($direct !== null) {
-            return $direct;
+        $shouldPreferScopedRawShelf = trim((string) $warehouseCode) === '0';
+        if (! $shouldPreferScopedRawShelf) {
+            $direct = $this->resolveShelfAddress($warehouse);
+            if ($direct !== null) {
+                return $direct;
+            }
         }
 
         $raw = data_get($meta, 'integrations.logo.payload.raw', []);
         if (! is_array($raw)) {
-            return null;
+            return $this->resolveShelfAddress($warehouse);
         }
 
         $keys = array_filter([
-            $warehouseCode,
+            ...$this->warehouseShelfKeyAliases($warehouseCode),
             $warehouse['shelf_key'] ?? null,
-            $warehouse['invenno'] ?? null,
-            $warehouse['warehouse_no'] ?? null,
+            ...$this->warehouseShelfKeyAliases($warehouse['invenno'] ?? null),
+            ...$this->warehouseShelfKeyAliases($warehouse['warehouse_no'] ?? null),
         ], fn ($value): bool => is_scalar($value) && trim((string) $value) !== '');
 
         foreach ($keys as $key) {
@@ -2637,7 +3031,31 @@ class ProductSearchController extends Controller
             }
         }
 
-        return null;
+        return $this->resolveShelfAddress($warehouse);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function warehouseShelfKeyAliases(mixed $value): array
+    {
+        if (! is_scalar($value)) {
+            return [];
+        }
+
+        $key = trim((string) $value);
+        if ($key === '') {
+            return [];
+        }
+
+        return match ($key) {
+            '0' => ['250', '0'],
+            '1' => ['25', '1'],
+            '2' => ['61', '2'],
+            '3' => ['55', '3'],
+            '4' => ['995', '4'],
+            default => [$key],
+        };
     }
 
     private function stockLocationVisible(string $branch, ?string $warehouseCode, ?array $stockScope): bool
@@ -2869,7 +3287,7 @@ class ProductSearchController extends Controller
 
         $normalizedSearch = $normalizedSearch !== null && $normalizedSearch !== '' ? $normalizedSearch : null;
         $limit = max(1, $limit);
-        $cacheKey = 'products:fast-code-product-ids:v2:'.md5(mb_strtolower($search, 'UTF-8').':'.($normalizedSearch ?? '').':'.$limit);
+        $cacheKey = 'products:fast-code-product-ids:v3:'.md5(mb_strtolower($search, 'UTF-8').':'.($normalizedSearch ?? '').':'.$limit);
 
         return $this->cacheStore()->remember(
             $cacheKey,
@@ -2965,6 +3383,21 @@ class ProductSearchController extends Controller
                         });
                     }
 
+                    $appendProductQuery(function (Builder $query) use ($escapedNormalizedSearch): void {
+                        $query->where(function (Builder $textQuery) use ($escapedNormalizedSearch): void {
+                            $textQuery
+                                ->whereRaw($this->normalizedProductCodeSql('products.name').' LIKE ?', ['%'.$escapedNormalizedSearch.'%'])
+                                ->orWhereRaw($this->normalizedProductCodeSql('products.description').' LIKE ?', ['%'.$escapedNormalizedSearch.'%'])
+                                ->orWhereHas('brand', function (Builder $brandQuery) use ($escapedNormalizedSearch): void {
+                                    $brandQuery->whereRaw($this->normalizedProductCodeSql('brands.name').' LIKE ?', ['%'.$escapedNormalizedSearch.'%']);
+                                });
+
+                            foreach ($this->productSearchMetaPaths() as $path) {
+                                $textQuery->orWhereRaw($this->normalizedJsonValueSql('products.meta', $path).' LIKE ?', ['%'.$escapedNormalizedSearch.'%']);
+                            }
+                        });
+                    });
+
                     $appendIds($this->matchingCodeAliasProductIds($normalizedSearch, $limit));
                 }
 
@@ -3054,6 +3487,7 @@ class ProductSearchController extends Controller
 
             if (preg_match('/[0-9\\-_.\\/]/', $token) === 1 || mb_strlen($compactToken, 'UTF-8') <= 3) {
                 $hasCodeLikeToken = true;
+
                 continue;
             }
 
@@ -3071,7 +3505,14 @@ class ProductSearchController extends Controller
             return false;
         }
 
-        return mb_strlen($this->compactProductSearchToken($search), 'UTF-8') >= 3;
+        $compact = $this->compactProductSearchToken($search);
+        if (mb_strlen($compact, 'UTF-8') < 3) {
+            return false;
+        }
+
+        $plain = preg_replace('/[^\pL\pN]+/u', '', trim($search)) ?? '';
+
+        return $plain !== '' && mb_strtolower($plain, 'UTF-8') !== mb_strtolower(trim($search), 'UTF-8');
     }
 
     /**

@@ -32,9 +32,13 @@ class LogoCustomerSyncService
             'created' => 0,
             'updated' => 0,
             'skipped' => 0,
+            'stale_inactivated' => 0,
         ];
 
-        DB::transaction(function () use ($payload, $defaultDealer, &$summary): void {
+        $syncRunId = $this->nullableString($payload['sync_run_id'] ?? null);
+        $sourceTable = $this->nullableString($payload['source_table'] ?? null);
+
+        DB::transaction(function () use ($payload, $defaultDealer, $syncRunId, $sourceTable, &$summary): void {
             foreach ((array) ($payload['records'] ?? []) as $index => $record) {
                 $dealer = $this->resolveDealer(
                     $record['dealer_id'] ?? null,
@@ -71,6 +75,22 @@ class LogoCustomerSyncService
                     );
                 }
 
+                $creditLimit = array_key_exists('credit_limit', $record)
+                    ? $record['credit_limit']
+                    : (
+                        Arr::get($record, 'meta.open_account_risk_limit')
+                        ?? Arr::get($record, 'meta.risk.open_account_limit')
+                        ?? Arr::get($record, 'meta.raw.OPEN_ACCOUNT_RISK_LIMIT')
+                        ?? Arr::get($record, 'meta.raw.OPENACCOUNTRISKLIMIT')
+                        ?? Arr::get($record, 'meta.raw.RISKLIMIT')
+                        ?? Arr::get($record, 'meta.raw.RISKLIMIT1')
+                        ?? Arr::get($record, 'meta.raw.RISK_LIMIT')
+                        ?? Arr::get($record, 'meta.raw.RISK_LIMIT1')
+                        ?? Arr::get($record, 'meta.raw.DBSLIMIT1')
+                        ?? Arr::get($record, 'meta.raw.OPENACCRISKLIMIT')
+                        ?? ($customer?->credit_limit ?? 0)
+                    );
+
                 $attributes = [
                     'dealer_id' => $dealer->id,
                     'salesperson_user_id' => $salespersonUserId,
@@ -87,17 +107,17 @@ class LogoCustomerSyncService
                     'district' => $this->resolveLocationField($record, 'district', $customer?->district),
                     'tax_office' => $this->stringField($record, 'tax_office', $customer?->tax_office),
                     'tax_number' => $this->stringField($record, 'tax_number', $customer?->tax_number),
-                    'credit_limit' => array_key_exists('credit_limit', $record)
-                        ? $record['credit_limit']
-                        : ($customer?->credit_limit ?? 0),
+                    'credit_limit' => $creditLimit,
                     'is_active' => array_key_exists('is_active', $record)
                         ? (bool) $record['is_active']
                         : ($customer?->is_active ?? true),
-                    'meta' => $this->buildMeta($customer, $record, $externalReference),
+                    'meta' => $this->buildMeta($customer, $record, $externalReference, $syncRunId, $sourceTable),
                     'last_synced_at' => now(),
                 ];
 
                 if ($customer) {
+                    $this->releaseSourceReferenceCollision($dealer, $customer, $externalReference);
+
                     $customer->fill($attributes)->save();
                     $this->syncState->record(
                         system: 'logo',
@@ -106,7 +126,11 @@ class LogoCustomerSyncService
                         entity: $customer,
                         externalRef: $attributes['source_reference'],
                         status: 'synced',
-                        meta: ['operation' => 'updated'],
+                        meta: [
+                            'operation' => 'updated',
+                            'sync_run_id' => $syncRunId,
+                            'source_table' => $sourceTable,
+                        ],
                         payload: $record,
                     );
                     $summary['updated']++;
@@ -122,12 +146,20 @@ class LogoCustomerSyncService
                     entity: $createdCustomer,
                     externalRef: $attributes['source_reference'],
                     status: 'synced',
-                    meta: ['operation' => 'created'],
+                    meta: [
+                        'operation' => 'created',
+                        'sync_run_id' => $syncRunId,
+                        'source_table' => $sourceTable,
+                    ],
                     payload: $record,
                 );
                 $summary['created']++;
             }
         });
+
+        if ($this->shouldFinalizeFullSync($payload, $syncRunId)) {
+            $summary['stale_inactivated'] = $this->inactivateStaleLogoCustomers($syncRunId);
+        }
 
         return $summary;
     }
@@ -245,6 +277,7 @@ class LogoCustomerSyncService
         if ($externalReference !== null) {
             $byExternalReference = Customer::query()
                 ->where('dealer_id', $dealer->id)
+                ->where('source_system', 'logo')
                 ->where('source_reference', $externalReference)
                 ->lockForUpdate()
                 ->first();
@@ -265,6 +298,30 @@ class LogoCustomerSyncService
         }
 
         return null;
+    }
+
+    private function releaseSourceReferenceCollision(
+        Dealer $dealer,
+        Customer $customer,
+        ?string $externalReference,
+    ): void {
+        if ($externalReference === null) {
+            return;
+        }
+
+        Customer::query()
+            ->where('dealer_id', $dealer->id)
+            ->where('source_system', 'logo')
+            ->where('source_reference', $externalReference)
+            ->whereKeyNot($customer->getKey())
+            ->lockForUpdate()
+            ->update([
+                'source_system' => 'logo-superseded',
+                'sync_status' => 'superseded',
+                'sync_error' => 'Superseded during Logo customer source reference remap.',
+                'last_synced_at' => now(),
+                'updated_at' => now(),
+            ]);
     }
 
     private function resolveSalespersonUserId(
@@ -335,7 +392,13 @@ class LogoCustomerSyncService
      * @param  array<string, mixed>  $record
      * @return array<string, mixed>
      */
-    private function buildMeta(?Customer $customer, array $record, ?string $externalReference): array
+    private function buildMeta(
+        ?Customer $customer,
+        array $record,
+        ?string $externalReference,
+        ?string $syncRunId = null,
+        ?string $sourceTable = null,
+    ): array
     {
         $meta = is_array($customer?->meta) ? $customer->meta : [];
 
@@ -353,18 +416,53 @@ class LogoCustomerSyncService
             Arr::set($meta, 'integrations.logo.external_ref', $externalReference);
         }
 
+        if ($syncRunId !== null) {
+            Arr::set($meta, 'integrations.logo.sync_run_id', $syncRunId);
+        }
+
+        if ($sourceTable !== null) {
+            Arr::set($meta, 'integrations.logo.source_table', $sourceTable);
+        }
+
         if (! empty($record['meta']) && is_array($record['meta'])) {
             Arr::set($meta, 'integrations.logo.payload', $record['meta']);
         }
 
+        $eInvoiceUser = $this->resolveLogoEInvoiceUser($record);
+        if ($eInvoiceUser !== null) {
+            Arr::set($meta, 'integrations.logo.payload.e_invoice_user', $eInvoiceUser);
+        }
+
         $financials = [];
 
+        $netBalance = null;
         if (array_key_exists('balance_due', $record) && is_numeric($record['balance_due'])) {
-            $financials['total_due'] = number_format((float) $record['balance_due'], 2, '.', '');
+            $netBalance = (float) $record['balance_due'];
+            $financials['total_due'] = number_format($netBalance, 2, '.', '');
+            $financials['net_balance'] = number_format($netBalance, 2, '.', '');
+        } elseif (array_key_exists('balance', $record) && is_numeric($record['balance'])) {
+            $netBalance = (float) $record['balance'];
+            $financials['net_balance'] = number_format($netBalance, 2, '.', '');
         }
 
         if (array_key_exists('order_due', $record) && is_numeric($record['order_due'])) {
             $financials['order_due'] = number_format((float) $record['order_due'], 2, '.', '');
+        }
+
+        if (array_key_exists('balance_debit', $record) && is_numeric($record['balance_debit'])) {
+            $financials['debit'] = number_format((float) $record['balance_debit'], 2, '.', '');
+        }
+
+        if (array_key_exists('balance_credit', $record) && is_numeric($record['balance_credit'])) {
+            $financials['credit'] = number_format((float) $record['balance_credit'], 2, '.', '');
+        }
+
+        $direction = $this->nullableString($record['balance_direction'] ?? null);
+        if ($direction === null && $netBalance !== null) {
+            $direction = $netBalance > 0 ? 'debit' : ($netBalance < 0 ? 'credit' : 'zero');
+        }
+        if ($direction !== null) {
+            $financials['direction'] = mb_strtolower($direction, 'UTF-8');
         }
 
         if (array_key_exists('currency', $record)) {
@@ -375,10 +473,119 @@ class LogoCustomerSyncService
         }
 
         if ($financials !== []) {
+            $financials['synced_at'] = now()->toIso8601String();
             Arr::set($meta, 'integrations.logo.financials', $financials);
         }
 
         return $meta;
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     */
+    private function resolveLogoEInvoiceUser(array $record): ?bool
+    {
+        $candidates = [
+            Arr::get($record, 'e_invoice_user'),
+            Arr::get($record, 'e_invoice'),
+            Arr::get($record, 'e_fatura'),
+            Arr::get($record, 'meta.e_invoice_user'),
+            Arr::get($record, 'meta.e_invoice'),
+            Arr::get($record, 'meta.e_fatura'),
+            Arr::get($record, 'meta.raw.EINVOICE'),
+            Arr::get($record, 'meta.raw.EINVOICEUSER'),
+            Arr::get($record, 'meta.raw.EINVOICE_USER'),
+            Arr::get($record, 'meta.raw.ACCEPTEINV'),
+            Arr::get($record, 'meta.raw.EFATURA'),
+            Arr::get($record, 'meta.raw.E_FATURA'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate !== null) {
+                return $this->logoFlagToBool($candidate);
+            }
+        }
+
+        return null;
+    }
+
+    private function logoFlagToBool(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (float) $value !== 0.0;
+        }
+
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return false;
+        }
+
+        return in_array(mb_strtoupper($normalized, 'UTF-8'), [
+            '1',
+            'TRUE',
+            'YES',
+            'EVET',
+            'E',
+            'ON',
+            'AKTIF',
+            'AKTİF',
+        ], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function shouldFinalizeFullSync(array $payload, ?string $syncRunId): bool
+    {
+        if ($syncRunId === null) {
+            return false;
+        }
+
+        return filter_var($payload['is_full_sync'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            && filter_var($payload['is_final_batch'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function inactivateStaleLogoCustomers(string $syncRunId): int
+    {
+        $inactivated = 0;
+
+        Customer::query()
+            ->where('source_system', 'logo')
+            ->where('is_active', true)
+            ->select(['id', 'source_reference', 'is_active', 'sync_status', 'meta'])
+            ->chunkById(500, function ($customers) use ($syncRunId, &$inactivated): void {
+                foreach ($customers as $customer) {
+                    if (! $customer instanceof Customer) {
+                        continue;
+                    }
+
+                    $logoExternalRef = $this->nullableString(data_get($customer->meta, 'integrations.logo.external_ref'))
+                        ?? $this->nullableString($customer->source_reference);
+                    if ($logoExternalRef === null) {
+                        continue;
+                    }
+
+                    $customerSyncRunId = $this->nullableString(data_get($customer->meta, 'integrations.logo.sync_run_id'));
+                    if ($customerSyncRunId === $syncRunId) {
+                        continue;
+                    }
+
+                    $customer->forceFill([
+                        'is_active' => false,
+                        'sync_status' => 'stale',
+                        'sync_error' => 'Logo full sync snapshot did not include this customer.',
+                        'last_synced_at' => now(),
+                    ])->save();
+
+                    $inactivated++;
+                }
+            });
+
+        return $inactivated;
     }
 
     /**

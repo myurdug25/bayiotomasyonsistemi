@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
@@ -102,6 +103,7 @@ function logoECollectionPreview(): string {
 }
 
 export function NewCustomerCardPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { user, selectCustomer } = useSession();
   const roleSlugs = user?.roles.map((role) => role.slug) ?? [];
@@ -134,6 +136,7 @@ export function NewCustomerCardPage() {
                 : `Cari oluşturuldu ve seçildi: ${customerCode}`
               : "Yeni cari oluşturuldu ve seçildi."
           );
+          router.push("/search");
 
           return;
         } catch {
@@ -142,6 +145,7 @@ export function NewCustomerCardPage() {
               ? `Cari oluşturuldu ama otomatik seçilemedi: ${customerCode}`
               : "Yeni cari oluşturuldu ama otomatik seçilemedi."
           );
+          router.push("/search");
 
           return;
         }
@@ -154,6 +158,7 @@ export function NewCustomerCardPage() {
             : `Cari oluşturuldu: ${customerCode}`
           : "Yeni cari kart kaydedildi."
       );
+      router.push("/search");
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Başvuru kaydedilemedi.");

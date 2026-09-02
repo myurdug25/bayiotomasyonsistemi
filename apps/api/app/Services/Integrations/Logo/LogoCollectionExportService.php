@@ -5,6 +5,7 @@ namespace App\Services\Integrations\Logo;
 use App\Models\Cashbox;
 use App\Models\Collection;
 use App\Models\Dealer;
+use App\Models\User;
 use App\Services\Integrations\IntegrationSyncStateService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
@@ -40,7 +41,12 @@ class LogoCollectionExportService
         $limit = min((int) ($filters['limit'] ?? 100), 500);
 
         $query = Collection::query()
-            ->with(['customer:id,dealer_id,source_system,source_reference,code,name'])
+            ->with([
+                'customer:id,dealer_id,salesperson_user_id,source_system,source_reference,code,name',
+                'customer.salesperson:id,name,username,logo_customer_specode4',
+                'collectedBy:id,name,username,logo_customer_specode4',
+                'createdBy:id,name,username,logo_customer_specode4',
+            ])
             ->where('source_system', 'b2b')
             ->whereIn('sync_status', $statuses)
             ->whereHas('customer', function ($q): void {
@@ -200,15 +206,23 @@ class LogoCollectionExportService
         $customer = $collection->customer;
         $meta = is_array($collection->meta) ? $collection->meta : [];
         $cashbox = $this->resolveCashboxPayload($meta);
+        [$salesperson, $salespersonCode] = $this->resolveLogoSalesperson($collection);
         $logoDefaults = is_array(data_get($meta, 'integrations.logo.defaults'))
             ? data_get($meta, 'integrations.logo.defaults')
             : [];
         $referenceFields = is_array($collection->reference_fields) ? $collection->reference_fields : [];
+        if (in_array((string) $collection->method, ['check', 'note'], true)) {
+            // The cheque/note number belongs to the user's document and must not
+            // be reused as Logo's unique portfolio number. Reusing a short cheque
+            // number (for example 123231) caused CSCARD duplicate-key failures.
+            $referenceFields['portfolio_no'] = $this->logoPortfolioNumber($collection);
+        }
         $targetTables = match ((string) $collection->method) {
             'cash' => ['KSLINES', 'CLFLINE', 'PAYTRANS'],
-            'transfer', 'cc' => data_get($referenceFields, 'collection_channel') === 'factory'
+            'transfer' => ['BNFICHE', 'BNFLINE', 'CLFLINE', 'PAYTRANS'],
+            'cc' => data_get($referenceFields, 'collection_channel') === 'factory'
                 ? ['CLFLINE', 'PAYTRANS']
-                : ['BNFICHE', 'BNFLINE', 'CLFLINE', 'PAYTRANS'],
+                : ['CLFICHE', 'CLFLINE', 'PAYTRANS'],
             'check', 'note' => ['CSCARD', 'CSROLL', 'CSTRANS', 'CLFLINE', 'PAYTRANS'],
             default => ['CLFLINE'],
         };
@@ -219,7 +233,15 @@ class LogoCollectionExportService
             'dealer_id' => $collection->dealer_id,
             'customer_id' => $collection->customer_id,
             'customer_code' => $customer?->code,
+            'customer_name' => $customer?->name,
             'customer_external_ref' => $customer?->source_reference,
+            'salesperson_code' => $salespersonCode,
+            'salesperson' => [
+                'id' => $salesperson?->id,
+                'name' => $salesperson?->name,
+                'username' => $salesperson?->username,
+                'logo_code' => $salespersonCode,
+            ],
             'date' => optional($collection->date ?? $collection->collection_date)?->toDateString(),
             'method' => $collection->method,
             'amount' => number_format((float) $collection->amount, 2, '.', ''),
@@ -244,6 +266,7 @@ class LogoCollectionExportService
                 'source_fref' => data_get($logoDefaults, 'source_fref'),
                 'paydef_ref' => data_get($logoDefaults, 'paydef_ref'),
                 'bank_code' => data_get($referenceFields, 'bank_logo_code'),
+                'salesperson_code' => $salespersonCode,
                 'factory_customer_code' => data_get($referenceFields, 'factory_customer_code'),
                 'due_date' => data_get($referenceFields, 'due_date'),
                 'document_no' => data_get($referenceFields, 'check_no') ?? data_get($referenceFields, 'note_no'),
@@ -258,6 +281,60 @@ class LogoCollectionExportService
                 'cashbox' => $cashbox,
             ],
         ];
+    }
+
+    private function logoPortfolioNumber(Collection $collection): string
+    {
+        $date = $collection->date ?? $collection->collection_date ?? $collection->created_at ?? now();
+        $prefix = (string) $collection->method === 'note' ? 'S' : 'C';
+
+        return sprintf(
+            '%s%s%09d',
+            $prefix,
+            Carbon::parse($date)->format('ymd'),
+            (int) $collection->getKey(),
+        );
+    }
+
+    /**
+     * @return array{0:?User,1:?string}
+     */
+    private function resolveLogoSalesperson(Collection $collection): array
+    {
+        $customerSalesperson = $collection->customer?->salesperson;
+
+        foreach ([$collection->collectedBy, $collection->createdBy, $customerSalesperson] as $candidate) {
+            $code = $this->singleLogoSalespersonCode($candidate);
+            if ($code !== null) {
+                return [$candidate, $code];
+            }
+        }
+
+        if ($customerSalesperson instanceof User) {
+            return [$customerSalesperson, $this->nullableString($customerSalesperson->username)];
+        }
+
+        $fallback = $collection->collectedBy ?? $collection->createdBy;
+
+        return [$fallback, $this->nullableString($fallback?->username)];
+    }
+
+    private function singleLogoSalespersonCode(?User $user): ?string
+    {
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        $codes = collect(explode(',', (string) $user->logo_customer_specode4))
+            ->map(fn (string $code): string => trim($code))
+            ->filter()
+            ->values();
+
+        if ($codes->count() !== 1) {
+            return null;
+        }
+
+        return $this->nullableString($codes->first());
     }
 
     /**
@@ -322,6 +399,13 @@ class LogoCollectionExportService
             return true;
         }
 
+        // A duplicate Logo CSCARD portfolio number needs reconciliation, not
+        // blind retries. Retrying can keep colliding with an already-created
+        // cheque/note and obscure whether Logo accepted an earlier attempt.
+        if ($this->requiresManualReconciliation($collection->sync_error)) {
+            return false;
+        }
+
         $attempts = (int) data_get($collection->meta, 'integrations.logo.retry.attempt_count', 0);
         if ($attempts >= $this->maxRetryAttempts()) {
             return false;
@@ -332,6 +416,14 @@ class LogoCollectionExportService
         );
 
         return $nextRetryAt === null || Carbon::parse($nextRetryAt)->isPast();
+    }
+
+    private function requiresManualReconciliation(?string $error): bool
+    {
+        $normalized = mb_strtolower((string) $error);
+
+        return str_contains($normalized, 'lg_003_01_cscard')
+            && str_contains($normalized, 'duplicate key');
     }
 
     /**

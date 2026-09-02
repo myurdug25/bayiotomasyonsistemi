@@ -3,6 +3,7 @@
 namespace App\Services\Meilisearch;
 
 use App\Models\Product;
+use App\Support\Products\ProductCodeNormalizer;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -15,6 +16,8 @@ class ProductSearchService
     private const SEARCH_UNAVAILABLE_CACHE_KEY = 'meilisearch:products:search-unavailable';
 
     private bool $indexEnsured = false;
+
+    private ?int $lastTaskUid = null;
 
     public function isEnabled(): bool
     {
@@ -105,8 +108,10 @@ class ProductSearchService
                 ->values()
                 ->all(),
             'name' => (string) $product->name,
+            'description' => $product->description,
             'brand' => $product->brand?->name,
             'category' => $product->category?->name,
+            'search_text' => $this->buildSearchText($product),
             'brand_id' => $product->brand_id !== null ? (int) $product->brand_id : null,
             'category_id' => $product->category_id !== null ? (int) $product->category_id : null,
             'is_active' => (bool) $product->is_active,
@@ -117,6 +122,8 @@ class ProductSearchService
         if (! $response->successful()) {
             throw new RuntimeException('Meilisearch upsert failed: '.$response->body());
         }
+
+        $this->rememberTaskUid($response->json());
     }
 
     public function deleteProductById(int $productId): void
@@ -132,6 +139,8 @@ class ProductSearchService
         if (! $response->successful()) {
             throw new RuntimeException('Meilisearch delete failed: '.$response->body());
         }
+
+        $this->rememberTaskUid($response->json());
     }
 
     public function reindexAll(?int $chunkSize = null): void
@@ -141,6 +150,7 @@ class ProductSearchService
         }
 
         $this->ensureIndex();
+        $this->clearIndex();
 
         $chunk = $chunkSize ?? (int) config('meilisearch.batch_size', 500);
 
@@ -150,6 +160,27 @@ class ProductSearchService
             ->chunkById($chunk, function (Collection $products) {
                 $this->upsertProducts($products);
             });
+
+        // Meilisearch writes are asynchronous. A synchronous reindex command
+        // must not report success before the final queued batch is searchable.
+        if ($this->lastTaskUid !== null) {
+            $this->waitForTask($this->lastTaskUid);
+        }
+    }
+
+    private function clearIndex(): void
+    {
+        $response = $this->client()->delete($this->indexPath('/documents'));
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Meilisearch index clear failed: '.$response->body());
+        }
+
+        $this->rememberTaskUid($response->json());
+
+        if ($this->lastTaskUid !== null) {
+            $this->waitForTask($this->lastTaskUid);
+        }
     }
 
     public function ensureIndex(): void
@@ -176,17 +207,75 @@ class ProductSearchService
         }
 
         $settings = $this->client()->patch($this->indexPath('/settings'), [
-            'searchableAttributes' => ['sku', 'oem', 'code_aliases', 'name', 'brand', 'category'],
+            'searchableAttributes' => ['sku', 'oem', 'code_aliases', 'name', 'description', 'brand', 'category', 'search_text'],
             'filterableAttributes' => ['brand_id', 'category_id', 'is_active'],
             'sortableAttributes' => ['id'],
-            'typoTolerance' => ['enabled' => true],
+            'typoTolerance' => [
+                'enabled' => true,
+                // Short stock/OEM/viscosity codes must never be broadened into
+                // unrelated numeric codes (for example 10W40 -> 1040).
+                'minWordSizeForTypos' => [
+                    'oneTypo' => 8,
+                    'twoTypos' => 12,
+                ],
+                'disableOnAttributes' => ['sku', 'oem', 'code_aliases', 'search_text'],
+            ],
         ]);
 
         if (! $settings->successful()) {
             throw new RuntimeException('Meilisearch settings update failed: '.$settings->body());
         }
 
+        $this->rememberTaskUid($settings->json());
         $this->indexEnsured = true;
+    }
+
+    private function buildSearchText(Product $product): string
+    {
+        $meta = is_array($product->meta) ? $product->meta : [];
+        $rawValues = [
+            $product->sku,
+            $product->oem_code,
+            $product->name,
+            $product->description,
+            $product->brand?->name,
+            $product->category?->name,
+            data_get($meta, 'specode5'),
+            data_get($meta, 'integrations.logo.payload.raw.CODE'),
+            data_get($meta, 'integrations.logo.payload.raw.NAME'),
+            data_get($meta, 'integrations.logo.payload.raw.NAME2'),
+            data_get($meta, 'integrations.logo.payload.raw.NAME3'),
+            data_get($meta, 'integrations.logo.payload.raw.SPECODE5'),
+            data_get($meta, 'integrations.logo.payload.raw.STGRPCODE'),
+            data_get($meta, 'integrations.logo.payload.raw.PRODUCERCODE'),
+        ];
+
+        $aliases = $product->relationLoaded('codeAliases')
+            ? $product->codeAliases
+            : collect();
+
+        foreach ($aliases as $alias) {
+            $rawValues[] = $alias->code;
+        }
+
+        $values = [];
+        foreach ($rawValues as $value) {
+            if ($value === null) {
+                continue;
+            }
+
+            $value = trim((string) $value);
+            if ($value === '') {
+                continue;
+            }
+
+            $compact = ProductCodeNormalizer::normalize($value);
+            if ($compact !== '') {
+                $values[] = $compact;
+            }
+        }
+
+        return implode(' ', array_values(array_unique($values)));
     }
 
     private function client(): PendingRequest
@@ -208,6 +297,44 @@ class ProductSearchService
         $uid = urlencode((string) config('meilisearch.products_index', 'products'));
 
         return '/indexes/'.$uid.$suffix;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $payload
+     */
+    private function rememberTaskUid(?array $payload): void
+    {
+        $taskUid = $payload['taskUid'] ?? null;
+        if (is_numeric($taskUid)) {
+            $this->lastTaskUid = (int) $taskUid;
+        }
+    }
+
+    private function waitForTask(int $taskUid, int $timeoutSeconds = 180): void
+    {
+        $deadline = microtime(true) + max(1, $timeoutSeconds);
+
+        do {
+            $response = $this->client()->get('/tasks/'.$taskUid);
+            if (! $response->successful()) {
+                throw new RuntimeException('Meilisearch task check failed: '.$response->body());
+            }
+
+            $status = (string) $response->json('status');
+            if ($status === 'succeeded') {
+                return;
+            }
+
+            if (in_array($status, ['failed', 'canceled'], true)) {
+                throw new RuntimeException(
+                    'Meilisearch task failed: '.json_encode($response->json('error'), JSON_UNESCAPED_UNICODE)
+                );
+            }
+
+            usleep(100_000);
+        } while (microtime(true) < $deadline);
+
+        throw new RuntimeException("Meilisearch task {$taskUid} timed out.");
     }
 
     /**

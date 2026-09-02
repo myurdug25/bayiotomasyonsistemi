@@ -3,10 +3,12 @@
 namespace App\Services\Warehouse;
 
 use App\Models\IntegrationSyncState;
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderStatusHistory;
 use App\Models\Product;
+use App\Models\PurchaseReceipt;
 use App\Models\Shipment;
 use App\Models\ShipmentItem;
 use App\Models\ShipmentScan;
@@ -16,6 +18,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Integrations\IntegrationSyncStateService;
 use App\Services\Integrations\Logo\LogoShipmentImmediateExportService;
+use App\Services\Notifications\UserNotificationService;
 use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -27,6 +30,7 @@ class WarehouseShipmentService
     public function __construct(
         private readonly IntegrationSyncStateService $syncState,
         private readonly LogoShipmentImmediateExportService $logoShipmentImmediateExport,
+        private readonly UserNotificationService $notifications,
     ) {}
 
     public function createShipment(
@@ -39,7 +43,7 @@ class WarehouseShipmentService
     ): Shipment {
         return DB::transaction(function () use ($user, $orderId, $warehouseId, $warehouseCode, $warehouseName, $assignedUserId): Shipment {
             $order = Order::query()
-                ->with(['items'])
+                ->with(['items', 'user.roles'])
                 ->lockForUpdate()
                 ->find($orderId);
 
@@ -50,6 +54,10 @@ class WarehouseShipmentService
             }
 
             $this->ensureOrderScope($user, $order);
+
+            if ($order->status !== 'approved' && $this->canAutoApproveCustomerOrderForShipment($order)) {
+                $this->updateOrderStatus($order, 'approved', $user, 'Müşteri siparişi sevkiyat başlatılırken otomatik onaylandı.');
+            }
 
             if ($order->status !== 'approved') {
                 throw ValidationException::withMessages([
@@ -219,6 +227,27 @@ class WarehouseShipmentService
         }
     }
 
+    private function canAutoApproveCustomerOrderForShipment(Order $order): bool
+    {
+        $order->loadMissing('user.roles');
+
+        $creator = $order->user;
+        if (! $creator instanceof User) {
+            return false;
+        }
+
+        if ($creator->hasRole('customer')) {
+            return true;
+        }
+
+        if ($creator->hasAnyRole(['admin', 'dealer_admin', 'salesperson', 'warehouse', 'point', 'cashier'])) {
+            return false;
+        }
+
+        return $creator->selected_customer_id !== null
+            && (int) $creator->selected_customer_id === (int) $order->customer_id;
+    }
+
     private function resolveWarehouse(?int $warehouseId, ?string $warehouseCode, ?string $warehouseName): Warehouse
     {
         $warehouse = null;
@@ -277,6 +306,19 @@ class WarehouseShipmentService
             'user:id,name,username,email,branch_code,branch_name',
         ]);
 
+        $transferMeta = $this->warehouseTransferOrderMeta($order);
+        if ($this->nullableString(data_get($transferMeta, 'document_type')) === 'warehouse_transfer') {
+            $targetCode = $this->nullableString(data_get($transferMeta, 'transfer_source_warehouse_code'));
+            $targetName = $this->nullableString(data_get($transferMeta, 'transfer_source_warehouse_name'));
+
+            if ($targetCode !== null) {
+                return [
+                    'code' => $targetCode,
+                    'name' => $targetName ?? "Logo Ambar {$targetCode}",
+                ];
+            }
+        }
+
         $identityWarehouse = $this->targetWarehouseForOrderContext($order);
 
         if ($identityWarehouse !== null) {
@@ -321,7 +363,17 @@ class WarehouseShipmentService
 
         $assignedUser = User::query()
             ->where('is_active', true)
-            ->whereHas('roles', fn ($roleQuery) => $roleQuery->where('slug', 'warehouse'))
+            ->where(function ($query): void {
+                $query
+                    ->whereHas('roles', fn ($roleQuery) => $roleQuery->where('slug', 'warehouse'))
+                    ->orWhereIn('username', [
+                        'erz.depo',
+                        'trabzon.merkez',
+                        'samsun.merkez',
+                        'batum',
+                        'batum.depo',
+                    ]);
+            })
             ->find($assignedUserId);
 
         if (! $assignedUser instanceof User) {
@@ -628,6 +680,7 @@ class WarehouseShipmentService
         return DB::transaction(function () use ($user, $shipment, $payload): array {
             $model = Shipment::query()
                 ->with([
+                    'order.customer',
                     'order.items',
                     'items.orderItem',
                     'items.product',
@@ -1143,6 +1196,19 @@ class WarehouseShipmentService
                 ]);
             }
 
+            $transferMeta = $this->warehouseTransferOrderMeta($model->order);
+            $isDepotTransfer = $this->nullableString(data_get($transferMeta, 'document_type')) === 'warehouse_transfer';
+            $orderSyncMeta = $this->orderLogoSyncMeta($model->order);
+            if (! $isDepotTransfer) {
+                $this->ensureLogoEInvoiceCustomerUsesDetailedMode($model->order?->customer, $orderSyncMeta);
+            }
+            $stockWarehouseCode = $isDepotTransfer
+                ? $this->nullableString(data_get($transferMeta, 'transfer_source_warehouse_code'))
+                : $model->warehouse?->code;
+            $stockWarehouseName = $isDepotTransfer
+                ? $this->nullableString(data_get($transferMeta, 'transfer_source_warehouse_name'))
+                : $model->warehouse?->name;
+
             $totalShippedInShipment = (int) $model->items->sum('shipped_qty');
             if ($totalShippedInShipment <= 0) {
                 throw ValidationException::withMessages([
@@ -1171,8 +1237,8 @@ class WarehouseShipmentService
 
                 $warehouseSnapshot = $this->resolveProductWarehouseStockSnapshot(
                     $product,
-                    $model->warehouse?->code,
-                    $model->warehouse?->name
+                    $stockWarehouseCode,
+                    $stockWarehouseName
                 );
                 $warehouseAvailable = $warehouseSnapshot
                     ?? max(0, (int) $product->stockSummary?->available_total);
@@ -1274,28 +1340,118 @@ class WarehouseShipmentService
 
             $this->syncOrderShipmentStatus($model->order, $user, 'Sevkiyat finalize edildi.');
 
-            $this->syncState->record(
-                system: 'logo',
-                domain: 'warehouse-shipments',
-                direction: 'outbound',
-                entity: $model,
-                externalRef: null,
-                status: 'queued',
-                error: null,
-                meta: [
-                    'export_key' => $model->logoExportKey(),
-                    'shipment_no' => $model->shipment_no,
-                    'order_id' => $model->order_id,
-                    'order_no' => $model->order?->order_no,
-                    'warehouse_code' => $model->warehouse?->code,
-                ],
-                payload: [
-                    'shipment_id' => $model->id,
-                    'shipment_no' => $model->shipment_no,
-                    'order_id' => $model->order_id,
-                    'status' => $model->status,
-                ],
-            );
+            if ($isDepotTransfer) {
+                $receipt = $this->createWarehouseTransferReceipt($model, $user, $transferMeta);
+
+                $this->syncState->record(
+                    system: 'logo',
+                    domain: 'warehouse-transfers',
+                    direction: 'outbound',
+                    entity: $model,
+                    externalRef: null,
+                    status: 'queued',
+                    error: null,
+                    meta: [
+                        ...$transferMeta,
+                        'export_key' => 'B2B-WHTRANS-SHIP-'.$model->id,
+                        'shipment_no' => $model->shipment_no,
+                        'order_id' => $model->order_id,
+                        'order_no' => $model->order?->order_no,
+                        'warehouse_code' => $model->warehouse?->code,
+                        'document_type' => 'warehouse_transfer',
+                        'document_label' => 'Depolar Arası Transfer / Ambar Fişi',
+                        'transfer_stage' => 'shipment',
+                        'transfer_status' => 'Mal Kabul Bekliyor',
+                        'purchase_receipt_id' => $receipt->id,
+                        'purchase_receipt_no' => $receipt->receipt_no,
+                    ],
+                    payload: [
+                        'shipment_id' => $model->id,
+                        'shipment_no' => $model->shipment_no,
+                        'order_id' => $model->order_id,
+                        'status' => $model->status,
+                        'document_type' => 'warehouse_transfer',
+                        'transfer_stage' => 'shipment',
+                        'purchase_receipt_id' => $receipt->id,
+                    ],
+                );
+
+                $this->syncState->record(
+                    system: 'logo',
+                    domain: 'warehouse-transfer-orders',
+                    direction: 'outbound',
+                    entity: $model->order,
+                    externalRef: null,
+                    status: 'queued',
+                    error: null,
+                    meta: [
+                        ...$transferMeta,
+                        'transfer_status' => 'Mal Kabul Bekliyor',
+                        'transfer_shipment_id' => $model->id,
+                        'transfer_shipment_no' => $model->shipment_no,
+                        'purchase_receipt_id' => $receipt->id,
+                        'purchase_receipt_no' => $receipt->receipt_no,
+                    ],
+                    payload: [
+                        'order_id' => $model->order_id,
+                        'shipment_id' => $model->id,
+                        'shipment_no' => $model->shipment_no,
+                        'transfer_status' => 'Mal Kabul Bekliyor',
+                        'purchase_receipt_id' => $receipt->id,
+                    ],
+                );
+
+                $this->notifications->notifyBranch(
+                    dealerId: $model->order?->dealer_id !== null ? (int) $model->order->dealer_id : null,
+                    warehouseCode: data_get($transferMeta, 'transfer_target_warehouse_code'),
+                    warehouseName: data_get($transferMeta, 'transfer_target_warehouse_name'),
+                    type: 'warehouse_transfer_acceptance',
+                    title: 'Mal Kabul Bekleyen Ürünleriniz Var',
+                    body: sprintf(
+                        '%s tarafından gönderilen transfer mal kabul bekliyor. Sevkiyat: %s',
+                        data_get($transferMeta, 'transfer_source_warehouse_name', $model->warehouse?->name ?? 'Depo'),
+                        $model->shipment_no
+                    ),
+                    url: '/mal-kabul',
+                    meta: [
+                        'shipment_id' => $model->id,
+                        'shipment_no' => $model->shipment_no,
+                        'purchase_receipt_id' => $receipt->id,
+                        'order_id' => $model->order_id,
+                    ],
+                    permissionKeys: ['extra', 'pos', 'warehouse']
+                );
+            } else {
+                $this->syncState->record(
+                    system: 'logo',
+                    domain: 'warehouse-shipments',
+                    direction: 'outbound',
+                    entity: $model,
+                    externalRef: null,
+                    status: 'queued',
+                    error: null,
+                    meta: [
+                        'export_key' => $model->logoExportKey(),
+                        'shipment_no' => $model->shipment_no,
+                        'order_id' => $model->order_id,
+                        'order_no' => $model->order?->order_no,
+                        'warehouse_code' => $model->warehouse?->code,
+                        'document_type' => 'shipment_invoice',
+                        'document_label' => 'Sevkiyat faturası',
+                        'checkout_summary_mode' => $this->nullableString(data_get($orderSyncMeta, 'checkout_summary_mode')),
+                        'payment_method' => $this->nullableString(data_get($orderSyncMeta, 'payment_method')),
+                        'sales_price_type' => $this->nullableString(data_get($orderSyncMeta, 'sales_price_type')),
+                        'sales_price_type_label' => $this->nullableString(data_get($orderSyncMeta, 'sales_price_type_label')),
+                    ],
+                    payload: [
+                        'shipment_id' => $model->id,
+                        'shipment_no' => $model->shipment_no,
+                        'order_id' => $model->order_id,
+                        'status' => $model->status,
+                        'document_type' => 'shipment_invoice',
+                    ],
+                );
+            }
 
             $state = $this->shipmentState($user, $model->fresh([
                 'order.customer',
@@ -1306,8 +1462,11 @@ class WarehouseShipmentService
 
             return [
                 ...$state,
-                'message' => 'Sevkiyat finalize edildi.',
+                'message' => $isDepotTransfer
+                    ? 'Depo transferi mal kabul bekliyor durumuna alindi.'
+                    : 'Sevkiyat finalize edildi.',
                 'gonderilen_tutar' => $state['totals']['gonderilen_tutar'],
+                'logo_document_type' => $isDepotTransfer ? 'warehouse_transfer' : 'shipment_invoice',
             ];
         });
 
@@ -1318,6 +1477,10 @@ class WarehouseShipmentService
 
         $freshShipment = Shipment::query()->find($shipmentId);
         if (! $freshShipment instanceof Shipment) {
+            return $state;
+        }
+
+        if (data_get($state, 'logo_document_type') === 'warehouse_transfer') {
             return $state;
         }
 
@@ -1390,6 +1553,175 @@ class WarehouseShipmentService
         } while (microtime(true) < $deadline);
 
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function warehouseTransferOrderMeta(?Order $order): array
+    {
+        if (! $order instanceof Order) {
+            return [];
+        }
+
+        $state = $this->logoSyncState('warehouse-transfer-orders', Order::class, (int) $order->id);
+
+        return is_array($state?->meta) ? $state->meta : [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function orderLogoSyncMeta(?Order $order): array
+    {
+        if (! $order instanceof Order) {
+            return [];
+        }
+
+        $state = $this->logoSyncState('orders', Order::class, (int) $order->id);
+
+        return is_array($state?->meta) ? $state->meta : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderSyncMeta
+     */
+    private function ensureLogoEInvoiceCustomerUsesDetailedMode(?Customer $customer, array $orderSyncMeta): void
+    {
+        if (! $customer instanceof Customer || ! $this->customerRequiresLogoDetailedInvoice($customer)) {
+            return;
+        }
+
+        $mode = $this->nullableString(data_get($orderSyncMeta, 'checkout_summary_mode')) ?? 'detailed';
+        $itemModes = data_get($orderSyncMeta, 'item_checkout_summary_modes', []);
+        $hasNonDetailedItem = is_array($itemModes)
+            && collect($itemModes)->contains(fn ($itemMode): bool => in_array($this->nullableString($itemMode), ['excluded', 'included'], true));
+
+        if ($mode !== 'detailed' || $hasNonDetailedItem) {
+            throw ValidationException::withMessages([
+                'checkout_summary_mode' => ['Logo e-Fatura kullanıcısı carilerde sadece 1-F fatura kesilebilir.'],
+            ]);
+        }
+    }
+
+    private function customerRequiresLogoDetailedInvoice(Customer $customer): bool
+    {
+        $meta = is_array($customer->meta) ? $customer->meta : [];
+
+        foreach ($this->logoEInvoiceUserPaths() as $path) {
+            $value = data_get($meta, $path);
+
+            if ($value !== null && $this->truthyLogoFlag($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function logoEInvoiceUserPaths(): array
+    {
+        return [
+            'integrations.logo.payload.e_invoice_user',
+            'integrations.logo.payload.e_invoice',
+            'integrations.logo.payload.e_fatura',
+            'integrations.logo.payload.raw.EINVOICE',
+            'integrations.logo.payload.raw.EINVOICEUSER',
+            'integrations.logo.payload.raw.EINVOICE_USER',
+            'integrations.logo.payload.raw.ACCEPTEINV',
+            'integrations.logo.payload.raw.EFATURA',
+            'integrations.logo.payload.raw.E_FATURA',
+        ];
+    }
+
+    private function truthyLogoFlag(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (float) $value !== 0.0;
+        }
+
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return false;
+        }
+
+        return in_array(mb_strtoupper($normalized, 'UTF-8'), [
+            '1',
+            'TRUE',
+            'YES',
+            'EVET',
+            'E',
+            'ON',
+            'AKTIF',
+            'AKTİF',
+        ], true);
+    }
+
+    /**
+     * Depolar arası transferde ilk Logo ambar fişi sevkiyat finalize edilirken
+     * kaynak depodan kaynak deponun sevkiyat ambarına gider. Bu taslak mal
+     * kabul kaydı, ikinci aşamada kaynak sevkiyat ambarından hedef depoya
+     * kabul fişini açmak içindir.
+     *
+     * @param  array<string, mixed>  $transferMeta
+     */
+    private function createWarehouseTransferReceipt(Shipment $shipment, User $user, array $transferMeta): PurchaseReceipt
+    {
+        $existing = PurchaseReceipt::query()
+            ->with('items')
+            ->where('document_no', $shipment->shipment_no)
+            ->where('note', 'like', 'Depolar arasi transfer:%')
+            ->first();
+
+        if ($existing instanceof PurchaseReceipt) {
+            return $existing;
+        }
+
+        $targetCode = $this->nullableString(data_get($transferMeta, 'transfer_target_warehouse_code'));
+        $targetName = $this->nullableString(data_get($transferMeta, 'transfer_target_warehouse_name'));
+        $sourceName = $this->nullableString(data_get($transferMeta, 'transfer_source_warehouse_name'));
+
+        $receipt = PurchaseReceipt::query()->create([
+            'dealer_id' => $shipment->order?->dealer_id,
+            'created_by' => $user->id,
+            'receipt_no' => 'MK-TRF-'.$shipment->id,
+            'document_no' => $shipment->shipment_no,
+            'supplier_name' => $sourceName ?? $shipment->warehouse?->name,
+            'warehouse_code' => $targetCode,
+            'warehouse_name' => $targetName,
+            'received_at' => now()->toDateString(),
+            'note' => sprintf(
+                'Depolar arasi transfer: %s -> %s | Siparis: %s',
+                $sourceName ?? '-',
+                $targetName ?? '-',
+                $shipment->order?->order_no ?? '-'
+            ),
+            'status' => 'draft',
+        ]);
+
+        foreach ($shipment->items as $item) {
+            $qty = max(0, (int) $item->shipped_qty);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $receipt->items()->create([
+                'product_code' => $this->nullableString($item->product?->sku),
+                'product_name' => $this->nullableString($item->product?->name) ?? $this->nullableString($item->product?->sku) ?? 'Ürün',
+                'expected_quantity' => $qty,
+                'accepted_quantity' => $qty,
+                'note' => $shipment->shipment_no,
+            ]);
+        }
+
+        return $receipt->fresh(['items']);
     }
 
     /**
@@ -1531,11 +1863,14 @@ class WarehouseShipmentService
 
         $subtotal = 0.0;
         $taxTotal = 0.0;
+        $keepsSeparateTax = (float) $order->tax_total > 0;
 
         foreach ($items as $item) {
             $lineTotal = (float) $item->line_total;
             $subtotal += $lineTotal;
-            $taxTotal += $lineTotal * ((float) $item->tax_rate / 100);
+            if ($keepsSeparateTax) {
+                $taxTotal += $lineTotal * ((float) $item->tax_rate / 100);
+            }
         }
 
         $order->forceFill([
@@ -1579,9 +1914,12 @@ class WarehouseShipmentService
         ]);
 
         $this->ensureShipmentScope($user, $shipment);
-        $logoSyncState = $this->logoSyncState('warehouse-shipments', Shipment::class, (int) $shipment->id);
+        $logoSyncState = $this->logoSyncState('warehouse-transfers', Shipment::class, (int) $shipment->id)
+            ?? $this->logoSyncState('warehouse-shipments', Shipment::class, (int) $shipment->id);
         $customer = $shipment->order?->customer;
         $customerMeta = is_array($customer?->meta) ? $customer->meta : [];
+        $transferMeta = $this->warehouseTransferOrderMeta($shipment->order);
+        $isDepotTransfer = $this->nullableString(data_get($transferMeta, 'document_type')) === 'warehouse_transfer';
 
         $remainingItems = [];
         $shippedItems = [];
@@ -1675,6 +2013,15 @@ class WarehouseShipmentService
                     'id' => $shipment->warehouse?->id,
                     'code' => $shipment->warehouse?->code,
                     'name' => $shipment->warehouse?->name,
+                ],
+                'origin' => [
+                    'document_type' => $isDepotTransfer ? 'warehouse_transfer' : 'shipment_invoice',
+                    'document_label' => $isDepotTransfer ? 'Depolar Arası Transfer / Ambar Fişi' : 'Sevkiyat faturası',
+                    'transfer_status' => $isDepotTransfer ? $this->nullableString(data_get($transferMeta, 'transfer_status')) : null,
+                    'transfer_source_warehouse_code' => $isDepotTransfer ? $this->nullableString(data_get($transferMeta, 'transfer_source_warehouse_code')) : null,
+                    'transfer_source_warehouse_name' => $isDepotTransfer ? $this->nullableString(data_get($transferMeta, 'transfer_source_warehouse_name')) : null,
+                    'transfer_target_warehouse_code' => $isDepotTransfer ? $this->nullableString(data_get($transferMeta, 'transfer_target_warehouse_code')) : null,
+                    'transfer_target_warehouse_name' => $isDepotTransfer ? $this->nullableString(data_get($transferMeta, 'transfer_target_warehouse_name')) : null,
                 ],
             ],
             'remaining_items' => array_values($remainingItems),
@@ -1810,6 +2157,17 @@ class WarehouseShipmentService
             ->where('entity_id', $entityId)
             ->latest('id')
             ->first();
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 
     private function ensureShipmentScope(User $user, Shipment $shipment): void

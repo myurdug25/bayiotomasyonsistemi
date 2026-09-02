@@ -11,14 +11,17 @@ use App\Models\Product;
 use App\Models\ProductCodeAlias;
 use App\Models\User;
 use App\Support\CustomerFeaturePermissions;
+use App\Support\Pricing\CustomerPriceListResolver;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
 use App\Support\Products\ProductCodeNormalizer;
+use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class PosQuickProductSearchController extends Controller
@@ -58,7 +61,17 @@ class PosQuickProductSearchController extends Controller
 
         $dealerId = $dealerContext['dealer_id'];
         $priceListId = $dealerContext['price_list_id'];
-        $netPriceSql = DealerNetPriceExpression::sql();
+        $selectedCustomerId = isset($validated['customer_id'])
+            ? (int) $validated['customer_id']
+            : ($request->user()->selected_customer_id !== null
+                ? (int) $request->user()->selected_customer_id
+                : null);
+        $priceListId = app(CustomerPriceListResolver::class)
+            ->resolve($selectedCustomerId, $priceListId) ?? $priceListId;
+        $netPriceSql = DealerNetPriceExpression::sql(
+            basePriceColumn: 'COALESCE(bp.list_price, fallback_bp.list_price)',
+            discountRateColumn: 'CASE WHEN bp.list_price IS NOT NULL THEN pl.discount_rate ELSE fallback_pl.discount_rate END',
+        );
 
         $query = Product::query()
             ->select([
@@ -71,7 +84,7 @@ class PosQuickProductSearchController extends Controller
                 'brands.name as brand_name',
             ])
             ->selectRaw("{$netPriceSql} as net_price")
-            ->selectRaw("COALESCE(dpo.currency, bp.currency, 'TRY') as currency")
+            ->selectRaw("COALESCE(dpo.currency, bp.currency, fallback_bp.currency, 'TRY') as currency")
             ->selectRaw('COALESCE(ss.available_total, 0) as available_total')
             ->leftJoin('brands', 'brands.id', '=', 'products.brand_id')
             ->leftJoin('stock_summary as ss', 'ss.product_id', '=', 'products.id')
@@ -83,6 +96,14 @@ class PosQuickProductSearchController extends Controller
                 $join->on('pl.id', '=', 'bp.price_list_id')
                     ->where('pl.id', '=', $priceListId);
             })
+            ->leftJoin('dealers as pricing_dealer', function ($join) use ($dealerId) {
+                $join->on('pricing_dealer.id', '=', DB::raw((string) $dealerId));
+            })
+            ->leftJoin('base_prices as fallback_bp', function ($join) {
+                $join->on('fallback_bp.product_id', '=', 'products.id')
+                    ->on('fallback_bp.price_list_id', '=', 'pricing_dealer.price_list_id');
+            })
+            ->leftJoin('price_lists as fallback_pl', 'fallback_pl.id', '=', 'fallback_bp.price_list_id')
             ->leftJoin('dealer_price_overrides as dpo', function ($join) use ($dealerId) {
                 $join->on('dpo.product_id', '=', 'products.id')
                     ->where('dpo.dealer_id', '=', $dealerId);
@@ -112,7 +133,10 @@ class PosQuickProductSearchController extends Controller
                 if ($exactItems->isNotEmpty()) {
                     $cache = $this->cacheStore();
 
-                    $stockScope = $this->resolveStockVisibilityScope($request->user());
+                    $stockScope = $this->resolveStockVisibilityScope(
+                        $request->user(),
+                        isset($validated['customer_id']) ? (int) $validated['customer_id'] : null
+                    );
 
                     return response()->json([
                         'data' => $this->mapProducts($exactItems, $cache, $dealerId, $request->user(), $stockScope),
@@ -124,7 +148,10 @@ class PosQuickProductSearchController extends Controller
 
             if ($codeOnly) {
                 $cache = $this->cacheStore();
-                $stockScope = $this->resolveStockVisibilityScope($request->user());
+                $stockScope = $this->resolveStockVisibilityScope(
+                    $request->user(),
+                    isset($validated['customer_id']) ? (int) $validated['customer_id'] : null
+                );
 
                 return response()->json([
                     'data' => $this->mapProducts(collect(), $cache, $dealerId, $request->user(), $stockScope),
@@ -150,7 +177,10 @@ class PosQuickProductSearchController extends Controller
 
                     if ($groupItems->isNotEmpty()) {
                         $cache = $this->cacheStore();
-                        $stockScope = $this->resolveStockVisibilityScope($request->user());
+                        $stockScope = $this->resolveStockVisibilityScope(
+                            $request->user(),
+                            isset($validated['customer_id']) ? (int) $validated['customer_id'] : null
+                        );
 
                         return response()->json([
                             'data' => $this->mapProducts($groupItems, $cache, $dealerId, $request->user(), $stockScope),
@@ -170,7 +200,10 @@ class PosQuickProductSearchController extends Controller
             if ($fastItems->isNotEmpty()) {
                 $cache = $this->cacheStore();
 
-                $stockScope = $this->resolveStockVisibilityScope($request->user());
+                $stockScope = $this->resolveStockVisibilityScope(
+                    $request->user(),
+                    isset($validated['customer_id']) ? (int) $validated['customer_id'] : null
+                );
 
                 return response()->json([
                     'data' => $this->mapProducts($fastItems, $cache, $dealerId, $request->user(), $stockScope),
@@ -265,7 +298,10 @@ class PosQuickProductSearchController extends Controller
 
         $items = $query->limit($limit)->get();
         $cache = $this->cacheStore();
-        $stockScope = $this->resolveStockVisibilityScope($request->user());
+        $stockScope = $this->resolveStockVisibilityScope(
+            $request->user(),
+            isset($validated['customer_id']) ? (int) $validated['customer_id'] : null
+        );
 
         return response()->json([
             'data' => $this->mapProducts($items, $cache, $dealerId, $request->user(), $stockScope),
@@ -280,21 +316,24 @@ class PosQuickProductSearchController extends Controller
      */
     private function resolveDealerContext($user, array $validated): ?array
     {
-        $dealerId = null;
+        $selectedCustomerId = isset($validated['customer_id'])
+            ? (int) $validated['customer_id']
+            : ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
 
-        if ($user->dealer_id !== null) {
-            $dealerId = (int) $user->dealer_id;
+        $dealerId = null;
+        if ($user->hasAnyRole(['admin', 'moderator']) && $selectedCustomerId !== null) {
+            $dealerId = Customer::query()
+                ->whereKey($selectedCustomerId)
+                ->value('dealer_id');
+            $dealerId = $dealerId !== null ? (int) $dealerId : null;
         }
 
-        if ($dealerId === null && $user->hasRole('admin') && ! empty($validated['dealer_id'])) {
+        if ($dealerId === null && $user->hasAnyRole(['admin', 'moderator']) && ! empty($validated['dealer_id'])) {
             $dealerId = (int) $validated['dealer_id'];
         }
 
-        if ($dealerId === null && $user->hasRole('admin') && $user->selected_customer_id !== null) {
-            $dealerId = Customer::query()
-                ->whereKey((int) $user->selected_customer_id)
-                ->value('dealer_id');
-            $dealerId = $dealerId !== null ? (int) $dealerId : null;
+        if ($dealerId === null && $user->dealer_id !== null) {
+            $dealerId = (int) $user->dealer_id;
         }
 
         if ($dealerId === null) {
@@ -367,7 +406,7 @@ class PosQuickProductSearchController extends Controller
                 'currency' => DisplayCurrency::normalize($sourceCurrency, $user),
                 'available_total' => $this->resolveVisibleAvailableTotal($meta, $availableTotal, $stockScope),
                 'stock_locations' => $this->resolveStockLocations($meta, $availableTotal, $stockScope),
-                'shelf_address' => $this->resolveShelfAddress($meta),
+                'shelf_address' => $this->resolvePrimaryShelfAddress($meta, $stockScope),
                 'competitor_codes' => ($competitorCodesByProduct->get((int) $item->id) ?? collect())
                     ->map(fn (ProductCodeAlias $alias): array => [
                         'code' => $alias->code,
@@ -384,15 +423,57 @@ class PosQuickProductSearchController extends Controller
     /**
      * @return array{codes:list<string>,names:list<string>}|null
      */
-    private function resolveStockVisibilityScope($user): ?array
+    private function resolveStockVisibilityScope($user, ?int $requestedCustomerId = null): ?array
     {
-        if ($user->hasAnyRole(['admin', 'moderator'])) {
-            return null;
-        }
-
+        // Point/hızlı satış hesaplarının operasyon ambarı kullanıcıya sabittir.
+        // Cari değişimi bu kapsamı ezmemeli; admin/moderatör ise aşağıdaki
+        // seçili-cari kuralını kullanmaya devam eder.
         $userScope = $this->resolveUserSpecificStockVisibilityScope($user);
         if ($userScope !== null) {
             return $userScope;
+        }
+
+        $selectedCustomerId = $requestedCustomerId
+            ?? ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
+
+        if ($user->hasAnyRole(['admin', 'moderator']) && $selectedCustomerId !== null) {
+            $selectedCustomer = Customer::query()
+                ->select([
+                    'id',
+                    'code',
+                    'name',
+                    'salesperson_user_id',
+                    'branch_code',
+                    'branch_name',
+                    'region_code',
+                    'region_name',
+                    'city',
+                    'meta',
+                ])
+                ->with('salesperson:id,username,branch_code,branch_name,region_code,region_name')
+                ->find($selectedCustomerId);
+
+            if ($selectedCustomer instanceof Customer) {
+                $branchCode = app(WarehouseBranchResolver::class)
+                    ->resolveBranchCode($user, $selectedCustomer);
+                $warehouseKey = match ($branchCode) {
+                    'BATUM' => 'search.stock.warehouse.batum',
+                    'TRABZON' => 'search.stock.warehouse.trabzon',
+                    'SAMSUN' => 'search.stock.warehouse.samsun',
+                    'ERZURUM' => $this->selectedCustomerUsesErzurumPoint($selectedCustomer)
+                        ? 'search.stock.warehouse.erzurum_point'
+                        : 'search.stock.warehouse.erzurum_depo',
+                    default => null,
+                };
+
+                if ($warehouseKey !== null) {
+                    return $this->stockScopeFromWarehouseKeys([$warehouseKey]);
+                }
+            }
+        }
+
+        if ($user->hasAnyRole(['admin', 'moderator'])) {
+            return null;
         }
 
         $permissions = CustomerFeaturePermissions::forUser($user);
@@ -449,29 +530,43 @@ class PosQuickProductSearchController extends Controller
      */
     private function resolveUserSpecificStockVisibilityScope($user): ?array
     {
-        if ($user->hasAnyRole(['point', 'cashier']) || in_array('pos', (array) ($user->menu_permissions ?? []), true)) {
-            if ($this->normalizeScopeText($user->username) !== 'BATUM') {
-                return $this->stockScopeFromWarehouseKeys([
-                    'search.stock.warehouse.erzurum_point',
-                ]);
-            }
-        }
+        $username = $this->normalizeScopeText($user->username);
 
-        $warehouseKeys = match ($this->normalizeScopeText($user->username)) {
-            'ERZURUM.HIZLISATIS' => [
+        $warehouseKeys = match (true) {
+            in_array($username, ['ERZURUM.HIZLISATIS', 'ERZURUM.POINT'], true) => [
                 'search.stock.warehouse.erzurum_point',
             ],
-            'AHMET.ARAC',
-            'HUSEYIN.OZGUNEY',
-            'MEHMET.AKSOY' => [
-                'search.stock.warehouse.erzurum_depo',
+            in_array($username, ['TRABZON.POINT', 'TRABZON.HIZLISATIS'], true) => [
+                'search.stock.warehouse.trabzon',
             ],
-            'BATUM' => [
-                'search.stock.warehouse.erzurum_depo',
+            in_array($username, ['SAMSUN.POINT', 'SAMSUN.HIZLISATIS'], true) => [
+                'search.stock.warehouse.samsun',
+            ],
+            in_array($username, ['BATUM', 'BATUM.POINT', 'BATUM.HIZLISATIS'], true) => [
                 'search.stock.warehouse.batum',
+            ],
+            in_array($username, ['AHMET.ARAC', 'HUSEYIN.OZGUNEY', 'MEHMET.AKSOY'], true) => [
+                'search.stock.warehouse.erzurum_depo',
             ],
             default => [],
         };
+
+        if ($warehouseKeys === [] && ($user->hasAnyRole(['point', 'cashier']) || in_array('pos', (array) ($user->menu_permissions ?? []), true))) {
+            $branchText = implode(' ', array_filter([
+                $this->normalizeScopeText($user->branch_code ?? null),
+                $this->normalizeScopeText($user->branch_name ?? null),
+                $this->normalizeScopeText($user->region_code ?? null),
+                $this->normalizeScopeText($user->region_name ?? null),
+            ]));
+
+            $warehouseKeys = match (true) {
+                str_contains($branchText, 'TRABZON') => ['search.stock.warehouse.trabzon'],
+                str_contains($branchText, 'SAMSUN') => ['search.stock.warehouse.samsun'],
+                str_contains($branchText, 'BATUM') => ['search.stock.warehouse.batum'],
+                str_contains($branchText, 'ERZURUM') => ['search.stock.warehouse.erzurum_point'],
+                default => [],
+            };
+        }
 
         if ($warehouseKeys === []) {
             return null;
@@ -480,15 +575,49 @@ class PosQuickProductSearchController extends Controller
         return $this->stockScopeFromWarehouseKeys($warehouseKeys);
     }
 
+    private function selectedCustomerUsesErzurumPoint(Customer $customer): bool
+    {
+        $identity = implode(' ', array_filter([
+            $customer->code,
+            $customer->name,
+            $customer->branch_code,
+            $customer->branch_name,
+            $customer->salesperson?->username,
+            $customer->salesperson?->branch_code,
+            $customer->salesperson?->branch_name,
+        ]));
+        $normalized = $this->normalizeScopeMatchText($this->normalizeScopeText($identity) ?? '');
+
+        return $this->scopeTextContainsToken($normalized, 'POINT')
+            || str_contains($normalized, 'HIZLI SATIS');
+    }
+
+    private function scopeTextContainsToken(string $text, string $token): bool
+    {
+        return (bool) preg_match(
+            '/(?:^|\s)'.preg_quote($token, '/').'(?:\s|$)/u',
+            $text
+        );
+    }
+
+    private function normalizeScopeMatchText(string $value): string
+    {
+        $normalized = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value) ?? $value;
+        $normalized = preg_replace('/\s+/u', ' ', $normalized) ?? $normalized;
+
+        return trim($normalized);
+    }
+
     /**
      * @param  list<string>  $warehouseKeys
-     * @return array{codes:list<string>,names:list<string>}
+     * @return array{codes:list<string>,names:list<string>,shelf_keys:list<string>}
      */
     private function stockScopeFromWarehouseKeys(array $warehouseKeys): array
     {
         $selectedLookup = array_flip($warehouseKeys);
         $codes = [];
         $names = [];
+        $shelfKeys = [];
 
         foreach (CustomerFeaturePermissions::stockWarehouseDefinitions() as $warehouse) {
             if (! isset($selectedLookup[$warehouse['key']])) {
@@ -508,11 +637,45 @@ class PosQuickProductSearchController extends Controller
                     $names[] = $normalizedName;
                 }
             }
+
+            foreach ($this->shelfKeysForWarehouseKey($warehouse['key']) as $shelfKey) {
+                $shelfKeys[] = $shelfKey;
+            }
         }
 
         return [
             'codes' => array_values(array_unique($codes)),
             'names' => array_values(array_unique($names)),
+            'shelf_keys' => array_values(array_unique($shelfKeys)),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function shelfKeysForWarehouseKey(string $warehouseKey): array
+    {
+        $suffix = match ($warehouseKey) {
+            'search.stock.warehouse.erzurum_depo' => '250',
+            'search.stock.warehouse.erzurum_point' => '250',
+            'search.stock.warehouse.trabzon' => '61',
+            'search.stock.warehouse.samsun' => '55',
+            'search.stock.warehouse.batum' => '995',
+            default => null,
+        };
+
+        if ($suffix === null) {
+            return [];
+        }
+
+        return [
+            "RAF{$suffix}",
+            "RAF_{$suffix}",
+            "RAFADRESI{$suffix}",
+            "RAF_ADRESI_{$suffix}",
+            "SHELF_ADDRESS{$suffix}",
+            "LOCATION{$suffix}",
+            "LOCATION_CODE{$suffix}",
         ];
     }
 
@@ -592,7 +755,7 @@ class PosQuickProductSearchController extends Controller
                     'branch' => $branch,
                     'warehouse_code' => $warehouseCode,
                     'stock' => max(0, $stock ?? 0),
-                    'shelf_address' => $this->resolveWarehouseShelfAddress($meta, $warehouse, $warehouseCode) ?? $generalShelfAddress,
+                    'shelf_address' => $this->resolveWarehouseShelfAddress($meta, $warehouse, $warehouseCode, $stockScope) ?? $generalShelfAddress,
                 ];
             }
         }
@@ -630,14 +793,65 @@ class PosQuickProductSearchController extends Controller
         ]);
     }
 
-    private function resolveWarehouseShelfAddress(array $meta, array $warehouse, ?string $warehouseCode): ?string
+    private function resolvePrimaryShelfAddress(array $meta, ?array $stockScope): ?string
     {
+        if ($stockScope !== null) {
+            $warehouses = data_get($meta, 'integrations.logo.payload.logo_stock.warehouses');
+            if (is_array($warehouses)) {
+                foreach ($warehouses as $warehouse) {
+                    if (! is_array($warehouse)) {
+                        continue;
+                    }
+
+                    $warehouseCode = $this->firstArrayScalar($warehouse, [
+                        'warehouse_code',
+                        'branch_code',
+                        'code',
+                        'invenno',
+                        'warehouse_no',
+                    ]);
+                    $branch = $this->firstArrayScalar($warehouse, [
+                        'branch_name',
+                        'warehouse_name',
+                        'name',
+                        'depo_adi',
+                        'ambar_adi',
+                        'branch',
+                    ]);
+
+                    if (! $this->stockLocationVisible($branch ?? '', $warehouseCode, $stockScope)) {
+                        continue;
+                    }
+
+                    $shelfAddress = $this->resolveWarehouseShelfAddress($meta, $warehouse, $warehouseCode, $stockScope);
+                    if ($shelfAddress !== null) {
+                        return $shelfAddress;
+                    }
+                }
+            }
+        }
+
+        return $this->resolveShelfAddress($meta);
+    }
+
+    private function resolveWarehouseShelfAddress(array $meta, array $warehouse, ?string $warehouseCode, ?array $stockScope = null): ?string
+    {
+        $raw = data_get($meta, 'integrations.logo.payload.raw', []);
+        if (is_array($raw)) {
+            $scopedShelfAddress = $this->firstRawShelfValue($raw, $stockScope['shelf_keys'] ?? []);
+            if ($scopedShelfAddress !== null) {
+                return $scopedShelfAddress;
+            }
+        }
+
+        // The warehouse payload may carry a legacy/general shelf value. It is
+        // only a fallback: for admin/moderator searches the selected customer's
+        // RAF250/RAF61/RAF55/RAF995 field above is the authoritative address.
         $direct = $this->resolveShelfAddress($warehouse);
         if ($direct !== null) {
             return $direct;
         }
 
-        $raw = data_get($meta, 'integrations.logo.payload.raw', []);
         if (! is_array($raw)) {
             return null;
         }
@@ -650,7 +864,7 @@ class PosQuickProductSearchController extends Controller
 
         foreach ($keys as $key) {
             $normalizedKey = trim((string) $key);
-            foreach ([
+            $candidate = $this->firstRawShelfValue($raw, [
                 "RAF{$normalizedKey}",
                 "RAF_{$normalizedKey}",
                 "RAFADRESI{$normalizedKey}",
@@ -658,11 +872,37 @@ class PosQuickProductSearchController extends Controller
                 "SHELF_ADDRESS{$normalizedKey}",
                 "LOCATION{$normalizedKey}",
                 "LOCATION_CODE{$normalizedKey}",
-            ] as $field) {
-                $candidate = $raw[$field] ?? null;
-                if (is_scalar($candidate) && trim((string) $candidate) !== '') {
-                    return trim((string) $candidate);
-                }
+            ]);
+            if ($candidate !== null) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $fields
+     */
+    private function firstRawShelfValue(array $raw, array $fields): ?string
+    {
+        if ($raw === [] || $fields === []) {
+            return null;
+        }
+
+        $normalizedRaw = [];
+        foreach ($raw as $key => $value) {
+            if (! is_string($key)) {
+                continue;
+            }
+
+            $normalizedRaw[mb_strtoupper(trim($key), 'UTF-8')] = $value;
+        }
+
+        foreach ($fields as $field) {
+            $candidate = $normalizedRaw[mb_strtoupper(trim($field), 'UTF-8')] ?? null;
+            if (is_scalar($candidate) && trim((string) $candidate) !== '') {
+                return trim((string) $candidate);
             }
         }
 

@@ -64,6 +64,7 @@ class LedgerEntryResource extends JsonResource
             'sales_price_type_label' => $this->salesPriceTypeLabel($this->salesPriceType()),
             'shipping_method' => $this->shippingMethod(),
             'shipping_method_label' => $this->shippingMethodLabel($this->shippingMethod()),
+            'logo_invoice_detail' => $this->logoInvoiceDetail(),
             'entry_date' => $this->entry_date,
             'entry_type' => $this->entry_type,
             'amount' => $this->amount,
@@ -87,6 +88,10 @@ class LedgerEntryResource extends JsonResource
 
         if ($type === 'debit' && $this->looksLikeInvoice()) {
             return 'invoice';
+        }
+
+        if ($type === 'credit' && in_array((int) data_get($this->meta, 'integrations.logo.payload.logo_invoice_trcode'), [2, 3], true)) {
+            return 'return';
         }
 
         return $type !== '' ? $type : 'debit';
@@ -171,6 +176,58 @@ class LedgerEntryResource extends JsonResource
         }
 
         return null;
+    }
+
+    /**
+     * @return array{invoice_ref: string|null, trcode: int|null, document_kind: string|null, lines: list<array<string, mixed>>, total: string}|null
+     */
+    private function logoInvoiceDetail(): ?array
+    {
+        $payload = data_get($this->meta, 'integrations.logo.payload');
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        $lines = data_get($payload, 'logo_invoice_lines');
+        $invoiceRef = data_get($payload, 'logo_invoice_ref')
+            ?? data_get($payload, 'raw.LOGICALREF');
+
+        if (! is_array($lines) || $lines === []) {
+            return null;
+        }
+
+        $normalizedLines = collect($lines)
+            ->filter(fn ($line): bool => is_array($line))
+            ->map(function (array $line): array {
+                return [
+                    'logo_line_ref' => $this->nullableString(data_get($line, 'logo_line_ref')),
+                    'line_no' => data_get($line, 'line_no') !== null ? (int) data_get($line, 'line_no') : null,
+                    'product_code' => $this->nullableString(data_get($line, 'product_code')),
+                    'product_name' => $this->nullableString(data_get($line, 'product_name')),
+                    'quantity' => number_format((float) data_get($line, 'quantity', 0), 2, '.', ''),
+                    'unit' => $this->nullableString(data_get($line, 'unit')),
+                    'unit_price' => number_format((float) data_get($line, 'unit_price', 0), 2, '.', ''),
+                    'discount_total' => number_format((float) data_get($line, 'discount_total', 0), 2, '.', ''),
+                    'vat_rate' => number_format((float) data_get($line, 'vat_rate', 0), 2, '.', ''),
+                    'vat_amount' => number_format((float) data_get($line, 'vat_amount', 0), 2, '.', ''),
+                    'line_total' => number_format((float) data_get($line, 'line_total', 0), 2, '.', ''),
+                    'description' => $this->nullableString(data_get($line, 'description')),
+                ];
+            })
+            ->values()
+            ->all();
+
+        if ($normalizedLines === []) {
+            return null;
+        }
+
+        return [
+            'invoice_ref' => $this->nullableString($invoiceRef),
+            'trcode' => data_get($payload, 'logo_invoice_trcode') !== null ? (int) data_get($payload, 'logo_invoice_trcode') : null,
+            'document_kind' => $this->nullableString(data_get($payload, 'logo_document_kind')),
+            'lines' => $normalizedLines,
+            'total' => number_format((float) (($this->debit > 0 ? $this->debit : $this->credit) ?? 0), 2, '.', ''),
+        ];
     }
 
     private function collectionMethod(): ?string
@@ -344,6 +401,17 @@ class LedgerEntryResource extends JsonResource
         }
 
         return $value;
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+
+        return $normalized !== '' ? $normalized : null;
     }
 
     /**

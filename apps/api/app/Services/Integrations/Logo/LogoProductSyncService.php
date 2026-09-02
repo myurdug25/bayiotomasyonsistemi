@@ -14,6 +14,7 @@ use App\Models\StockSummary;
 use App\Services\Integrations\IntegrationSyncStateService;
 use App\Services\Meilisearch\ProductSearchService;
 use App\Support\Products\ProductCodeNormalizer;
+use App\Support\Products\ProductSearchCacheRevision;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -67,6 +68,7 @@ class LogoProductSyncService
             'images_synced' => 0,
             'code_aliases_synced' => 0,
             'campaign_prices_synced' => 0,
+            'stale_inactivated' => 0,
         ];
 
         $defaultPriceList = $this->resolvePriceList(
@@ -83,10 +85,12 @@ class LogoProductSyncService
         }
 
         $records = (array) ($payload['records'] ?? []);
+        $syncRunId = $this->nullableString($payload['sync_run_id'] ?? null);
+        $sourceTable = $this->nullableString($payload['source_table'] ?? null);
         $productLookup = $this->buildProductLookup($records);
         $indexedProductIds = [];
 
-        DB::transaction(function () use ($records, $productLookup, $defaultPriceList, &$summary, &$indexedProductIds): void {
+        DB::transaction(function () use ($records, $productLookup, $defaultPriceList, $syncRunId, $sourceTable, &$summary, &$indexedProductIds): void {
             foreach ($records as $index => $record) {
                 $brand = $this->resolveBrand($record, $summary);
                 $category = $this->resolveCategory($record, $summary);
@@ -112,7 +116,7 @@ class LogoProductSyncService
                     'is_active' => array_key_exists('is_active', $record)
                         ? (bool) $record['is_active']
                         : ($product?->is_active ?? true),
-                    'meta' => $this->buildMeta($product, $record, $externalReference),
+                    'meta' => $this->buildMeta($product, $record, $externalReference, $syncRunId, $sourceTable),
                 ];
 
                 $product = Product::withoutEvents(function () use ($product, $attributes, &$summary): Product {
@@ -140,6 +144,8 @@ class LogoProductSyncService
                         'operation' => $product->wasRecentlyCreated ? 'created' : 'updated',
                         'stock_synced' => array_key_exists('available_total', $record) || array_key_exists('reserved_total', $record),
                         'price_synced' => array_key_exists('list_price', $record),
+                        'sync_run_id' => $syncRunId,
+                        'source_table' => $sourceTable,
                     ],
                     payload: $record,
                 );
@@ -152,12 +158,21 @@ class LogoProductSyncService
                     $summary['prices_synced']++;
                 }
 
+                $summary['prices_synced'] += $this->syncGroupedBasePrices($product, $record);
                 $summary['campaign_prices_synced'] += $this->syncCampaignPrices($product, $record);
                 $summary['code_aliases_synced'] += $this->syncCodeAliases($product, $record);
             }
         });
 
         $this->reindexProducts(array_keys($indexedProductIds));
+
+        if ($this->shouldFinalizeFullSync($payload, $syncRunId)) {
+            $staleProductIds = $this->inactivateStaleLogoProducts($syncRunId);
+            $summary['stale_inactivated'] = count($staleProductIds);
+            $this->reindexProducts($staleProductIds);
+        }
+
+        ProductSearchCacheRevision::bump();
 
         return $summary;
     }
@@ -834,6 +849,73 @@ class LogoProductSyncService
     }
 
     /**
+     * Logo may define a separate sales price for every customer group (F1-F12).
+     * Persist all of them in the same product sync pass so product search only
+     * needs to select the already-local price list and never query Logo live.
+     *
+     * @param  array<string, mixed>  $record
+     */
+    private function syncGroupedBasePrices(Product $product, array $record): int
+    {
+        $entries = $record['price_entries'] ?? null;
+        $entries = is_array($entries) ? $entries : [];
+        $logoGroupCodes = collect(range(1, 12))->map(fn (int $index): string => "F{$index}")->all();
+        $incomingGroupCodes = [];
+        $synced = 0;
+
+        foreach ($entries as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            $code = strtoupper($this->nullableString($entry['price_list_code'] ?? null) ?? '');
+            if (preg_match('/^F(?:[1-9]|1[0-2])$/', $code) !== 1) {
+                continue;
+            }
+
+            $incomingGroupCodes[] = $code;
+
+            $priceList = PriceList::query()->firstOrCreate(
+                ['code' => $code],
+                [
+                    'name' => "Logo {$code}",
+                    'discount_rate' => 0,
+                    'is_active' => true,
+                ],
+            );
+
+            BasePrice::query()->updateOrCreate(
+                [
+                    'price_list_id' => $priceList->id,
+                    'product_id' => $product->id,
+                ],
+                [
+                    'list_price' => $entry['list_price'],
+                    'currency' => strtoupper($this->nullableString($entry['currency'] ?? null) ?? 'TRY'),
+                    'updated_at' => now(),
+                ],
+            );
+
+            $synced++;
+        }
+
+        $stalePriceListIds = PriceList::query()
+            ->whereIn('code', array_values(array_diff($logoGroupCodes, array_unique($incomingGroupCodes))))
+            ->pluck('id');
+
+        if ($stalePriceListIds->isEmpty()) {
+            return $synced;
+        }
+
+        $deleted = BasePrice::query()
+            ->where('product_id', $product->id)
+            ->whereIn('price_list_id', $stalePriceListIds)
+            ->delete();
+
+        return $synced + $deleted;
+    }
+
+    /**
      * @param  array<string, mixed>  $record
      */
     private function syncCampaignPrices(Product $product, array $record): int
@@ -902,7 +984,13 @@ class LogoProductSyncService
      * @param  array<string, mixed>  $record
      * @return array<string, mixed>
      */
-    private function buildMeta(?Product $product, array $record, ?string $externalReference): array
+    private function buildMeta(
+        ?Product $product,
+        array $record,
+        ?string $externalReference,
+        ?string $syncRunId = null,
+        ?string $sourceTable = null,
+    ): array
     {
         $meta = is_array($product?->meta) ? $product->meta : [];
 
@@ -910,6 +998,14 @@ class LogoProductSyncService
 
         if ($externalReference !== null) {
             Arr::set($meta, 'integrations.logo.external_ref', $externalReference);
+        }
+
+        if ($syncRunId !== null) {
+            Arr::set($meta, 'integrations.logo.sync_run_id', $syncRunId);
+        }
+
+        if ($sourceTable !== null) {
+            Arr::set($meta, 'integrations.logo.source_table', $sourceTable);
         }
 
         if (! empty($record['meta']) && is_array($record['meta'])) {
@@ -928,6 +1024,60 @@ class LogoProductSyncService
         }
 
         return $meta;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function shouldFinalizeFullSync(array $payload, ?string $syncRunId): bool
+    {
+        if ($syncRunId === null) {
+            return false;
+        }
+
+        if ($this->isStockOnlyPayload($payload) || $this->isImagesOnlyPayload($payload)) {
+            return false;
+        }
+
+        return filter_var($payload['is_full_sync'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            && filter_var($payload['is_final_batch'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function inactivateStaleLogoProducts(string $syncRunId): array
+    {
+        $staleProductIds = [];
+
+        Product::query()
+            ->where('is_active', true)
+            ->select(['id', 'is_active', 'meta'])
+            ->chunkById(500, function ($products) use ($syncRunId, &$staleProductIds): void {
+                foreach ($products as $product) {
+                    if (! $product instanceof Product) {
+                        continue;
+                    }
+
+                    $logoExternalRef = $this->nullableString(data_get($product->meta, 'integrations.logo.external_ref'));
+                    if ($logoExternalRef === null) {
+                        continue;
+                    }
+
+                    $productSyncRunId = $this->nullableString(data_get($product->meta, 'integrations.logo.sync_run_id'));
+                    if ($productSyncRunId === $syncRunId) {
+                        continue;
+                    }
+
+                    Product::withoutEvents(function () use ($product): void {
+                        $product->forceFill(['is_active' => false])->save();
+                    });
+
+                    $staleProductIds[] = (int) $product->id;
+                }
+            });
+
+        return $staleProductIds;
     }
 
     /**

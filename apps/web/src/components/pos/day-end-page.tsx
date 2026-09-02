@@ -21,6 +21,7 @@ import {
   getCurrentPosSession,
   getCurrentPosSessions,
   getPosDayEndReport,
+  savePosDayEnd,
   type PosSaleType,
   type PosDayEndReport,
   type PosSessionDto,
@@ -102,7 +103,6 @@ const panelToneClassNames: Record<
     header: string;
     tableHead: string;
     total: string;
-    highlightRow: string;
     evenRow: string;
     oddRow: string;
     empty: string;
@@ -111,9 +111,8 @@ const panelToneClassNames: Record<
   emerald: {
     frame: "border-[#32d36f]/70 !bg-[linear-gradient(180deg,rgba(12,45,27,0.98)_0%,rgba(6,26,16,0.99)_100%)] shadow-[0_0_0_1px_rgba(79,255,141,0.12),0_22px_52px_-36px_rgba(50,211,111,0.72)]",
     header: "border-[#32d36f]/70 bg-[linear-gradient(135deg,#2ee06f_0%,#138c45_52%,#075d2a_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]",
-    tableHead: "border-[#2cc967]/45 bg-[linear-gradient(180deg,#123d25_0%,#0a2417_100%)] text-[#eaffef]",
+    tableHead: "border-[#8fe3a8]/70 bg-[linear-gradient(180deg,#d9ffe0_0%,#a9eeb9_100%)] text-[#062412]",
     total: "border-[#2cc967]/45 bg-[linear-gradient(180deg,#123d25_0%,#071f13_100%)] text-white",
-    highlightRow: "bg-[linear-gradient(90deg,#ddf06d_0%,#93d947_100%)] text-[#101707]",
     evenRow: "bg-[#0d2f1d] text-[#f0fff4]",
     oddRow: "bg-[#123a25] text-[#f0fff4]",
     empty: "text-[#d6ffe0]",
@@ -122,7 +121,7 @@ const panelToneClassNames: Record<
 
 function panelRowClassName(index: number, tone: PanelTone): string {
   const classes = panelToneClassNames[tone];
-  return index === 0 ? classes.highlightRow : index % 2 === 0 ? classes.evenRow : classes.oddRow;
+  return index % 2 === 0 ? classes.evenRow : classes.oddRow;
 }
 
 function PanelFrame({
@@ -132,6 +131,7 @@ function PanelFrame({
   children,
   className,
   tone = "emerald",
+  compact = false,
 }: {
   title: string;
   total: string | number;
@@ -139,23 +139,25 @@ function PanelFrame({
   children: ReactNode;
   className?: string;
   tone?: PanelTone;
+  compact?: boolean;
 }) {
   const toneClasses = panelToneClassNames[tone];
 
   return (
     <section
       className={cn(
-        "min-h-[280px] overflow-hidden rounded-[14px] border shadow-[0_18px_42px_-36px_rgba(0,0,0,0.78)]",
+        compact ? "min-h-[168px]" : "min-h-[236px]",
+        "overflow-hidden rounded-[14px] border shadow-[0_18px_42px_-36px_rgba(0,0,0,0.78)]",
         toneClasses.frame,
         className
       )}
     >
-      <div className={cn("border-b px-4 py-3 text-center text-base font-black shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]", toneClasses.header)}>
+      <div className={cn("border-b px-4 py-2.5 text-center text-base font-black shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]", toneClasses.header)}>
         {title}
       </div>
       <div className="flex h-[calc(100%-50px)] flex-col">
         {children}
-        <div className={cn("mt-auto flex h-11 items-center justify-end border-t px-4 text-base font-black", toneClasses.total)}>
+        <div className={cn("mt-auto flex h-10 items-center justify-end border-t px-4 text-base font-black", toneClasses.total)}>
           {compactMoney(total, currencyLabel)}
         </div>
       </div>
@@ -178,6 +180,7 @@ function SalePanel({
   tone,
   currencyLabel,
   onDetail,
+  compact = false,
 }: {
   title: string;
   rows: SaleReportRow[];
@@ -185,16 +188,17 @@ function SalePanel({
   tone: PanelTone;
   currencyLabel: string;
   onDetail: (row: SaleReportRow) => void;
+  compact?: boolean;
 }) {
   const toneClasses = panelToneClassNames[tone];
 
   return (
-    <PanelFrame title={title} total={reportTableTotal(rows)} currencyLabel={currencyLabel} className={className} tone={tone}>
+    <PanelFrame title={title} total={reportTableTotal(rows)} currencyLabel={currencyLabel} className={className} tone={tone} compact={compact}>
       <div className={cn("grid grid-cols-[104px_minmax(0,1fr)_118px_86px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
-        <span className="truncate px-4 py-3">Belge No</span>
-        <span className="truncate px-4 py-3">Firma İsmi</span>
-        <span className="truncate px-4 py-3 text-right">Tutar</span>
-        <span className="truncate px-4 py-3 text-center">Detay</span>
+        <span className="truncate px-4 py-2.5">Belge No</span>
+        <span className="truncate px-4 py-2.5">Firma İsmi</span>
+        <span className="truncate px-4 py-2.5 text-right">Tutar</span>
+        <span className="truncate px-4 py-2.5 text-center">Detay</span>
       </div>
       {rows.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -206,11 +210,11 @@ function SalePanel({
                 panelRowClassName(index, tone)
               )}
             >
-              <span className="truncate px-4 py-3">{saleDocumentNo(row)}</span>
-              <span className="truncate px-4 py-3 leading-snug" title={customerLabel(row)}>
+              <span className="truncate px-4 py-2.5">{saleDocumentNo(row)}</span>
+              <span className="truncate px-4 py-2.5 leading-snug" title={customerLabel(row)}>
                 {customerLabel(row)}
               </span>
-              <span className="truncate px-4 py-3 text-right tabular-nums">{compactMoney(row.grand_total, currencyLabel)}</span>
+              <span className="truncate px-4 py-2.5 text-right tabular-nums">{compactMoney(row.grand_total, currencyLabel)}</span>
               <span className="flex items-center justify-center px-2 py-2">
                 <Button
                   type="button"
@@ -233,14 +237,14 @@ function SalePanel({
   );
 }
 
-function CollectionPanel({ title, rows, tone, currencyLabel }: { title: string; rows: CollectionReportRow[]; tone: PanelTone; currencyLabel: string }) {
+function CollectionPanel({ title, rows, tone, currencyLabel, compact = false }: { title: string; rows: CollectionReportRow[]; tone: PanelTone; currencyLabel: string; compact?: boolean }) {
   const toneClasses = panelToneClassNames[tone];
 
   return (
-    <PanelFrame title={title} total={reportTableTotal(rows)} currencyLabel={currencyLabel} className="min-h-[320px]" tone={tone}>
+    <PanelFrame title={title} total={reportTableTotal(rows)} currencyLabel={currencyLabel} tone={tone} compact={compact}>
       <div className={cn("grid grid-cols-[minmax(0,1fr)_118px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
-        <span className="truncate px-4 py-3">Cari İsim</span>
-        <span className="truncate px-4 py-3 text-right">Tutar</span>
+        <span className="truncate px-4 py-2.5">Cari İsim</span>
+        <span className="truncate px-4 py-2.5 text-right">Tutar</span>
       </div>
       {rows.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -252,10 +256,10 @@ function CollectionPanel({ title, rows, tone, currencyLabel }: { title: string; 
                 panelRowClassName(index, tone)
               )}
             >
-              <span className="truncate px-4 py-3 leading-snug" title={`${customerLabel(row)} · ${collectionDocumentNo(row)}`}>
+              <span className="truncate px-4 py-2.5 leading-snug" title={`${customerLabel(row)} · ${collectionDocumentNo(row)}`}>
                 {customerLabel(row)}
               </span>
-              <span className="truncate px-4 py-3 text-right tabular-nums">{compactMoney(row.amount, currencyLabel)}</span>
+              <span className="truncate px-4 py-2.5 text-right tabular-nums">{compactMoney(row.amount, currencyLabel)}</span>
             </div>
           ))}
         </div>
@@ -266,7 +270,31 @@ function CollectionPanel({ title, rows, tone, currencyLabel }: { title: string; 
   );
 }
 
-type SummaryRowTone = "neutral" | "positive" | "warning" | "expense" | "total";
+function ExpenseDetailsPanel({ report, currencyLabel }: { report: PosDayEndReport; currencyLabel: string }) {
+  const expenses = report.expenses.recent ?? [];
+
+  return (
+    <section className="overflow-hidden rounded-[14px] border border-[#f3c74f]/55 bg-[linear-gradient(180deg,#34280a_0%,#171204_100%)] shadow-[0_18px_42px_-36px_rgba(243,199,79,0.7)] xl:col-span-2">
+      <div className="border-b border-[#f3c74f]/35 bg-[linear-gradient(135deg,#e7b72e_0%,#9f6f09_100%)] px-4 py-2 text-center text-base font-black text-[#151006]">
+        Masraf Detayları
+      </div>
+      {expenses.length > 0 ? (
+        <div className="max-h-[170px] divide-y divide-[#f3c74f]/15 overflow-auto">
+          {expenses.map((expense) => (
+            <div key={expense.id} className="flex items-center justify-between gap-4 px-4 py-2 text-sm font-extrabold text-[#fff7d5]">
+              <span className="min-w-0 truncate">{expense.category || expense.note || "Masraf"}</span>
+              <span className="shrink-0 tabular-nums text-[#ffd85d]">{compactMoney(expense.amount, currencyLabel)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-h-[90px] items-center justify-center px-4 text-sm font-bold text-[#d8cfae]">Seçili tarihte masraf yok.</div>
+      )}
+    </section>
+  );
+}
+
+type SummaryRowTone = "neutral" | "positive" | "warning" | "expense" | "total" | "redTotal";
 
 function normalizeUpper(value: string | null | undefined): string {
   return String(value ?? "")
@@ -281,10 +309,10 @@ function includesBatum(value?: string | null): boolean {
 function getSaleContextLabel(method: PosSaleType, isBatumPointFlow: boolean): string {
   if (isBatumPointFlow) {
     if (method === "card") {
-      return "BATUM PERAKENDE KREDİ KARTI SATIŞ";
+      return "Batum PRK KK";
     }
 
-    return "BATUM PERAKENDE NAKİT SATIŞ";
+    return "Batum PRK Nakit";
   }
 
   if (method === "card") {
@@ -375,9 +403,14 @@ function SummaryRow({ label, value, tone = "neutral" }: { label: string; value: 
       label: "text-[#f2fff5]",
       value: "border-transparent bg-transparent text-[#061b0c] shadow-none",
     },
+    redTotal: {
+      row: "rounded-[12px] border border-[#ff5a5a] bg-[linear-gradient(135deg,#ff5757_0%,#dc2626_50%,#991b1b_100%)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_28px_-20px_rgba(220,38,38,0.8)]",
+      label: "text-white",
+      value: "border-transparent bg-transparent text-white shadow-none",
+    },
   };
   const toneClasses = toneClassNames[tone];
-  const isBandRow = tone === "warning" || tone === "expense" || tone === "total";
+  const isBandRow = tone === "warning" || tone === "expense" || tone === "total" || tone === "redTotal";
 
   return (
     <div
@@ -402,23 +435,6 @@ function SummaryRow({ label, value, tone = "neutral" }: { label: string; value: 
   );
 }
 
-function SummarySubmitRow({
-  value,
-}: {
-  value: string;
-}) {
-  return (
-    <div className="rounded-[12px] border border-[#55dd82] bg-[linear-gradient(180deg,#2fc765_0%,#1d9c51_100%)] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_14px_26px_-24px_rgba(47,199,101,0.75)]">
-      <div className="flex min-w-0 items-center justify-between gap-4">
-        <span className="min-w-0 truncate whitespace-nowrap text-[15px] font-black leading-tight text-[#f2fff5]">Genel Toplam</span>
-        <span className="flex h-11 min-w-[112px] shrink-0 items-center justify-end rounded-[10px] border border-transparent bg-transparent px-0 text-right text-[17px] font-black leading-none text-[#061b0c] tabular-nums shadow-none">
-          {value}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function DayEndStatCard({
   label,
   value,
@@ -438,10 +454,17 @@ function DayEndStatCard({
   }[tone];
 
   return (
-    <div className={cn("rounded-[14px] border px-4 py-3 shadow-[0_16px_36px_-32px_rgba(0,0,0,0.9)]", toneClasses)}>
-      <div className="text-[11px] font-black uppercase tracking-[0.12em] opacity-75">{label}</div>
-      <div className="mt-2 truncate text-[22px] font-black leading-none tabular-nums">{value}</div>
-      {detail ? <div className="mt-2 truncate text-[11px] font-extrabold opacity-75">{detail}</div> : null}
+    <div
+      className={cn(
+        "flex min-h-[58px] items-center justify-between gap-3 rounded-[14px] border px-3 py-2 shadow-[0_16px_36px_-32px_rgba(0,0,0,0.9)]",
+        toneClasses
+      )}
+    >
+      <div className="min-w-0">
+        <div className="truncate text-[10px] font-black uppercase tracking-[0.11em] opacity-75">{label}</div>
+        {detail ? <div className="mt-1 truncate text-[10px] font-extrabold opacity-70">{detail}</div> : null}
+      </div>
+      <div className="shrink-0 truncate text-right text-[18px] font-black leading-none tabular-nums">{value}</div>
     </div>
   );
 }
@@ -464,7 +487,7 @@ function DayEndSaveAction({
       ) : null}
       <Button
         type="submit"
-        className="h-[58px] w-full rounded-[14px] !bg-[#0b2a18] text-lg font-black !text-white shadow-[0_18px_34px_-28px_rgba(0,0,0,0.86)] hover:!bg-[#133d25] hover:!text-white disabled:opacity-60"
+        className="h-[54px] w-full rounded-[14px] !bg-[linear-gradient(135deg,#ff5757_0%,#dc2626_48%,#991b1b_100%)] text-lg font-black !text-white shadow-[0_18px_34px_-24px_rgba(220,38,38,0.68)] hover:brightness-110 disabled:opacity-60"
         disabled={disabled}
       >
         {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
@@ -479,6 +502,7 @@ export function PosDayEndPage() {
   const { user } = useSession();
   const queryClient = useQueryClient();
   const [sentDialogOpen, setSentDialogOpen] = useState(false);
+  const [dayEndSaveMessage, setDayEndSaveMessage] = useState("Gün sonu kaydı alındı. Kasa oturumu açık kalır.");
   const [savingDayEnd, setSavingDayEnd] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [selectedReportDate, setSelectedReportDate] = useState(() => formatLocalDateInputValue());
@@ -490,24 +514,57 @@ export function PosDayEndPage() {
   const previousReportDateDisplay = formatReportDateDisplay(previousReportDate);
   const roleSlugs = useMemo(() => user?.roles.map((role) => role.slug) ?? [], [user?.roles]);
   const hasPosMenuPermission = user?.menu_permissions?.includes("pos") ?? false;
-  const canSelectSession = roleSlugs.some((role) => role === "admin" || role === "dealer_admin");
+  const isAdminRole = roleSlugs.includes("admin");
+  const dayEndIdentityText = useMemo(
+    () =>
+      [
+        user?.username,
+        user?.branch_code,
+        user?.branch_name,
+        user?.region_code,
+        user?.region_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleUpperCase("tr-TR"),
+    [user?.branch_code, user?.branch_name, user?.region_code, user?.region_name, user?.username]
+  );
+  const isOperationalPosAccount =
+    hasPosMenuPermission &&
+    !isAdminRole &&
+    ["ERZURUM", "TRABZON", "SAMSUN", "BATUM"].some((branch) => dayEndIdentityText.includes(branch));
+  const canSelectSession = isAdminRole || (roleSlugs.includes("dealer_admin") && !isOperationalPosAccount);
   const isPointRole =
     roleSlugs.includes("point") ||
-    (hasPosMenuPermission && !roleSlugs.some((role) => role === "admin" || role === "dealer_admin" || role === "cashier"));
+    (hasPosMenuPermission &&
+      !roleSlugs.some((role) => role === "admin" || role === "cashier") &&
+      (!roleSlugs.includes("dealer_admin") || isOperationalPosAccount));
+  const dayEndSessionScopeKey = useMemo(
+    () =>
+      [
+        user?.id ?? "guest",
+        user?.username ?? "-",
+        user?.branch_code ?? "-",
+        user?.region_code ?? "-",
+        roleSlugs.join(","),
+        canSelectSession ? "selectable" : "own",
+      ].join("|"),
+    [canSelectSession, roleSlugs, user?.branch_code, user?.id, user?.region_code, user?.username]
+  );
 
   const currentSessionQuery = useQuery({
-    queryKey: ["pos", "session", "current"],
+    queryKey: ["pos", "session", "current", dayEndSessionScopeKey],
     queryFn: () => getCurrentPosSession(),
-    enabled: !canSelectSession,
+    enabled: !canSelectSession && Boolean(user?.id),
     staleTime: 0,
     refetchOnMount: "always",
     refetchInterval: 15_000,
   });
 
   const currentSessionsQuery = useQuery({
-    queryKey: ["pos", "sessions", "current", "all"],
+    queryKey: ["pos", "sessions", "current", "all", dayEndSessionScopeKey],
     queryFn: () => getCurrentPosSessions(),
-    enabled: canSelectSession,
+    enabled: canSelectSession && Boolean(user?.id),
     refetchInterval: 15_000,
   });
 
@@ -531,8 +588,8 @@ export function PosDayEndPage() {
     queryKey: [
       "pos",
       "day-end",
-      canSelectSession ? "session" : "cashbox",
-      canSelectSession ? session?.id ?? null : session?.cashbox.id ?? null,
+      "session",
+      session?.id ?? null,
       selectedReportDate,
     ],
     queryFn: () => {
@@ -540,11 +597,7 @@ export function PosDayEndPage() {
         throw new Error("No active session");
       }
 
-      return getPosDayEndReport(
-        canSelectSession
-          ? { pos_session_id: session.id, date: selectedReportDate }
-          : { cashbox_id: session.cashbox.id ?? undefined, date: selectedReportDate }
-      );
+      return getPosDayEndReport({ pos_session_id: session.id, date: selectedReportDate });
     },
     enabled: Boolean(session && selectedReportDate),
     staleTime: 0,
@@ -578,6 +631,11 @@ export function PosDayEndPage() {
   const previousReport = previousDayEndReportQuery.data?.data;
 
   useEffect(() => {
+    setSelectedSessionId("");
+    setSelectedSaleDetail(null);
+  }, [dayEndSessionScopeKey]);
+
+  useEffect(() => {
     return subscribePosDayEndRefresh(() => {
       void queryClient.invalidateQueries({ queryKey: ["pos", "session", "current"] });
       void queryClient.invalidateQueries({ queryKey: ["pos", "sessions", "current", "all"] });
@@ -599,9 +657,24 @@ export function PosDayEndPage() {
     }
 
     setSavingDayEnd(true);
-    setSentDialogOpen(true);
-    await dayEndReportQuery.refetch();
-    setSavingDayEnd(false);
+
+    try {
+      const response = await savePosDayEnd({ pos_session_id: session.id, date: selectedReportDate });
+      const exportInfo = response.data.day_end_export;
+
+      setDayEndSaveMessage(
+        exportInfo
+          ? `Nakit ${exportInfo.cash_amount}, kredi kartı ${exportInfo.card_amount} için Logo durumu: ${exportInfo.status}.`
+          : "Gün sonu kaydı alındı. Logo kaydı için uygun nakit/kredi kartı tutarı bulunamadı."
+      );
+      setSentDialogOpen(true);
+      await dayEndReportQuery.refetch();
+      toast.success("Gün sonu kaydı alındı.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gün sonu kaydı alınamadı.");
+    } finally {
+      setSavingDayEnd(false);
+    }
   };
 
   const busy =
@@ -615,10 +688,6 @@ export function PosDayEndPage() {
   const normalSaleTotal = useMemo(() => reportTableTotal(reportTables.normal_sales), [reportTables.normal_sales]);
   const cardSaleTotal = useMemo(() => reportTableTotal(reportTables.card_sales), [reportTables.card_sales]);
   const cardCollectionTotal = useMemo(() => reportTableTotal(reportTables.card_collections), [reportTables.card_collections]);
-  const transferCollectionTotal = useMemo(() => reportTableTotal(reportTables.transfer_collections ?? []), [reportTables.transfer_collections]);
-  const checkCollectionTotal = useMemo(() => reportTableTotal(reportTables.check_collections ?? []), [reportTables.check_collections]);
-  const noteCollectionTotal = useMemo(() => reportTableTotal(reportTables.note_collections ?? []), [reportTables.note_collections]);
-  const factoryCardCollectionTotal = useMemo(() => reportTableTotal(reportTables.factory_card_collections ?? []), [reportTables.factory_card_collections]);
   const cashSaleTotal = useMemo(() => reportTableTotal(reportTables.cash_sales), [reportTables.cash_sales]);
   const cashCollectionTotal = useMemo(() => reportTableTotal(reportTables.cash_collections), [reportTables.cash_collections]);
   const previousCashSaleTotal = useMemo(() => reportTableTotal(previousReportTables.cash_sales), [previousReportTables.cash_sales]);
@@ -626,42 +695,46 @@ export function PosDayEndPage() {
     () => reportTableTotal(previousReportTables.cash_collections),
     [previousReportTables.cash_collections]
   );
-  const previousExpenseTotal = toMoney(previousReport?.summary.expense_total ?? 0);
-  const previousCarryTotal = previousCashSaleTotal + previousCashCollectionTotal - previousExpenseTotal;
+  const previousCashExpenseTotal = toMoney(
+    previousReport?.summary.cash_expense_total ?? previousReport?.summary.expense_total ?? 0
+  );
+  const previousBankDepositTotal = toMoney(previousReport?.summary.bank_deposit_total ?? 0);
+  const previousCarryTotal =
+    previousCashSaleTotal + previousCashCollectionTotal - previousCashExpenseTotal - previousBankDepositTotal;
   const effectiveReportSession = report?.session ?? session;
   const isBatumFlow = isBatumPointFlow(effectiveReportSession);
   const currencyLabel = dayEndCurrencyLabel(effectiveReportSession);
   const cashSalePanelTitle = getSaleContextLabel("cash", isBatumFlow);
   const cardSalePanelTitle = getSaleContextLabel("card", isBatumFlow);
-  const cardGrandTotal = normalSaleTotal + cardSaleTotal + cardCollectionTotal;
-  const openingCashTotal = previousCarryTotal;
   const expenseTotal = toMoney(report?.summary.expense_total ?? 0);
-  const dayEndGrandTotal = openingCashTotal + cashSaleTotal + cashCollectionTotal - expenseTotal;
+  const cashExpenseTotal = toMoney(report?.summary.cash_expense_total ?? report?.summary.expense_total ?? 0);
+  const bankDepositTotal = toMoney(report?.summary.bank_deposit_total ?? 0);
   const collectionTotal = cashCollectionTotal + cardCollectionTotal;
   const salesTotal = normalSaleTotal + cashSaleTotal + cardSaleTotal;
-  const selectedDateOperationalTotal = cardGrandTotal + dayEndGrandTotal;
+  const cashOnHandTotal = cashSaleTotal + cashCollectionTotal - cashExpenseTotal - bankDepositTotal;
+  const selectedDateOperationalTotal = salesTotal + collectionTotal - expenseTotal + previousCarryTotal;
   const cashboxLabel = session ? `${session.cashbox.code ?? "-"} / ${session.cashbox.name ?? "Tanımsız"}` : "-";
   const sessionLoading = canSelectSession ? currentSessionsQuery.isLoading : currentSessionQuery.isLoading;
 
   const content = (
-    <div className="min-h-[calc(100vh-16px)] space-y-3 bg-[linear-gradient(180deg,#07120e_0%,#0b1712_55%,#06110d_100%)] p-3 !text-[#eef8ef]">
-      <section className="flex flex-col gap-4 rounded-[16px] border border-[#24382d] bg-[linear-gradient(135deg,rgba(17,32,24,0.96)_0%,rgba(9,22,16,0.98)_100%)] px-5 py-4 shadow-[0_18px_48px_-42px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[18px] border border-[#3c5d48] bg-[#203d2c] text-[#edf7ef] shadow-[0_18px_38px_-30px_rgba(0,0,0,0.88)]">
-            <Wallet className="h-8 w-8" />
+    <div className="pos-day-end-page min-h-[calc(100vh-16px)] space-y-3 bg-[linear-gradient(180deg,#07120e_0%,#0b1712_55%,#06110d_100%)] p-3 !text-[#eef8ef]">
+      <section className="pos-day-end-toolbar flex flex-col gap-3 rounded-[16px] border border-[#24382d] bg-[linear-gradient(135deg,rgba(17,32,24,0.96)_0%,rgba(9,22,16,0.98)_100%)] px-4 py-3 shadow-[0_18px_48px_-42px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] xl:flex-row xl:items-center xl:justify-between">
+        <div className="pos-day-end-title flex min-w-0 items-center gap-3 xl:max-w-[430px]">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] border border-[#3c5d48] bg-[#203d2c] text-[#edf7ef] shadow-[0_18px_38px_-30px_rgba(0,0,0,0.88)]">
+            <Wallet className="h-6 w-6" />
           </span>
           <div className="min-w-0">
-            <h1 className="truncate text-4xl font-black tracking-tight text-white">Gün Sonu Raporu</h1>
-            <p className="mt-2 truncate text-sm font-bold text-slate-300">
+            <h1 className="truncate text-2xl font-black tracking-tight text-white md:text-3xl">Gün Sonu Raporu</h1>
+            <p className="mt-1 truncate text-xs font-bold text-slate-300">
               {session ? `Oturum #${session.id} · ${cashboxLabel} · ${new Date(session.opened_at).toLocaleString("tr-TR")}` : "Açık POS oturumu bekleniyor"}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="pos-day-end-controls flex w-full flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap xl:justify-end">
           <Button
             type="button"
             variant="outline"
-            className="h-14 rounded-[16px] !border-[#3c5d48] !bg-[#13251b] px-4 text-sm font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+            className="h-10 shrink-0 rounded-[14px] !border-[#3c5d48] !bg-[#13251b] px-3 text-xs font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
             onClick={() => router.back()}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -669,7 +742,7 @@ export function PosDayEndPage() {
           </Button>
           {canSelectSession ? (
             <Select value={effectiveSelectedSessionId} onValueChange={setSelectedSessionId} disabled={busy || selectableSessions.length === 0}>
-              <SelectTrigger className="h-14 min-w-[280px] rounded-[16px] border-[#3c5d48] bg-[#112219] px-4 text-left text-base font-black text-white shadow-[0_16px_28px_-24px_rgba(0,0,0,0.9)]">
+              <SelectTrigger className="day-end-session-select h-10 !w-[clamp(280px,32vw,520px)] shrink-0 rounded-[14px] border-[#3c5d48] bg-[#112219] px-4 text-left text-xs font-black text-white shadow-[0_16px_28px_-24px_rgba(0,0,0,0.9)]">
                 <SelectValue placeholder="Şube / kasa seç" />
               </SelectTrigger>
               <SelectContent>
@@ -681,11 +754,11 @@ export function PosDayEndPage() {
               </SelectContent>
             </Select>
           ) : null}
-          <div className="flex h-14 items-center gap-1 rounded-[16px] border border-[#3c5d48] bg-[#112219] p-1 shadow-[0_16px_28px_-24px_rgba(0,0,0,0.9)]">
+          <div className="day-end-date-control flex h-10 shrink-0 items-center gap-1 rounded-[14px] border border-[#3c5d48] bg-[#112219] p-1 shadow-[0_16px_28px_-24px_rgba(0,0,0,0.9)]">
             <Button
               type="button"
               variant="ghost"
-              className="h-11 w-11 rounded-[12px] !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+              className="h-8 w-8 rounded-[12px] !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
               onClick={() => setSelectedReportDate((value) => addDaysToDateInputValue(value, -1))}
               disabled={busy}
               aria-label="Önceki gün"
@@ -696,13 +769,13 @@ export function PosDayEndPage() {
               type="date"
               value={selectedReportDate}
               onChange={(event) => setSelectedReportDate(event.target.value || todayReportDate)}
-              className="h-11 w-[148px] rounded-[12px] border-[#ff3b30] bg-[#3a0909] px-3 text-center text-[14px] font-black text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_0_22px_rgba(255,59,48,0.45)] [color-scheme:dark]"
+              className="h-8 w-[142px] rounded-[12px] border-[#ff3b30] bg-[#3a0909] px-3 text-center text-[13px] font-black text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_0_22px_rgba(255,59,48,0.45)] [color-scheme:dark]"
               disabled={busy}
             />
             <Button
               type="button"
               variant="ghost"
-              className="h-11 w-11 rounded-[12px] !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+              className="h-8 w-8 rounded-[12px] !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
               onClick={() => setSelectedReportDate((value) => addDaysToDateInputValue(value, 1))}
               disabled={busy}
               aria-label="Sonraki gün"
@@ -713,7 +786,7 @@ export function PosDayEndPage() {
           <Button
             type="button"
             variant="outline"
-            className="h-14 rounded-[16px] !border-[#e4c20d]/70 !bg-[#231f0b] px-4 text-sm font-black !text-[#ffe77a] hover:!bg-[#3a310f] hover:!text-[#fff1a3]"
+            className="h-10 shrink-0 rounded-[14px] !border-[#e4c20d]/70 !bg-[#231f0b] px-3 text-xs font-black !text-[#ffe77a] hover:!bg-[#3a310f] hover:!text-[#fff1a3]"
             onClick={() => setSelectedReportDate(todayReportDate)}
             disabled={busy || isSelectedReportToday}
           >
@@ -722,7 +795,7 @@ export function PosDayEndPage() {
           <Button
             type="button"
             variant="outline"
-            className="h-14 rounded-[16px] !border-[#3c5d48] !bg-[#13251b] px-4 text-sm font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+            className="h-10 shrink-0 rounded-[14px] !border-[#3c5d48] !bg-[#13251b] px-3 text-xs font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
             onClick={() => setSelectedReportDate(addDaysToDateInputValue(todayReportDate, -1))}
             disabled={busy}
           >
@@ -731,7 +804,7 @@ export function PosDayEndPage() {
           <Button
             type="button"
             variant="outline"
-            className="h-14 rounded-[16px] !border-slate-500/70 !bg-slate-100 px-6 text-base font-black !text-slate-950 shadow-[0_16px_28px_-22px_rgba(0,0,0,0.9)] hover:!bg-white hover:!text-slate-950"
+            className="h-10 shrink-0 rounded-[14px] !border-slate-500/70 !bg-slate-100 px-4 text-xs font-black !text-slate-950 shadow-[0_16px_28px_-22px_rgba(0,0,0,0.9)] hover:!bg-white hover:!text-slate-950"
             onClick={() => {
               void currentSessionQuery.refetch();
               void currentSessionsQuery.refetch();
@@ -741,7 +814,7 @@ export function PosDayEndPage() {
           >
             <RefreshCcw className="h-4 w-4" /> Yenile
           </Button>
-          <Button asChild className="h-14 rounded-[16px] !bg-[#3f7b58] px-6 text-base font-black !text-white shadow-[0_18px_34px_-26px_rgba(0,0,0,0.86)] hover:!bg-[#4c8b67] hover:!text-white">
+          <Button asChild className="h-10 shrink-0 rounded-[14px] !bg-[#3f7b58] px-4 text-xs font-black !text-white shadow-[0_18px_34px_-26px_rgba(0,0,0,0.86)] hover:!bg-[#4c8b67] hover:!text-white">
             <Link href="/pos">
               <ShoppingCart className="h-4 w-4" /> Satışa Dön
             </Link>
@@ -789,13 +862,7 @@ export function PosDayEndPage() {
             </div>
           ) : report ? (
             <>
-              <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-                <DayEndStatCard
-                  label="Rapor Tarihi"
-                  value={selectedReportDateDisplay}
-                  detail={isSelectedReportToday ? "Bugünkü açık gün sonu" : "Geçmiş tarih raporu"}
-                  tone="red"
-                />
+              <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <DayEndStatCard label="Satış Toplamı" value={compactMoney(salesTotal, currencyLabel)} detail="Cari + nakit + kart" />
                 <DayEndStatCard label="Tahsilat" value={compactMoney(collectionTotal, currencyLabel)} detail="Nakit + kart" />
                 <DayEndStatCard label="Masraf" value={compactMoney(expenseTotal, currencyLabel)} detail="Seçili tarih" />
@@ -803,13 +870,13 @@ export function PosDayEndPage() {
                 <DayEndStatCard label="Genel" value={compactMoney(selectedDateOperationalTotal, currencyLabel)} detail="Satış + kasa" tone="green" />
               </section>
 
-              <section className="grid min-h-[calc(100vh-242px)] gap-3 xl:grid-cols-[1.05fr_1.15fr_1.15fr_0.9fr]">
-                <SalePanel title="Cari Satış" rows={reportTables.normal_sales} tone="emerald" currencyLabel={currencyLabel} className="xl:row-span-2 xl:min-h-full" onDetail={setSelectedSaleDetail} />
-                <SalePanel title={cashSalePanelTitle} rows={reportTables.cash_sales} tone="emerald" currencyLabel={currencyLabel} onDetail={setSelectedSaleDetail} />
-                <SalePanel title={cardSalePanelTitle} rows={reportTables.card_sales} tone="emerald" currencyLabel={currencyLabel} onDetail={setSelectedSaleDetail} />
+              <section className="grid min-h-[calc(100vh-210px)] gap-3 xl:grid-cols-[1.05fr_1.15fr_1.15fr_0.9fr]">
+                <SalePanel title="Cari Satış" rows={reportTables.normal_sales} tone="emerald" currencyLabel={currencyLabel} className="xl:row-span-3 xl:min-h-full" onDetail={setSelectedSaleDetail} />
+                <SalePanel title={cashSalePanelTitle} rows={reportTables.cash_sales} tone="emerald" currencyLabel={currencyLabel} onDetail={setSelectedSaleDetail} compact />
+                <SalePanel title={cardSalePanelTitle} rows={reportTables.card_sales} tone="emerald" currencyLabel={currencyLabel} onDetail={setSelectedSaleDetail} compact />
 
                 <form
-                  className="flex min-h-[420px] flex-col rounded-[14px] border border-[#34463a] bg-[linear-gradient(180deg,rgba(24,38,30,0.98)_0%,rgba(11,24,17,0.99)_100%)] p-4 shadow-[0_18px_42px_-36px_rgba(0,0,0,0.82)] xl:row-span-2 xl:min-h-full"
+                  className="flex min-h-[420px] flex-col rounded-[14px] border border-[#34463a] bg-[linear-gradient(180deg,rgba(24,38,30,0.98)_0%,rgba(11,24,17,0.99)_100%)] p-4 shadow-[0_18px_42px_-36px_rgba(0,0,0,0.82)] xl:row-span-3 xl:min-h-full"
                   onSubmit={closeSessionSubmit}
                 >
                   <div className="mb-3 rounded-[12px] border border-[#ff3b30] bg-[linear-gradient(180deg,#4b0c0c_0%,#210707_100%)] p-3 shadow-[0_0_28px_rgba(255,59,48,0.34)]">
@@ -817,44 +884,25 @@ export function PosDayEndPage() {
                       <CalendarDays className="h-4 w-4" />
                       Seçili Tarih
                     </div>
-                    <div className="mt-2 text-3xl font-black text-white drop-shadow-[0_2px_10px_rgba(255,255,255,0.35)]">{selectedReportDateDisplay}</div>
+                    <div className="mt-2 text-2xl font-black text-white drop-shadow-[0_2px_10px_rgba(255,255,255,0.35)]">{selectedReportDateDisplay}</div>
                   </div>
 
-                  <div className="mb-3 rounded-[12px] border border-[#49c879]/45 bg-[linear-gradient(180deg,#123321_0%,#0a1f14_100%)] p-3 shadow-[0_16px_34px_-30px_rgba(73,200,121,0.7)]">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-[12px] font-black uppercase tracking-[0.12em] text-[#bff7cf]">Dünden Devreden</span>
-                      <span className="rounded-full border border-[#49c879]/50 bg-[#0c2818] px-3 py-1 text-xs font-black text-[#d9ffe4]">
-                        {previousReportDateDisplay}
-                      </span>
+                  <div className="space-y-3">
+                    <div className="space-y-2 rounded-[12px] border border-[#49c879]/35 bg-[#0b2015] p-3">
+                      <div className="text-[11px] font-black uppercase tracking-[0.12em] text-[#bff7cf]">Satışlar</div>
+                      <SummaryRow label="Cari Satış" value={compactMoney(normalSaleTotal, currencyLabel)} />
+                      <SummaryRow label={cashSalePanelTitle} value={compactMoney(cashSaleTotal, currencyLabel)} />
+                      <SummaryRow label={cardSalePanelTitle} value={compactMoney(cardSaleTotal, currencyLabel)} />
+                      <SummaryRow label="Toplam Satış" value={compactMoney(salesTotal, currencyLabel)} tone="redTotal" />
                     </div>
-                    <div className="space-y-2">
-                      <SummaryRow label="Dünkü Nakit Satış" value={compactMoney(previousCashSaleTotal, currencyLabel)} />
-                      <SummaryRow label="Dünkü Nakit Tahsilat" value={compactMoney(previousCashCollectionTotal, currencyLabel)} />
-                      <SummaryRow label="Dünkü Masraf" value={compactMoney(previousExpenseTotal, currencyLabel)} tone="expense" />
-                      <SummaryRow label="Devreden Genel Toplam" value={compactMoney(previousCarryTotal, currencyLabel)} tone="total" />
+                    <div className="space-y-2 rounded-[12px] border border-[#49c879]/35 bg-[#0b2015] p-3">
+                      <div className="text-[11px] font-black uppercase tracking-[0.12em] text-[#bff7cf]">Tahsilatlar</div>
+                      <SummaryRow label="Nakit Tahsilat" value={compactMoney(cashCollectionTotal, currencyLabel)} />
+                      <SummaryRow label="Kredi Kartı Tahsilat" value={compactMoney(cardCollectionTotal, currencyLabel)} />
+                      <SummaryRow label="Toplam Tahsilat" value={compactMoney(collectionTotal, currencyLabel)} tone="total" />
                     </div>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    {[
-                      ["Cari Satış", compactMoney(normalSaleTotal, currencyLabel)],
-                      [cardSalePanelTitle, compactMoney(cardSaleTotal, currencyLabel)],
-                      ["Kredi Kart Tahsilat", compactMoney(cardCollectionTotal, currencyLabel)],
-                    ].map(([label, value]) => (
-                      <SummaryRow key={label} label={label} value={value} />
-                    ))}
-                    <SummaryRow label="Genel Toplam" value={compactMoney(cardGrandTotal, currencyLabel)} tone="warning" />
-                    <div className="space-y-2.5 border-t border-[#2f7d4d] pt-3">
-                      {[
-                        { label: "Dünden Devreden", value: compactMoney(openingCashTotal, currencyLabel), tone: "positive" as const },
-                        { label: cashSalePanelTitle, value: compactMoney(cashSaleTotal, currencyLabel), tone: "positive" as const },
-                        { label: "Nakit Tahsilat", value: compactMoney(cashCollectionTotal, currencyLabel), tone: "positive" as const },
-                        { label: "Masraf", value: compactMoney(expenseTotal, currencyLabel), tone: "expense" as const },
-                      ].map((row) => (
-                        <SummaryRow key={row.label} label={row.label} value={row.value} tone={row.tone} />
-                      ))}
-                      <SummarySubmitRow value={compactMoney(dayEndGrandTotal, currencyLabel)} />
-                    </div>
+                    <SummaryRow label="Masraf" value={compactMoney(expenseTotal, currencyLabel)} tone="expense" />
+                    <SummaryRow label="Eldeki Nakit" value={compactMoney(cashOnHandTotal, currencyLabel)} tone="warning" />
                   </div>
 
                   <DayEndSaveAction
@@ -863,8 +911,9 @@ export function PosDayEndPage() {
                     historical={!isSelectedReportToday}
                   />
                 </form>
-                <CollectionPanel title="Nakit Tahsilat" rows={reportTables.cash_collections} tone="emerald" currencyLabel={currencyLabel} />
-                <CollectionPanel title="Kredi Kartı Tahsilat" rows={reportTables.card_collections} tone="emerald" currencyLabel={currencyLabel} />
+                <CollectionPanel title="Nakit Tahsilat" rows={reportTables.cash_collections} tone="emerald" currencyLabel={currencyLabel} compact />
+                <CollectionPanel title="Kredi Kartı Tahsilat" rows={reportTables.card_collections} tone="emerald" currencyLabel={currencyLabel} compact />
+                <ExpenseDetailsPanel report={report} currencyLabel={currencyLabel} />
               </section>
             </>
           ) : (
@@ -944,7 +993,7 @@ export function PosDayEndPage() {
             </span>
             <DialogTitle className="text-3xl font-black tracking-tight text-white">Gönderildi</DialogTitle>
             <DialogDescription className="text-base font-bold text-[#c7dccd]">
-              Gün sonu kaydı alındı. Kasa oturumu açık kalır.
+              {dayEndSaveMessage}
             </DialogDescription>
           </DialogHeader>
           <Button

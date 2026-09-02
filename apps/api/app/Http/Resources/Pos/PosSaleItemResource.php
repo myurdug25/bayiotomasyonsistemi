@@ -12,6 +12,8 @@ class PosSaleItemResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $vatMultiplier = 1 + (((float) $this->vat_rate) / 100);
+
         return [
             'id' => $this->id,
             'product_id' => $this->product_id,
@@ -23,6 +25,8 @@ class PosSaleItemResource extends JsonResource
             'unit_price' => number_format((float) $this->unit_price, 2, '.', ''),
             'vat_rate' => number_format((float) $this->vat_rate, 2, '.', ''),
             'line_total' => number_format((float) $this->line_total, 2, '.', ''),
+            'unit_price_vat_included' => number_format((float) $this->unit_price * $vatMultiplier, 2, '.', ''),
+            'line_total_vat_included' => number_format((float) $this->line_total * $vatMultiplier, 2, '.', ''),
         ];
     }
 }

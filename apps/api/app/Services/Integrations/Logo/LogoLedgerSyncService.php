@@ -87,29 +87,36 @@ class LogoLedgerSyncService
                     $matchedProvisionalShipmentInvoice = $entry instanceof LedgerEntry;
                 }
 
+                $matchedLogoDocumentLedger = false;
+                if (! $entry && ! $linkedB2bCollection && ($debit > 0 || $credit > 0)) {
+                    $entry = $this->findExistingLogoLedgerByDocument($customer, $record, $debit, $credit);
+                    $matchedLogoDocumentLedger = $entry instanceof LedgerEntry;
+                }
+
+                $mappedType = $this->resolveLedgerType($record, $debit, $credit);
                 $legacyEntryType = $debit > 0 ? 'debit' : 'credit';
                 $legacyAmount = $debit > 0 ? $debit : $credit;
                 $providedBalance = array_key_exists('balance_after', $record) && is_numeric($record['balance_after'])
                     ? $this->normalizeMoney($record['balance_after'])
                     : null;
 
-                $preserveB2bCollectionLedgerType = $entry
-                    && $linkedB2bCollection
-                    && (int) $entry->collection_id === (int) $linkedB2bCollection->id
-                    && $entry->source_system === 'b2b';
+                $linkedB2bCollectionPayment = $linkedB2bCollection
+                    && $credit > 0;
 
                 $attributes = [
                     'dealer_id' => $dealer->id,
                     'customer_id' => $customer->id,
                     'source_system' => 'logo',
-                    'source_reference' => (string) $record['external_ref'],
+                    'source_reference' => $matchedLogoDocumentLedger && $entry
+                        ? (string) $entry->source_reference
+                        : (string) $record['external_ref'],
                     'last_synced_at' => now(),
                     'order_id' => $entry?->order_id,
                     'collection_id' => $linkedB2bCollection?->id,
                     'date' => (string) $record['date'],
                     'type' => $matchedProvisionalShipmentInvoice
                         ? 'invoice'
-                        : ($preserveB2bCollectionLedgerType ? ($entry->type ?: 'payment') : (string) $record['type']),
+                        : ($linkedB2bCollectionPayment ? 'payment' : $mappedType),
                     'debit' => number_format($debit, 2, '.', ''),
                     'credit' => number_format($credit, 2, '.', ''),
                     'balance_after' => $providedBalance !== null
@@ -120,11 +127,16 @@ class LogoLedgerSyncService
                     'amount' => number_format($legacyAmount, 2, '.', ''),
                     'currency' => strtoupper((string) ($record['currency'] ?? 'TRY')),
                     'reference_no' => $this->nullableString($record['reference_no'] ?? null),
-                    'description' => $preserveB2bCollectionLedgerType
+                    'description' => $linkedB2bCollectionPayment && $entry
                         ? ($entry->description ?: $this->nullableString($record['description'] ?? null))
                         : $this->nullableString($record['description'] ?? null),
                     'created_by_user_id' => $entry?->created_by_user_id,
-                    'meta' => $this->buildMeta($entry, $record, $matchedProvisionalShipmentInvoice),
+                    'meta' => $this->buildMeta(
+                        $entry,
+                        $record,
+                        $matchedProvisionalShipmentInvoice,
+                        $matchedLogoDocumentLedger,
+                    ),
                 ];
 
                 if ($entry) {
@@ -145,7 +157,7 @@ class LogoLedgerSyncService
                     status: 'synced',
                     meta: [
                         'operation' => $ledgerEntry->wasRecentlyCreated ? 'created' : 'updated',
-                        'type' => (string) ($record['type'] ?? ''),
+                        'type' => $mappedType,
                     ],
                     payload: $record,
                 );
@@ -257,11 +269,33 @@ class LogoLedgerSyncService
             if ($customer) {
                 return $customer;
             }
+
+            $customer = $this->resolveCustomerByEryazAlias($dealer, $normalizedCustomerCode);
+            if ($customer) {
+                return $customer;
+            }
         }
 
         throw ValidationException::withMessages([
             "records.$index.customer_code" => ['Cari hareket icin eslesen musteri bulunamadi.'],
         ]);
+    }
+
+    private function resolveCustomerByEryazAlias(Dealer $dealer, string $eryazCustomerCode): ?Customer
+    {
+        $matches = Customer::query()
+            ->where('dealer_id', $dealer->id)
+            ->where(function ($query) use ($eryazCustomerCode): void {
+                $query
+                    ->where('meta->integrations->logo->payload->raw->DEFINITION2', $eryazCustomerCode)
+                    ->orWhere('meta->integrations->logo->payload->raw->DEFINITION2_', $eryazCustomerCode)
+                    ->orWhere('meta->integrations->logo->payload->DEFINITION2', $eryazCustomerCode)
+                    ->orWhere('meta->integrations->logo->payload->DEFINITION2_', $eryazCustomerCode);
+            })
+            ->limit(2)
+            ->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     private function findLedgerEntry(Customer $customer, string $externalReference): ?LedgerEntry
@@ -310,6 +344,54 @@ class LogoLedgerSyncService
             ->where('meta->source', 'logo_shipment_invoice')
             ->whereDate('date', (string) $record['date'])
             ->where('debit', number_format($debit, 2, '.', ''))
+            ->where(function ($query) use ($documentCandidates): void {
+                $query
+                    ->whereIn('reference_no', $documentCandidates)
+                    ->orWhereIn('description', $documentCandidates);
+            })
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     */
+    private function findExistingLogoLedgerByDocument(
+        Customer $customer,
+        array $record,
+        float $debit,
+        float $credit,
+    ): ?LedgerEntry {
+        $documentCandidates = collect([
+            $record['reference_no'] ?? null,
+            $record['description'] ?? null,
+            data_get($record, 'meta.raw.FICHENO'),
+            data_get($record, 'meta.raw.DOCODE'),
+            data_get($record, 'meta.raw.GENEXP1'),
+            data_get($record, 'meta.raw.LINEEXP'),
+        ])
+            ->map(fn ($value) => $this->nullableString($value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($documentCandidates === []) {
+            return null;
+        }
+
+        $amountColumn = $debit > 0 ? 'debit' : 'credit';
+        $amount = $debit > 0 ? $debit : $credit;
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        return LedgerEntry::query()
+            ->where('customer_id', $customer->id)
+            ->where('source_system', 'logo')
+            ->whereDate('date', (string) $record['date'])
+            ->where($amountColumn, number_format($amount, 2, '.', ''))
             ->where(function ($query) use ($documentCandidates): void {
                 $query
                     ->whereIn('reference_no', $documentCandidates)
@@ -391,7 +473,7 @@ class LogoLedgerSyncService
         LedgerEntry $ledgerEntry,
         array $record,
     ): string {
-        if (! $this->shouldMirrorCollection($record)) {
+        if (! $this->shouldMirrorCollection($record, $ledgerEntry)) {
             return 'skipped';
         }
 
@@ -546,7 +628,7 @@ class LogoLedgerSyncService
         }
 
         if ($collectionId === null) {
-            return null;
+            return $this->resolveLinkedB2bCollectionByDocument($customer, $record);
         }
 
         return Collection::query()
@@ -558,12 +640,179 @@ class LogoLedgerSyncService
 
     /**
      * @param  array<string, mixed>  $record
+     */
+    private function resolveLinkedB2bCollectionByDocument(Customer $customer, array $record): ?Collection
+    {
+        $credit = $this->normalizeMoney($record['credit'] ?? 0);
+        if ($credit <= 0) {
+            return null;
+        }
+
+        $candidates = $this->collectionDocumentCandidates($record);
+        if ($candidates === []) {
+            return null;
+        }
+
+        $date = $this->normalizeOptionalDate($record['date'] ?? null);
+        $amount = number_format($credit, 2, '.', '');
+
+        $documentMatch = Collection::query()
+            ->where('customer_id', $customer->id)
+            ->where('source_system', 'b2b')
+            ->where('amount', $amount)
+            ->when($date !== null, function ($query) use ($date) {
+                $query->where(function ($dateQuery) use ($date) {
+                    $dateQuery
+                        ->whereDate('date', $date)
+                        ->orWhereDate('collection_date', $date);
+                });
+            })
+            ->where(function ($query) use ($candidates) {
+                $query
+                    ->whereIn('reference_no', $candidates)
+                    ->orWhereIn('note', $candidates);
+
+                foreach ($candidates as $candidate) {
+                    $query
+                        ->orWhere('note', 'like', $candidate.' %')
+                        ->orWhere('note', 'like', $candidate.'-%')
+                        ->orWhere('note', 'like', $candidate.'/%');
+                }
+            })
+            ->orderByDesc('id')
+            ->first();
+
+        if ($documentMatch instanceof Collection) {
+            return $documentMatch;
+        }
+
+        $ledgerEchoMatch = $this->resolveLinkedB2bCollectionFromLedgerEcho($customer, $date, $amount, $candidates);
+        if ($ledgerEchoMatch instanceof Collection) {
+            return $ledgerEchoMatch;
+        }
+
+        return $this->resolveUniqueB2bCashCollectionByAmountAndDate($customer, $date, $amount);
+    }
+
+    /**
+     * @param  list<string>  $candidates
+     */
+    private function resolveLinkedB2bCollectionFromLedgerEcho(
+        Customer $customer,
+        ?string $date,
+        string $amount,
+        array $candidates,
+    ): ?Collection {
+        if ($date === null || $candidates === []) {
+            return null;
+        }
+
+        $matches = LedgerEntry::query()
+            ->with('collection')
+            ->where('customer_id', $customer->id)
+            ->where('source_system', 'b2b')
+            ->where('type', 'payment')
+            ->where('credit', $amount)
+            ->whereDate('date', $date)
+            ->whereNotNull('collection_id')
+            ->where(function ($query) use ($candidates) {
+                $query
+                    ->whereIn('reference_no', $candidates)
+                    ->orWhereIn('description', $candidates);
+            })
+            ->whereHas('collection', function ($query) use ($amount) {
+                $query
+                    ->where('source_system', 'b2b')
+                    ->where('method', 'cash')
+                    ->where('amount', $amount);
+            })
+            ->orderByDesc('id')
+            ->limit(2)
+            ->get();
+
+        if ($matches->count() !== 1) {
+            return null;
+        }
+
+        $collection = $matches->first()?->collection;
+
+        return $collection instanceof Collection ? $collection : null;
+    }
+
+    private function resolveUniqueB2bCashCollectionByAmountAndDate(Customer $customer, ?string $date, string $amount): ?Collection
+    {
+        if ($date === null) {
+            return null;
+        }
+
+        $matches = Collection::query()
+            ->where('customer_id', $customer->id)
+            ->where('source_system', 'b2b')
+            ->where('method', 'cash')
+            ->where('amount', $amount)
+            ->where(function ($dateQuery) use ($date) {
+                $dateQuery
+                    ->whereDate('date', $date)
+                    ->orWhereDate('collection_date', $date);
+            })
+            ->orderByDesc('id')
+            ->limit(2)
+            ->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return list<string>
+     */
+    private function collectionDocumentCandidates(array $record): array
+    {
+        $raw = $this->extractRawMeta($record);
+        $values = [
+            $record['reference_no'] ?? null,
+            $record['description'] ?? null,
+            $record['external_ref'] ?? null,
+            $this->readRawValue($raw, ['FICHENO', 'ficheno']),
+            $this->readRawValue($raw, ['DOCODE', 'docode']),
+            $this->readRawValue($raw, ['TRANNO', 'tranno']),
+            $this->readRawValue($raw, ['LINEEXP', 'lineexp']),
+            $this->readRawValue($raw, ['SOURCE_REFERENCE', 'source_reference']),
+        ];
+
+        $candidates = [];
+        foreach ($values as $value) {
+            $normalized = $this->nullableString($value);
+            if ($normalized === null) {
+                continue;
+            }
+
+            $candidates[] = $normalized;
+
+            if (preg_match_all('/\b[A-Z]{1,8}[-]?\d{2,20}\b/i', $normalized, $matches)) {
+                foreach ($matches[0] as $match) {
+                    $candidates[] = $match;
+                }
+            }
+        }
+
+        return collect($candidates)
+            ->map(fn (string $candidate) => $this->nullableString($candidate))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
      * @return array<string, mixed>
      */
     private function buildMeta(
         ?LedgerEntry $entry,
         array $record,
-        bool $matchedProvisionalShipmentInvoice = false
+        bool $matchedProvisionalShipmentInvoice = false,
+        bool $matchedLogoDocumentLedger = false,
     ): array {
         $meta = is_array($entry?->meta) ? $entry->meta : [];
 
@@ -575,6 +824,18 @@ class LogoLedgerSyncService
         Arr::set($meta, 'integrations.logo.synced_at', now()->toIso8601String());
         Arr::set($meta, 'integrations.logo.external_ref', (string) $record['external_ref']);
 
+        if ($matchedLogoDocumentLedger && $entry instanceof LedgerEntry) {
+            $alternateRefs = collect(data_get($meta, 'integrations.logo.alternate_external_refs', []))
+                ->push((string) $record['external_ref'])
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            Arr::set($meta, 'integrations.logo.matched_by_document', true);
+            Arr::set($meta, 'integrations.logo.alternate_external_refs', $alternateRefs);
+        }
+
         if (! empty($record['meta']) && is_array($record['meta'])) {
             Arr::set($meta, 'integrations.logo.payload', $record['meta']);
         }
@@ -585,9 +846,53 @@ class LogoLedgerSyncService
     /**
      * @param  array<string, mixed>  $record
      */
-    private function shouldMirrorCollection(array $record): bool
+    private function resolveLedgerType(array $record, float $debit, float $credit): string
     {
-        return ($record['type'] ?? null) === 'payment'
+        $raw = $this->extractRawMeta($record);
+        $trcode = $this->readRawValue($raw, ['TRCODE', 'trcode'])
+            ?? data_get($record, 'meta.logo_invoice_trcode');
+        $trcodeValue = is_numeric($trcode) ? (int) $trcode : null;
+        $module = $this->readRawValue($raw, ['MODULENR', 'MODULE_NR', 'MODULE', 'modulenr']);
+        $moduleValue = is_numeric($module) ? (int) $module : null;
+        $logoSource = trim((string) data_get($record, 'meta.logo_source'));
+
+        if ($logoSource === 'invoice_fallback' || data_get($record, 'meta.logo_invoice_ref') !== null || $moduleValue === 4) {
+            if (in_array($trcodeValue, [2, 3], true)) {
+                return 'credit';
+            }
+
+            if (in_array($trcodeValue, [7, 8, 9], true)) {
+                return 'invoice';
+            }
+        }
+
+        if (in_array($trcodeValue, [20, 21, 61, 62, 63, 71, 73], true)) {
+            return 'payment';
+        }
+
+        if ($moduleValue === 5 && $trcodeValue === 5) {
+            return $credit > 0 ? 'payment' : 'debit';
+        }
+
+        if ($moduleValue === 10 && $trcodeValue === 1 && $credit > 0) {
+            return 'payment';
+        }
+
+        $type = trim((string) ($record['type'] ?? ''));
+
+        if (in_array($type, ['invoice', 'payment', 'credit', 'debit'], true)) {
+            return $type;
+        }
+
+        return $debit > 0 ? 'invoice' : ($credit > 0 ? 'payment' : 'debit');
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     */
+    private function shouldMirrorCollection(array $record, LedgerEntry $ledgerEntry): bool
+    {
+        return $ledgerEntry->type === 'payment'
             && $this->normalizeMoney($record['credit'] ?? 0) > 0;
     }
 
@@ -607,7 +912,7 @@ class LogoLedgerSyncService
         $trcode = $this->readRawValue($raw, ['TRCODE', 'trcode']);
         $trcodeValue = is_numeric($trcode) ? (int) $trcode : null;
 
-        if ($trcodeValue === 21) {
+        if (in_array($trcodeValue, [20, 21], true)) {
             return 'transfer';
         }
 
@@ -615,7 +920,7 @@ class LogoLedgerSyncService
             return 'check';
         }
 
-        if (in_array($trcodeValue, [71, 73], true)) {
+        if (in_array($trcodeValue, [62, 71, 73], true)) {
             return 'note';
         }
 
@@ -634,12 +939,12 @@ class LogoLedgerSyncService
             return 'transfer';
         }
 
-        if (str_contains($searchText, 'cek') || str_contains($searchText, 'check')) {
-            return 'check';
-        }
-
         if (str_contains($searchText, 'senet') || str_contains($searchText, 'note')) {
             return 'note';
+        }
+
+        if (str_contains($searchText, 'cek') || str_contains($searchText, 'check')) {
+            return 'check';
         }
 
         if (str_contains($searchText, 'kart') || str_contains($searchText, 'kredi kart') || str_contains($searchText, 'pos')) {

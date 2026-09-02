@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Dealer;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Users\UserPermissionService;
 use App\Support\CustomerFeaturePermissions;
 use App\Support\MenuPermissions;
 use Illuminate\Http\JsonResponse;
@@ -78,6 +79,7 @@ class ModeratorManagementController extends Controller
                 'is_active',
                 'menu_permissions',
                 'feature_permissions',
+                'permissions_updated_at',
                 'created_at',
             ])
             ->with([
@@ -85,6 +87,7 @@ class ModeratorManagementController extends Controller
                 'selectedCustomer:id,code,name',
                 'roles:id,name,slug',
             ])
+            ->whereDoesntHave('roles', fn ($query) => $query->where('slug', 'customer'))
             ->withCount('assignedCustomers')
             ->orderBy('name')
             ->get();
@@ -151,6 +154,9 @@ class ModeratorManagementController extends Controller
         $salespeople = $users
             ->filter(fn (User $listedUser) => $listedUser->roles->contains('slug', 'salesperson'))
             ->values();
+        $settingsDealer = $user->dealer_id
+            ? Dealer::query()->find($user->dealer_id)
+            : Dealer::query()->orderBy('id')->first();
 
         return response()->json([
             'summary' => [
@@ -165,6 +171,10 @@ class ModeratorManagementController extends Controller
             'roles' => $roles,
             'menu_permissions' => MenuPermissions::definitions(),
             'feature_permissions' => CustomerFeaturePermissions::definitions(),
+            'system_settings' => [
+                'complaint_mail_to' => (string) (data_get($settingsDealer?->meta, 'system_settings.complaint_mail_to')
+                    ?: config('integrations.customer_complaints.mail_to', '')),
+            ],
             'dealers' => $dealers->map(fn (Dealer $dealer) => [
                 'id' => $dealer->id,
                 'code' => $dealer->code,
@@ -178,6 +188,36 @@ class ModeratorManagementController extends Controller
             ])->values(),
             'users' => $users->map(fn (User $listedUser) => $this->serializeUser($listedUser))->values(),
             'customers' => $customers->map(fn (Customer $customer) => $this->serializeCustomer($customer))->values(),
+        ]);
+    }
+
+    public function updateSystemSettings(Request $request): JsonResponse
+    {
+        /** @var User $actor */
+        $actor = $request->user();
+        $this->ensureModeratorRole($actor);
+
+        $validated = $request->validate([
+            'complaint_mail_to' => ['required', 'email:rfc', 'max:255'],
+        ]);
+
+        $dealers = $actor->dealer_id
+            ? Dealer::query()->whereKey($actor->dealer_id)->get()
+            : Dealer::query()->get();
+
+        DB::transaction(function () use ($dealers, $validated): void {
+            foreach ($dealers as $dealer) {
+                $meta = is_array($dealer->meta) ? $dealer->meta : [];
+                data_set($meta, 'system_settings.complaint_mail_to', strtolower(trim($validated['complaint_mail_to'])));
+                $dealer->forceFill(['meta' => $meta])->save();
+            }
+        });
+
+        return response()->json([
+            'message' => 'Dilek / şikayet e-posta adresi güncellendi.',
+            'system_settings' => [
+                'complaint_mail_to' => strtolower(trim($validated['complaint_mail_to'])),
+            ],
         ]);
     }
 
@@ -262,6 +302,7 @@ class ModeratorManagementController extends Controller
                 ->pluck('id');
 
             $createdUser->roles()->sync($roleIds);
+            app(UserPermissionService::class)->markChanged($createdUser);
 
             return $createdUser->fresh([
                 'dealer:id,code,name',
@@ -402,6 +443,7 @@ class ModeratorManagementController extends Controller
                 ->whereIn('slug', $nextRoleSlugs->all())
                 ->pluck('id');
             $user->roles()->sync($roleIds);
+            app(UserPermissionService::class)->markChanged($user);
 
             if (! $nextRoleSlugs->contains('salesperson')) {
                 Customer::query()
@@ -980,8 +1022,9 @@ class ModeratorManagementController extends Controller
             'email' => $user->email,
             'phone' => $user->phone,
             'is_active' => (bool) $user->is_active,
-            'menu_permissions' => MenuPermissions::forUser($user),
-            'feature_permissions' => CustomerFeaturePermissions::forUser($user),
+            'menu_permissions' => app(UserPermissionService::class)->menuPermissions($user),
+            'feature_permissions' => app(UserPermissionService::class)->featurePermissions($user),
+            'permissions_updated_at' => $user->permissions_updated_at?->toJSON(),
             'created_at' => $user->created_at,
             'assigned_customers_count' => (int) ($user->assigned_customers_count ?? 0),
             'dealer' => [

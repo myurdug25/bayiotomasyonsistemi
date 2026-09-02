@@ -10,11 +10,13 @@ use App\Http\Controllers\Api\CollectionReportController;
 use App\Http\Controllers\Api\CustomerBalanceReportController;
 use App\Http\Controllers\Api\CustomerCardRequestController;
 use App\Http\Controllers\Api\CustomerCollectionController;
+use App\Http\Controllers\Api\CustomerComplaintController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerLedgerController;
 use App\Http\Controllers\Api\CustomerUserController;
 use App\Http\Controllers\Api\DealerController;
 use App\Http\Controllers\Api\FinanceDefinitionController;
+use App\Http\Controllers\Api\LogoB2bLedgerBackfillExportController;
 use App\Http\Controllers\Api\LogoCollectionExportController;
 use App\Http\Controllers\Api\LogoCustomerExportController;
 use App\Http\Controllers\Api\LogoCustomerSyncController;
@@ -22,14 +24,18 @@ use App\Http\Controllers\Api\LogoDashboardReportController;
 use App\Http\Controllers\Api\LogoFinanceDefinitionSyncController;
 use App\Http\Controllers\Api\LogoLedgerSyncController;
 use App\Http\Controllers\Api\LogoOrderExportController;
+use App\Http\Controllers\Api\LogoPosDayEndExportController;
+use App\Http\Controllers\Api\LogoPosDeliveryBalanceSyncController;
 use App\Http\Controllers\Api\LogoPosExpenseExportController;
 use App\Http\Controllers\Api\LogoPosSaleExportController;
+use App\Http\Controllers\Api\LogoPreviousPurchaseSyncController;
 use App\Http\Controllers\Api\LogoProductShelfExportController;
 use App\Http\Controllers\Api\LogoProductSyncController;
 use App\Http\Controllers\Api\LogoPurchaseReceiptExportController;
 use App\Http\Controllers\Api\LogoReturnExportController;
 use App\Http\Controllers\Api\LogoReturnScrapExportController;
 use App\Http\Controllers\Api\LogoShipmentExportController;
+use App\Http\Controllers\Api\LogoWarehouseTransferExportController;
 use App\Http\Controllers\Api\MarketRateController;
 use App\Http\Controllers\Api\ModeratorManagementController;
 use App\Http\Controllers\Api\OrderBalanceReportController;
@@ -50,11 +56,17 @@ use App\Http\Controllers\Api\ReturnRequestController;
 use App\Http\Controllers\Api\SalesReportController;
 use App\Http\Controllers\Api\UserContextController;
 use App\Http\Controllers\Api\UserNoteController;
+use App\Http\Controllers\Api\UserNotificationController;
 use App\Http\Controllers\Api\WarehouseOrderController;
 use App\Http\Controllers\Api\WarehouseShelfController;
 use App\Http\Controllers\Api\WarehouseShipmentController;
 use App\Http\Controllers\Api\WarehouseShipmentPrintController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/health', static fn () => response()->json([
+    'ok' => true,
+    'service' => 'powersa-b2b-api',
+]));
 
 Route::middleware('throttle:logo-integration')->group(function (): void {
     Route::post('/integrations/logo/customers/sync', [LogoCustomerSyncController::class, 'store']);
@@ -62,15 +74,23 @@ Route::middleware('throttle:logo-integration')->group(function (): void {
     Route::post('/integrations/logo/customers/ack', [LogoCustomerExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/collections/pending', [LogoCollectionExportController::class, 'index']);
     Route::post('/integrations/logo/collections/ack', [LogoCollectionExportController::class, 'acknowledge']);
+    Route::get('/integrations/logo/b2b-ledger-backfill/pending', [LogoB2bLedgerBackfillExportController::class, 'index']);
+    Route::post('/integrations/logo/b2b-ledger-backfill/ack', [LogoB2bLedgerBackfillExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/pos-sales/pending', [LogoPosSaleExportController::class, 'index']);
     Route::post('/integrations/logo/pos-sales/ack', [LogoPosSaleExportController::class, 'acknowledge']);
+    Route::post('/integrations/logo/pos-delivery-balances/sync', [LogoPosDeliveryBalanceSyncController::class, 'sync']);
+    Route::post('/integrations/logo/previous-purchases/sync', [LogoPreviousPurchaseSyncController::class, 'sync']);
     Route::get('/integrations/logo/pos-expenses/pending', [LogoPosExpenseExportController::class, 'index']);
     Route::post('/integrations/logo/pos-expenses/sync', [LogoPosExpenseExportController::class, 'sync']);
     Route::post('/integrations/logo/pos-expenses/ack', [LogoPosExpenseExportController::class, 'acknowledge']);
+    Route::get('/integrations/logo/pos-day-ends/pending', [LogoPosDayEndExportController::class, 'index']);
+    Route::post('/integrations/logo/pos-day-ends/ack', [LogoPosDayEndExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/orders/pending', [LogoOrderExportController::class, 'index']);
     Route::post('/integrations/logo/orders/ack', [LogoOrderExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/shipments/pending', [LogoShipmentExportController::class, 'index']);
     Route::post('/integrations/logo/shipments/ack', [LogoShipmentExportController::class, 'acknowledge']);
+    Route::get('/integrations/logo/warehouse-transfers/pending', [LogoWarehouseTransferExportController::class, 'index']);
+    Route::post('/integrations/logo/warehouse-transfers/ack', [LogoWarehouseTransferExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/product-shelves/pending', [LogoProductShelfExportController::class, 'index']);
     Route::post('/integrations/logo/product-shelves/ack', [LogoProductShelfExportController::class, 'acknowledge']);
     Route::get('/integrations/logo/purchase-receipts/pending', [LogoPurchaseReceiptExportController::class, 'index']);
@@ -107,6 +127,9 @@ Route::middleware('web')->group(function (): void {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/realtime/events', RealtimeEventStreamController::class)
         ->middleware('throttle:realtime-stream');
+    Route::get('/notifications', [UserNotificationController::class, 'index']);
+    Route::patch('/notifications/{notification}/read', [UserNotificationController::class, 'read']);
+    Route::patch('/notifications/{notification}/archive', [UserNotificationController::class, 'archive']);
     Route::patch('/profile', [ProfileController::class, 'update']);
     Route::get('/market-rates/tcmb', MarketRateController::class);
     Route::middleware('menu:notes')->group(function (): void {
@@ -116,7 +139,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/notes/{note}', [UserNoteController::class, 'destroy']);
     });
 
-    Route::middleware(['role:admin,dealer_admin,salesperson,cashier,point,warehouse,customer', 'menu:orders,warehouse'])->group(function (): void {
+    Route::middleware(['role:admin,dealer_admin,salesperson,cashier,point,warehouse,customer', 'menu:orders,warehouse,returns'])->group(function (): void {
         Route::get('/orders/{order}', [OrderController::class, 'show']);
     });
 
@@ -141,6 +164,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware(['role:admin,moderator', 'menu:moderator'])->group(function (): void {
         Route::get('/moderator/overview', [ModeratorManagementController::class, 'overview']);
+        Route::patch('/moderator/system-settings', [ModeratorManagementController::class, 'updateSystemSettings']);
         Route::post('/moderator/users', [ModeratorManagementController::class, 'storeUser']);
         Route::patch('/moderator/users/{user}', [ModeratorManagementController::class, 'updateUser']);
         Route::post('/moderator/users/{user}/reset-password', [ModeratorManagementController::class, 'resetUserPassword']);
@@ -154,8 +178,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/customer-users/{customer}', [CustomerUserController::class, 'store']);
     });
 
-    Route::middleware('role:admin,dealer_admin,salesperson,cashier,point,customer,warehouse')->group(function () {
+    Route::middleware('role:admin,global,global_user,moderator,accounting,muhasebe,dealer_admin,salesperson,cashier,point,customer,warehouse')->group(function () {
         Route::get('/products/search', ProductSearchController::class)
+            ->middleware(['menu:search,pos', 'throttle:product-search']);
+        Route::get('/products/previous-purchases', [ProductSearchController::class, 'previousPurchasesByQuery'])
+            ->middleware(['menu:search', 'throttle:product-search']);
+        Route::get('/products/{productCode}/previous-purchases', [ProductSearchController::class, 'previousPurchases'])
             ->middleware(['menu:search', 'throttle:product-search']);
         Route::get('/products/{product}/image', ProductImageController::class)
             ->middleware('menu:search');
@@ -186,25 +214,35 @@ Route::middleware('auth:sanctum')->group(function () {
             ->middleware(['throttle:reports', 'menu:dashboard,reports']);
         Route::get('/reports/runs/{reportRun}', [ReportRunController::class, 'show'])
             ->middleware(['throttle:reports', 'menu:reports,dashboard']);
-        Route::get('/context', [UserContextController::class, 'show'])->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard');
-        Route::post('/context/customer', [UserContextController::class, 'setCustomer'])->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard');
-        Route::delete('/context/customer', [UserContextController::class, 'clearCustomer'])->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard');
+        Route::get('/context', [UserContextController::class, 'show']);
+        Route::post('/context/customer', [UserContextController::class, 'setCustomer'])->middleware('menu:customers,search,cart,orders,ledger,collections,reports,dashboard,pos');
+        Route::delete('/context/customer', [UserContextController::class, 'clearCustomer'])->middleware('menu:customers,search,cart,orders,ledger,collections,reports,dashboard,pos');
         Route::get('/customers/{customer}/ledger', [CustomerLedgerController::class, 'index'])->middleware('menu:ledger');
         Route::apiResource('dealers', DealerController::class)->only(['index', 'show', 'update'])->middleware('menu:customers,search,cart,orders,reports,ledger,collections,dashboard,extra');
         Route::apiResource('customers', CustomerController::class)->middleware('menu:customers,cart,orders,ledger,collections,reports,dashboard,new-customer-card');
         Route::get('/campaigns', [CampaignController::class, 'index']);
         Route::get('/customers/{customer}/campaign-progress', [CampaignController::class, 'progress']);
+        Route::post('/customer-complaints', [CustomerComplaintController::class, 'store'])
+            ->middleware(['role:admin,customer', 'menu:customer-complaints']);
     });
 
-    Route::middleware(['role:admin,dealer_admin,salesperson,cashier,point', 'menu:collections,pos'])->group(function (): void {
-        Route::get('/finance-definitions', [FinanceDefinitionController::class, 'index']);
+    Route::get('/finance-definitions', [FinanceDefinitionController::class, 'index'])
+        ->middleware([
+            'role:admin,global,global_user,moderator,accounting,muhasebe,dealer_admin,salesperson,cashier,point,customer,warehouse',
+            'menu:collections,pos,cart',
+        ]);
+
+    Route::middleware(['role:admin,global,global_user,moderator,accounting,muhasebe,dealer_admin,salesperson,cashier,point', 'menu:collections,pos'])->group(function (): void {
         Route::get('/collections/next-sequence', [CustomerCollectionController::class, 'nextSequence']);
+        Route::get('/collections/approvals', [CustomerCollectionController::class, 'approvalIndex']);
         Route::get('/customers/{customer}/collections', [CustomerCollectionController::class, 'index']);
         Route::post('/customers/{customer}/collections', [CustomerCollectionController::class, 'store']);
         Route::patch('/customers/{customer}/collections/{collection}', [CustomerCollectionController::class, 'update']);
         Route::delete('/customers/{customer}/collections/{collection}', [CustomerCollectionController::class, 'destroy']);
         Route::post('/customers/{customer}/collections/send', [CustomerCollectionController::class, 'sendMany']);
         Route::post('/customers/{customer}/collections/{collection}/send', [CustomerCollectionController::class, 'send']);
+        Route::post('/customers/{customer}/collections/{collection}/approve', [CustomerCollectionController::class, 'approve']);
+        Route::post('/customers/{customer}/collections/{collection}/reject', [CustomerCollectionController::class, 'reject']);
     });
 
     Route::prefix('pos')
@@ -233,9 +271,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::middleware('menu:pos-day-end')->group(function (): void {
                 Route::get('/reports/day-end', [PosReportController::class, 'dayEnd']);
                 Route::get('/reports/day-end/print', [PosReportController::class, 'dayEndPrint']);
+                Route::post('/reports/day-end/save', [PosReportController::class, 'dayEndSave']);
             });
 
             Route::middleware('menu:pos,delivery-notes')->group(function (): void {
+                Route::get('/sales/delivery-balance', [PosSaleController::class, 'deliveryBalance']);
                 Route::get('/sales', [PosSaleController::class, 'index']);
                 Route::get('/sales/{posSale}', [PosSaleController::class, 'show']);
                 Route::put('/sales/{posSale}', [PosSaleController::class, 'update']);
@@ -244,13 +284,18 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
     Route::prefix('warehouse')
-        ->middleware(['role:warehouse,admin,dealer_admin', 'menu:warehouse', 'throttle:warehouse'])
+        ->middleware(['role:warehouse,admin,dealer_admin,cashier,point,salesperson,customer', 'menu:warehouse,rack-addresses', 'throttle:warehouse'])
+        ->group(function () {
+            Route::get('/shelves', [WarehouseShelfController::class, 'index']);
+            Route::patch('/shelves/{product}', [WarehouseShelfController::class, 'update']);
+        });
+
+    Route::prefix('warehouse')
+        ->middleware(['role:warehouse,admin,dealer_admin,point,cashier', 'menu:warehouse', 'throttle:warehouse'])
         ->group(function () {
             Route::get('/orders/ready', [WarehouseOrderController::class, 'ready']);
             Route::post('/orders/bulk-cancel', [WarehouseOrderController::class, 'bulkCancel']);
             Route::patch('/orders/{order}/items/{item}', [OrderController::class, 'updateWarehouseItem']);
-            Route::get('/shelves', [WarehouseShelfController::class, 'index']);
-            Route::patch('/shelves/{product}', [WarehouseShelfController::class, 'update']);
             Route::get('/staff', [WarehouseShipmentController::class, 'staff']);
             Route::post('/shipments', [WarehouseShipmentController::class, 'store']);
             Route::get('/shipments/{shipment}', [WarehouseShipmentController::class, 'show']);
@@ -268,8 +313,11 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
     Route::prefix('purchase-receipts')
-        ->middleware(['role:admin,dealer_admin,warehouse', 'menu:extra', 'throttle:pos'])
+        ->middleware(['role:admin,dealer_admin,warehouse,cashier,point', 'menu:extra,pos', 'throttle:pos'])
         ->group(function (): void {
+            Route::get('/', [PurchaseReceiptController::class, 'index']);
             Route::post('/', [PurchaseReceiptController::class, 'store']);
+            Route::get('/{purchaseReceipt}', [PurchaseReceiptController::class, 'show']);
+            Route::post('/{purchaseReceipt}/approve', [PurchaseReceiptController::class, 'approve']);
         });
 });

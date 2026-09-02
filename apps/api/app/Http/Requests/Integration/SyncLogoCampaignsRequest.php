@@ -38,11 +38,22 @@ class SyncLogoCampaignsRequest extends FormRequest
             'campaigns.*.meta' => ['nullable', 'array'],
             'campaigns.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'campaigns.*.products' => [
-                'required',
+                'present',
                 'array',
-                'min:1',
                 'max:50000',
                 function (string $attribute, mixed $products, Closure $fail): void {
+                    $campaignIndex = explode('.', $attribute)[1] ?? null;
+                    $campaign = is_numeric($campaignIndex)
+                        ? ($this->input("campaigns.{$campaignIndex}") ?? [])
+                        : [];
+                    $isActive = filter_var($campaign['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+
+                    if ($isActive && is_array($products) && count($products) < 1) {
+                        $fail("{$attribute} aktif kampanyalar için en az bir ürün kodu içermelidir.");
+
+                        return;
+                    }
+
                     foreach ($products as $sku) {
                         if (! is_string($sku) || mb_strlen($sku) > 191) {
                             $fail("{$attribute} yalnızca en fazla 191 karakterlik ürün kodları içerebilir.");

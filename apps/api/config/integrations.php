@@ -9,6 +9,8 @@ return [
         'collection_sync_key' => env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', '')),
         'pos_sale_sync_key' => env('LOGO_POS_SALE_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', ''))),
         'pos_expense_sync_key' => env('LOGO_POS_EXPENSE_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', ''))),
+        'pos_day_end_sync_key' => env('LOGO_POS_DAY_END_SYNC_KEY', env('LOGO_POS_EXPENSE_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', '')))),
+        'previous_purchase_sync_key' => env('LOGO_PREVIOUS_PURCHASE_SYNC_KEY', env('LOGO_PRODUCT_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', ''))),
         'order_sync_key' => env('LOGO_ORDER_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', ''))),
         'shipment_sync_key' => env('LOGO_SHIPMENT_SYNC_KEY', env('LOGO_ORDER_SYNC_KEY', env('LOGO_COLLECTION_SYNC_KEY', env('LOGO_CUSTOMER_SYNC_KEY', '')))),
         'retry' => [
@@ -48,13 +50,21 @@ return [
         'point_cashbox_name' => env('POS_POINT_CASHBOX_NAME', 'ERZURUM POINT KASASI'),
         'erzurum_point_cashbox_code' => env('POS_ERZURUM_POINT_CASHBOX_CODE', env('POS_POINT_CASHBOX_CODE', '100.01.007')),
         'erzurum_point_cashbox_name' => env('POS_ERZURUM_POINT_CASHBOX_NAME', env('POS_POINT_CASHBOX_NAME', 'ERZURUM POINT KASASI')),
-        'batum_point_cashbox_code' => env('POS_BATUM_POINT_CASHBOX_CODE', '100.01.002'),
-        'batum_point_cashbox_name' => env('POS_BATUM_POINT_CASHBOX_NAME', 'BATUM POINT KASASI'),
+        'batum_point_cashbox_code' => env('POS_BATUM_POINT_CASHBOX_CODE', '100.04.001'),
+        'batum_point_cashbox_name' => env('POS_BATUM_POINT_CASHBOX_NAME', 'BATUM MERKEZ KASASI'),
         'point_warehouse_no' => (int) env('POS_POINT_WAREHOUSE_NO', 0),
         'erzurum_point_warehouse_no' => (int) env('POS_ERZURUM_POINT_WAREHOUSE_NO', env('POS_POINT_WAREHOUSE_NO', 0)),
         'trabzon_point_warehouse_no' => (int) env('POS_TRABZON_POINT_WAREHOUSE_NO', 2),
         'samsun_point_warehouse_no' => (int) env('POS_SAMSUN_POINT_WAREHOUSE_NO', 3),
         'batum_point_warehouse_no' => (int) env('POS_BATUM_POINT_WAREHOUSE_NO', 4),
+    ],
+    'customer_complaints' => [
+        'mail_to' => env('POWERSA_COMPLAINT_MAIL_TO', 'farukcelik@gucsa.com.tr'),
+        'company_info' => env('POWERSA_COMPANY_INFO', ''),
+        'iban_info' => env('POWERSA_IBAN_INFO', ''),
+    ],
+    'eryaz' => [
+        'previous_purchases_cache_seconds' => (int) env('ERYAZ_PREVIOUS_PURCHASES_CACHE_SECONDS', 300),
     ],
     'ownership' => [
         'customers' => [

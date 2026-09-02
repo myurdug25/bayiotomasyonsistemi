@@ -31,6 +31,8 @@ class CustomerCollectionIndexRequest extends FormRequest
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'include_summary' => ['nullable', 'boolean'],
+            'compact' => ['nullable', 'boolean'],
         ];
     }
 }

@@ -42,15 +42,7 @@ class PosExpensePolicy
             return false;
         }
 
-        if ($user->hasAnyRole(['cashier', 'point']) && ! $user->hasRole('dealer_admin')) {
-            $sessionOpenedBy = $expense->relationLoaded('posSession')
-                ? $expense->posSession?->opened_by
-                : $expense->posSession()->value('opened_by');
-
-            return (int) $sessionOpenedBy === (int) $user->id;
-        }
-
-        return true;
+        return (int) $expense->created_by_user_id === (int) $user->id;
     }
 
     private function canUsePos(User $user): bool

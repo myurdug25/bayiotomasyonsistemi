@@ -26,10 +26,21 @@ import {
   getOrderDetail,
   listCustomerLedger,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const LEDGER_DATE_FORMATTER = new Intl.DateTimeFormat("tr-TR", {
   dateStyle: "medium",
 });
+const DEFAULT_LEDGER_DATE_FROM = "2026-01-01";
+
+function todayInputValue(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
 
 function formatLedgerDate(value: string): string {
   const parsed = new Date(value);
@@ -62,6 +73,42 @@ function getLedgerTypeMeta(type: LedgerEntryDto["type"] | NonNullable<LedgerEntr
   }
 
   return { label: "Borç", className: "border-rose-400/40 bg-rose-500/15 text-rose-200" };
+}
+
+function normalizeCollectionMethodLabel(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  const withoutPrefix = raw.replace(/^Tahsilat\s+/i, "").trim();
+  const normalized = withoutPrefix.toLocaleLowerCase("tr-TR");
+
+  if (["cash", "nakit"].includes(normalized)) {
+    return "Nakit";
+  }
+
+  if (["transfer", "havale", "havale/eft", "havale eft", "eft"].includes(normalized)) {
+    return "Havale / EFT";
+  }
+
+  if (["check", "çek", "cek"].includes(normalized)) {
+    return "Çek";
+  }
+
+  if (["note", "senet"].includes(normalized)) {
+    return "Senet";
+  }
+
+  if (["cc", "fiziksel pos", "fiziksel/pos"].includes(normalized)) {
+    return "Fiziksel POS";
+  }
+
+  return withoutPrefix || raw;
+}
+
+function ledgerTypeDisplayLabel(row: LedgerEntryDto): string {
+  if (row.type === "payment") {
+    return normalizeCollectionMethodLabel(row.collection_method_label ?? row.transaction_type_label ?? getLedgerTypeMeta(row.type).label);
+  }
+
+  return row.transaction_type_label ?? getLedgerTypeMeta(row.type).label;
 }
 
 function getCheckoutSummaryClass(code: string): string {
@@ -170,11 +217,94 @@ function shippingMethodLabel(row: LedgerEntryDto | OrderDetailResponse["order"] 
   return value;
 }
 
+function isInternalOrderReference(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "").trim().toLocaleUpperCase("tr-TR");
+
+  return normalized === "" || normalized.startsWith("ORD-");
+}
+
+function cleanLedgerLabel(value: string | null | undefined): string | null {
+  const normalized = String(value ?? "").trim();
+
+  if (!normalized || normalized === "-") {
+    return null;
+  }
+
+  return normalized;
+}
+
+function ledgerDocumentLabel(row: LedgerEntryDto): string | null {
+  const documentNo = cleanLedgerLabel(row.document_no);
+  const referenceNo = cleanLedgerLabel(row.reference_no);
+
+  if (documentNo && !isInternalOrderReference(documentNo)) {
+    return documentNo;
+  }
+
+  if (referenceNo && !isInternalOrderReference(referenceNo)) {
+    return referenceNo;
+  }
+
+  return null;
+}
+
+function ledgerSourceLabel(row: LedgerEntryDto): string | null {
+  const source = cleanLedgerLabel(row.source_document);
+  const document = ledgerDocumentLabel(row);
+
+  if (!source || isInternalOrderReference(source) || source === document) {
+    return null;
+  }
+
+  return source;
+}
+
+function ledgerMeaningfulBadges(row: LedgerEntryDto): string[] {
+  const labels = [
+    row.checkout_summary?.label ?? null,
+    salesPriceTypeLabel(row),
+    shippingMethodLabel(row),
+  ]
+    .map((label) => String(label ?? "").trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(labels));
+}
+
+function ledgerHasDetail(row: LedgerEntryDto): boolean {
+  const transactionType = row.transaction_type ?? row.type;
+  const hasLogoInvoiceLines = Boolean(row.logo_invoice_detail?.lines?.length);
+
+  return Boolean(
+    hasLogoInvoiceLines ||
+      row.order_id ||
+      row.collection_id ||
+      ledgerDocumentLabel(row) ||
+      ledgerSourceLabel(row) ||
+      String(row.description ?? "").trim() ||
+      String(row.source_reference ?? "").trim() ||
+      row.checkout_summary ||
+      row.sales_price_type_label ||
+      row.shipping_method_label ||
+      row.collection_method_label ||
+      row.return_quantity ||
+      row.return_total ||
+      transactionType === "payment" ||
+      transactionType === "transfer" ||
+      transactionType === "offset" ||
+      transactionType === "opening" ||
+      transactionType === "invoice" ||
+      transactionType === "return" ||
+      row.type === "debit" ||
+      row.type === "credit"
+  );
+}
+
 export function LedgerPage() {
   const { selectedCustomer } = useSession();
 
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(DEFAULT_LEDGER_DATE_FROM);
+  const [dateTo, setDateTo] = useState(todayInputValue);
   const [ledgerTypeFilter, setLedgerTypeFilter] = useState<LedgerEntryType | "">("");
   const [collectionMethodFilter, setCollectionMethodFilter] = useState<CollectionMethodFilter | "">("");
   const [loading, setLoading] = useState(false);
@@ -239,7 +369,11 @@ export function LedgerPage() {
       .finally(() => setDetailLoading(false));
   };
 
-  const hasActiveFilters = Boolean(dateFrom) || Boolean(dateTo) || Boolean(ledgerTypeFilter) || Boolean(collectionMethodFilter);
+  const hasActiveFilters =
+    dateFrom !== DEFAULT_LEDGER_DATE_FROM ||
+    dateTo !== todayInputValue() ||
+    Boolean(ledgerTypeFilter) ||
+    Boolean(collectionMethodFilter);
   const displayRows = useMemo(() => payload?.data ?? [], [payload?.data]);
   const listedRowCount = payload?.summary?.total_count ?? payload?.meta?.total ?? displayRows.length;
   const summary = useMemo(() => {
@@ -281,10 +415,10 @@ export function LedgerPage() {
 
   return (
     <div className="space-y-3">
-      <Card className="dashboard-panel-card md:sticky md:top-24 md:z-20">
-        <CardContent className="p-3">
-          <div className="grid gap-2 xl:grid-cols-[130px_130px_auto_auto_86px_auto] xl:items-end">
-            <div>
+      <Card className="dashboard-panel-card ledger-filter-card md:sticky md:top-24 md:z-20">
+        <CardContent className="ledger-filter-content p-3">
+          <div className="ledger-filter-grid grid min-w-0 gap-2 xl:grid-cols-[130px_130px_minmax(340px,0.9fr)_minmax(430px,1.1fr)_minmax(108px,auto)] xl:items-end">
+            <div className="ledger-date-filter">
               <label className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                 <CalendarDays className="h-3.5 w-3.5" />
                 Başlangıç
@@ -297,7 +431,7 @@ export function LedgerPage() {
                 className="h-10"
               />
             </div>
-            <div>
+            <div className="ledger-date-filter">
               <label className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                 <CalendarDays className="h-3.5 w-3.5" />
                 Bitiş
@@ -310,19 +444,19 @@ export function LedgerPage() {
                 className="h-10"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                 Hareket Tipi
               </label>
-              <div className="inline-flex min-h-10 w-fit max-w-full flex-nowrap items-center gap-1 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface)] px-1.5 py-1.5">
+              <div className="ledger-filter-strip flex min-h-10 w-full max-w-full flex-nowrap items-center gap-1 overflow-x-auto rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface)] px-1.5 py-1.5">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className={
                     ledgerTypeFilter === ""
-                      ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[11px] text-white"
-                      : "h-7 shrink-0 whitespace-nowrap border-white/15 bg-white/[0.04] px-2 text-[11px] text-slate-200 hover:bg-white/[0.08] hover:text-white"
+                      ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[10px] text-white"
+                      : "h-7 shrink-0 whitespace-nowrap border-white/15 bg-white/[0.04] px-2 text-[10px] text-slate-200 hover:bg-white/[0.08] hover:text-white"
                   }
                   disabled={loading || !selectedCustomer}
                   onClick={() => {
@@ -340,7 +474,7 @@ export function LedgerPage() {
                       key={option.value}
                       size="sm"
                       variant="outline"
-                      className={selected ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[11px] text-white" : `h-7 shrink-0 whitespace-nowrap px-2 text-[11px] ${option.className}`}
+                      className={selected ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[10px] text-white" : `h-7 shrink-0 whitespace-nowrap px-2 text-[10px] ${option.className}`}
                       disabled={loading || !selectedCustomer}
                       onClick={() => {
                         const nextType = selected ? "" : option.value;
@@ -354,19 +488,19 @@ export function LedgerPage() {
                 })}
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                 Tahsilat Filtresi
               </label>
-              <div className="inline-flex min-h-10 w-fit max-w-full flex-nowrap items-center gap-1 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface)] px-1.5 py-1.5">
+              <div className="ledger-filter-strip flex min-h-10 w-full max-w-full flex-nowrap items-center gap-1 overflow-x-auto rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface)] px-1.5 py-1.5">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className={
                     collectionMethodFilter === ""
-                      ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[11px] text-white"
-                      : "h-7 shrink-0 whitespace-nowrap border-white/15 bg-white/[0.04] px-2 text-[11px] text-slate-200 hover:bg-white/[0.08] hover:text-white"
+                      ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[10px] text-white"
+                      : "h-7 shrink-0 whitespace-nowrap border-white/15 bg-white/[0.04] px-2 text-[10px] text-slate-200 hover:bg-white/[0.08] hover:text-white"
                   }
                   disabled={loading || !selectedCustomer}
                   onClick={() => {
@@ -384,7 +518,7 @@ export function LedgerPage() {
                       key={option.value}
                       size="sm"
                       variant="outline"
-                      className={selected ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[11px] text-white" : `h-7 shrink-0 whitespace-nowrap px-2 text-[11px] ${option.className}`}
+                      className={selected ? "h-7 shrink-0 whitespace-nowrap border-white/70 bg-white/18 px-2 text-[10px] text-white" : `h-7 shrink-0 whitespace-nowrap px-2 text-[10px] ${option.className}`}
                       disabled={loading || !selectedCustomer}
                       onClick={() => {
                         const nextMethod = selected ? "" : option.value;
@@ -398,26 +532,34 @@ export function LedgerPage() {
                 })}
               </div>
             </div>
-            <Button className="h-10 rounded-[12px] px-2 text-xs" onClick={() => fetchLedger(1)} disabled={loading || !selectedCustomer}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-              {loading ? "Yükleniyor..." : "Yenile"}
-            </Button>
-            {hasActiveFilters ? (
-              <Button
-                variant="outline"
-                className="h-10 rounded-[12px] px-2 text-xs"
-                disabled={loading}
-                onClick={() => {
-                  setDateFrom("");
-                  setDateTo("");
-                  setLedgerTypeFilter("");
-                  setCollectionMethodFilter("");
-                  fetchLedger(1, { dateFrom: "", dateTo: "", ledgerType: "", collectionMethod: "" });
-                }}
-              >
-                Temizle
+            <div className="ledger-filter-actions flex min-w-0 flex-nowrap items-end gap-2 xl:justify-end">
+              <Button className="ledger-refresh-button h-10 min-w-[96px] shrink-0 rounded-[12px] px-3 text-xs" onClick={() => fetchLedger(1)} disabled={loading || !selectedCustomer}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                {loading ? "Yükleniyor..." : "Yenile"}
               </Button>
-            ) : null}
+              {hasActiveFilters ? (
+                <Button
+                  variant="outline"
+                  className="h-10 shrink-0 rounded-[12px] px-2 text-xs"
+                  disabled={loading}
+                  onClick={() => {
+                    const defaultDateTo = todayInputValue();
+                    setDateFrom(DEFAULT_LEDGER_DATE_FROM);
+                    setDateTo(defaultDateTo);
+                    setLedgerTypeFilter("");
+                    setCollectionMethodFilter("");
+                    fetchLedger(1, {
+                      dateFrom: DEFAULT_LEDGER_DATE_FROM,
+                      dateTo: defaultDateTo,
+                      ledgerType: "",
+                      collectionMethod: "",
+                    });
+                  }}
+                >
+                  Temizle
+                </Button>
+              ) : null}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -458,11 +600,17 @@ export function LedgerPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setDateFrom("");
-                    setDateTo("");
+                    const defaultDateTo = todayInputValue();
+                    setDateFrom(DEFAULT_LEDGER_DATE_FROM);
+                    setDateTo(defaultDateTo);
                     setLedgerTypeFilter("");
                     setCollectionMethodFilter("");
-                    fetchLedger(1, { dateFrom: "", dateTo: "", ledgerType: "", collectionMethod: "" });
+                    fetchLedger(1, {
+                      dateFrom: DEFAULT_LEDGER_DATE_FROM,
+                      dateTo: defaultDateTo,
+                      ledgerType: "",
+                      collectionMethod: "",
+                    });
                   }}
                 >
                   Temizle
@@ -470,14 +618,96 @@ export function LedgerPage() {
               ) : null}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] table-fixed text-left text-[13px]">
+            <>
+            <div className="ledger-mobile-cards md:hidden">
+              {displayRows.map((row) => {
+                const documentLabel = ledgerDocumentLabel(row);
+                const sourceLabel = ledgerSourceLabel(row);
+                const meaningfulBadges = ledgerMeaningfulBadges(row);
+
+                return (
+                  <article key={`mobile-${row.id}`} className="ledger-mobile-card">
+                    <div className="ledger-mobile-card-head">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className={`h-6 px-2 text-xs font-semibold ${getLedgerTypeMeta(row.type).className}`}
+                          >
+                            {ledgerTypeDisplayLabel(row)}
+                          </Badge>
+                          {row.type !== "payment" && row.collection_method_label ? (
+                            <span className="rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-100">
+                              {normalizeCollectionMethodLabel(row.collection_method_label)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1.5 text-xs font-bold text-[var(--muted-foreground)]">
+                          {formatLedgerDate(row.document_date ?? row.date)}
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-right text-base font-black text-[var(--foreground)]">
+                        {formatAmount(row.balance_after, row.currency)}
+                      </p>
+                    </div>
+
+                    <div className="ledger-mobile-card-body">
+                      <div className="min-w-0">
+                        <p className="ledger-mobile-label">Belge / Kaynak</p>
+                        <p className="break-words text-sm font-black text-[var(--foreground)]">{documentLabel ?? ""}</p>
+                        {sourceLabel ? <p className="mt-0.5 break-words text-xs font-semibold text-[var(--muted-foreground)]">Kaynak: {sourceLabel}</p> : null}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="ledger-mobile-label">Açıklama</p>
+                        <p className="line-clamp-2 text-sm font-semibold leading-snug text-[var(--foreground)]">{cleanLedgerLabel(row.description) ?? ""}</p>
+                      </div>
+                    </div>
+
+                    {meaningfulBadges.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {meaningfulBadges.map((label) => (
+                          <Badge
+                            key={`mobile-${row.id}-${label}`}
+                            variant="outline"
+                            className="h-5 max-w-full px-1.5 text-[10px] font-black"
+                            title={label}
+                          >
+                            <span className="truncate">{label}</span>
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="ledger-mobile-amounts">
+                      <div><span>Borç</span><strong>{formatAmount(row.debit, row.currency)}</strong></div>
+                      <div><span>Alacak</span><strong>{formatAmount(row.credit, row.currency)}</strong></div>
+                    </div>
+
+                    {ledgerHasDetail(row) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-full rounded-xl text-xs font-black"
+                        onClick={() => openOrderDetail(row)}
+                      >
+                        <Eye className="h-4 w-4" />
+                        Detay
+                      </Button>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="ledger-table-scroll hidden overflow-x-auto md:block">
+              <table className="ledger-table w-full min-w-[1120px] table-fixed text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-[var(--brand-border)] text-[11px] uppercase text-[var(--muted-foreground)]">
                     <th className="w-[74px] px-2 py-2 text-center">Detay</th>
                     <th className="w-[104px] px-2 py-2">Evrak Tarihi</th>
-                    <th className="w-[150px] px-2 py-2">İşlem Tipi</th>
-                    <th className="w-[190px] px-2 py-2">Belge / Kaynak Evrak</th>
+                    <th className="w-[142px] px-2 py-2">İşlem Tipi</th>
+                    <th className="w-[300px] px-2 py-2">Belge / Kaynak Evrak</th>
                     <th className="px-2 py-2">Açıklama</th>
                     <th className="w-[120px] px-2 py-2 text-right">Borç</th>
                     <th className="w-[120px] px-2 py-2 text-right">Alacak</th>
@@ -485,10 +715,15 @@ export function LedgerPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayRows.map((row) => (
+                  {displayRows.map((row) => {
+                    const documentLabel = ledgerDocumentLabel(row);
+                    const sourceLabel = ledgerSourceLabel(row);
+                    const meaningfulBadges = ledgerMeaningfulBadges(row);
+
+                    return (
                     <tr key={row.id} className="border-b border-[var(--brand-border)]/60 transition-colors hover:bg-[var(--surface-soft)]/70">
                       <td className="px-2 py-2.5 text-center">
-                        {row.order_id || row.transaction_type === "invoice" || row.transaction_type === "return" || row.type === "debit" ? (
+                        {ledgerHasDetail(row) ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -499,22 +734,20 @@ export function LedgerPage() {
                             <Eye className="h-4 w-4" />
                             Detay
                           </Button>
-                        ) : (
-                          <span className="text-sm font-semibold text-[var(--muted-foreground)]">-</span>
-                        )}
+                        ) : null}
                       </td>
                       <td className="px-2 py-2.5 font-medium">{formatLedgerDate(row.document_date ?? row.date)}</td>
                       <td className="px-2 py-2.5">
-                        <div className="flex flex-col items-start gap-1">
+                        <div className="flex flex-wrap items-center gap-1">
                           <Badge
                             variant="outline"
                             className={`h-6 px-2 text-xs font-semibold ${getLedgerTypeMeta(row.type).className}`}
                           >
-                            {row.transaction_type_label ?? getLedgerTypeMeta(row.type).label}
+                            {ledgerTypeDisplayLabel(row)}
                           </Badge>
-                          {row.collection_method_label ? (
+                          {row.type !== "payment" && row.collection_method_label ? (
                             <span className="rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.08em] text-emerald-100">
-                              {row.collection_method_label}
+                              {normalizeCollectionMethodLabel(row.collection_method_label)}
                             </span>
                           ) : null}
                           {row.return_quantity ? (
@@ -525,49 +758,47 @@ export function LedgerPage() {
                         </div>
                       </td>
                       <td className="px-2 py-2.5">
-                        <p className="break-words font-bold text-[var(--foreground)]">{row.document_no || row.reference_no || "-"}</p>
-                        <p className="mt-1 break-words text-[11px] font-semibold text-[var(--muted-foreground)]">
-                          {row.source_document ? `Kaynak: ${row.source_document}` : "Kaynak evrak: -"}
-                        </p>
-                        {row.checkout_summary ? (
-                          <Badge
-                            variant="outline"
-                            className={`mt-1 h-5 px-1.5 text-[10px] font-black ${getCheckoutSummaryClass(row.checkout_summary.code)}`}
-                            title={row.checkout_summary.label}
-                          >
-                            {row.checkout_summary.label}
-                          </Badge>
+                        {documentLabel ? (
+                          <p className="break-words font-bold leading-snug text-[var(--foreground)]" title={documentLabel}>{documentLabel}</p>
                         ) : null}
-                        {salesPriceTypeLabel(row) ? (
-                          <Badge
-                            variant="outline"
-                            className="ml-1 mt-1 h-5 border-sky-300/45 bg-sky-400/14 px-1.5 text-[10px] font-black text-sky-100"
-                            title="Fiyat tipi"
-                          >
-                            {salesPriceTypeLabel(row)}
-                          </Badge>
+                        {sourceLabel ? (
+                          <p className="mt-1 break-words text-[11px] font-semibold leading-snug text-[var(--muted-foreground)]" title={sourceLabel}>
+                            Kaynak: {sourceLabel}
+                          </p>
                         ) : null}
-                        {shippingMethodLabel(row) ? (
-                          <Badge
-                            variant="outline"
-                            className="ml-1 mt-1 h-5 border-rose-200/60 bg-rose-100 px-1.5 text-[10px] font-black text-rose-800"
-                            title="Gönderim şekli"
-                          >
-                            {shippingMethodLabel(row)}
-                          </Badge>
-                        ) : null}
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {meaningfulBadges.length > 0 ? meaningfulBadges.map((label) => (
+                            <Badge
+                              key={`${row.id}-${label}`}
+                              variant="outline"
+                              className={cn(
+                                "h-5 shrink-0 px-1.5 text-[10px] font-black",
+                                label === row.checkout_summary?.label
+                                  ? getCheckoutSummaryClass(row.checkout_summary.code)
+                                  : label === shippingMethodLabel(row)
+                                    ? "border-rose-200/60 bg-rose-100 text-rose-800"
+                                    : "border-sky-300/45 bg-sky-400/14 text-sky-100"
+                              )}
+                              title={label}
+                            >
+                              {label}
+                            </Badge>
+                          )) : null}
+                        </div>
                       </td>
-                      <td className="break-words px-2 py-2.5 font-medium">{row.description || "-"}</td>
+                      <td className="break-words px-2 py-2.5 font-medium">{cleanLedgerLabel(row.description) ?? ""}</td>
                       <td className="px-2 py-2.5 text-right font-medium">{formatAmount(row.debit, row.currency)}</td>
                       <td className="px-2 py-2.5 text-right font-medium">{formatAmount(row.credit, row.currency)}</td>
                       <td className="px-2 py-2.5 text-right font-bold">
                         {formatAmount(row.balance_after, row.currency)}
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
             </div>
+            </>
           )}
           {payload?.meta ? (
             <div className="mt-5 flex items-center justify-between">
@@ -618,7 +849,7 @@ export function LedgerPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-4">
+          <div className="p-3">
             {detailLoading ? (
               <div className="space-y-3">
                 {Array.from({ length: 5 }).map((_, index) => (
@@ -630,16 +861,16 @@ export function LedgerPage() {
                 {detailError}
               </div>
             ) : detailPayload ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="grid gap-2 md:grid-cols-[1.15fr_.85fr_.85fr_1fr]">
-                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Müşteri</p>
                     <p className="mt-1 line-clamp-1 text-sm font-black text-white">{detailPayload.order.customer?.title ?? selectedCustomer?.title ?? "-"}</p>
-                    <p className="mt-1 text-sm font-bold text-slate-400">{detailPayload.order.customer?.code ?? selectedCustomer?.code ?? "-"}</p>
+                    <p className="mt-0.5 text-xs font-bold text-slate-400">{detailPayload.order.customer?.code ?? selectedCustomer?.code ?? "-"}</p>
                   </div>
-                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Satış Tipi</p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="mt-1 flex flex-wrap gap-1">
                       {salesPriceTypeLabel(detailPayload.order) ? (
                         <Badge variant="outline" className="h-7 border-sky-300/45 bg-sky-400/14 px-2 text-xs font-black text-sky-100">
                           {salesPriceTypeLabel(detailPayload.order)}
@@ -658,15 +889,15 @@ export function LedgerPage() {
                       {!salesPriceTypeLabel(detailPayload.order) && !detailSummary && !shippingMethodLabel(detailPayload.order) ? <p className="text-base font-black text-white">-</p> : null}
                     </div>
                   </div>
-                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
+                  <div className="rounded-[12px] border border-white/10 bg-white/6 p-2">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Kalem / Adet</p>
                     <p className="mt-1 text-base font-black text-white">
                       {detailPayload.order.items.length} kalem · {detailPayload.order.items.reduce((sum, item) => sum + item.quantity, 0)} adet
                     </p>
                   </div>
-                  <div className="rounded-[12px] border border-emerald-300/20 bg-emerald-400/10 p-2.5">
+                  <div className="rounded-[12px] border border-emerald-300/20 bg-emerald-400/10 p-2">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-100/70">Genel Toplam</p>
-                    <p className="mt-1 text-xl font-black text-emerald-200">{formatAmount(detailPayload.order.grand_total, detailPayload.order.currency)}</p>
+                    <p className="mt-0.5 text-lg font-black text-emerald-200">{formatAmount(detailPayload.order.grand_total, detailPayload.order.currency)}</p>
                   </div>
                 </div>
 
@@ -674,19 +905,19 @@ export function LedgerPage() {
                   <table className="w-full min-w-[860px] text-left text-sm">
                     <thead className="bg-white/8 text-[12px] uppercase tracking-[0.06em] text-slate-400">
                       <tr>
-                        <th className="px-4 py-3">Ürün</th>
-                        <th className="px-4 py-3">Marka</th>
-                        <th className="px-4 py-3 text-right">Adet</th>
-                        <th className="px-4 py-3 text-right">Birim</th>
-                        <th className="px-4 py-3 text-right">KDV</th>
-                        <th className="px-4 py-3 text-right">Satır Toplam</th>
-                        <th className="px-4 py-3 text-right">Logo Stok</th>
+                        <th className="px-3 py-2">Ürün</th>
+                        <th className="px-3 py-2">Marka</th>
+                        <th className="px-3 py-2 text-right">Adet</th>
+                        <th className="px-3 py-2 text-right">Birim</th>
+                        <th className="px-3 py-2 text-right">KDV</th>
+                        <th className="px-3 py-2 text-right">Satır Toplam</th>
+                        <th className="px-3 py-2 text-right">Logo Stok</th>
                       </tr>
                     </thead>
                     <tbody>
                       {detailPayload.order.items.map((item) => (
                         <tr key={item.id} className="border-t border-white/10">
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-2">
                             <div className="flex items-start gap-3">
                               <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-emerald-300/12 text-emerald-100">
                                 <PackageSearch className="h-4 w-4" />
@@ -697,12 +928,12 @@ export function LedgerPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 font-semibold text-slate-300">{item.brand ?? "-"}</td>
-                          <td className="px-4 py-3 text-right font-black text-white">{item.quantity}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-300">{formatAmount(item.unit_net_price, item.currency)}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-300">%{toAmount(item.tax_rate).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</td>
-                          <td className="px-4 py-3 text-right font-black text-white">{formatAmount(item.line_total, item.currency)}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-300">
+                          <td className="px-3 py-2 font-semibold text-slate-300">{item.brand ?? "-"}</td>
+                          <td className="px-3 py-2 text-right font-black text-white">{item.quantity}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-slate-300">{formatAmount(item.unit_net_price, item.currency)}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-slate-300">%{toAmount(item.tax_rate).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</td>
+                          <td className="px-3 py-2 text-right font-black text-white">{formatAmount(item.line_total, item.currency)}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-slate-300">
                             {item.logo_stock ? item.logo_stock.available_total.toLocaleString("tr-TR") : "-"}
                           </td>
                         </tr>
@@ -723,14 +954,14 @@ export function LedgerPage() {
                 <div className="grid gap-2 md:grid-cols-4">
                   <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Müşteri</p>
-                    <p className="mt-1 line-clamp-1 text-sm font-black text-white">{selectedCustomer?.title ?? "-"}</p>
-                    <p className="mt-1 text-sm font-bold text-slate-400">{selectedCustomer?.code ?? "-"}</p>
+                    <p className="mt-1 line-clamp-1 text-sm font-black text-white">{selectedCustomer?.title ?? ""}</p>
+                    <p className="mt-1 text-sm font-bold text-slate-400">{selectedCustomer?.code ?? ""}</p>
                   </div>
                   <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">İşlem Tipi</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <Badge variant="outline" className={`h-7 px-2 text-xs font-black ${getLedgerTypeMeta(detailLedgerRow.transaction_type ?? detailLedgerRow.type).className}`}>
-                        {detailLedgerRow.transaction_type_label ?? getLedgerTypeMeta(detailLedgerRow.type).label}
+                        {ledgerTypeDisplayLabel(detailLedgerRow)}
                       </Badge>
                       {salesPriceTypeLabel(detailLedgerRow) ? (
                         <Badge variant="outline" className="h-7 border-sky-300/45 bg-sky-400/14 px-2 text-xs font-black text-sky-100">
@@ -746,7 +977,7 @@ export function LedgerPage() {
                   </div>
                   <div className="rounded-[12px] border border-white/10 bg-white/6 p-2.5">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Belge / Tarih</p>
-                    <p className="mt-1 text-sm font-black text-white">{detailLedgerRow.document_no || detailLedgerRow.reference_no || "-"}</p>
+                    <p className="mt-1 text-sm font-black text-white">{ledgerDocumentLabel(detailLedgerRow) ?? ""}</p>
                     <p className="mt-1 text-sm font-bold text-slate-400">{formatLedgerDate(detailLedgerRow.document_date ?? detailLedgerRow.date)}</p>
                   </div>
                   <div className="rounded-[12px] border border-emerald-300/20 bg-emerald-400/10 p-2.5">
@@ -756,13 +987,60 @@ export function LedgerPage() {
                     </p>
                   </div>
                 </div>
-                <div className="rounded-[18px] border border-amber-300/20 bg-amber-400/10 p-4 text-sm font-bold text-amber-50">
-                  Bu hareket Logo’dan cari hareket olarak geldi. Ürün kalemleri Logo sync payload’ında bulunmadığı için bu kayıtta şimdilik belge/tutar detayı gösteriliyor.
-                </div>
+                {detailLedgerRow.logo_invoice_detail?.lines?.length ? (
+                  <div className="overflow-hidden rounded-[12px] border border-amber-200/20 bg-amber-400/8">
+                    <div className="flex items-center justify-between gap-3 border-b border-amber-200/15 px-3 py-2">
+                      <div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-amber-100/75">Logo Fatura Kalemleri</p>
+                        <p className="mt-0.5 text-xs font-semibold text-amber-50/75">
+                          {detailLedgerRow.logo_invoice_detail.lines.length} satır
+                        </p>
+                      </div>
+                      <p className="text-sm font-black text-amber-100">
+                        {formatAmount(detailLedgerRow.logo_invoice_detail.total, detailLedgerRow.currency)}
+                      </p>
+                    </div>
+                    <div className="max-h-[300px] overflow-auto">
+                      <table className="min-w-full text-left text-xs">
+                        <thead className="sticky top-0 bg-[#132018] text-[10px] uppercase tracking-[0.08em] text-amber-100/75">
+                          <tr>
+                            <th className="px-3 py-2">Stok Kodu</th>
+                            <th className="min-w-[260px] px-3 py-2">Ürün</th>
+                            <th className="px-3 py-2 text-right">Miktar</th>
+                            <th className="px-3 py-2">Birim</th>
+                            <th className="px-3 py-2 text-right">Birim Fiyat</th>
+                            <th className="px-3 py-2 text-right">KDV</th>
+                            <th className="px-3 py-2 text-right">Tutar</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {detailLedgerRow.logo_invoice_detail.lines.map((line, index) => (
+                            <tr key={line.logo_line_ref ?? `${line.product_code ?? "line"}-${index}`}>
+                              <td className="px-3 py-2 font-black text-white">{line.product_code ?? ""}</td>
+                              <td className="px-3 py-2">
+                                <p className="font-semibold text-slate-100">{line.product_name ?? ""}</p>
+                                {line.description ? (
+                                  <p className="mt-0.5 text-[11px] font-semibold text-slate-400">{line.description}</p>
+                                ) : null}
+                              </td>
+                              <td className="px-3 py-2 text-right font-black text-white">{Number(line.quantity).toLocaleString("tr-TR")}</td>
+                              <td className="px-3 py-2 font-semibold text-slate-300">{line.unit ?? ""}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-300">{formatAmount(line.unit_price, detailLedgerRow.currency)}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-300">%{Number(line.vat_rate).toLocaleString("tr-TR")}</td>
+                              <td className="px-3 py-2 text-right font-black text-white">{formatAmount(line.line_total, detailLedgerRow.currency)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="rounded-[12px] border border-white/10 bg-white/6 p-3">
                   <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Açıklama / Kaynak</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-200">{detailLedgerRow.description || "-"}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-400">Kaynak evrak: {detailLedgerRow.source_document || "-"}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-200">{cleanLedgerLabel(detailLedgerRow.description) ?? ""}</p>
+                  {ledgerSourceLabel(detailLedgerRow) ? (
+                    <p className="mt-1 text-xs font-semibold text-slate-400">Kaynak evrak: {ledgerSourceLabel(detailLedgerRow)}</p>
+                  ) : null}
                 </div>
               </div>
             ) : null}

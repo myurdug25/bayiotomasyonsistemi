@@ -165,6 +165,8 @@ class LogoOrderExportService
             'grand_total' => $this->money($order->grand_total),
             'note' => $order->note,
             'shipping_method' => $order->cart?->shipping_method,
+            'shipping_fee_amount' => $this->money(data_get($stateMeta, 'shipping_fee_amount', 0)),
+            'shipping_fee_applied' => (bool) data_get($stateMeta, 'shipping_fee_applied', false),
             'checkout_summary_mode' => $this->nullableString(data_get($stateMeta, 'checkout_summary_mode')),
             'payment_method' => $this->nullableString(data_get($stateMeta, 'payment_method')),
             'sales_price_type' => $this->nullableString(data_get($stateMeta, 'sales_price_type')),
@@ -199,6 +201,12 @@ class LogoOrderExportService
                     'code' => $this->nullableString(data_get($stateMeta, 'target_warehouse_code')),
                     'name' => $this->nullableString(data_get($stateMeta, 'target_warehouse_name')),
                     'reason' => $this->nullableString(data_get($stateMeta, 'target_warehouse_reason')),
+                ],
+                'shipping' => [
+                    'method' => $order->cart?->shipping_method,
+                    'fee_amount' => $this->money(data_get($stateMeta, 'shipping_fee_amount', 0)),
+                    'fee_applied' => (bool) data_get($stateMeta, 'shipping_fee_applied', false),
+                    'rules' => data_get($stateMeta, 'shipping_rules', []),
                 ],
                 'logo' => [
                     'document_type' => 'order',

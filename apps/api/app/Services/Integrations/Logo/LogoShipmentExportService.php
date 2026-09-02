@@ -147,7 +147,7 @@ class LogoShipmentExportService
         return $summary;
     }
 
-    private function recordShipmentInvoice(Shipment $shipment, ?string $externalReference): LedgerEntry
+    private function recordShipmentInvoice(Shipment $shipment, ?string $externalReference): ?LedgerEntry
     {
         $shipment->loadMissing(['order', 'items']);
         $order = $shipment->order;
@@ -156,6 +156,10 @@ class LogoShipmentExportService
             throw ValidationException::withMessages([
                 'shipment' => ['Faturaya baglanacak siparis bulunamadi.'],
             ]);
+        }
+
+        if ($this->isWarehouseTransferOrder($order)) {
+            return null;
         }
 
         $sourceReference = $externalReference ?? $shipment->logoExportKey();
@@ -201,6 +205,31 @@ class LogoShipmentExportService
                 'sales_price_type' => $this->nullableString(data_get($orderSyncMeta, 'sales_price_type')),
             ],
         ]);
+    }
+
+    private function isWarehouseTransferOrder($order): bool
+    {
+        if (! $order) {
+            return false;
+        }
+
+        $state = IntegrationSyncState::query()
+            ->where('system', 'logo')
+            ->where('domain', 'warehouse-transfer-orders')
+            ->where('direction', 'outbound')
+            ->where('entity_type', $order::class)
+            ->where('entity_id', (int) $order->id)
+            ->latest('id')
+            ->first();
+
+        if (! $state instanceof IntegrationSyncState) {
+            return false;
+        }
+
+        return data_get($state->meta, 'document_type') === 'warehouse_transfer'
+            || data_get($state->payload, 'document_type') === 'warehouse_transfer'
+            || data_get($state->payload, 'warehouse_transfer.enabled') === true
+            || data_get($state->payload, 'warehouse_transfer_request') === true;
     }
 
     /**
@@ -383,19 +412,16 @@ class LogoShipmentExportService
      */
     private function shipmentTotals(Collection $items): array
     {
-        $subtotal = 0.0;
-        $vatTotal = 0.0;
+        $grandTotal = 0.0;
 
         foreach ($items as $item) {
-            $line = (float) $item->line_total_shipped;
-            $subtotal += $line;
-            $vatTotal += $line * ((float) $item->vat_rate / 100);
+            $grandTotal += (float) $item->line_total_shipped;
         }
 
         return [
-            'subtotal' => $subtotal,
-            'vat_total' => $vatTotal,
-            'grand_total' => $subtotal + $vatTotal,
+            'subtotal' => $grandTotal,
+            'vat_total' => 0.0,
+            'grand_total' => $grandTotal,
         ];
     }
 

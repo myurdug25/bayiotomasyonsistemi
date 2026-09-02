@@ -4,8 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Support\CustomerFeaturePermissions;
-use App\Support\MenuPermissions;
+use App\Services\Users\UserPermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -63,8 +62,9 @@ class ProfileController extends Controller
             'selectedCustomer.salesperson:id,name,email,phone,avatar_url',
         ]);
 
-        $user->setAttribute('menu_permissions', MenuPermissions::forUser($user));
-        $user->setAttribute('feature_permissions', CustomerFeaturePermissions::forUser($user));
+        $permissions = app(UserPermissionService::class);
+        $user->setAttribute('menu_permissions', $permissions->menuPermissions($user));
+        $user->setAttribute('feature_permissions', $permissions->featurePermissions($user));
 
         return $user;
     }

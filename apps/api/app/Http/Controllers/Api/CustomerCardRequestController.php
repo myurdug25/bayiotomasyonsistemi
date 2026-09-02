@@ -671,9 +671,9 @@ class CustomerCardRequestController extends Controller
         return $candidate;
     }
 
-    private function generateCustomerCode(string $city): string
+    private function generateCustomerCode(string $city, ?User $salesperson = null): string
     {
-        $prefix = sprintf('120-%s', $this->resolveCustomerCodeCityCode($city));
+        $prefix = sprintf('120-%s', $this->resolveCustomerCodeBranchCode($salesperson, $city));
         $nextCounter = $this->nextCustomerCodeCounter($prefix);
 
         for ($counter = $nextCounter; $counter <= 999; $counter++) {
@@ -690,6 +690,33 @@ class CustomerCardRequestController extends Controller
         throw ValidationException::withMessages([
             'code' => ['Yeni cari kodu üretilemedi.'],
         ]);
+    }
+
+    private function resolveCustomerCodeBranchCode(?User $salesperson, string $city): string
+    {
+        $cityCode = $this->resolveCustomerCodeCityCode($city);
+        if ($cityCode !== '00' || $this->normalizeCustomerCodeCity($city) === 'BATUM') {
+            return $cityCode;
+        }
+
+        // Eski/eksik kayıtlarda şehir boş veya eşleşmiyorsa plasiyer şubesi
+        // güvenli son çare olarak kullanılır. Geçerli şehir seçimi her zaman
+        // önceliklidir; böylece Kars müşterisi Erzurum plasiyerinde 120-36 ile açılır.
+        $identity = $this->normalizeCustomerCodeCity(collect([
+            $salesperson?->username,
+            $salesperson?->region_code,
+            $salesperson?->region_name,
+            $salesperson?->branch_code,
+            $salesperson?->branch_name,
+        ])->filter()->implode(' '));
+
+        foreach (['BATUM' => '00', 'TRABZON' => '61', 'SAMSUN' => '55', 'ERZURUM' => '25'] as $branch => $code) {
+            if (Str::contains($identity, $branch)) {
+                return $code;
+            }
+        }
+
+        return $cityCode;
     }
 
     private function nextCustomerCodeCounter(string $prefix): int
@@ -758,7 +785,10 @@ class CustomerCardRequestController extends Controller
 
             $salesperson = $salespersonId !== null
                 ? User::query()
-                    ->select(['id', 'logo_customer_specode4'])
+                    ->select([
+                        'id', 'username', 'logo_customer_specode4',
+                        'region_code', 'region_name', 'branch_code', 'branch_name',
+                    ])
                     ->find((int) $salespersonId)
                 : null;
 
@@ -777,7 +807,11 @@ class CustomerCardRequestController extends Controller
                 'source_system' => 'b2b',
                 'sync_status' => 'pending',
                 'sync_error' => null,
-                'code' => $this->generateCustomerCode($customerCardRequest->city),
+                'code' => $this->generateCustomerCode($customerCardRequest->city, $salesperson),
+                'region_code' => $salesperson?->region_code,
+                'region_name' => $salesperson?->region_name,
+                'branch_code' => $salesperson?->branch_code,
+                'branch_name' => $salesperson?->branch_name,
                 'name' => $customerCardRequest->company_name,
                 'contact_name' => $customerCardRequest->contact_name,
                 'email' => $customerCardRequest->email,

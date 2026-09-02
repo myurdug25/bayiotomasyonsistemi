@@ -114,6 +114,20 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        'eryaz' => [
+            'driver' => 'sqlsrv',
+            'host' => env('ERYAZ_DB_HOST', env('DB_HOST', 'localhost')),
+            'port' => env('ERYAZ_DB_PORT', env('DB_PORT', '1433')),
+            'database' => env('ERYAZ_DB_DATABASE', 'GUCSAAS2026'),
+            'username' => env('ERYAZ_DB_USERNAME', env('DB_USERNAME', '')),
+            'password' => env('ERYAZ_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => env('ERYAZ_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'encrypt' => env('ERYAZ_DB_ENCRYPT', env('DB_ENCRYPT', 'no')),
+            'trust_server_certificate' => env('ERYAZ_DB_TRUST_SERVER_CERTIFICATE', env('DB_TRUST_SERVER_CERTIFICATE', 'true')),
+        ],
+
     ],
 
     /*

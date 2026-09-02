@@ -43,8 +43,19 @@ type CartContextType = {
   createOrderFromCart: (options?: {
     note?: string;
     checkoutSummaryMode?: "detailed" | "excluded" | "included";
+    itemCheckoutSummaryModes?: Record<number, "detailed" | "excluded" | "included">;
+    checkoutGrandTotal?: number;
+    shippingFeeAmount?: number;
     paymentMethod?: string;
     salesPriceType?: string;
+    selectedProductIds?: number[];
+    warehouseTransferRequest?: boolean;
+    shippingTargetWarehouseCode?: string | null;
+    shippingTargetWarehouseName?: string | null;
+    transferSourceWarehouseCode?: string | null;
+    transferSourceWarehouseName?: string | null;
+    transferTargetWarehouseCode?: string | null;
+    transferTargetWarehouseName?: string | null;
   }) => Promise<void>;
   getProductQty: (productId: number) => number;
 };
@@ -67,10 +78,6 @@ function emptyCartData(): CartResponse {
   };
 }
 
-function includesBatum(value?: string | number | null): boolean {
-  return String(value ?? "").trim().toLocaleUpperCase("tr-TR").includes("BATUM");
-}
-
 const AUTOMATIC_CHECKOUT_NOTE_MARKERS = [
   "Ödeme tercihi:",
   "Satış tipi:",
@@ -81,6 +88,9 @@ const AUTOMATIC_CHECKOUT_NOTE_MARKERS = [
   "Depo transfer:",
 ] as const;
 
+const OPEN_ACCOUNT_RISK_LIMIT_MESSAGE =
+  "Müşterinin vadesi geçmiş açık hesabı var ve sipariş açık hesap risk limitini aşıyor.";
+
 function stripAutomaticCheckoutNote(value?: string | null): string {
   return String(value ?? "")
     .split(/\r?\n/)
@@ -89,8 +99,20 @@ function stripAutomaticCheckoutNote(value?: string | null): string {
     .trim();
 }
 
-function normalizeOrderNoteForScope(value: string | null | undefined, isBatumBranch: boolean): string {
-  return isBatumBranch ? stripAutomaticCheckoutNote(value) : String(value ?? "");
+function normalizeOrderNote(value: string | null | undefined): string {
+  return stripAutomaticCheckoutNote(value);
+}
+
+function normalizeCartErrorMessage(message: string): string {
+  return message.includes("sipariş açık hesap risk limitini aşıyor")
+    ? OPEN_ACCOUNT_RISK_LIMIT_MESSAGE
+    : message;
+}
+
+function cartErrorMessage(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message : fallback;
+
+  return normalizeCartErrorMessage(message);
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
@@ -98,32 +120,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const { status, user, selectedCustomer } = useSession();
   const roleSlugs = Array.isArray(user?.roles) ? user.roles.map((role) => role.slug) : [];
   const warehouseTransferRequired = roleSlugs.includes("salesperson");
-  const isBatumBranch = useMemo(() => {
-    const batumScopeValues = [
-      selectedCustomer?.branch_code,
-      selectedCustomer?.branch_name,
-      selectedCustomer?.region_code,
-      selectedCustomer?.region_name,
-      selectedCustomer?.title,
-      user?.branch_code,
-      user?.branch_name,
-      user?.region_code,
-      user?.region_name,
-    ];
-
-    return batumScopeValues.some(includesBatum) || selectedCustomer?.code?.trim().startsWith("120-00-") === true;
-  }, [
-    selectedCustomer?.branch_code,
-    selectedCustomer?.branch_name,
-    selectedCustomer?.code,
-    selectedCustomer?.region_code,
-    selectedCustomer?.region_name,
-    selectedCustomer?.title,
-    user?.branch_code,
-    user?.branch_name,
-    user?.region_code,
-    user?.region_name,
-  ]);
 
   const [open, setOpen] = useState(false);
   const [cartData, setCartData] = useState<CartResponse | null>(null);
@@ -132,24 +128,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const [shippingMethod, setShippingMethod] = useState("depo_teslim");
-  const [warehouseTransfer, setWarehouseTransfer] = useState(true);
+  const [warehouseTransfer, setWarehouseTransfer] = useState(false);
   const [orderNote, setOrderNoteState] = useState("");
 
-  const effectiveWarehouseTransfer =
-    !isBatumBranch &&
-    (warehouseTransferRequired ||
-      warehouseTransfer || shippingMethod === "depo_teslim");
+  const effectiveWarehouseTransfer = warehouseTransferRequired || warehouseTransfer;
 
   const clearLocalCart = useCallback(() => {
     setCartData(emptyCartData());
     setShippingMethod("depo_teslim");
-    setWarehouseTransfer(true);
+    setWarehouseTransfer(false);
     setOrderNoteState("");
   }, []);
 
   const setOrderNote = useCallback((value: string) => {
-    setOrderNoteState(normalizeOrderNoteForScope(value, isBatumBranch));
-  }, [isBatumBranch]);
+    setOrderNoteState(normalizeOrderNote(value));
+  }, []);
 
   const refresh = useCallback(async () => {
     if (status !== "authenticated") {
@@ -158,34 +151,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (!selectedCustomer) {
-      clearLocalCart();
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      const data = await getCart({ customer_id: selectedCustomer.id });
+      const data = await getCart(selectedCustomer ? { customer_id: selectedCustomer.id } : undefined);
       setCartData(data);
 
       setShippingMethod(data.cart?.shipping_method ?? "depo_teslim");
-      setWarehouseTransfer(isBatumBranch ? false : (warehouseTransferRequired ? true : (data.cart?.warehouse_transfer ?? true)));
-      setOrderNoteState(normalizeOrderNoteForScope(data.cart?.order_note, isBatumBranch));
+      setWarehouseTransfer(warehouseTransferRequired ? true : (data.cart?.warehouse_transfer ?? false));
+      setOrderNoteState(normalizeOrderNote(data.cart?.order_note));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sepet bilgisi alınamadı");
+      setError(cartErrorMessage(err, "Sepet bilgisi alınamadı"));
     } finally {
       setLoading(false);
     }
-  }, [clearLocalCart, isBatumBranch, selectedCustomer, status, warehouseTransferRequired]);
+  }, [selectedCustomer, status, warehouseTransferRequired]);
 
   const setWarehouseTransferValue = useCallback(
     (value: boolean) => {
-      setWarehouseTransfer(isBatumBranch ? false : (warehouseTransferRequired ? true : value));
+      setWarehouseTransfer(warehouseTransferRequired ? true : value);
     },
-    [isBatumBranch, warehouseTransferRequired]
+    [warehouseTransferRequired]
   );
 
   useEffect(() => {
@@ -194,7 +181,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const upsertQuantity = useCallback(
     async (productId: number, quantity: number, campaignKey?: string | null) => {
-      if (!selectedCustomer) {
+      if (!selectedCustomer && !effectiveWarehouseTransfer) {
         setError("Önce müşteri seçmelisiniz");
         return;
       }
@@ -212,9 +199,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           await ensureCsrfCookie();
           await deleteCartItem(item.id);
           await refresh();
-          await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
+          if (selectedCustomer) {
+            await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
+          }
         } catch (err) {
-          const message = err instanceof Error ? err.message : "Kalem silinemedi";
+          const message = cartErrorMessage(err, "Kalem silinemedi");
           setError(message);
           toast.error(message);
         } finally {
@@ -234,24 +223,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const data = await upsertCartItem({
           product_id: productId,
           quantity,
-          customer_id: selectedCustomer.id,
+          customer_id: selectedCustomer?.id,
           shipping_method: shippingMethod || undefined,
           warehouse_transfer: effectiveWarehouseTransfer,
-          order_note: normalizeOrderNoteForScope(orderNote, isBatumBranch),
+          order_note: normalizeOrderNote(orderNote),
           campaign_key: campaignKey === undefined ? (currentItem?.campaign_key ?? null) : campaignKey,
         });
 
         setCartData(data);
-        await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
+        if (selectedCustomer) {
+          await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
+        }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Sepet güncellenemedi";
+        const message = cartErrorMessage(err, "Sepet güncellenemedi");
         setError(message);
         toast.error(message);
       } finally {
         setMutating(false);
       }
     },
-    [cartData?.items, effectiveWarehouseTransfer, isBatumBranch, orderNote, queryClient, refresh, selectedCustomer, shippingMethod]
+    [cartData?.items, effectiveWarehouseTransfer, orderNote, queryClient, refresh, selectedCustomer, shippingMethod]
   );
 
   const removeItemByProduct = useCallback(
@@ -272,7 +263,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Kalem silinemedi";
+        const message = cartErrorMessage(err, "Kalem silinemedi");
         setError(message);
         toast.error(message);
       } finally {
@@ -283,10 +274,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const saveCheckoutMeta = useCallback(async () => {
-    if (!selectedCustomer) {
-      setError("Önce müşteri seçmelisiniz");
-      return;
-    }
+      if (!selectedCustomer && !effectiveWarehouseTransfer) {
+        setError("Önce müşteri seçmelisiniz");
+        return;
+      }
 
     const firstItem = cartData?.items[0];
     if (!firstItem) {
@@ -302,31 +293,42 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const data = await upsertCartItem({
         product_id: firstItem.product_id,
         quantity: firstItem.quantity,
-        customer_id: selectedCustomer.id,
+        customer_id: selectedCustomer?.id,
         shipping_method: shippingMethod || undefined,
         warehouse_transfer: effectiveWarehouseTransfer,
-        order_note: normalizeOrderNoteForScope(orderNote, isBatumBranch),
+        order_note: normalizeOrderNote(orderNote),
         campaign_key: firstItem.campaign_key ?? null,
       });
 
       setCartData(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Sepet alanları kaydedilemedi";
+      const message = cartErrorMessage(err, "Sepet alanları kaydedilemedi");
       setError(message);
       toast.error(message);
       throw err;
     } finally {
       setMutating(false);
     }
-  }, [cartData?.items, effectiveWarehouseTransfer, isBatumBranch, orderNote, selectedCustomer, shippingMethod]);
+  }, [cartData?.items, effectiveWarehouseTransfer, orderNote, selectedCustomer, shippingMethod]);
 
   const createOrderFromCart = useCallback(async (options?: {
     note?: string;
     checkoutSummaryMode?: "detailed" | "excluded" | "included";
+    itemCheckoutSummaryModes?: Record<number, "detailed" | "excluded" | "included">;
+    checkoutGrandTotal?: number;
+    shippingFeeAmount?: number;
     paymentMethod?: string;
     salesPriceType?: string;
+    selectedProductIds?: number[];
+    warehouseTransferRequest?: boolean;
+    shippingTargetWarehouseCode?: string | null;
+    shippingTargetWarehouseName?: string | null;
+    transferSourceWarehouseCode?: string | null;
+    transferSourceWarehouseName?: string | null;
+    transferTargetWarehouseCode?: string | null;
+    transferTargetWarehouseName?: string | null;
   }) => {
-    if (!selectedCustomer) {
+    if (!selectedCustomer && !options?.warehouseTransferRequest) {
       setError("Önce müşteri seçmelisiniz");
       return;
     }
@@ -341,38 +343,59 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await ensureCsrfCookie();
-      const checkoutNote = normalizeOrderNoteForScope(options?.note ?? orderNote, isBatumBranch);
+      const checkoutNote = normalizeOrderNote(options?.note ?? orderNote);
 
       // Persist checkout fields with any existing draft item before order creation.
       const firstItem = cartData.items[0];
       await upsertCartItem({
         product_id: firstItem.product_id,
         quantity: firstItem.quantity,
-        customer_id: selectedCustomer.id,
+        customer_id: selectedCustomer?.id,
         shipping_method: shippingMethod || undefined,
-        warehouse_transfer: effectiveWarehouseTransfer,
+        warehouse_transfer: options?.warehouseTransferRequest === true,
         order_note: checkoutNote,
         campaign_key: firstItem.campaign_key ?? null,
       });
 
       const orderResponse = await createOrder({
         cart_id: cartData.cart.id,
-        customer_id: selectedCustomer.id,
+        customer_id: selectedCustomer?.id,
         note: checkoutNote,
         checkout_summary_mode: options?.checkoutSummaryMode,
+        item_checkout_summary_modes: options?.itemCheckoutSummaryModes,
+        checkout_grand_total: options?.checkoutGrandTotal,
+        shipping_fee_amount: options?.shippingFeeAmount,
+        selected_product_ids: options?.selectedProductIds,
         payment_method: options?.paymentMethod,
         sales_price_type: options?.salesPriceType,
+        warehouse_transfer_request: options?.warehouseTransferRequest,
+        shipping_target_warehouse_code: options?.shippingTargetWarehouseCode ?? null,
+        shipping_target_warehouse_name: options?.shippingTargetWarehouseName ?? null,
+        transfer_source_warehouse_code: options?.transferSourceWarehouseCode ?? null,
+        transfer_source_warehouse_name: options?.transferSourceWarehouseName ?? null,
+        transfer_target_warehouse_code: options?.transferTargetWarehouseCode ?? null,
+        transfer_target_warehouse_name: options?.transferTargetWarehouseName ?? null,
       });
 
-      clearLocalCart();
-      await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
-      toast.success(effectiveWarehouseTransfer ? "Sipariş depoya gönderildi" : "Sipariş gönderildi", {
-        description: `${orderResponse.order.order_no} · ${selectedCustomer.title ?? selectedCustomer.code}`,
+      if (options?.selectedProductIds && options.selectedProductIds.length > 0 && options.selectedProductIds.length < cartData.items.length) {
+        await refresh();
+      } else {
+        clearLocalCart();
+      }
+      if (selectedCustomer) {
+        await queryClient.invalidateQueries({ queryKey: ["campaignProgress", selectedCustomer.id] });
+      }
+      toast.success(options?.warehouseTransferRequest ? "Depolar arası transfer talebi gönderildi" : "Sipariş depoya gönderildi", {
+        description: selectedCustomer
+          ? `${orderResponse.order.order_no} · ${selectedCustomer.title ?? selectedCustomer.code}`
+          : `${orderResponse.order.order_no} · Depolar arası transfer`,
         duration: 2800,
       });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sipariş oluşturulamadı");
+      const message = cartErrorMessage(err, "Sipariş oluşturulamadı");
+      setError(message);
+      toast.error(message);
       throw err;
     } finally {
       setMutating(false);
@@ -382,12 +405,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     cartData?.items,
     clearLocalCart,
     orderNote,
-    isBatumBranch,
     refresh,
     queryClient,
     selectedCustomer,
     shippingMethod,
-    effectiveWarehouseTransfer,
   ]);
 
   const getProductQty = useCallback(

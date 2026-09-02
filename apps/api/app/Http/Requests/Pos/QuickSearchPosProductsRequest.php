@@ -20,6 +20,7 @@ class QuickSearchPosProductsRequest extends FormRequest
             'q' => ['required', 'string', 'min:2', 'max:120'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:20'],
             'dealer_id' => ['nullable', 'integer', 'exists:dealers,id'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'in_stock' => ['nullable', 'boolean'],
             'code_only' => ['nullable', 'boolean'],
         ];

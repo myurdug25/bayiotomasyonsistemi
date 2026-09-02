@@ -9,7 +9,8 @@ use Illuminate\Support\Collection;
 class CampaignProgressService
 {
     public function __construct(
-        private readonly CustomerCampaignGroupResolver $groupResolver
+        private readonly CustomerCampaignGroupResolver $groupResolver,
+        private readonly CampaignWindowSelector $windowSelector
     ) {}
 
     /**
@@ -21,11 +22,12 @@ class CampaignProgressService
     {
         $customerGroups = $this->groupResolver->resolveAll($customer);
 
-        return Campaign::with('campaignProducts')
+        $campaigns = Campaign::with('campaignProducts')
             ->active()
             ->get()
-            ->filter(fn (Campaign $c): bool => $c->matchesAnyGroup($customerGroups))
-            ->values();
+            ->filter(fn (Campaign $c): bool => $c->matchesAnyGroup($customerGroups));
+
+        return $this->windowSelector->select($campaigns);
     }
 
     /**

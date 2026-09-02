@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Banknote,
   Bus,
@@ -15,7 +17,6 @@ import {
   PackageCheck,
   PencilLine,
   Plus,
-  ShieldCheck,
   ShoppingCart,
   Trash2,
   Truck,
@@ -33,7 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { bulkUpsertCartItems, type CartWarehouseOption } from "@/lib/api";
+import { ApiClientError, bulkUpsertCartItems, listFinanceDefinitions, type CartWarehouseOption } from "@/lib/api";
 
 const PAYMENT_METHODS = [
   {
@@ -114,17 +115,98 @@ const CHECKOUT_SUMMARY_MODES: Record<VatSummaryMode, { code: string; label: stri
   included: { code: "3-B", label: "3 - B" },
 };
 
+const CHECKOUT_SUMMARY_MODE_FEATURES: Record<VatSummaryMode, string> = {
+  detailed: "cart.sale_type.detailed",
+  excluded: "cart.sale_type.excluded",
+  included: "cart.sale_type.included",
+};
+
+const CHECKOUT_SUMMARY_MODE_ORDER: VatSummaryMode[] = ["detailed", "excluded", "included"];
+const LOGO_E_INVOICE_DETAILED_ONLY_MESSAGE = "Logo e-Fatura kullanıcısı carilerde sadece 1-F fatura kesilebilir.";
+
+function isLogoEInvoiceDetailedOnlyError(error: unknown): boolean {
+  if (!(error instanceof ApiClientError)) {
+    return false;
+  }
+
+  const checkoutSummaryErrors = error.payload?.errors?.checkout_summary_mode ?? [];
+
+  return error.message.includes("sadece 1-F") || checkoutSummaryErrors.some((message) => message.includes("sadece 1-F"));
+}
+
 function warehouseOptionKey(option: CartWarehouseOption): string {
   return option.warehouse_code ?? option.warehouse_name;
+}
+
+function normalizeWarehouseIdentity(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLocaleUpperCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+function parseShippingRuleAmount(value: unknown): number | null {
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const amount = Number(normalized);
+
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+function resolveOwnWarehouseCode(user: unknown, selectedCustomer: unknown): string | null {
+  const userRecord = (user ?? {}) as Record<string, unknown>;
+  const customerRecord = (selectedCustomer ?? {}) as Record<string, unknown>;
+  const identity = normalizeWarehouseIdentity([
+    userRecord.username,
+    userRecord.email,
+    userRecord.name,
+    userRecord.branch_code,
+    userRecord.branch_name,
+    customerRecord.branch_code,
+    customerRecord.branch_name,
+    customerRecord.region_code,
+    customerRecord.region_name,
+  ].filter(Boolean).join(" "));
+
+  if (identity.includes("TRABZON")) return "2";
+  if (identity.includes("SAMSUN")) return "3";
+  if (identity.includes("BATUM")) return "4";
+  if (identity.includes("POINT") || identity.includes("HIZLISATIS")) return "0";
+  if (identity.includes("ERZURUM") || identity.includes("ERZDEPO") || identity.includes("AHMETARAC")) return "1";
+
+  return null;
+}
+
+function isWarehouseOrderCustomer(selectedCustomer: unknown): boolean {
+  const customerRecord = (selectedCustomer ?? {}) as Record<string, unknown>;
+  const identity = normalizeWarehouseIdentity([
+    customerRecord.code,
+    customerRecord.title,
+    customerRecord.name,
+    customerRecord.branch_code,
+    customerRecord.branch_name,
+    customerRecord.region_code,
+    customerRecord.region_name,
+  ].filter(Boolean).join(" "));
+
+  return [
+    "ERZURUMDEPOSIPARIS",
+    "ERZURUMDEPO",
+    "TRABZONDEPOSIPARIS",
+    "SAMSUNDEPOSIPARIS",
+    "BATUMDEPOSIPARIS",
+    "ERZURUMPOINTSIPARIS",
+  ].some((needle) => identity.includes(needle));
 }
 
 function toAmount(value: string): number {
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatTry(value: string, currency = "TRY"): string {
-  return formatTryAmount(toAmount(value), currency);
 }
 
 function formatTryAmount(value: number, currency = "TRY"): string {
@@ -138,24 +220,6 @@ function formatTryAmount(value: number, currency = "TRY"): string {
 
 function formatStock(value: number): string {
   return value.toLocaleString("tr-TR");
-}
-
-function formatCartDateTime(value?: string | null): string {
-  if (!value) {
-    return "henüz yok";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("tr-TR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function downloadBulkCartTemplate() {
@@ -251,6 +315,38 @@ function includesBatum(value?: string | number | null): boolean {
   return String(value ?? "").trim().toLocaleUpperCase("tr-TR").includes("BATUM");
 }
 
+function isBatumCustomerIdentity(selectedCustomer: unknown): boolean {
+  const customerRecord = (selectedCustomer ?? {}) as Record<string, unknown>;
+  const identity = [
+    customerRecord.code,
+    customerRecord.title,
+    customerRecord.name,
+    customerRecord.city,
+    customerRecord.district,
+    customerRecord.branch_code,
+    customerRecord.branch_name,
+    customerRecord.region_code,
+    customerRecord.region_name,
+    customerRecord.source_system,
+    customerRecord.source_reference,
+    (customerRecord.meta as Record<string, unknown> | null | undefined)?.city,
+    (customerRecord.meta as Record<string, unknown> | null | undefined)?.district,
+    (customerRecord.meta as Record<string, unknown> | null | undefined)?.warehouse_name,
+  ];
+
+  return identity.some((value) => includesBatum(typeof value === "number" ? value : value == null ? null : String(value)));
+}
+
+const TRANSFER_WAREHOUSE_ORDER = ["ERZURUMDEPO", "TRABZONDEPO", "SAMSUNDEPO", "BATUMDEPO"] as const;
+
+function transferWarehouseRank(option: CartWarehouseOption): number {
+  const identity = normalizeWarehouseIdentity([option.warehouse_name, option.warehouse_code].filter(Boolean).join(" "));
+
+  const index = TRANSFER_WAREHOUSE_ORDER.findIndex((name) => identity.includes(name));
+
+  return index === -1 ? 99 : index;
+}
+
 function StepTitle({ step, title, icon: Icon }: { step: number; title: string; icon?: React.ComponentType<{ className?: string }> }) {
   return (
     <div className="flex items-center gap-4">
@@ -266,22 +362,27 @@ function StepTitle({ step, title, icon: Icon }: { step: number; title: string; i
 }
 
 export function CartPage() {
+  const router = useRouter();
   const { selectedCustomer, user } = useSession();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethodKey>("current_account");
   const [selectedCombinedPaymentMethod, setSelectedCombinedPaymentMethod] = useState<CombinedPaymentKey>("bank_transfer");
   const [selectedWarehouseKey, setSelectedWarehouseKey] = useState("");
+  const [selectedShippingWarehouseKey, setSelectedShippingWarehouseKey] = useState("");
+  const [depotTransferRequest, setDepotTransferRequest] = useState(false);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<number, string>>({});
   const [vatSummaryMode, setVatSummaryMode] = useState<VatSummaryMode>("detailed");
+  const [itemVatSummaryModes, setItemVatSummaryModes] = useState<Record<number, VatSummaryMode>>({});
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkUploadResults, setBulkUploadResults] = useState<Array<{ product_code: string; quantity: number; status: string; message: string }>>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
   const [deleteDialog, setDeleteDialog] = useState<"selected" | "all" | null>(null);
+  const [shippingFeeConfirmOpen, setShippingFeeConfirmOpen] = useState(false);
+  const [shippingFeeConfirmed, setShippingFeeConfirmed] = useState(false);
   const bulkUploadInputRef = useRef<HTMLInputElement | null>(null);
   const {
     cartData,
     loading,
     mutating,
-    error,
     shippingMethod,
     effectiveWarehouseTransfer,
     orderNote,
@@ -292,6 +393,28 @@ export function CartPage() {
     createOrderFromCart,
     refresh: refreshCart,
   } = useCart();
+  const shippingRulesQuery = useQuery({
+    queryKey: ["finance-definitions", "shipping_rule"],
+    queryFn: () => listFinanceDefinitions("shipping_rule"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const shippingRuleAmounts = useMemo(() => {
+    const map = new Map<string, number>();
+
+    for (const row of shippingRulesQuery.data?.data ?? []) {
+      const amount = parseShippingRuleAmount(row.logo_code ?? row.logo_name ?? row.name);
+
+      if (amount !== null) {
+        map.set(row.code.trim().toLocaleLowerCase("tr-TR"), amount);
+      }
+    }
+
+    return {
+      cargoLimit: map.get("cargo_limit") ?? SHIPPING_FEE_THRESHOLD,
+      cargoFee: map.get("cargo_fee") ?? SHIPPING_FEE_AMOUNT,
+      busFee: map.get("bus_fee") ?? SHIPPING_FEE_AMOUNT,
+    };
+  }, [shippingRulesQuery.data?.data]);
 
   useEffect(() => {
     setShippingMethod("depo_teslim");
@@ -301,11 +424,100 @@ export function CartPage() {
   const selectableProductIds = useMemo(() => items.map((item) => item.product_id), [items]);
   const selectedProductIdSet = useMemo(() => new Set(selectedProductIds), [selectedProductIds]);
   const allItemsSelected = items.length > 0 && selectedProductIds.length === items.length;
-  const warehouseOptions = useMemo(() => cartData?.warehouse_options ?? [], [cartData?.warehouse_options]);
+  const featurePermissionSet = useMemo(() => new Set(user?.feature_permissions ?? []), [user?.feature_permissions]);
+  const roleSlugSet = useMemo(() => new Set(user?.roles.map((role) => role.slug) ?? []), [user?.roles]);
+  const isCustomerUser = useMemo(() => roleSlugSet.has("customer"), [roleSlugSet]);
+  const selectedCustomerFeaturePermissionSet = useMemo(
+    () => new Set(selectedCustomer?.customer_user_feature_permissions ?? []),
+    [selectedCustomer?.customer_user_feature_permissions]
+  );
+  const selectedCustomerRequiresDetailedInvoice = Boolean(selectedCustomer?.e_invoice_user);
+  const saleTypeFeaturePermissionSet = featurePermissionSet;
+  const allowedVatSummaryModes = useMemo(() => {
+    if (selectedCustomerRequiresDetailedInvoice) {
+      return ["detailed"] satisfies VatSummaryMode[];
+    }
+
+    const customerUserModes = CHECKOUT_SUMMARY_MODE_ORDER.filter((mode) =>
+      selectedCustomerFeaturePermissionSet.has(CHECKOUT_SUMMARY_MODE_FEATURES[mode])
+    );
+
+    if (customerUserModes.length > 0) {
+      return customerUserModes;
+    }
+
+    if (isCustomerUser) {
+      return CHECKOUT_SUMMARY_MODE_ORDER.filter((mode) =>
+        saleTypeFeaturePermissionSet.has(CHECKOUT_SUMMARY_MODE_FEATURES[mode])
+      );
+    }
+
+    if (roleSlugSet.has("salesperson")) {
+      return ["detailed", "included"] satisfies VatSummaryMode[];
+    }
+
+    const explicitlyAllowedModes = CHECKOUT_SUMMARY_MODE_ORDER.filter((mode) =>
+      saleTypeFeaturePermissionSet.has(CHECKOUT_SUMMARY_MODE_FEATURES[mode])
+    );
+
+    return explicitlyAllowedModes;
+  }, [isCustomerUser, roleSlugSet, saleTypeFeaturePermissionSet, selectedCustomerFeaturePermissionSet, selectedCustomerRequiresDetailedInvoice]);
+  const allowedVatSummaryModeSet = useMemo(() => new Set(allowedVatSummaryModes), [allowedVatSummaryModes]);
+  const ownWarehouseCode = useMemo(() => resolveOwnWarehouseCode(user, selectedCustomer), [selectedCustomer, user]);
+  const isWarehouseUser = useMemo(() => {
+    const roleSlugs = Array.isArray(user?.roles) ? user.roles.map((role) => role.slug) : [];
+
+    return roleSlugs.includes("warehouse");
+  }, [user?.roles]);
+  const warehouseOptions = useMemo(() => {
+    const options = cartData?.warehouse_options ?? [];
+    const filteredOptions = options
+      .filter((option) => TRANSFER_WAREHOUSE_ORDER.some((name) => normalizeWarehouseIdentity(option.warehouse_name).includes(name)));
+
+    const scopedOptions = ownWarehouseCode
+      ? filteredOptions.filter((option) => String(option.warehouse_code ?? "").trim() !== ownWarehouseCode)
+      : filteredOptions;
+
+    return [...scopedOptions].sort((left, right) => transferWarehouseRank(left) - transferWarehouseRank(right));
+  }, [cartData?.warehouse_options, ownWarehouseCode]);
+  const cargoWarehouseOptions = useMemo(() => {
+    const options = cartData?.warehouse_options ?? [];
+
+    return options
+      .filter((option) => !includesBatum(option.warehouse_name) && String(option.warehouse_code ?? "").trim() !== "4")
+      .filter((option) => TRANSFER_WAREHOUSE_ORDER.some((name) => normalizeWarehouseIdentity(option.warehouse_name).includes(name)))
+      .sort((left, right) => transferWarehouseRank(left) - transferWarehouseRank(right));
+  }, [cartData?.warehouse_options]);
 
   useEffect(() => {
     setSelectedProductIds((current) => current.filter((productId) => selectableProductIds.includes(productId)));
+    setItemVatSummaryModes((current) => {
+      const allowed = new Set(selectableProductIds);
+      const next = Object.fromEntries(
+        Object.entries(current)
+          .filter(([productId]) => allowed.has(Number(productId)))
+          .map(([productId, mode]) => [productId, mode])
+      ) as Record<number, VatSummaryMode>;
+
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
   }, [selectableProductIds]);
+
+  useEffect(() => {
+    const fallbackMode = allowedVatSummaryModes[0] ?? "detailed";
+
+    if (!allowedVatSummaryModeSet.has(vatSummaryMode)) {
+      setVatSummaryMode(fallbackMode);
+    }
+
+    setItemVatSummaryModes((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([, mode]) => allowedVatSummaryModeSet.has(mode))
+      ) as Record<number, VatSummaryMode>;
+
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [allowedVatSummaryModeSet, allowedVatSummaryModes, vatSummaryMode]);
 
   const toggleProductSelection = (productId: number) => {
     setSelectedProductIds((current) => (
@@ -318,6 +530,33 @@ export function CartPage() {
   const toggleAllProductSelection = () => {
     setSelectedProductIds(allItemsSelected ? [] : selectableProductIds);
   };
+
+  const effectiveVatSummaryModeForProduct = useCallback(
+    (productId: number): VatSummaryMode => itemVatSummaryModes[productId] ?? vatSummaryMode,
+    [itemVatSummaryModes, vatSummaryMode]
+  );
+
+  const handleVatSummaryModeSelect = useCallback((mode: VatSummaryMode) => {
+    if (! allowedVatSummaryModeSet.has(mode)) {
+      return;
+    }
+
+    if (selectedProductIds.length === 0) {
+      setVatSummaryMode(mode);
+      return;
+    }
+
+    setItemVatSummaryModes((current) => {
+      const next = { ...current };
+      for (const productId of selectedProductIds) {
+        next[productId] = mode;
+      }
+
+      return next;
+    });
+
+    toast.success(`${selectedProductIds.length} ürün ${CHECKOUT_SUMMARY_MODES[mode].code} olarak ayarlandı.`);
+  }, [allowedVatSummaryModeSet, selectedProductIds]);
 
   const confirmDeleteItems = async () => {
     const targetProductIds = deleteDialog === "all" ? selectableProductIds : selectedProductIds;
@@ -378,63 +617,148 @@ export function CartPage() {
   const subtotal = toAmount(cartData?.totals.subtotal ?? "0.00");
   const vatTotal = toAmount(cartData?.totals.vat_total ?? "0.00");
   const grandTotal = toAmount(cartData?.totals.grand_total ?? "0.00");
-  const logoIntegration = cartData?.logo_integration;
-  const logoIntegrationReady = logoIntegration?.order_will_queue === true;
-  const logoIntegrationText = logoIntegration
-    ? `${logoIntegration.items_ready}/${logoIntegration.items_total} ürün hazır · son stok sync ${formatCartDateTime(logoIntegration.latest_product_synced_at)}`
-    : "Logo durumu yükleniyor";
+  const mixedVatTotals = useMemo(() => {
+    return items.reduce(
+      (totals, item) => {
+        const mode = effectiveVatSummaryModeForProduct(item.product_id);
+        const lineTotal = toAmount(item.line_total);
+        const vatRate = toAmount(item.vat_rate);
+        const lineVat = Number((lineTotal * (vatRate / 100)).toFixed(2));
+
+        totals.base += lineTotal;
+        if (mode === "detailed") {
+          totals.tax += lineVat;
+          totals.payable += lineTotal + lineVat;
+        } else if (mode === "included") {
+          totals.payable += lineTotal + lineVat;
+        } else {
+          totals.payable += lineTotal;
+        }
+
+        return totals;
+      },
+      { base: 0, tax: 0, payable: 0 }
+    );
+  }, [effectiveVatSummaryModeForProduct, items]);
   const selectedPayment = PAYMENT_METHODS.find((method) => method.key === selectedPaymentMethod) ?? PAYMENT_METHODS[0];
   const selectedCombinedPayment = COMBINED_PAYMENT_OPTIONS.find((method) => method.key === selectedCombinedPaymentMethod) ?? COMBINED_PAYMENT_OPTIONS[0];
-  const defaultWarehouseKey = useMemo(() => {
-    const bestOption = warehouseOptions.find((option) => option.missing_quantity <= 0) ?? warehouseOptions[0] ?? null;
-    return bestOption ? warehouseOptionKey(bestOption) : "";
-  }, [warehouseOptions]);
   const effectiveSelectedWarehouseKey = warehouseOptions.some((option) => warehouseOptionKey(option) === selectedWarehouseKey)
     ? selectedWarehouseKey
-    : defaultWarehouseKey;
+    : "";
   const selectedWarehouse =
     warehouseOptions.find((option) => warehouseOptionKey(option) === effectiveSelectedWarehouseKey) ?? null;
+  const effectiveSelectedShippingWarehouseKey = cargoWarehouseOptions.some((option) => warehouseOptionKey(option) === selectedShippingWarehouseKey)
+    ? selectedShippingWarehouseKey
+    : "";
+  const selectedShippingWarehouse =
+    cargoWarehouseOptions.find((option) => warehouseOptionKey(option) === effectiveSelectedShippingWarehouseKey) ?? null;
   const isCombinedPayment = selectedPayment.key === "cash_transfer_single";
   const selectedPaymentMultiplier = isCombinedPayment ? selectedCombinedPayment.multiplier : selectedPayment.multiplier;
-  const selectedPaymentTitle = isCombinedPayment ? selectedCombinedPayment.label : selectedPayment.title;
-  const selectedCheckoutSummary = CHECKOUT_SUMMARY_MODES[vatSummaryMode];
   const selectedShippingMethod = SHIPPING_METHODS.find((option) => option.value === shippingMethod);
   const isBatumBranch = useMemo(() => {
-    const batumScopeValues = [
-      selectedCustomer?.branch_code,
-      selectedCustomer?.branch_name,
-      selectedCustomer?.region_code,
-      selectedCustomer?.region_name,
-      selectedCustomer?.title,
+    if (user?.username?.trim().toLocaleLowerCase("tr-TR") === "turgay.buyukkal") {
+      return false;
+    }
+
+    const userScopeValues = [
+      user?.username,
+      user?.email,
+      user?.name,
       user?.branch_code,
       user?.branch_name,
       user?.region_code,
       user?.region_name,
     ];
 
-    return batumScopeValues.some(includesBatum) || selectedCustomer?.code?.trim().startsWith("120-00-") === true;
+    return userScopeValues.some(includesBatum);
   }, [
-    selectedCustomer?.branch_code,
-    selectedCustomer?.branch_name,
-    selectedCustomer?.code,
-    selectedCustomer?.region_code,
-    selectedCustomer?.region_name,
-    selectedCustomer?.title,
     user?.branch_code,
     user?.branch_name,
+    user?.email,
+    user?.name,
+    user?.username,
     user?.region_code,
     user?.region_name,
   ]);
-  const noteStepNumber = isBatumBranch ? 2 : 3;
-  const summaryStepNumber = isBatumBranch ? 3 : 4;
-  const effectiveVatSummaryMode = vatSummaryMode;
-  const checkoutDisplayTotal = effectiveVatSummaryMode === "excluded" ? subtotal : grandTotal;
+  const isBatumSelectedCustomer = useMemo(() => isBatumCustomerIdentity(selectedCustomer), [selectedCustomer]);
+  const noteStepNumber = 2;
+  const summaryStepNumber = 3;
+  const effectiveVatSummaryMode: VatSummaryMode = vatSummaryMode;
+  const hasMixedVatSummaryModes = useMemo(
+    () => items.some((item) => effectiveVatSummaryModeForProduct(item.product_id) !== vatSummaryMode),
+    [effectiveVatSummaryModeForProduct, items, vatSummaryMode]
+  );
+  const canManageWarehouseTransfer = useMemo(
+    () =>
+      roleSlugSet.has("warehouse") ||
+      roleSlugSet.has("point") ||
+      featurePermissionSet.has("cart.warehouse_transfer"),
+    [featurePermissionSet, roleSlugSet]
+  );
+  const shouldAutoEnableDepotTransfer = useMemo(
+    () => canManageWarehouseTransfer && isWarehouseOrderCustomer(selectedCustomer),
+    [canManageWarehouseTransfer, selectedCustomer]
+  );
+
+  useEffect(() => {
+    if (!canManageWarehouseTransfer || !shouldAutoEnableDepotTransfer) {
+      setDepotTransferRequest(false);
+      setSelectedWarehouseKey("");
+      return;
+    }
+
+    setDepotTransferRequest(true);
+  }, [canManageWarehouseTransfer, selectedCustomer?.id, shouldAutoEnableDepotTransfer]);
+
+  const isTransferMode = canManageWarehouseTransfer && depotTransferRequest;
+  // Cart ödeme şekli tüm hesaplarda görünmez; gönderim cari hesap ile devam eder.
+  const shouldHidePaymentArea = true;
+  const shouldHideSaleTypeSelector = isBatumBranch || isBatumSelectedCustomer;
+  const shouldShowSaleTypeSelector = !shouldHideSaleTypeSelector && !isTransferMode && allowedVatSummaryModes.length > 0;
+  const displayCurrency = isBatumBranch ? "GEL" : currency;
+  const showShippingAndTransferControls = !isBatumBranch || isWarehouseOrderCustomer(selectedCustomer);
+  const canUseAccountPayment = true;
+  const allowedCombinedPaymentOptions = COMBINED_PAYMENT_OPTIONS;
+  const visiblePaymentMethods = PAYMENT_METHODS.filter((method) => {
+    if (isBatumBranch) return method.key === "current_account" && canUseAccountPayment;
+    if (method.key === "current_account") return canUseAccountPayment;
+    return allowedCombinedPaymentOptions.length > 0;
+  });
+  const checkoutDisplayTotal = isTransferMode ? subtotal : isBatumBranch
+    ? grandTotal
+    : hasMixedVatSummaryModes
+    ? mixedVatTotals.payable
+    : effectiveVatSummaryMode === "excluded" ? subtotal : grandTotal;
   const shouldShowShippingFeeNotice =
-    (shippingMethod === "otobus" || shippingMethod === "kargo") && checkoutDisplayTotal > SHIPPING_FEE_THRESHOLD;
-  const shippingFeeAmount = shouldShowShippingFeeNotice ? SHIPPING_FEE_AMOUNT : 0;
-  const selectedPayableTotal = checkoutDisplayTotal * selectedPaymentMultiplier + shippingFeeAmount;
+    !isTransferMode && (shippingMethod === "otobus" || (shippingMethod === "kargo" && checkoutDisplayTotal < shippingRuleAmounts.cargoLimit));
+  const shippingFeeAmount = shouldShowShippingFeeNotice
+    ? shippingMethod === "otobus"
+      ? shippingRuleAmounts.busFee
+      : shippingRuleAmounts.cargoFee
+    : 0;
+  const selectedPayableTotal = isTransferMode ? checkoutDisplayTotal : checkoutDisplayTotal * selectedPaymentMultiplier + shippingFeeAmount;
   const isBankTransferPayment =
     Boolean(isCombinedPayment && "requiresReference" in selectedCombinedPayment && selectedCombinedPayment.requiresReference);
+
+  useEffect(() => {
+    if (isBatumBranch && selectedPaymentMethod !== "current_account") {
+      setSelectedPaymentMethod("current_account");
+    }
+  }, [isBatumBranch, selectedPaymentMethod]);
+  useEffect(() => {
+    if (shouldHidePaymentArea && selectedPaymentMethod !== "current_account") {
+      setSelectedPaymentMethod("current_account");
+    }
+  }, [selectedPaymentMethod, shouldHidePaymentArea]);
+  useEffect(() => {
+    if (!isCustomerUser) return;
+    if (selectedPaymentMethod === "current_account" && !canUseAccountPayment && allowedCombinedPaymentOptions.length > 0) {
+      setSelectedPaymentMethod("cash_transfer_single");
+    }
+    if (!allowedCombinedPaymentOptions.some((option) => option.key === selectedCombinedPaymentMethod) && allowedCombinedPaymentOptions[0]) {
+      setSelectedCombinedPaymentMethod(allowedCombinedPaymentOptions[0].key);
+    }
+  }, [allowedCombinedPaymentOptions, canUseAccountPayment, isCustomerUser, selectedCombinedPaymentMethod, selectedPaymentMethod]);
   const generatedTransferReference = [
     "PWR",
     selectedCustomer?.code?.trim() || selectedCustomer?.id || "CARI",
@@ -443,23 +767,57 @@ export function CartPage() {
     .join("-")
     .replace(/[^a-zA-Z0-9-]/g, "")
     .toLocaleUpperCase("tr-TR");
-  const isFormDisabled = loading || mutating || !selectedCustomer;
-  const isCustomerUser = useMemo(() => user?.roles.some((role) => role.slug === "customer") ?? false, [user?.roles]);
-  const featurePermissionSet = useMemo(() => new Set(user?.feature_permissions ?? []), [user?.feature_permissions]);
-  const roleSlugSet = useMemo(() => new Set(user?.roles.map((role) => role.slug) ?? []), [user?.roles]);
-  const canManageWarehouseTransfer = useMemo(
-    () =>
-      roleSlugSet.has("admin") ||
-      roleSlugSet.has("moderator") ||
-      roleSlugSet.has("warehouse") ||
-      roleSlugSet.has("warehouse_user") ||
-      roleSlugSet.has("depo") ||
-      roleSlugSet.has("depocu") ||
-      featurePermissionSet.has("cart.warehouse_transfer"),
-    [featurePermissionSet, roleSlugSet]
-  );
-  const canCheckout = !isCustomerUser || featurePermissionSet.has("cart.checkout");
-  const isCheckoutDisabled = mutating || loading || items.length === 0 || !selectedCustomer || !canCheckout;
+  const canCheckout = !isCustomerUser || featurePermissionSet.has("cart.checkout") || Boolean(selectedCustomer);
+  const transferSourceRequired = canManageWarehouseTransfer && depotTransferRequest && !selectedWarehouse;
+  const cargoWarehouseRequired = !isTransferMode && shippingMethod === "kargo" && !selectedShippingWarehouse;
+  const isFormDisabled = loading || mutating;
+  const isCheckoutDisabled =
+    mutating ||
+    loading ||
+    items.length === 0 ||
+    (!selectedCustomer && !isTransferMode) ||
+    transferSourceRequired ||
+    cargoWarehouseRequired ||
+    !canCheckout ||
+    (!shouldHidePaymentArea && isCustomerUser && visiblePaymentMethods.length === 0);
+
+  useEffect(() => {
+    setShippingFeeConfirmed(false);
+  }, [shippingFeeAmount, shippingMethod]);
+
+  useEffect(() => {
+    if (!depotTransferRequest || warehouseOptions.length === 0 || effectiveSelectedWarehouseKey) {
+      return;
+    }
+
+    const preferredWarehouse =
+      warehouseOptions.find((option) => normalizeWarehouseIdentity(option.warehouse_name).includes("ERZURUMDEPO")) ??
+      warehouseOptions[0];
+
+    if (preferredWarehouse) {
+      setSelectedWarehouseKey(warehouseOptionKey(preferredWarehouse));
+    }
+  }, [depotTransferRequest, effectiveSelectedWarehouseKey, warehouseOptions]);
+
+  useEffect(() => {
+    if (shippingMethod !== "kargo") {
+      setSelectedShippingWarehouseKey("");
+      return;
+    }
+
+    if (cargoWarehouseOptions.length === 0 || effectiveSelectedShippingWarehouseKey) {
+      return;
+    }
+
+    const preferredWarehouse =
+      cargoWarehouseOptions.find((option) => normalizeWarehouseIdentity(option.warehouse_name).includes("ERZURUMDEPO")) ??
+      cargoWarehouseOptions[0];
+
+    if (preferredWarehouse) {
+      setSelectedShippingWarehouseKey(warehouseOptionKey(preferredWarehouse));
+    }
+  }, [cargoWarehouseOptions, effectiveSelectedShippingWarehouseKey, shippingMethod]);
+
   const handleBulkCartFileChange = useCallback(
     async (file: File | null) => {
       if (!file) {
@@ -513,27 +871,25 @@ export function CartPage() {
   );
   const checkoutNote = useMemo(() => {
     const cleanNote = orderNote.trim();
-    const paymentNoteParts = isBatumBranch
-      ? []
-      : [
-          `Ödeme tercihi: ${selectedPaymentTitle}`,
-          `Satış tipi: ${selectedCheckoutSummary.label}`,
-          `Ekranda gösterilen ödeme tutarı: ${formatTryAmount(selectedPayableTotal, currency)}`,
-        ];
-
-    if (!isBatumBranch && vatSummaryMode !== "detailed") {
-      paymentNoteParts.push(`Özet gösterimi: ${vatSummaryMode === "excluded" ? "KDV hariç" : "KDV dahil"}`);
-    }
+    const paymentNoteParts: string[] = [];
 
     if (!isBatumBranch && isBankTransferPayment) {
       paymentNoteParts.push(`Referans kodu: ${generatedTransferReference}`);
     }
 
     if (shippingFeeAmount > 0) {
-      paymentNoteParts.push(`Ulaşım / nakliye bedeli: ${formatTryAmount(shippingFeeAmount, currency)}`);
+      paymentNoteParts.push(`Ulaşım / nakliye bedeli: ${formatTryAmount(shippingFeeAmount, displayCurrency)}`);
     }
 
-    if (!isBatumBranch && selectedWarehouse) {
+    if (!isBatumBranch && !isTransferMode && shippingMethod === "kargo" && selectedShippingWarehouse) {
+      const warehouseLabel = [
+        selectedShippingWarehouse.warehouse_name,
+        selectedShippingWarehouse.warehouse_code ? `Kod: ${selectedShippingWarehouse.warehouse_code}` : null,
+      ].filter(Boolean).join(" · ");
+      paymentNoteParts.push(`Kargo hedef depo: ${warehouseLabel}`);
+    }
+
+    if (!isBatumBranch && isTransferMode && selectedWarehouse) {
       const warehouseLabel = [
         selectedWarehouse.warehouse_name,
         selectedWarehouse.warehouse_code ? `Kod: ${selectedWarehouse.warehouse_code}` : null,
@@ -548,7 +904,114 @@ export function CartPage() {
     }
 
     return cleanNote ? `${cleanNote}\n${paymentNote}` : paymentNote;
-  }, [currency, generatedTransferReference, isBankTransferPayment, isBatumBranch, orderNote, selectedCheckoutSummary.label, selectedPayableTotal, selectedPaymentTitle, selectedWarehouse, shippingFeeAmount, vatSummaryMode]);
+  }, [displayCurrency, generatedTransferReference, isBankTransferPayment, isBatumBranch, isTransferMode, orderNote, selectedShippingWarehouse, selectedWarehouse, shippingFeeAmount, shippingMethod]);
+
+  const shouldShowWarehouseTransferPanel =
+    showShippingAndTransferControls &&
+    canManageWarehouseTransfer &&
+    (shouldAutoEnableDepotTransfer || depotTransferRequest || isWarehouseOrderCustomer(selectedCustomer));
+
+  const compactWarehouseTransferPanel =
+    shouldShowWarehouseTransferPanel ? (
+      <div className="rounded-[16px] border border-emerald-300/25 bg-[radial-gradient(circle_at_8%_16%,rgba(52,211,153,0.14)_0%,transparent_32%),linear-gradient(135deg,rgba(6,48,37,0.82)_0%,rgba(6,24,32,0.96)_100%)] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-300/14 text-emerald-100 ring-1 ring-emerald-200/20">
+              <Warehouse className="h-3.5 w-3.5" />
+            </span>
+            <p className="truncate text-xs font-black text-white">Depolar Arası Transfer</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDepotTransferRequest((current) => {
+                if (current) {
+                  setSelectedWarehouseKey("");
+                }
+
+                return !current;
+              });
+            }}
+            disabled={isFormDisabled}
+            aria-pressed={depotTransferRequest}
+            className={cn(
+              "shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-60",
+              depotTransferRequest
+                ? "border-amber-100/70 bg-amber-200 text-slate-950"
+                : "border-white/12 bg-white/8 text-white/65 hover:border-amber-200/45 hover:text-amber-100"
+            )}
+          >
+            {depotTransferRequest ? "AKTİF" : "PASİF"}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!depotTransferRequest) {
+              setDepotTransferRequest(true);
+            }
+          }}
+          disabled={isFormDisabled}
+          className="mt-2 flex h-9 w-full items-center gap-2 rounded-[11px] border border-emerald-100/16 bg-black/14 px-2.5 text-left transition hover:border-emerald-200/35 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span className="shrink-0 text-[10px] font-bold text-emerald-50/60">Gönderen:</span>
+          <strong className="min-w-0 flex-1 truncate text-xs font-black text-white">
+            {selectedWarehouse?.warehouse_name ?? "Depo seçin"}
+          </strong>
+        </button>
+
+        {depotTransferRequest && warehouseOptions.length > 0 ? (
+          <div className="mt-2 grid gap-1.5">
+            {warehouseOptions.map((warehouse) => {
+              const key = warehouseOptionKey(warehouse);
+              const active = key === effectiveSelectedWarehouseKey;
+              const hasEnoughStock = warehouse.missing_quantity <= 0;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSelectedWarehouseKey(key)}
+                  disabled={isFormDisabled || !warehouse.is_active}
+                  aria-pressed={active}
+                  className={cn(
+                    "grid min-h-11 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 rounded-[11px] border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-50",
+                    active
+                      ? "border-[#ffff00] bg-[#ffff00] text-slate-950 shadow-[0_12px_24px_-18px_rgba(255,255,0,0.9)]"
+                      : "border-white/10 bg-white/7 text-emerald-50/82 hover:border-[#ffff00]/70 hover:bg-[#ffff00]/14"
+                  )}
+                >
+                  <span className="truncate text-xs font-black">{warehouse.warehouse_name}</span>
+                  <span className={cn("whitespace-nowrap text-[10px] font-black", active ? "text-slate-800" : "text-emerald-50/62")}>
+                    Stok {formatStock(warehouse.available_total)}
+                  </span>
+                  <span
+                    className={cn(
+                      "whitespace-nowrap text-[10px] font-black",
+                      hasEnoughStock
+                        ? active ? "text-slate-800" : "text-emerald-200"
+                        : active ? "text-amber-800" : "text-amber-200"
+                    )}
+                  >
+                    {hasEnoughStock ? "Yeterli" : `Eksik ${formatStock(warehouse.missing_quantity)}`}
+                  </span>
+                  {active ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <span className="h-4 w-4 shrink-0 rounded-full border border-white/35" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : depotTransferRequest ? (
+          <div className="mt-2 rounded-[11px] border border-dashed border-emerald-100/20 bg-black/10 px-3 py-2 text-xs font-semibold text-emerald-50/70">
+            Bu sepet için depo stok kırılımı bulunamadı.
+          </div>
+        ) : null}
+      </div>
+    ) : null;
 
   return (
     <div className="admin-cart-page flex flex-col gap-4">
@@ -561,13 +1024,13 @@ export function CartPage() {
         </div>
       ) : null}
 
-      {selectedCustomer ? (
+      {selectedCustomer && !shouldHidePaymentArea ? (
         <Card className="dashboard-panel-card order-2 overflow-hidden">
           <CardContent className="space-y-3 p-3 2xl:p-4">
             <StepTitle step={2} title="Ödeme Şekli" />
 
-            <div className="grid gap-2.5 md:grid-cols-2 2xl:gap-3">
-              {PAYMENT_METHODS.map((method) => {
+            <div className={cn("grid gap-2.5 2xl:gap-3", isBatumBranch ? "grid-cols-1" : "md:grid-cols-2")}>
+              {visiblePaymentMethods.map((method) => {
                 const Icon = method.icon;
                 const active = selectedPaymentMethod === method.key;
                 const methodBadge = method.key === "cash_transfer_single" ? selectedCombinedPayment.badge : method.badge;
@@ -643,14 +1106,14 @@ export function CartPage() {
                         ) : null}
                         <span className="mt-1 block text-[11px] font-semibold leading-none text-[var(--muted-foreground)]">{method.label}</span>
                         <span className="mt-1 block text-lg font-black leading-none tracking-[0.02em] text-[var(--foreground)] 2xl:text-xl">
-                          {formatTryAmount(payableTotal, currency)}
+                          {formatTryAmount(payableTotal, displayCurrency)}
                         </span>
                       </span>
                     </span>
 
                     {method.key === "cash_transfer_single" ? (
                       <span className="grid w-full grid-cols-3 gap-1 rounded-[12px] border border-white/10 bg-black/12 p-1">
-                        {COMBINED_PAYMENT_OPTIONS.map((option) => {
+                        {allowedCombinedPaymentOptions.map((option) => {
                           const OptionIcon = option.icon;
                           const optionActive = active && selectedCombinedPaymentMethod === option.key;
 
@@ -814,8 +1277,6 @@ export function CartPage() {
             </div>
           ) : null}
 
-          {error ? <p className="text-sm text-red-400">{error}</p> : null}
-
           {!loading && items.length === 0 ? (
             <div className="admin-cart-empty flex min-h-[210px] flex-col items-center justify-center gap-3 rounded-[20px] bg-[var(--surface-soft)] p-5 text-center text-sm text-[var(--muted-foreground)] md:min-h-[250px] 2xl:min-h-[280px] 2xl:gap-4">
               <ShoppingCart className="h-12 w-12 text-[var(--brand-primary)] 2xl:h-16 2xl:w-16" />
@@ -870,6 +1331,11 @@ export function CartPage() {
                     {items.map((item) => {
                       const effectiveUnitPrice =
                         item.quantity > 0 ? toAmount(item.line_total) / item.quantity : toAmount(item.unit_net_price);
+                      const batumVatMultiplier = isBatumBranch ? 1 + toAmount(item.vat_rate) / 100 : 1;
+                      const displayedUnitPrice = effectiveUnitPrice * batumVatMultiplier;
+                      const displayedLineTotal = toAmount(item.line_total) * batumVatMultiplier;
+                      const itemVatMode = effectiveVatSummaryModeForProduct(item.product_id);
+                      const itemVatLabel = CHECKOUT_SUMMARY_MODES[itemVatMode].code;
 
                       return (
                       <tr key={item.id} className="border-b border-[var(--brand-border)] last:border-b-0">
@@ -891,17 +1357,22 @@ export function CartPage() {
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-4 py-4 align-middle">
                           <p className="line-clamp-2 text-base font-black leading-6 text-[var(--foreground)]">{item.name}</p>
-                          {item.campaign_key ? (
-                            <span className="mt-1 inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300">
-                              Kampanya aktif
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {item.campaign_key ? (
+                              <span className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300">
+                                Kampanya aktif
+                              </span>
+                            ) : null}
+                            <span className="inline-flex rounded-full border border-amber-200/35 bg-amber-300/12 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-100">
+                              {itemVatLabel}
                             </span>
-                          ) : null}
+                          </div>
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-4 py-4 align-middle">
                           <p className="truncate text-sm font-black text-[var(--foreground)]">{item.brand ?? "-"}</p>
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-4 py-4 text-right align-middle text-base font-black text-[var(--foreground)]">
-                          {formatTryAmount(effectiveUnitPrice, item.currency)}
+                          {formatTryAmount(displayedUnitPrice, displayCurrency)}
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-3 py-4 align-middle">
                           <div className="mx-auto grid h-11 w-[148px] grid-cols-[36px_1fr_36px] items-center rounded-[12px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-1">
@@ -931,7 +1402,7 @@ export function CartPage() {
                           </div>
                         </td>
                         <td className="border-r border-[var(--brand-border)] px-4 py-4 text-right align-middle text-base font-black text-[var(--foreground)]">
-                          {formatTry(item.line_total, item.currency)}
+                          {formatTryAmount(displayedLineTotal, displayCurrency)}
                         </td>
                         <td className="px-3 py-4 text-center align-middle">
                           <Button type="button" variant="outline" size="icon" className="h-10 w-10 rounded-[12px] border-red-500/35 bg-red-500/5 text-red-400 hover:bg-red-500/10 hover:text-red-300" onClick={() => void removeItemByProduct(item.product_id)} disabled={isFormDisabled} aria-label="Kalemi kaldır">
@@ -949,9 +1420,13 @@ export function CartPage() {
         </CardContent>
       </Card>
 
-      <div className="order-3 grid gap-4 xl:grid-cols-[minmax(330px,0.78fr)_minmax(430px,1.22fr)] 2xl:grid-cols-[minmax(420px,0.82fr)_minmax(520px,1.18fr)]">
-        <div className="grid gap-4">
-          <Card className="dashboard-panel-card overflow-hidden">
+      <div
+        className={cn(
+          "order-3 grid items-stretch gap-4 xl:grid-cols-[minmax(330px,0.78fr)_minmax(430px,1.22fr)] 2xl:grid-cols-[minmax(420px,0.82fr)_minmax(520px,1.18fr)]"
+        )}
+      >
+        <div className="grid items-start gap-4">
+          <Card className={cn("dashboard-panel-card h-full overflow-hidden", isBatumBranch && "h-full")}>
             <CardContent className="space-y-3 p-4 2xl:p-5">
               <StepTitle step={noteStepNumber} title="Sipariş Notu" icon={PencilLine} />
 
@@ -961,11 +1436,11 @@ export function CartPage() {
                   onChange={(event) => setOrderNote(event.target.value)}
                   placeholder="Sipariş notu yazın..."
                   disabled={isFormDisabled}
-                  className="min-h-[68px] rounded-[14px] border-cyan-100/16 bg-black/16 text-sm font-semibold text-white placeholder:text-cyan-50/42 focus-visible:ring-cyan-200/40"
+                  className="min-h-[60px] rounded-[14px] border-cyan-100/16 bg-black/16 text-sm font-semibold text-white placeholder:text-cyan-50/42 focus-visible:ring-cyan-200/40"
                 />
               </div>
 
-              <div className="space-y-2">
+              {showShippingAndTransferControls ? <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Truck className="h-4 w-4 text-emerald-300" />
                   <p className="text-sm font-black uppercase tracking-[0.08em] text-white">Gönderme Şekli</p>
@@ -1007,84 +1482,48 @@ export function CartPage() {
                     );
                   })}
                 </div>
-              </div>
-
-              {!isBatumBranch && canManageWarehouseTransfer ? (
-                <div className="rounded-[18px] border border-emerald-300/25 bg-[radial-gradient(circle_at_8%_16%,rgba(52,211,153,0.18)_0%,transparent_34%),linear-gradient(135deg,rgba(6,48,37,0.86)_0%,rgba(6,24,32,0.96)_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-300/14 text-emerald-100 ring-1 ring-emerald-200/20">
-                        <Warehouse className="h-4.5 w-4.5" />
-                      </span>
-                      <div>
-                        <p className="text-sm font-black text-white">Depo Transfer</p>
-                        <p className="text-xs font-semibold text-emerald-50/68">Hazırlanacak depo</p>
-                      </div>
-                    </div>
-                    {selectedWarehouse ? (
-                      <span className="w-fit rounded-full border border-emerald-100/20 bg-emerald-300/12 px-3 py-1 text-xs font-black text-emerald-50">
-                        {selectedWarehouse.warehouse_name}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {warehouseOptions.length > 0 ? (
-                    <div className="mt-3 grid gap-2">
-                      {warehouseOptions.map((warehouse) => {
+                {shippingMethod === "kargo" ? (
+                  <div className="mt-2 rounded-[16px] border border-emerald-200/20 bg-black/12 p-2">
+                    <p className="px-1 pb-2 text-xs font-black uppercase tracking-[0.08em] text-emerald-100/75">
+                      Kargonun düşeceği depo
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {cargoWarehouseOptions.map((warehouse) => {
                         const key = warehouseOptionKey(warehouse);
-                        const active = key === effectiveSelectedWarehouseKey;
-                        const hasEnoughStock = warehouse.missing_quantity <= 0;
+                        const active = key === effectiveSelectedShippingWarehouseKey;
 
                         return (
                           <button
-                            key={key}
+                            key={`cargo-target-${key}`}
                             type="button"
-                            onClick={() => setSelectedWarehouseKey(key)}
+                            onClick={() => setSelectedShippingWarehouseKey(key)}
                             disabled={isFormDisabled || !warehouse.is_active}
                             aria-pressed={active}
                             className={cn(
-                              "rounded-[14px] border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50",
+                              "rounded-[14px] border px-3 py-2 text-left text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50",
                               active
-                                ? "border-emerald-100/70 bg-[linear-gradient(135deg,rgba(52,211,153,0.94)_0%,rgba(21,128,61,0.94)_100%)] text-slate-950 shadow-[0_18px_32px_-24px_rgba(52,211,153,0.9)]"
-                                : "border-white/10 bg-white/8 text-emerald-50/82 hover:border-emerald-100/35 hover:bg-white/12"
+                                ? "border-[#ffff00] bg-[#ffff00] text-slate-950 shadow-[0_14px_26px_-18px_rgba(255,255,0,0.95)]"
+                                : "border-white/10 bg-white/8 text-emerald-50/82 hover:border-[#ffff00]/80 hover:bg-[#ffff00]/20"
                             )}
                           >
-                            <span className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-black">{warehouse.warehouse_name}</span>
-                                <span className={cn("mt-1 block text-xs font-bold", active ? "text-slate-900/70" : "text-emerald-50/58")}>
-                                  Kod: {warehouse.warehouse_code ?? "-"} · Kalem: {warehouse.item_count || "-"}
-                                </span>
-                              </span>
-                              <span className="flex flex-wrap gap-2 text-xs font-black">
-                                <span className={cn("rounded-[10px] px-2 py-1", active ? "bg-white/28" : "bg-black/14")}>
-                                  Stok {formatStock(warehouse.available_total)}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "rounded-[10px] px-2 py-1",
-                                    hasEnoughStock
-                                      ? active ? "bg-white/28" : "bg-emerald-300/12 text-emerald-100"
-                                      : active ? "bg-amber-200/70" : "bg-amber-300/12 text-amber-100"
-                                  )}
-                                >
-                                  {hasEnoughStock ? "Yeterli" : `Eksik ${formatStock(warehouse.missing_quantity)}`}
-                                </span>
-                                {active ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : null}
-                              </span>
+                            <span className="block truncate">{warehouse.warehouse_name}</span>
+                            <span className={cn("mt-1 block text-[10px]", active ? "text-slate-800" : "text-emerald-50/55")}>
+                              Kod: {warehouse.warehouse_code ?? "-"}
                             </span>
                           </button>
                         );
                       })}
                     </div>
-                  ) : (
-                    <div className="mt-3 rounded-[14px] border border-dashed border-emerald-100/20 bg-black/10 px-3 py-2 text-sm font-semibold text-emerald-50/70">
-                      Bu sepet için depo stok kırılımı bulunamadı.
-                    </div>
-                  )}
-                </div>
-              ) : null}
-              {shouldShowShippingFeeNotice ? (
+                    {cargoWarehouseRequired ? (
+                      <p className="mt-2 rounded-xl border border-red-300/35 bg-red-500/12 px-3 py-2 text-xs font-bold text-red-100">
+                        Kargo siparişi için Erzurum, Trabzon veya Samsun depolarından birini seçin.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div> : null}
+
+              {showShippingAndTransferControls && shouldShowShippingFeeNotice ? (
                 <div className="rounded-[18px] border border-amber-300/45 bg-[radial-gradient(circle_at_8%_16%,rgba(251,191,36,0.24)_0%,transparent_34%),linear-gradient(135deg,rgba(83,53,12,0.68)_0%,rgba(12,23,33,0.92)_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
                   <div className="flex items-start gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-300/18 text-amber-100 ring-1 ring-amber-200/25">
@@ -1095,9 +1534,9 @@ export function CartPage() {
 	                        {selectedShippingMethod?.label} için nakliye bedeli yansıtıldı
 	                      </p>
 	                      <p className="mt-1 text-sm font-semibold leading-6 text-amber-50/82">
-	                        {formatTryAmount(SHIPPING_FEE_THRESHOLD, currency)} üzerindeki siparişlerde ulaşım/nakliye bedeli
+	                        {shippingMethod === "kargo" ? `${formatTryAmount(shippingRuleAmounts.cargoLimit, displayCurrency)} altındaki kargo siparişlerinde` : "Otobüs gönderimlerinde"}
 	                        {" "}
-	                        <strong className="font-black text-amber-100">{formatTryAmount(SHIPPING_FEE_AMOUNT, currency)}</strong>
+	                        <strong className="font-black text-amber-100">{formatTryAmount(shippingFeeAmount, displayCurrency)}</strong>
 	                        {" "}
 	                        olarak sipariş özetine eklendi.
 	                      </p>
@@ -1109,26 +1548,39 @@ export function CartPage() {
           </Card>
         </div>
 
-        <Card className="dashboard-panel-card overflow-hidden">
-          <CardContent className="grid min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] 2xl:gap-5 2xl:p-5">
-            <div className="min-w-0">
+        <Card className="dashboard-panel-card h-full overflow-hidden">
+          <CardContent className="grid min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-stretch 2xl:gap-5 2xl:p-5">
+            <div className="order-2 min-w-0 lg:order-2">
               <StepTitle step={summaryStepNumber} title="Sipariş Özeti" />
               <div className="mt-5 space-y-3">
-                {effectiveVatSummaryMode === "detailed" ? (
+                {hasMixedVatSummaryModes ? (
                   <>
                     <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
                       <span className="text-[var(--muted-foreground)]">Ara Toplam</span>
                       <span className="h-px bg-[var(--brand-border)]" />
-                      <strong>{formatTryAmount(subtotal, currency)}</strong>
+                      <strong>{formatTryAmount(mixedVatTotals.base, displayCurrency)}</strong>
+                    </div>
+                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
+                      <span className="text-[var(--muted-foreground)]">Satır Bazlı KDV</span>
+                      <span className="h-px bg-[var(--brand-border)]" />
+                      <strong>{formatTryAmount(mixedVatTotals.tax, displayCurrency)}</strong>
+                    </div>
+                  </>
+                ) : effectiveVatSummaryMode === "detailed" ? (
+                  <>
+                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
+                      <span className="text-[var(--muted-foreground)]">Ara Toplam</span>
+                      <span className="h-px bg-[var(--brand-border)]" />
+                      <strong>{formatTryAmount(subtotal, displayCurrency)}</strong>
                     </div>
 	                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
 	                      <span className="text-[var(--muted-foreground)]">KDV (%20)</span>
 	                      <span className="h-px bg-[var(--brand-border)]" />
-	                      <strong>{formatTryAmount(vatTotal, currency)}</strong>
+	                      <strong>{formatTryAmount(vatTotal, displayCurrency)}</strong>
 	                    </div>
 	                  </>
 	                ) : null}
-                {effectiveVatSummaryMode === "excluded" ? (
+                {!hasMixedVatSummaryModes && effectiveVatSummaryMode === "excluded" ? (
                   <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
                     <span className="text-[var(--muted-foreground)]">KDV</span>
                     <span className="h-px bg-[var(--brand-border)]" />
@@ -1139,105 +1591,132 @@ export function CartPage() {
                   <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 text-base">
                     <span className="text-amber-100">Ulaşım / Nakliye</span>
                     <span className="h-px bg-amber-300/30" />
-                    <strong className="text-amber-100">{formatTryAmount(shippingFeeAmount, currency)}</strong>
+                    <strong className="text-amber-100">{formatTryAmount(shippingFeeAmount, displayCurrency)}</strong>
                   </div>
                 ) : null}
 	                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 pt-3 text-lg">
 	                  <span className="font-black text-[var(--foreground)]">Genel Toplam</span>
                   <span className="h-px bg-[var(--brand-border)]" />
-                  <strong className="text-2xl text-emerald-300 2xl:text-3xl">{formatTryAmount(selectedPayableTotal, currency)}</strong>
-                </div>
-                <div
-                  className={cn(
-                    "rounded-[16px] border px-3 py-2 text-sm font-bold",
-                    logoIntegrationReady
-                      ? "border-emerald-300/35 bg-emerald-500/10 text-emerald-100"
-                      : "border-amber-300/35 bg-amber-500/10 text-amber-100"
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 shrink-0" />
-                    <span className="font-black">{logoIntegrationReady ? "Logo Hazır" : "Logo Kontrol"}</span>
-                  </div>
-                  <p className="mt-1 text-xs leading-5 opacity-85">{logoIntegrationText}</p>
+                  <strong className="text-2xl text-emerald-300 2xl:text-3xl">{formatTryAmount(selectedPayableTotal, displayCurrency)}</strong>
                 </div>
               </div>
             </div>
 
-            <div className="flex min-w-0 max-w-full flex-col gap-3 overflow-hidden border-t border-[var(--brand-border)] pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-              {selectedCustomer ? (
-              <div className="grid min-w-0 grid-cols-3 items-center gap-1.5 rounded-[16px] border border-emerald-300/25 bg-[linear-gradient(135deg,rgba(7,23,29,0.92)_0%,rgba(5,37,28,0.92)_100%)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                <span className="col-span-3 px-1 text-center text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/70">Satış Tipi</span>
-                <button
-                  type="button"
-                  onClick={() => setVatSummaryMode("detailed")}
-                  aria-label="1 - F özet görünümü"
-                  aria-pressed={vatSummaryMode === "detailed"}
-                  className={cn(
-                    "group flex min-h-9 min-w-0 items-center justify-center rounded-[12px] border text-xs font-black transition duration-200",
-                    vatSummaryMode === "detailed"
-                      ? "border-emerald-200 bg-[radial-gradient(circle_at_26%_20%,rgba(187,247,208,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(16,185,129,0.96)_0%,rgba(3,92,64,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(16,185,129,0.9)]"
-                      : "border-emerald-300/18 bg-emerald-500/8 text-emerald-100/80 hover:border-emerald-200/70 hover:bg-emerald-500/18"
-                  )}
-                >
-                  <span className="flex h-7 min-w-10 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
-                    {CHECKOUT_SUMMARY_MODES.detailed.code}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVatSummaryMode("excluded")}
-                  aria-label="2 - O özet görünümü"
-                  aria-pressed={vatSummaryMode === "excluded"}
-                  className={cn(
-                    "group flex min-h-9 min-w-0 items-center justify-center rounded-[12px] border text-xs font-black transition duration-200",
-                    vatSummaryMode === "excluded"
-                      ? "border-sky-200 bg-[radial-gradient(circle_at_26%_20%,rgba(186,230,253,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(14,165,233,0.96)_0%,rgba(7,89,133,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(14,165,233,0.9)]"
-                      : "border-sky-300/18 bg-sky-500/8 text-sky-100/80 hover:border-sky-200/70 hover:bg-sky-500/18"
-                  )}
-                >
-                  <span className="flex h-7 min-w-10 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
-                    {CHECKOUT_SUMMARY_MODES.excluded.code}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVatSummaryMode("included")}
-                  aria-label="3 - B özet görünümü"
-                  aria-pressed={vatSummaryMode === "included"}
-                  className={cn(
-                    "group flex min-h-9 min-w-0 items-center justify-center rounded-[12px] border text-xs font-black transition duration-200",
-                    vatSummaryMode === "included"
-                      ? "border-fuchsia-200 bg-[radial-gradient(circle_at_26%_20%,rgba(245,208,254,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(192,38,211,0.94)_0%,rgba(91,33,182,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(192,38,211,0.86)]"
-                      : "border-fuchsia-300/18 bg-fuchsia-500/8 text-fuchsia-100/80 hover:border-fuchsia-200/70 hover:bg-fuchsia-500/18"
-                  )}
-                >
-                  <span className="flex h-7 min-w-10 items-center justify-center rounded-full bg-white/14 px-2 ring-1 ring-white/18">
-                    {CHECKOUT_SUMMARY_MODES.included.code}
-                  </span>
-                </button>
-              </div>
-              ) : null}
-              <div className="flex min-w-0 max-w-full flex-col justify-center gap-3 overflow-hidden">
+            <div className="order-1 flex min-w-0 max-w-full flex-col gap-3 overflow-hidden border-b border-[var(--brand-border)] pb-4 lg:order-1 lg:h-full lg:border-b-0 lg:border-r lg:pb-0 lg:pr-5">
+              {compactWarehouseTransferPanel}
+              <div
+                className={cn(
+                  "cart-submit-panel grid min-w-0 max-w-full flex-1 items-stretch gap-2 overflow-hidden",
+                  selectedCustomer && shouldShowSaleTypeSelector && allowedVatSummaryModes.length > 0
+                    ? "grid-cols-[3rem_minmax(0,1fr)] sm:grid-cols-[4rem_minmax(0,1fr)]"
+                    : "grid-cols-1"
+                )}
+              >
+                {selectedCustomer && shouldShowSaleTypeSelector && allowedVatSummaryModes.length > 0 ? (
+                  <div className="grid min-h-[7rem] min-w-0 grid-rows-[auto_1fr] overflow-hidden rounded-[14px] border border-emerald-300/25 bg-[linear-gradient(135deg,rgba(7,23,29,0.92)_0%,rgba(5,37,28,0.92)_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:min-h-[8.5rem] lg:min-h-[13.25rem] 2xl:min-h-[14rem]">
+                    <span className="px-0.5 pb-1 text-center text-[8px] font-black uppercase leading-none tracking-[0.08em] text-emerald-100/70">
+                      Satış
+                    </span>
+                    <div className="grid min-h-0 gap-1">
+                      {allowedVatSummaryModes.map((mode) => {
+                        const isSelected = selectedProductIds.length === 0 && vatSummaryMode === mode;
+                        const codeParts = CHECKOUT_SUMMARY_MODES[mode].code.split("-");
+                        const toneClass =
+                          mode === "detailed"
+                            ? isSelected
+                              ? "border-emerald-200 bg-[radial-gradient(circle_at_26%_20%,rgba(187,247,208,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(16,185,129,0.96)_0%,rgba(3,92,64,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(16,185,129,0.9)]"
+                              : "border-emerald-300/18 bg-emerald-500/8 text-emerald-100/80 hover:border-emerald-200/70 hover:bg-emerald-500/18"
+                            : mode === "excluded"
+                              ? isSelected
+                                ? "border-sky-200 bg-[radial-gradient(circle_at_26%_20%,rgba(186,230,253,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(14,165,233,0.96)_0%,rgba(7,89,133,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(14,165,233,0.9)]"
+                                : "border-sky-300/18 bg-sky-500/8 text-sky-100/80 hover:border-sky-200/70 hover:bg-sky-500/18"
+                              : isSelected
+                                ? "border-fuchsia-200 bg-[radial-gradient(circle_at_26%_20%,rgba(245,208,254,0.34)_0%,transparent_34%),linear-gradient(135deg,rgba(192,38,211,0.94)_0%,rgba(91,33,182,0.98)_100%)] text-white shadow-[0_16px_32px_-20px_rgba(192,38,211,0.86)]"
+                                : "border-fuchsia-300/18 bg-fuchsia-500/8 text-fuchsia-100/80 hover:border-fuchsia-200/70 hover:bg-fuchsia-500/18";
+
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => handleVatSummaryModeSelect(mode)}
+                            aria-label={`${CHECKOUT_SUMMARY_MODES[mode].label} özet görünümü`}
+                            aria-pressed={isSelected}
+                            className={cn(
+                              "group flex min-h-0 min-w-0 items-center justify-center rounded-[10px] border text-[13px] font-black leading-none transition duration-200",
+                              toneClass
+                            )}
+                          >
+                            <span className="grid h-9 w-8 place-items-center rounded-full bg-white/14 py-1 ring-1 ring-white/18 sm:h-11 sm:w-9">
+                              <span>{codeParts[0]}</span>
+                              <span>{codeParts[1]}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
                 <Button
+                  type="button"
                   className={cn(
-                    "min-h-20 w-full max-w-full whitespace-nowrap rounded-[18px] border border-red-300/45 !bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.3)_0%,transparent_34%),linear-gradient(135deg,rgba(239,68,68,0.98)_0%,rgba(153,27,27,1)_100%)] px-4 text-lg font-black uppercase tracking-[0.03em] !text-white shadow-[0_22px_38px_-24px_rgba(239,68,68,0.95),inset_0_1px_0_rgba(255,255,255,0.22)] hover:!bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.36)_0%,transparent_34%),linear-gradient(135deg,rgba(248,113,113,1)_0%,rgba(185,28,28,1)_100%)] 2xl:min-h-24 2xl:text-xl"
+                    "h-full min-h-[7rem] w-full max-w-full rounded-[18px] border border-red-300/45 !bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.3)_0%,transparent_34%),linear-gradient(135deg,rgba(239,68,68,0.98)_0%,rgba(153,27,27,1)_100%)] px-3 text-lg font-black uppercase leading-none tracking-[0.03em] !text-white shadow-[0_22px_38px_-24px_rgba(239,68,68,0.95),inset_0_1px_0_rgba(255,255,255,0.22)] hover:!bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.36)_0%,transparent_34%),linear-gradient(135deg,rgba(248,113,113,1)_0%,rgba(185,28,28,1)_100%)] sm:min-h-[8.5rem] sm:text-xl lg:min-h-[13.25rem] 2xl:min-h-[14rem] 2xl:text-2xl"
                   )}
                   disabled={isCheckoutDisabled}
-                  onClick={() => void createOrderFromCart({
-                    note: checkoutNote,
-                    checkoutSummaryMode: effectiveVatSummaryMode,
-                    paymentMethod: isCombinedPayment ? selectedCombinedPayment.key : selectedPayment.key,
-                    salesPriceType: isCombinedPayment ? selectedCombinedPayment.key : undefined,
-                  })}
+                  onClick={() => void (async () => {
+                    if (shippingFeeAmount > 0 && !shippingFeeConfirmed) {
+                      setShippingFeeConfirmOpen(true);
+                      return;
+                    }
+
+                    const isDepotTransferSubmit = canManageWarehouseTransfer && depotTransferRequest && !!selectedWarehouse;
+                    const checkoutProductIds = selectedProductIds.length > 0 ? selectedProductIds : items.map((item) => item.product_id);
+
+                    try {
+                      await createOrderFromCart({
+                        note: checkoutNote,
+                        checkoutSummaryMode: isDepotTransferSubmit ? "excluded" : effectiveVatSummaryMode,
+                        itemCheckoutSummaryModes: Object.fromEntries(
+                          checkoutProductIds.map((productId) => [productId, isDepotTransferSubmit ? "excluded" : effectiveVatSummaryModeForProduct(productId)])
+                        ),
+                        checkoutGrandTotal: isDepotTransferSubmit ? undefined : Number(selectedPayableTotal.toFixed(2)),
+                        shippingFeeAmount: isDepotTransferSubmit ? 0 : Number(shippingFeeAmount.toFixed(2)),
+                        selectedProductIds: checkoutProductIds,
+                        paymentMethod: shouldHidePaymentArea
+                          ? "current_account"
+                          : isCombinedPayment
+                            ? selectedCombinedPayment.key
+                            : selectedPayment.key,
+                        salesPriceType: shouldHidePaymentArea
+                          ? undefined
+                          : isCombinedPayment
+                            ? selectedCombinedPayment.key
+                            : undefined,
+                        warehouseTransferRequest: isDepotTransferSubmit,
+                        shippingTargetWarehouseCode: !isDepotTransferSubmit && shippingMethod === "kargo" ? (selectedShippingWarehouse?.warehouse_code ?? null) : null,
+                        shippingTargetWarehouseName: !isDepotTransferSubmit && shippingMethod === "kargo" ? (selectedShippingWarehouse?.warehouse_name ?? null) : null,
+                        transferTargetWarehouseCode: canManageWarehouseTransfer && depotTransferRequest ? (selectedWarehouse?.warehouse_code ?? null) : null,
+                        transferTargetWarehouseName: canManageWarehouseTransfer && depotTransferRequest ? (selectedWarehouse?.warehouse_name ?? null) : null,
+                      });
+                    } catch (error) {
+                      if (isLogoEInvoiceDetailedOnlyError(error)) {
+                        setVatSummaryMode("detailed");
+                        setItemVatSummaryModes({});
+                        toast.error(LOGO_E_INVOICE_DETAILED_ONLY_MESSAGE);
+                      }
+
+                      return;
+                    }
+
+                    if (isWarehouseUser) {
+                      router.replace("/warehouse");
+                    }
+
+                    setSelectedProductIds([]);
+                  })()}
                 >
                   {mutating ? <Loader2 className="h-9 w-9 animate-spin" /> : <PackageCheck className="h-9 w-9" />}
                   {!canCheckout ? "Yetki Yok" : mutating ? "İşleniyor..." : "Gönder"}
                 </Button>
-                <p className="flex items-center gap-2 text-sm font-semibold leading-snug text-[var(--muted-foreground)]">
-                  <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-300" />
-                  256-bit SSL ile korunmaktadır.
-                </p>
               </div>
             </div>
           </CardContent>
@@ -1276,6 +1755,43 @@ export function CartPage() {
               >
                 {mutating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 Evet
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {shippingFeeConfirmOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden rounded-[30px] border border-[#ffff00]/55 bg-[radial-gradient(circle_at_18%_16%,rgba(255,255,0,0.3)_0%,transparent_34%),linear-gradient(145deg,rgba(13,34,26,0.98)_0%,rgba(6,17,14,0.99)_100%)] p-6 text-center shadow-[0_34px_90px_-42px_rgba(255,255,0,0.9)]">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] border border-[#ffff00]/60 bg-[#ffff00] text-slate-950 shadow-[0_18px_34px_-20px_rgba(255,255,0,0.95)]">
+              {shippingMethod === "otobus" ? <Bus className="h-8 w-8" /> : <Truck className="h-8 w-8" />}
+            </div>
+            <p className="mt-5 text-xs font-black uppercase tracking-[0.3em] text-[#ffff00]">Ulaşım Bedeli Onayı</p>
+            <h3 className="mt-2 text-2xl font-black text-white">
+              Sipariş toplamına {formatTryAmount(shippingFeeAmount, displayCurrency)} eklenecek
+            </h3>
+            <p className="mx-auto mt-3 max-w-md text-sm font-semibold leading-6 text-emerald-50/72">
+              Seçtiğin gönderim şekli için kargo / otobüs bedeli sipariş toplamına dahil edilecek. Devam etmek istiyor musun?
+            </p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 rounded-2xl border-white/15 bg-white/6 font-black text-white hover:bg-white/10"
+                onClick={() => setShippingFeeConfirmOpen(false)}
+              >
+                Vazgeç
+              </Button>
+              <Button
+                type="button"
+                className="h-12 rounded-2xl border border-[#ffff00]/60 bg-[#ffff00] font-black text-slate-950 shadow-[0_18px_30px_-18px_rgba(255,255,0,0.9)] hover:bg-[#ffff00] hover:brightness-105"
+                onClick={() => {
+                  setShippingFeeConfirmed(true);
+                  setShippingFeeConfirmOpen(false);
+                }}
+              >
+                Devam Et
               </Button>
             </div>
           </div>

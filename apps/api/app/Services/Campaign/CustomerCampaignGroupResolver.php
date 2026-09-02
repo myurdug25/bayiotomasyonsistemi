@@ -18,17 +18,30 @@ class CustomerCampaignGroupResolver
     {
         $meta = is_array($customer->meta) ? $customer->meta : [];
         $paths = [
+            'price_group',
+            'price_list_code',
             'specode',
+            'specode2',
+            'specode3',
+            'specode4',
+            'specode5',
             'trading_group',
             'tradinggrp',
-            'specode2',
+            'integrations.logo.payload.price_group',
+            'integrations.logo.payload.price_list_code',
             'integrations.logo.payload.specode',
+            'integrations.logo.payload.specode2',
+            'integrations.logo.payload.specode3',
+            'integrations.logo.payload.specode4',
+            'integrations.logo.payload.specode5',
             'integrations.logo.payload.trading_group',
             'integrations.logo.payload.tradinggrp',
-            'integrations.logo.payload.specode2',
             'integrations.logo.payload.raw.SPECODE',
-            'integrations.logo.payload.raw.TRADINGGRP',
             'integrations.logo.payload.raw.SPECODE2',
+            'integrations.logo.payload.raw.SPECODE3',
+            'integrations.logo.payload.raw.SPECODE4',
+            'integrations.logo.payload.raw.SPECODE5',
+            'integrations.logo.payload.raw.TRADINGGRP',
         ];
         $groups = [];
 

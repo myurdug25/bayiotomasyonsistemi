@@ -14,6 +14,7 @@ use App\Models\LedgerEntry;
 use App\Models\User;
 use App\Services\Integrations\Logo\LogoWritePublisher;
 use App\Services\Ledger\LedgerWriter;
+use App\Services\Notifications\UserNotificationService;
 use App\Support\Pricing\DisplayCurrency;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,11 +35,18 @@ class CustomerCollectionController extends Controller
         $dateFrom = $validated['date_from'] ?? null;
         $dateTo = $validated['date_to'] ?? null;
         $method = $validated['method'] ?? null;
+        // Both fields are written together. Using the indexed `date` column
+        // directly keeps the collections screen responsive on large tables;
+        // COALESCE/DATE wrappers force a scan and were causing 15-20s loads.
         $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
-        $dateColumn = "COALESCE({$dateCol}, collection_date)";
+        $dateColumn = $dateCol;
         $user = $request->user();
         $displayUser = $user instanceof User ? $user : null;
-        $collectionSummary = $this->collectionSummaryPayload($customer, $dateFrom, $dateTo, $displayUser);
+        $includeSummary = (bool) ($validated['include_summary'] ?? true);
+        $compact = (bool) ($validated['compact'] ?? false);
+        $collectionSummary = $includeSummary
+            ? $this->collectionSummaryPayload($customer, $dateFrom, $dateTo, $displayUser)
+            : ['tabs' => collect(), 'logo_sync' => []];
 
         if ($method === 'invoice') {
             $invoiceQuery = $this->invoiceQuery($customer, $dateFrom, $dateTo)
@@ -71,9 +79,9 @@ class CustomerCollectionController extends Controller
         $query = CollectionModel::query()
             ->where('customer_id', $customer->id)
             ->when(! empty($method), fn ($q) => $this->applyCollectionMethodFilter($q, (string) $method))
-            ->when(! empty($dateFrom), fn ($q) => $q->whereRaw("DATE({$dateColumn}) >= ?", [$dateFrom]))
-            ->when(! empty($dateTo), fn ($q) => $q->whereRaw("DATE({$dateColumn}) <= ?", [$dateTo]))
-            ->orderByRaw("{$dateColumn} DESC")
+            ->when(! empty($dateFrom), fn ($q) => $q->where('date', '>=', $dateFrom))
+            ->when(! empty($dateTo), fn ($q) => $q->where('date', '<=', $dateTo))
+            ->orderByDesc('date')
             ->orderByDesc('id');
 
         $paginator = $query->paginate($perPage)->withQueryString();
@@ -88,7 +96,9 @@ class CustomerCollectionController extends Controller
             'tabs' => $collectionSummary['tabs'],
             'logo_sync' => $collectionSummary['logo_sync'],
             'data' => collect($paginator->items())
-                ->map(fn ($item) => (new CollectionResource($item))->toArray($request))
+                ->map(fn ($item) => $compact
+                    ? $this->compactCollectionPayload($item, $request)
+                    : (new CollectionResource($item))->toArray($request))
                 ->values(),
             'meta' => [
                 'current_page' => $paginator->currentPage(),
@@ -97,6 +107,33 @@ class CustomerCollectionController extends Controller
                 'total' => $paginator->total(),
             ],
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function compactCollectionPayload(CollectionModel $collection, Request $request): array
+    {
+        $payload = (new CollectionResource($collection))->toArray($request);
+        $referenceFields = $payload['reference_fields'];
+
+        if (is_array($referenceFields)) {
+            unset(
+                $referenceFields['image_data'],
+                $referenceFields['image_name'],
+                $referenceFields['image_type'],
+                $referenceFields['images_json']
+            );
+        }
+
+        $payload['reference_fields'] = $referenceFields;
+        $payload['meta'] = null;
+
+        if (($payload['sync_status'] ?? null) !== 'failed') {
+            $payload['sync_error'] = null;
+        }
+
+        return $payload;
     }
 
     /**
@@ -132,12 +169,12 @@ class CustomerCollectionController extends Controller
     private function collectionTabSummaries(Customer $customer, ?string $dateFrom, ?string $dateTo, ?User $user): array
     {
         $dateCol = DB::connection()->getDriverName() === 'mysql' ? '`date`' : '"date"';
-        $dateColumn = "COALESCE({$dateCol}, collection_date)";
+        $dateColumn = $dateCol;
         $channelExpression = $this->collectionChannelExpression();
         $rows = CollectionModel::query()
             ->where('customer_id', $customer->id)
-            ->when(! empty($dateFrom), fn ($q) => $q->whereRaw("DATE({$dateColumn}) >= ?", [$dateFrom]))
-            ->when(! empty($dateTo), fn ($q) => $q->whereRaw("DATE({$dateColumn}) <= ?", [$dateTo]))
+            ->when(! empty($dateFrom), fn ($q) => $q->where('date', '>=', $dateFrom))
+            ->when(! empty($dateTo), fn ($q) => $q->where('date', '<=', $dateTo))
             ->selectRaw('method')
             ->selectRaw("UPPER(COALESCE(currency, 'TRY')) as currency")
             ->selectRaw("{$channelExpression} as collection_channel")
@@ -320,14 +357,16 @@ class CustomerCollectionController extends Controller
         StoreCustomerCollectionRequest $request,
         Customer $customer,
         LogoWritePublisher $logoWritePublisher,
-        LedgerWriter $ledgerWriter
+        LedgerWriter $ledgerWriter,
+        UserNotificationService $notifications
     ): JsonResponse {
         $this->authorize('createCollection', $customer);
 
         $validated = $request->validated();
         $user = $request->user();
 
-        $collection = DB::transaction(function () use ($validated, $customer, $user, $logoWritePublisher, $ledgerWriter) {
+        $collection = DB::transaction(function () use ($validated, $customer, $user, $logoWritePublisher, $ledgerWriter, $notifications) {
+            $this->ensurePaperInstrumentAllowedForUser($user, (string) $validated['method']);
             $collectionDate = $validated['date'] ?? $validated['collection_date'] ?? now()->toDateString();
             $submittedMeta = is_array($validated['meta'] ?? null) ? $validated['meta'] : [];
             $referenceFields = $validated['reference_fields'] ?? data_get($submittedMeta, 'reference_fields', []);
@@ -336,17 +375,23 @@ class CustomerCollectionController extends Controller
             [$referenceFields, $referenceNo, $automaticNote] = $this->prepareFinanceFields(
                 method: (string) $validated['method'],
                 customer: $customer,
+                user: $user,
                 referenceFields: is_array($referenceFields) ? $referenceFields : [],
                 referenceNo: $referenceNo,
             );
+            $requiresManagerApproval = $this->requiresPaperInstrumentApproval(
+                $user,
+                (string) $validated['method'],
+                $referenceFields
+            );
+            $paperInstrumentApprover = $requiresManagerApproval
+                ? $this->resolvePaperInstrumentApprover($user, (string) $validated['method'])
+                : null;
             $meta = array_merge($submittedMeta, [
                 'reference_fields' => $referenceFields,
             ]);
             $isFactoryCollection = data_get($referenceFields, 'collection_channel') === 'factory';
             $valorDays = data_get($referenceFields, 'valor_days');
-            $requiresManagerApproval = $validated['method'] === 'check'
-                && is_numeric($valorDays)
-                && (int) $valorDays > 60;
 
             if ($isFactoryCollection) {
                 $meta['factory_collected'] = true;
@@ -355,13 +400,33 @@ class CustomerCollectionController extends Controller
             if ($requiresManagerApproval) {
                 $referenceFields['requires_manager_approval'] = true;
                 $referenceFields['manager_approval_reason'] = 'valor_limit_exceeded';
+                $referenceFields['manager_approval_user_id'] = $paperInstrumentApprover->id;
                 $meta['manager_approval'] = [
                     'status' => 'reviewing',
                     'reason' => 'valor_limit_exceeded',
-                    'valor_days' => (int) $valorDays,
-                    'limit_days' => 60,
+                    'method' => $validated['method'],
+                    'valor_days' => is_numeric($valorDays) ? (int) $valorDays : null,
+                    'limit_days' => 90,
+                    'approver_user_id' => $paperInstrumentApprover->id,
+                    'approver_username' => $paperInstrumentApprover->username,
                     'submitted_at' => now()->toIso8601String(),
                     'submitted_by_user_id' => $user->id,
+                    'submitted_by_username' => $user->username,
+                ];
+                $meta['reference_fields'] = $referenceFields;
+            } elseif ($this->isPaperInstrumentMethod((string) $validated['method'])) {
+                $referenceFields['requires_manager_approval'] = false;
+                $referenceFields['manager_approval_status'] = 'approved';
+                $meta['manager_approval'] = [
+                    'status' => 'approved',
+                    'reason' => $this->isPaperInstrumentApprovalAuthority($user)
+                        ? 'approval_authority'
+                        : 'valor_within_limit',
+                    'method' => $validated['method'],
+                    'valor_days' => is_numeric($valorDays) ? (int) $valorDays : null,
+                    'approved_at' => now()->toIso8601String(),
+                    'approved_by_user_id' => $user->id,
+                    'approved_by_username' => $user->username,
                 ];
                 $meta['reference_fields'] = $referenceFields;
             }
@@ -413,6 +478,10 @@ class CustomerCollectionController extends Controller
                 }
             }
 
+            if ($requiresManagerApproval) {
+                $this->notifyPaperInstrumentApprovalRequested($notifications, $collection->fresh(['customer']), $user, $paperInstrumentApprover);
+            }
+
             return $collection;
         });
 
@@ -420,6 +489,113 @@ class CustomerCollectionController extends Controller
             'collection' => new CollectionResource($collection),
             'ledger_entry' => null,
         ], 201);
+    }
+
+    public function approvalIndex(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $collections = CollectionModel::query()
+            ->with(['customer:id,code,name', 'collectedBy:id,name,username', 'createdBy:id,name,username'])
+            ->where('source_system', 'b2b')
+            ->where('sync_status', 'reviewing')
+            ->whereIn('method', ['check', 'note'])
+            ->orderByDesc('id')
+            ->limit(250)
+            ->get()
+            ->filter(fn (CollectionModel $collection): bool => $this->canReviewPaperInstrument($collection, $user))
+            ->take(100)
+            ->values();
+
+        return response()->json([
+            'data' => $collections->map(fn (CollectionModel $collection): array => $this->paperInstrumentApprovalPayload($collection))->all(),
+        ]);
+    }
+
+    public function approve(
+        Request $request,
+        Customer $customer,
+        CollectionModel $collection,
+        LogoWritePublisher $logoWritePublisher,
+        LedgerWriter $ledgerWriter,
+        UserNotificationService $notifications
+    ): JsonResponse {
+        $this->ensurePaperInstrumentReviewable($customer, $collection, $request->user());
+
+        if (! $this->shouldQueueForLogoExport($customer)) {
+            throw ValidationException::withMessages([
+                'collection' => ['Cari Logo’ya aktarılmadan çek/senet onaylanamaz.'],
+            ]);
+        }
+
+        DB::transaction(function () use ($collection, $logoWritePublisher, $ledgerWriter, $notifications, $request): void {
+            $meta = is_array($collection->meta) ? $collection->meta : [];
+            data_set($meta, 'manager_approval.status', 'approved');
+            data_set($meta, 'manager_approval.approved_at', now()->toIso8601String());
+            data_set($meta, 'manager_approval.approved_by_user_id', $request->user()->id);
+            data_set($meta, 'manager_approval.approved_by_username', $request->user()->username);
+            data_set($meta, 'integrations.logo.submitted_at', now()->toIso8601String());
+            data_set($meta, 'integrations.logo.submitted_by_user_id', $request->user()->id);
+
+            $referenceFields = is_array($collection->reference_fields) ? $collection->reference_fields : [];
+            $referenceFields['manager_approval_status'] = 'approved';
+
+            $collection->fill([
+                'sync_status' => 'pending',
+                'sync_error' => null,
+                'last_synced_at' => null,
+                'reference_fields' => $referenceFields,
+                'meta' => $meta,
+            ])->save();
+
+            $this->writeCollectionLedgerEntry($collection->fresh(), $ledgerWriter);
+            $logoWritePublisher->queueCollectionCreate($collection);
+            $this->notifyPaperInstrumentDecision($notifications, $collection->fresh(['customer']), true);
+        });
+
+        return response()->json([
+            'collection' => new CollectionResource($collection->fresh()),
+            'message' => 'Çek/Senet onaylandı ve Logo kuyruğuna alındı.',
+        ]);
+    }
+
+    public function reject(
+        Request $request,
+        Customer $customer,
+        CollectionModel $collection,
+        UserNotificationService $notifications
+    ): JsonResponse {
+        $this->ensurePaperInstrumentReviewable($customer, $collection, $request->user());
+
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        DB::transaction(function () use ($collection, $request, $validated, $notifications): void {
+            $meta = is_array($collection->meta) ? $collection->meta : [];
+            data_set($meta, 'manager_approval.status', 'rejected');
+            data_set($meta, 'manager_approval.rejected_at', now()->toIso8601String());
+            data_set($meta, 'manager_approval.rejected_by_user_id', $request->user()->id);
+            data_set($meta, 'manager_approval.rejected_by_username', $request->user()->username);
+            data_set($meta, 'manager_approval.rejection_reason', $validated['reason'] ?? null);
+
+            $referenceFields = is_array($collection->reference_fields) ? $collection->reference_fields : [];
+            $referenceFields['manager_approval_status'] = 'rejected';
+
+            $collection->fill([
+                'sync_status' => 'failed',
+                'sync_error' => 'Çek/Senet onayı reddedildi.',
+                'reference_fields' => $referenceFields,
+                'meta' => $meta,
+            ])->save();
+
+            $this->notifyPaperInstrumentDecision($notifications, $collection->fresh(['customer']), false);
+        });
+
+        return response()->json([
+            'collection' => new CollectionResource($collection->fresh()),
+            'message' => 'Çek/Senet reddedildi. Logo’ya gönderilmedi.',
+        ]);
     }
 
     public function update(
@@ -497,10 +673,14 @@ class CustomerCollectionController extends Controller
         }
 
         if ($collection->sync_status === 'reviewing') {
-            throw ValidationException::withMessages([
-                'collection' => ['Bu tahsilat müdür onayı bekliyor.'],
-            ]);
+            if (! $this->isPaperInstrumentMethod((string) $collection->method)) {
+                throw ValidationException::withMessages([
+                    'collection' => ['Bu tahsilat müdür onayı bekliyor.'],
+                ]);
+            }
         }
+
+        $this->assertPaperInstrumentReadyForLogo($collection);
 
         if (! $this->shouldQueueForLogoExport($customer)) {
             throw ValidationException::withMessages([
@@ -573,6 +753,8 @@ class CustomerCollectionController extends Controller
                 'message' => 'Gönderilecek uygun tahsilat bulunamadı.',
             ]);
         }
+
+        $sendableCollections->each(fn (CollectionModel $collection) => $this->assertPaperInstrumentReadyForLogo($collection));
 
         if (! $this->shouldQueueForLogoExport($customer)) {
             throw ValidationException::withMessages([
@@ -648,6 +830,7 @@ class CustomerCollectionController extends Controller
      */
     private function buildCollectionAttributes(array $validated, Customer $customer, User $user): array
     {
+        $this->ensurePaperInstrumentAllowedForUser($user, (string) $validated['method']);
         $collectionDate = $validated['date'] ?? $validated['collection_date'] ?? now()->toDateString();
         $submittedMeta = is_array($validated['meta'] ?? null) ? $validated['meta'] : [];
         $referenceFields = $validated['reference_fields'] ?? data_get($submittedMeta, 'reference_fields', []);
@@ -656,18 +839,24 @@ class CustomerCollectionController extends Controller
         [$referenceFields, $referenceNo, $automaticNote] = $this->prepareFinanceFields(
             method: (string) $validated['method'],
             customer: $customer,
+            user: $user,
             referenceFields: is_array($referenceFields) ? $referenceFields : [],
             referenceNo: $referenceNo,
             allocateSequence: false,
         );
+        $requiresManagerApproval = $this->requiresPaperInstrumentApproval(
+            $user,
+            (string) $validated['method'],
+            $referenceFields
+        );
+        $paperInstrumentApprover = $requiresManagerApproval
+            ? $this->resolvePaperInstrumentApprover($user, (string) $validated['method'])
+            : null;
         $meta = array_merge($submittedMeta, [
             'reference_fields' => $referenceFields,
         ]);
         $isFactoryCollection = data_get($referenceFields, 'collection_channel') === 'factory';
         $valorDays = data_get($referenceFields, 'valor_days');
-        $requiresManagerApproval = $validated['method'] === 'check'
-            && is_numeric($valorDays)
-            && (int) $valorDays > 60;
 
         if ($isFactoryCollection) {
             $meta['factory_collected'] = true;
@@ -678,13 +867,33 @@ class CustomerCollectionController extends Controller
         if ($requiresManagerApproval) {
             $referenceFields['requires_manager_approval'] = true;
             $referenceFields['manager_approval_reason'] = 'valor_limit_exceeded';
+            $referenceFields['manager_approval_user_id'] = $paperInstrumentApprover->id;
             $meta['manager_approval'] = [
                 'status' => 'reviewing',
                 'reason' => 'valor_limit_exceeded',
-                'valor_days' => (int) $valorDays,
-                'limit_days' => 60,
+                'method' => $validated['method'],
+                'valor_days' => is_numeric($valorDays) ? (int) $valorDays : null,
+                'limit_days' => 90,
+                'approver_user_id' => $paperInstrumentApprover->id,
+                'approver_username' => $paperInstrumentApprover->username,
                 'submitted_at' => now()->toIso8601String(),
                 'submitted_by_user_id' => $user->id,
+                'submitted_by_username' => $user->username,
+            ];
+            $meta['reference_fields'] = $referenceFields;
+        } elseif ($this->isPaperInstrumentMethod((string) $validated['method'])) {
+            $referenceFields['requires_manager_approval'] = false;
+            $referenceFields['manager_approval_status'] = 'approved';
+            $meta['manager_approval'] = [
+                'status' => 'approved',
+                'reason' => $this->isPaperInstrumentApprovalAuthority($user)
+                    ? 'approval_authority'
+                    : 'valor_within_limit',
+                'method' => $validated['method'],
+                'valor_days' => is_numeric($valorDays) ? (int) $valorDays : null,
+                'approved_at' => now()->toIso8601String(),
+                'approved_by_user_id' => $user->id,
+                'approved_by_username' => $user->username,
             ];
             $meta['reference_fields'] = $referenceFields;
         } else {
@@ -793,7 +1002,29 @@ class CustomerCollectionController extends Controller
             return false;
         }
 
-        return ! in_array($collection->sync_status, ['pending', 'reviewing', 'synced'], true);
+        if ($this->paperInstrumentApprovalWasRequired($collection)
+            && data_get($collection->meta, 'manager_approval.status') !== 'approved') {
+            return false;
+        }
+
+        return ! in_array($collection->sync_status, ['pending', 'synced'], true);
+    }
+
+    private function assertPaperInstrumentReadyForLogo(CollectionModel $collection): void
+    {
+        if (! $this->isPaperInstrumentMethod((string) $collection->method)) {
+            return;
+        }
+
+        $dueDate = data_get($collection->reference_fields, 'due_date');
+
+        if (is_string($dueDate) && trim($dueDate) !== '') {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'reference_fields.due_date' => ['Çek/Senet vade tarihi zorunludur.'],
+        ]);
     }
 
     /**
@@ -817,7 +1048,7 @@ class CustomerCollectionController extends Controller
             return $cashbox;
         }
 
-        if (! $user->hasRole('salesperson')) {
+        if ($this->nullableString($user->logo_cashbox_code) === null) {
             return null;
         }
 
@@ -831,6 +1062,7 @@ class CustomerCollectionController extends Controller
     private function prepareFinanceFields(
         string $method,
         Customer $customer,
+        User $user,
         array $referenceFields,
         ?string $referenceNo,
         bool $allocateSequence = true,
@@ -868,7 +1100,13 @@ class CustomerCollectionController extends Controller
 
         if ($method === 'cc') {
             $bankCode = trim((string) data_get($referenceFields, 'pos_bank', ''));
-            $bank = $this->activeFinanceDefinition('bank', $bankCode, 'reference_fields.pos_bank');
+            $bank = $this->activeFinanceDefinition(
+                'bank',
+                $bankCode,
+                'reference_fields.pos_bank',
+                $this->usesBatumFinanceScope($user, $customer),
+                data_get($referenceFields, 'finance_definition_id'),
+            );
             $referenceNo = $referenceNo ?: ($allocateSequence ? $this->nextPhysicalPosReference() : null);
             $referenceFields['collection_channel'] = 'physical_pos';
             $referenceFields['pos_bank'] = $bank->code;
@@ -896,7 +1134,13 @@ class CustomerCollectionController extends Controller
 
         if ($method === 'transfer') {
             $bankCode = trim((string) data_get($referenceFields, 'bank_code', data_get($referenceFields, 'bank_name', '')));
-            $bank = $this->activeFinanceDefinition('bank', $bankCode, 'reference_fields.bank_code');
+            $bank = $this->activeFinanceDefinition(
+                'bank',
+                $bankCode,
+                'reference_fields.bank_code',
+                $this->usesBatumFinanceScope($user, $customer),
+                data_get($referenceFields, 'finance_definition_id'),
+            );
             $referenceNo = $referenceNo ?: ($allocateSequence ? $this->nextTransferReference() : null);
             $referenceFields['bank_code'] = $bank->code;
             $referenceFields['bank_name'] = $bank->name;
@@ -919,25 +1163,71 @@ class CustomerCollectionController extends Controller
         return [$referenceFields, $referenceNo, trim("{$customerName} NAKİT")];
     }
 
-    private function activeFinanceDefinition(string $type, string $code, string $field): FinanceDefinition
-    {
-        $definition = FinanceDefinition::query()
+    private function activeFinanceDefinition(
+        string $type,
+        string $code,
+        string $field,
+        bool $batumScope = false,
+        mixed $definitionId = null,
+    ): FinanceDefinition {
+        $normalizedCode = mb_strtolower(trim($code), 'UTF-8');
+
+        $query = FinanceDefinition::query()
             ->where('type', $type)
             ->where('is_active', true)
             ->when(
                 $type === 'bank',
-                fn ($query) => $this->applyTurkeyBankScope($query)
-            )
-            ->where(function ($query) use ($code): void {
-                $query->where('code', $code)->orWhere('name', $code);
-            })
-            ->first();
+                fn ($query) => $batumScope
+                    ? $this->applyBatumBankScope($query)
+                    : $this->applyTurkeyBankScope($query)
+            );
+
+        $definition = is_numeric($definitionId)
+            ? (clone $query)->whereKey((int) $definitionId)->first()
+            : null;
+
+        if (! $definition instanceof FinanceDefinition) {
+            $definition = $query
+                ->where(function ($query) use ($normalizedCode): void {
+                    foreach (['code', 'name', 'logo_code', 'logo_name'] as $column) {
+                        $query->orWhereRaw(
+                            "LOWER(TRIM(COALESCE({$column}, ''))) = ?",
+                            [$normalizedCode]
+                        );
+                    }
+                })
+                ->first();
+        }
 
         if (! $definition instanceof FinanceDefinition) {
             throw ValidationException::withMessages([$field => ['Seçilen finans tanımı aktif değil veya bulunamadı.']]);
         }
 
         return $definition;
+    }
+
+    private function usesBatumFinanceScope(User $user, Customer $customer): bool
+    {
+        if ($this->userBelongsToBranch($user, 'BATUM')) {
+            return true;
+        }
+
+        foreach ([
+            $customer->branch_code,
+            $customer->branch_name,
+            $customer->region_code,
+            $customer->region_name,
+            $customer->city,
+            $customer->district,
+            $customer->name,
+        ] as $signal) {
+            $normalized = $this->normalizeBranchSignal($signal);
+            if ($normalized !== null && str_contains($normalized, 'BATUM')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function applyTurkeyBankScope($query): void
@@ -962,6 +1252,20 @@ class CustomerCollectionController extends Controller
                 ->whereRaw('LOWER(COALESCE(logo_code, \'\')) NOT LIKE ?', [$like])
                 ->whereRaw('LOWER(COALESCE(logo_name, \'\')) NOT LIKE ?', [$like]);
         }
+    }
+
+    private function applyBatumBankScope($query): void
+    {
+        $query->where(function ($bankQuery): void {
+            foreach (['batum', 'georgia', 'gürcistan', 'gurcistan', 'tbc'] as $term) {
+                $like = '%'.$term.'%';
+                $bankQuery
+                    ->orWhereRaw('LOWER(COALESCE(code, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(name, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(logo_code, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(logo_name, \'\')) LIKE ?', [$like]);
+            }
+        });
     }
 
     private function nextPhysicalPosReference(): string
@@ -1020,7 +1324,7 @@ class CustomerCollectionController extends Controller
         if ($configuredCode === null) {
             throw ValidationException::withMessages([
                 'cashbox' => [
-                    'Bu plasiyer icin Logo kasa kodu tanimli degil. Tahsilat gondermeden once kullanici-kasa eslestirmesini tamamlayin.',
+                    'Bu kullanıcı için Logo kasa kodu tanımlı değil. Tahsilat göndermeden önce kullanıcı-kasa eşleştirmesini tamamlayın.',
                 ],
             ]);
         }
@@ -1028,6 +1332,237 @@ class CustomerCollectionController extends Controller
         return $this->resolveCashboxByCode(
             code: $configuredCode,
             name: $configuredName ?? (($this->nullableString($user->name) ?? 'Plasiyer').' Kasasi')
+        );
+    }
+
+    private function isPaperInstrumentMethod(string $method): bool
+    {
+        return in_array($method, ['check', 'note'], true);
+    }
+
+    private function ensurePaperInstrumentAllowedForUser(User $user, string $method): void
+    {
+        if (! $this->isPaperInstrumentMethod($method)) {
+            return;
+        }
+
+        if ($this->userBelongsToBranch($user, 'BATUM')) {
+            throw ValidationException::withMessages([
+                'method' => ['Batum kullanıcısı için çek/senet tahsilatı kapalıdır.'],
+            ]);
+        }
+    }
+
+    private function resolvePaperInstrumentApprover(User $user, string $method): ?User
+    {
+        if (! $this->isPaperInstrumentMethod($method)) {
+            return null;
+        }
+
+        $username = $this->userBelongsToBranch($user, 'TRABZON') || $this->userBelongsToBranch($user, 'SAMSUN')
+            ? 'turgay.buyukkal'
+            : 'mudur.erzurum';
+
+        $approver = User::query()
+            ->where('username', $username)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $approver instanceof User) {
+            throw ValidationException::withMessages([
+                'method' => ["Çek/Senet onay kullanıcısı bulunamadı: {$username}"],
+            ]);
+        }
+
+        return $approver;
+    }
+
+    /**
+     * Only long-dated paper instruments created by ordinary users need a
+     * second approval. Admin/global users and managers are approval authorities.
+     *
+     * @param  array<string, mixed>  $referenceFields
+     */
+    private function requiresPaperInstrumentApproval(User $user, string $method, array $referenceFields): bool
+    {
+        return false;
+    }
+
+    private function isPaperInstrumentApprovalAuthority(User $user): bool
+    {
+        if ($user->hasAnyRole([
+            'admin',
+            'global',
+            'global_user',
+            'manager',
+            'branch_manager',
+            'dealer_manager',
+        ])) {
+            return true;
+        }
+
+        $identity = mb_strtoupper(trim(($user->username ?? '').' '.($user->name ?? '')), 'UTF-8');
+
+        return str_contains($identity, 'MÜDÜR') || str_contains($identity, 'MUDUR');
+    }
+
+    private function paperInstrumentApprovalWasRequired(CollectionModel $collection): bool
+    {
+        return false;
+    }
+
+    private function userBelongsToBranch(User $user, string $branch): bool
+    {
+        $branch = $this->normalizeBranchSignal($branch);
+        $signals = [
+            $user->branch_code,
+            $user->branch_name,
+            $user->region_code,
+            $user->region_name,
+            $user->logo_cashbox_code,
+            $user->logo_cashbox_name,
+            $user->username,
+            $user->name,
+        ];
+
+        foreach ($signals as $signal) {
+            $normalized = $this->normalizeBranchSignal($signal);
+            if ($normalized !== null && str_contains($normalized, $branch)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizeBranchSignal(mixed $value): ?string
+    {
+        $normalized = mb_strtoupper(trim((string) $value), 'UTF-8');
+        $normalized = str_replace(
+            ['İ', 'İ', 'Ş', 'Ğ', 'Ü', 'Ö', 'Ç'],
+            ['I', 'I', 'S', 'G', 'U', 'O', 'C'],
+            $normalized
+        );
+        $normalized = preg_replace('/\s+/', ' ', $normalized) ?: '';
+
+        return $normalized === '' ? null : $normalized;
+    }
+
+    private function canReviewPaperInstrument(CollectionModel $collection, User $user): bool
+    {
+        if ($user->hasRole('admin')) {
+            return true;
+        }
+
+        $approverId = data_get($collection->meta, 'manager_approval.approver_user_id')
+            ?? data_get($collection->reference_fields, 'manager_approval_user_id');
+
+        return is_numeric($approverId) && (int) $approverId === (int) $user->id;
+    }
+
+    private function ensurePaperInstrumentReviewable(Customer $customer, CollectionModel $collection, User $user): void
+    {
+        if ((int) $collection->customer_id !== (int) $customer->id) {
+            abort(404);
+        }
+
+        if (! $this->isPaperInstrumentMethod((string) $collection->method)) {
+            throw ValidationException::withMessages([
+                'collection' => ['Bu kayıt çek/senet onay sürecine ait değil.'],
+            ]);
+        }
+
+        if ($collection->sync_status !== 'reviewing') {
+            throw ValidationException::withMessages([
+                'collection' => ['Bu çek/senet kaydı onay beklemiyor.'],
+            ]);
+        }
+
+        if (! $this->canReviewPaperInstrument($collection, $user)) {
+            abort(403, 'Bu çek/senet onayı size atanmadı.');
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function paperInstrumentApprovalPayload(CollectionModel $collection): array
+    {
+        $fields = is_array($collection->reference_fields) ? $collection->reference_fields : [];
+        $sender = $collection->collectedBy ?? $collection->createdBy;
+
+        return [
+            'id' => $collection->id,
+            'customer_id' => $collection->customer_id,
+            'customer_code' => $collection->customer?->code,
+            'customer_name' => $collection->customer?->name,
+            'method' => $collection->method,
+            'method_label' => $collection->method === 'note' ? 'Senet' : 'Çek',
+            'amount' => (string) $collection->amount,
+            'currency' => $collection->currency,
+            'reference_no' => $collection->reference_no,
+            'document_no' => $fields['check_no'] ?? $fields['note_no'] ?? $collection->reference_no,
+            'due_date' => $fields['due_date'] ?? null,
+            'valor_days' => $fields['valor_days'] ?? null,
+            'sender_name' => $sender?->name ?? $sender?->username,
+            'sender_username' => $sender?->username,
+            'created_at' => $collection->created_at?->toJSON(),
+        ];
+    }
+
+    private function notifyPaperInstrumentApprovalRequested(
+        UserNotificationService $notifications,
+        CollectionModel $collection,
+        User $sender,
+        User $approver
+    ): void {
+        $fields = is_array($collection->reference_fields) ? $collection->reference_fields : [];
+        $methodLabel = $collection->method === 'note' ? 'Senet' : 'Çek';
+        $amount = number_format((float) $collection->amount, 2, ',', '.').' '.($collection->currency ?: 'TRY');
+        $dueDate = $this->nullableString($fields['due_date'] ?? null);
+
+        $notifications->notifyUsers(
+            [$approver],
+            'collection.paper_approval.requested',
+            'Yeni Çek/Senet Onayı Bekliyor',
+            trim("{$sender->name} tarafından {$amount} tutarında {$methodLabel} girildi.".($dueDate ? " Vade: {$dueDate}." : '')),
+            '/collections?approval=paper-instruments',
+            [
+                'collection_id' => $collection->id,
+                'customer_id' => $collection->customer_id,
+                'method' => $collection->method,
+                'amount' => (string) $collection->amount,
+                'currency' => $collection->currency,
+                'due_date' => $dueDate,
+            ]
+        );
+    }
+
+    private function notifyPaperInstrumentDecision(
+        UserNotificationService $notifications,
+        CollectionModel $collection,
+        bool $approved
+    ): void {
+        $recipient = $collection->createdBy ?? $collection->collectedBy;
+        if (! $recipient instanceof User) {
+            return;
+        }
+
+        $methodLabel = $collection->method === 'note' ? 'Senet' : 'Çek';
+        $notifications->notifyUsers(
+            [$recipient],
+            $approved ? 'collection.paper_approval.approved' : 'collection.paper_approval.rejected',
+            $approved ? 'Çek/Senet Onaylandı' : 'Çek/Senet Reddedildi',
+            $approved
+                ? "{$methodLabel} tahsilatınız onaylandı ve Logo kuyruğuna alındı."
+                : "{$methodLabel} tahsilatınız reddedildi; Logo’ya gönderilmedi.",
+            '/collections',
+            [
+                'collection_id' => $collection->id,
+                'customer_id' => $collection->customer_id,
+                'method' => $collection->method,
+                'approved' => $approved,
+            ]
         );
     }
 

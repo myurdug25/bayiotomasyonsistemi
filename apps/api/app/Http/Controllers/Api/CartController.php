@@ -7,8 +7,10 @@ use App\Http\Requests\Cart\ShowCartRequest;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Customer;
+use App\Models\Dealer;
 use App\Models\User;
 use App\Support\Cart\CartLogoIntegrationSummary;
+use App\Support\Cart\CheckoutNoteCleaner;
 use App\Support\Warehouse\CartWarehouseOptions;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -25,24 +27,40 @@ class CartController extends Controller
             ? (int) $validated['customer_id']
             : ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
 
-        if ($customerId === null) {
-            return response()->json([
-                'cart' => null,
-                'items' => [],
-                'totals' => $this->emptyTotals(),
-                'message' => 'No selected customer found. Select a customer from context first.',
-            ]);
-        }
-
         $dealerId = $this->resolveDealerId(
             user: $user,
             requestedDealerId: $validated['dealer_id'] ?? null,
             customerId: $customerId
         );
+
+        if ($dealerId === null && $customerId === null) {
+            return response()->json([
+                'cart' => null,
+                'items' => [],
+                'warehouse_options' => [],
+                'totals' => $this->emptyTotals(),
+                'message' => 'No selected customer found. Select a customer from context first.',
+            ]);
+        }
+
         if ($dealerId === null) {
             return response()->json([
                 'message' => 'dealer_id is required for admin users without dealer assignment.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        if ($customerId === null) {
+            if ($this->canUseWarehouseTransferCustomer($user)) {
+                $customerId = (int) $this->warehouseTransferCustomer($dealerId)->id;
+            } else {
+                return response()->json([
+                    'cart' => null,
+                    'items' => [],
+                    'warehouse_options' => [],
+                    'totals' => $this->emptyTotals(),
+                    'message' => 'No selected customer found. Select a customer from context first.',
+                ]);
+            }
         }
 
         $this->assertCustomerBelongsToDealer($user, $customerId, $dealerId);
@@ -108,7 +126,7 @@ class CartController extends Controller
                 'note' => $cart->note,
                 'shipping_method' => $cart->shipping_method,
                 'warehouse_transfer' => (bool) $cart->is_warehouse_transfer,
-                'order_note' => $cart->order_note,
+                'order_note' => CheckoutNoteCleaner::clean($cart->order_note),
                 'updated_at' => $cart->updated_at,
             ],
             'items' => $items,
@@ -204,8 +222,39 @@ class CartController extends Controller
         }
 
         if (! $user->canAccessCustomer($customer)) {
+            $meta = is_array($customer->meta) ? $customer->meta : [];
+            if (($meta['system_purpose'] ?? null) === 'warehouse_transfer') {
+                return;
+            }
+
             abort(Response::HTTP_FORBIDDEN, 'You can only access your assigned customers.');
         }
+    }
+
+    private function canUseWarehouseTransferCustomer(User $user): bool
+    {
+        return $user->hasAnyRole(['admin', 'dealer_admin', 'warehouse', 'point']);
+    }
+
+    private function warehouseTransferCustomer(int $dealerId): Customer
+    {
+        return Customer::query()->firstOrCreate(
+            [
+                'dealer_id' => $dealerId,
+                'code' => 'B2B-DEPO-TRANSFER',
+            ],
+            [
+                'name' => 'DEPOLAR ARASI TRANSFER',
+                'source_system' => 'powersa',
+                'source_reference' => 'warehouse-transfer',
+                'sync_status' => 'ignored',
+                'is_active' => true,
+                'meta' => [
+                    'system_purpose' => 'warehouse_transfer',
+                    'logo_export' => false,
+                ],
+            ],
+        );
     }
 
     /**
@@ -229,7 +278,29 @@ class CartController extends Controller
             return $dealerId !== null ? (int) $dealerId : null;
         }
 
+        if ($user->hasRole('admin') && $this->canUseWarehouseTransferCustomer($user)) {
+            return $this->defaultDealerId();
+        }
+
         return null;
+    }
+
+    private function defaultDealerId(): ?int
+    {
+        $dealerId = Dealer::query()
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->value('id');
+
+        if ($dealerId !== null) {
+            return (int) $dealerId;
+        }
+
+        $dealerId = Dealer::query()
+            ->orderBy('id')
+            ->value('id');
+
+        return $dealerId !== null ? (int) $dealerId : null;
     }
 
     private function ensureOrderRole(User $user): void

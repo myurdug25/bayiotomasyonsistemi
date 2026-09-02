@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Collection as CollectionModel;
-use App\Models\Customer;
 use App\Models\Dealer;
 use App\Models\IntegrationSyncState;
 use App\Models\LedgerEntry;
@@ -34,13 +33,43 @@ class LogoDashboardReportController extends Controller
         $dateFrom = Carbon::parse((string) $request->query('date_from', now()->subDays(30)->toDateString()))->toDateString();
         $dateTo = Carbon::parse((string) $request->query('date_to', now()->toDateString()))->toDateString();
         $dealerId = $this->resolveDealerId($request->query('dealer_id'));
+        $cacheKey = sprintf(
+            'logo-dashboard-report:v3:%s:%s:%s',
+            $dateFrom,
+            $dateTo,
+            $dealerId ?? 'all',
+        );
+
+        if (! app()->environment('testing')) {
+            $cachedPayload = $this->safeCacheGet($cacheKey);
+            if (is_array($cachedPayload)) {
+                return response()->json($cachedPayload);
+            }
+        }
+
         $ledgerDateExpr = $this->coalescedColumnExpression('ledger_entries.date', 'ledger_entries.entry_date');
 
-        $logoCustomers = Customer::query()
-            ->select(['id', 'dealer_id', 'salesperson_user_id', 'code', 'name', 'is_active', 'meta', 'last_synced_at'])
+        $logoCustomers = DB::table('customers')
+            ->leftJoin('users as salespeople', 'salespeople.id', '=', 'customers.salesperson_user_id')
+            ->select([
+                'customers.id',
+                'customers.dealer_id',
+                'customers.salesperson_user_id',
+                'customers.code',
+                'customers.name',
+                'customers.is_active',
+                'customers.last_synced_at',
+                'salespeople.name as salesperson_name',
+                'salespeople.email as salesperson_email',
+                'salespeople.phone as salesperson_phone',
+            ])
+            ->selectRaw($this->jsonPathTextExpression('customers.meta', ['integrations', 'logo', 'financials', 'total_due']).' as logo_total_due')
+            ->selectRaw($this->jsonPathTextExpression('customers.meta', ['integrations', 'logo', 'financials', 'order_due']).' as logo_order_due')
+            ->selectRaw($this->jsonPathTextExpression('customers.meta', ['integrations', 'logo', 'payload', 'cardtype']).' as logo_cardtype_lower')
+            ->selectRaw($this->jsonPathTextExpression('customers.meta', ['integrations', 'logo', 'payload', 'CARDTYPE']).' as logo_cardtype_upper')
+            ->selectRaw($this->jsonPathTextExpression('customers.meta', ['integrations', 'logo', 'payload', 'raw', 'CARDTYPE']).' as logo_cardtype_raw')
             ->where('source_system', 'logo')
-            ->when($dealerId !== null, fn (EloquentBuilder $query) => $query->where('dealer_id', $dealerId))
-            ->with('salesperson:id,name,email,phone')
+            ->when($dealerId !== null, fn (QueryBuilder $query) => $query->where('customers.dealer_id', $dealerId))
             ->get();
 
         $customerIds = $logoCustomers->pluck('id')->all();
@@ -56,9 +85,9 @@ class LogoDashboardReportController extends Controller
                 ->pluck('balance', 'customer_id');
 
         $customerRows = $logoCustomers
-            ->map(function (Customer $customer) use ($ledgerBalances): array {
+            ->map(function (object $customer) use ($ledgerBalances): array {
                 $ledgerBalance = (float) ($ledgerBalances->get($customer->id) ?? 0);
-                $logoBalance = (float) data_get($customer->meta, 'integrations.logo.financials.total_due', 0);
+                $logoBalance = $this->nullableFloat($customer->logo_total_due) ?? 0.0;
                 $balance = abs($ledgerBalance) > 0.004 ? $ledgerBalance : $logoBalance;
 
                 return [
@@ -67,15 +96,15 @@ class LogoDashboardReportController extends Controller
                     'code' => $customer->code,
                     'title' => $customer->name,
                     'is_active' => (bool) $customer->is_active,
-                    'card_type' => $this->logoCustomerCardType($customer),
+                    'card_type' => $this->logoCustomerCardTypeFromRow($customer),
                     'balance' => $balance,
-                    'order_due' => (float) data_get($customer->meta, 'integrations.logo.financials.order_due', 0),
-                    'last_synced_at' => $customer->last_synced_at?->toJSON(),
+                    'order_due' => $this->nullableFloat($customer->logo_order_due) ?? 0.0,
+                    'last_synced_at' => $this->dateTimeJson($customer->last_synced_at),
                     'salesperson' => [
-                        'id' => $customer->salesperson?->id,
-                        'name' => $customer->salesperson?->name ?? 'Atanmamış',
-                        'email' => $customer->salesperson?->email,
-                        'phone' => $customer->salesperson?->phone,
+                        'id' => $customer->salesperson_user_id,
+                        'name' => $customer->salesperson_name ?? 'Atanmamış',
+                        'email' => $customer->salesperson_email,
+                        'phone' => $customer->salesperson_phone,
                     ],
                 ];
             })
@@ -230,7 +259,7 @@ class LogoDashboardReportController extends Controller
             ->sort()
             ->last();
 
-        return response()->json([
+        $payload = [
             'report' => 'logo_dashboard',
             'filters' => [
                 'dealer_id' => $dealerId,
@@ -284,7 +313,13 @@ class LogoDashboardReportController extends Controller
             'sync' => $syncStates,
             'sync_gaps' => $syncGaps,
             'market_rates' => $this->tcmbMarketRates(),
-        ]);
+        ];
+
+        if (! app()->environment('testing')) {
+            $this->safeCachePut($cacheKey, $payload, now()->addSeconds(30));
+        }
+
+        return response()->json($payload);
     }
 
     private function resolveDealerId(mixed $dealerId): ?int
@@ -374,61 +409,56 @@ class LogoDashboardReportController extends Controller
      */
     private function syncStates(?int $dealerId): array
     {
-        $rows = IntegrationSyncState::query()
+        $rows = DB::table('integration_sync_states')
             ->where('system', 'logo')
-            ->when($dealerId !== null, fn (EloquentBuilder $query) => $query->where('dealer_id', $dealerId))
+            ->when($dealerId !== null, fn (QueryBuilder $query) => $query->where('dealer_id', $dealerId))
+            ->select(['domain', 'direction', 'status'])
+            ->selectRaw('COUNT(*) AS records')
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('failed', 'error') OR COALESCE(last_error, '') <> '' THEN 1 ELSE 0 END) AS failed_records")
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('pending', 'queued', 'processing') THEN 1 ELSE 0 END) AS pending_records")
+            ->selectRaw('MAX(last_synced_at) AS last_synced_at')
+            ->selectRaw('MAX(updated_at) AS updated_at')
+            ->selectRaw('MAX(created_at) AS created_at')
+            ->selectRaw("MAX(NULLIF(last_error, '')) AS last_error")
+            ->selectRaw("MAX(CASE WHEN COALESCE(last_error, '') <> '' THEN updated_at ELSE NULL END) AS last_error_at")
+            ->groupBy('domain', 'direction', 'status')
             ->orderBy('domain')
             ->orderBy('direction')
-            ->get(['domain', 'direction', 'status', 'last_error', 'last_synced_at', 'created_at', 'updated_at']);
+            ->get();
 
         return $rows
-            ->groupBy(fn (IntegrationSyncState $row): string => "{$row->domain}::{$row->direction}")
+            ->groupBy(fn (object $row): string => "{$row->domain}::{$row->direction}")
             ->map(function ($rows): array {
                 $first = $rows->first();
-                $sortedByActivity = $rows->sortByDesc(fn (IntegrationSyncState $row): int => $this->syncStateTimestamp($row))->values();
-                $latest = $sortedByActivity->first();
-                $lastSyncedAt = $rows
-                    ->pluck('last_synced_at')
-                    ->filter()
-                    ->sortBy(fn ($value): int => Carbon::parse($value)->getTimestamp())
-                    ->last();
-                $lastError = $rows
-                    ->filter(fn (IntegrationSyncState $row): bool => trim((string) $row->last_error) !== '')
-                    ->sortByDesc(fn (IntegrationSyncState $row): int => $this->syncStateTimestamp($row))
-                    ->first();
                 $statusCounts = $rows
-                    ->groupBy(fn (IntegrationSyncState $row): string => $this->normalizeSyncStatus($row->status))
-                    ->map(fn ($group): int => $group->count())
+                    ->groupBy(fn (object $row): string => $this->normalizeSyncStatus($row->status))
+                    ->map(fn ($group): int => (int) $group->sum('records'))
                     ->all();
-
-                $failedRecords = $rows->filter(function (IntegrationSyncState $row): bool {
-                    $status = $this->normalizeSyncStatus($row->status);
-
-                    return in_array($status, ['failed', 'error'], true) || trim((string) $row->last_error) !== '';
-                })->count();
-
-                $pendingRecords = $rows->filter(function (IntegrationSyncState $row): bool {
-                    $status = $this->normalizeSyncStatus($row->status);
-
-                    return in_array($status, ['pending', 'queued', 'processing'], true);
-                })->count();
+                $records = (int) $rows->sum('records');
+                $failedRecords = (int) $rows->sum('failed_records');
+                $pendingRecords = (int) $rows->sum('pending_records');
+                $syncedRecords = (int) ($statusCounts['synced'] ?? 0);
                 $groupStatus = $failedRecords > 0
                     ? 'failed'
-                    : ($pendingRecords > 0 ? 'pending' : $latest?->status);
+                    : ($pendingRecords > 0 ? 'pending' : ($syncedRecords > 0 ? 'synced' : $first?->status));
+                $lastError = $rows
+                    ->filter(fn (object $row): bool => trim((string) $row->last_error) !== '')
+                    ->sortByDesc(fn (object $row): int => $this->timestampFrom($row->last_error_at ?? $row->updated_at ?? $row->last_synced_at ?? $row->created_at))
+                    ->first();
 
                 return [
                     'domain' => $first?->domain,
                     'direction' => $first?->direction,
-                    'records' => $rows->count(),
-                    'synced_records' => $rows->filter(fn (IntegrationSyncState $row): bool => $this->normalizeSyncStatus($row->status) === 'synced')->count(),
+                    'records' => $records,
+                    'synced_records' => $syncedRecords,
                     'failed_records' => $failedRecords,
                     'pending_records' => $pendingRecords,
                     'latest_status' => $this->normalizeSyncStatus($groupStatus),
                     'status_counts' => $statusCounts,
-                    'last_synced_at' => $this->dateTimeJson($lastSyncedAt),
-                    'last_activity_at' => $this->dateTimeJson($latest?->updated_at ?? $latest?->last_synced_at),
+                    'last_synced_at' => $this->dateTimeJson($this->maxDateTime($rows, 'last_synced_at')),
+                    'last_activity_at' => $this->dateTimeJson($this->maxDateTime($rows, ['updated_at', 'last_synced_at', 'created_at'])),
                     'last_error' => $lastError?->last_error,
-                    'last_error_at' => $this->dateTimeJson($lastError?->updated_at ?? $lastError?->last_synced_at),
+                    'last_error_at' => $this->dateTimeJson($lastError?->last_error_at ?? $lastError?->updated_at ?? $lastError?->last_synced_at),
                 ];
             })
             ->values()
@@ -622,34 +652,24 @@ class LogoDashboardReportController extends Controller
 
     private function syncStateSummary(string $domain, string $direction, string $entityType, ?int $dealerId): array
     {
-        $rows = IntegrationSyncState::query()
+        $summary = DB::table('integration_sync_states')
             ->where('system', 'logo')
             ->where('domain', $domain)
             ->where('direction', $direction)
             ->where('entity_type', $entityType)
-            ->when($dealerId !== null, fn (EloquentBuilder $query) => $query->where('dealer_id', $dealerId))
-            ->get(['status', 'last_error', 'last_synced_at', 'created_at', 'updated_at']);
-
-        $failed = $rows->filter(function (IntegrationSyncState $row): bool {
-            $status = $this->normalizeSyncStatus($row->status);
-
-            return in_array($status, ['failed', 'error'], true) || trim((string) $row->last_error) !== '';
-        })->count();
-
-        $lastSyncedAt = $rows
-            ->pluck('last_synced_at')
-            ->filter()
-            ->sortBy(fn ($value): int => Carbon::parse($value)->getTimestamp())
-            ->last();
-        $latest = $rows
-            ->sortByDesc(fn (IntegrationSyncState $row): int => $this->syncStateTimestamp($row))
+            ->when($dealerId !== null, fn (QueryBuilder $query) => $query->where('dealer_id', $dealerId))
+            ->selectRaw('COUNT(*) AS records')
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('failed', 'error') OR COALESCE(last_error, '') <> '' THEN 1 ELSE 0 END) AS failed")
+            ->selectRaw('MAX(last_synced_at) AS last_synced_at')
+            ->selectRaw('MAX(updated_at) AS updated_at')
+            ->selectRaw('MAX(created_at) AS created_at')
             ->first();
 
         return [
-            'records' => $rows->count(),
-            'failed' => $failed,
-            'last_synced_at' => $lastSyncedAt,
-            'last_activity_at' => $latest?->updated_at ?? $latest?->last_synced_at,
+            'records' => (int) ($summary?->records ?? 0),
+            'failed' => (int) ($summary?->failed ?? 0),
+            'last_synced_at' => $summary?->last_synced_at,
+            'last_activity_at' => $this->maxDateTime(collect([$summary]), ['updated_at', 'last_synced_at', 'created_at']),
         ];
     }
 
@@ -781,15 +801,14 @@ class LogoDashboardReportController extends Controller
             return 0;
         }
 
-        $query = Product::query()->select(['id', 'meta']);
+        $query = DB::table('products')->select(['products.id', 'products.meta']);
         $this->applyLogoProductFilter($query);
 
         if ($dealerId !== null && Schema::hasColumn('products', 'dealer_id')) {
             $query->where('products.dealer_id', $dealerId);
         }
 
-        $scopeQuery = clone $query;
-        $latestUpdatedAt = (string) ($scopeQuery->toBase()->max('products.updated_at') ?? '');
+        $latestUpdatedAt = (string) ((clone $query)->max('products.updated_at') ?? '');
         $totalProducts = (clone $query)->count();
         $cacheKey = sprintf(
             'logo-dashboard:missing-product-shelf:v3:%s:%d:%s',
@@ -798,17 +817,15 @@ class LogoDashboardReportController extends Controller
             md5($latestUpdatedAt)
         );
 
-        return (int) Cache::remember($cacheKey, now()->addMinutes(2), function () use ($query, $totalProducts): int {
+        return (int) $this->safeCacheRemember($cacheKey, now()->addMinutes(2), function () use ($query, $totalProducts): int {
             $count = 0;
 
             try {
-                $query->chunkById(500, function ($products) use (&$count): void {
-                    foreach ($products as $product) {
-                        if (! $this->metaHasShelfAddress($product->meta)) {
-                            $count++;
-                        }
+                foreach ((clone $query)->lazyById(500, 'products.id', 'id') as $product) {
+                    if (! $this->metaHasShelfAddress($product->meta ?? null)) {
+                        $count++;
                     }
-                }, 'id');
+                }
             } catch (Throwable) {
                 return (int) $totalProducts;
             }
@@ -896,6 +913,29 @@ class LogoDashboardReportController extends Controller
             ->max() ?? 0;
     }
 
+    /**
+     * @param  \Illuminate\Support\Collection<int, object|null>  $rows
+     * @param  string|array<int, string>  $columns
+     */
+    private function maxDateTime($rows, string|array $columns): mixed
+    {
+        $columns = (array) $columns;
+
+        return $rows
+            ->filter()
+            ->flatMap(fn (object $row): array => collect($columns)
+                ->map(fn (string $column): mixed => $row->{$column} ?? null)
+                ->filter()
+                ->all())
+            ->sortBy(fn ($value): int => $this->timestampFrom($value))
+            ->last();
+    }
+
+    private function timestampFrom(mixed $value): int
+    {
+        return $value ? Carbon::parse($value)->getTimestamp() : 0;
+    }
+
     private function dateTimeJson(mixed $value): ?string
     {
         return $value ? Carbon::parse($value)->toJSON() : null;
@@ -906,13 +946,56 @@ class LogoDashboardReportController extends Controller
         return number_format((float) ($value ?? 0), 2, '.', '');
     }
 
-    private function logoCustomerCardType(Customer $customer): ?int
+    private function logoCustomerCardTypeFromRow(object $customer): ?int
     {
-        $cardType = data_get($customer->meta, 'integrations.logo.payload.cardtype')
-            ?? data_get($customer->meta, 'integrations.logo.payload.CARDTYPE')
-            ?? data_get($customer->meta, 'integrations.logo.payload.raw.CARDTYPE');
+        $cardType = $customer->logo_cardtype_lower
+            ?? $customer->logo_cardtype_upper
+            ?? $customer->logo_cardtype_raw;
 
         return is_numeric($cardType) ? (int) $cardType : null;
+    }
+
+    /**
+     * @param  array<int, string>  $path
+     */
+    private function jsonPathTextExpression(string $column, array $path): string
+    {
+        $grammar = DB::connection()->getQueryGrammar();
+        $wrappedColumn = $grammar->wrap($column);
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            $segments = implode(',', array_map(
+                fn (string $segment): string => str_replace(['\\', "'", ',', '{', '}'], '', $segment),
+                $path,
+            ));
+
+            return "({$wrappedColumn} #>> '{".$segments."}')";
+        }
+
+        $jsonPath = '$.'.implode('.', array_map(
+            fn (string $segment): string => str_replace(['\\', '"'], '', $segment),
+            $path,
+        ));
+
+        if ($driver === 'mysql') {
+            return "JSON_UNQUOTE(JSON_EXTRACT({$wrappedColumn}, '".$jsonPath."'))";
+        }
+
+        if ($driver === 'sqlite') {
+            return "json_extract({$wrappedColumn}, '".$jsonPath."')";
+        }
+
+        return 'NULL';
+    }
+
+    private function nullableFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (float) $value : null;
     }
 
     /**
@@ -931,7 +1014,7 @@ class LogoDashboardReportController extends Controller
      */
     private function tcmbMarketRates(): array
     {
-        return Cache::remember('tcmb_market_rates_today_xml', now()->addMinutes(30), function (): array {
+        return $this->safeCacheRemember('tcmb_market_rates_today_xml', now()->addMinutes(30), function (): array {
             $sourceUrl = 'https://www.tcmb.gov.tr/kurlar/today.xml';
             $fallback = [
                 'source' => 'TCMB',
@@ -979,6 +1062,33 @@ class LogoDashboardReportController extends Controller
                 return $fallback;
             }
         });
+    }
+
+    private function safeCacheGet(string $key): mixed
+    {
+        try {
+            return Cache::get($key);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function safeCachePut(string $key, mixed $value, mixed $ttl): void
+    {
+        try {
+            Cache::put($key, $value, $ttl);
+        } catch (Throwable) {
+            // Dashboard data is still valid without cache; avoid turning Redis issues into 500s.
+        }
+    }
+
+    private function safeCacheRemember(string $key, mixed $ttl, callable $callback): mixed
+    {
+        try {
+            return Cache::remember($key, $ttl, $callback);
+        } catch (Throwable) {
+            return $callback();
+        }
     }
 
     /**

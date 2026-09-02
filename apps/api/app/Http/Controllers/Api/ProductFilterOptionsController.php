@@ -21,19 +21,22 @@ class ProductFilterOptionsController extends Controller
             ? (string) $request->query('scope')
             : 'full';
 
+        $allowedBrandIds = $this->allowedBrandIds($request);
+        $brandFingerprint = $allowedBrandIds === null ? 'all' : md5(json_encode($allowedBrandIds) ?: 'none');
+
         return response()->json(Cache::remember(
-            "products:filter-options:v7:{$scope}",
-            now()->addMinutes(10),
-            fn (): array => $this->buildFilterOptions($scope)
+            "products:filter-options:v9:{$scope}:{$brandFingerprint}",
+            now()->addHours(2),
+            fn (): array => $this->buildFilterOptions($scope, $allowedBrandIds)
         ));
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function buildFilterOptions(string $scope): array
+    private function buildFilterOptions(string $scope, ?array $allowedBrandIds): array
     {
-        $brands = $this->buildBrandOptions();
+        $brands = $this->buildBrandOptions($allowedBrandIds);
 
         if ($scope === 'brands') {
             return [
@@ -88,11 +91,16 @@ class ProductFilterOptionsController extends Controller
         ];
     }
 
-    private function buildBrandOptions(): Collection
+    private function buildBrandOptions(?array $allowedBrandIds): Collection
     {
         return Brand::query()
             ->select(['id', 'name'])
             ->where('is_active', true)
+            ->when($allowedBrandIds !== null, function (Builder $query) use ($allowedBrandIds): void {
+                $allowedBrandIds === []
+                    ? $query->whereRaw('1 = 0')
+                    : $query->whereIn('brands.id', $allowedBrandIds);
+            })
             ->whereHas('products', function (Builder $query): void {
                 $query->where('is_active', true)
                     ->where(function (Builder $builder): void {
@@ -106,6 +114,20 @@ class ProductFilterOptionsController extends Controller
                 'name' => $brand->name,
             ])
             ->values();
+    }
+
+    private function allowedBrandIds(Request $request): ?array
+    {
+        $user = $request->user();
+        if ($user === null || ! $user->hasRole('customer') || $user->selected_customer_id === null) {
+            return null;
+        }
+
+        $allowed = data_get($user->selectedCustomer?->meta, 'customer_user.allowed_brand_ids');
+
+        return is_array($allowed)
+            ? array_values(array_unique(array_map('intval', $allowed)))
+            : null;
     }
 
     /**

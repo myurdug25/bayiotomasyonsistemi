@@ -22,9 +22,24 @@ import {
   type CustomerUserFeaturePermissionOption,
   type CustomerUserPermissionOption,
   type CustomerUserRecord,
+  type CustomerBrandDiscount,
 } from "@/lib/api";
 
 const DEFAULT_CUSTOMER_MENUS = ["dashboard", "search", "catalogs", "cart", "orders", "ledger"];
+const BLOCKED_CUSTOMER_USER_NAMES = new Set([
+  "BATUM DEPO (SIPARIS)",
+  "BATUM PERAKENDE KREDI KARTI SATIS",
+  "BATUM PERAKENDE NAKIT SATIS",
+  "ERZURUM POINT KREDI KARTI SATIS",
+  "ERZURUM POINT NAKIT SATIS",
+  "SAMSUN DEPO KREDI KARTI SATIS",
+  "SAMSUN DEPO NAKIT SATIS",
+  "SAMSUN DEPO (SIPARIS)",
+  "TRABZON DEPO (SIPARIS)",
+  "TRABZON POINT PERAKENDE KREDI KARTI SATIS",
+  "TRABZON POINT PERAKENDE NAKIT SATIS",
+  "ERZURUM DEPO",
+]);
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiClientError) {
@@ -48,6 +63,25 @@ function randomPassword(): string {
 
 function toggleValue(values: string[], key: string): string[] {
   return values.includes(key) ? values.filter((value) => value !== key) : [...values, key];
+}
+
+function normalizeBlockedCustomerName(value: string): string {
+  return value
+    .trim()
+    .toLocaleUpperCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/İ/g, "I")
+    .replace(/Ş/g, "S")
+    .replace(/Ğ/g, "G")
+    .replace(/Ü/g, "U")
+    .replace(/Ö/g, "O")
+    .replace(/Ç/g, "C")
+    .replace(/\s+/g, " ");
+}
+
+function isBlockedCustomerUser(customer: CustomerUserRecord): boolean {
+  return BLOCKED_CUSTOMER_USER_NAMES.has(normalizeBlockedCustomerName(customer.name));
 }
 
 function formatDiscount(value: string | null | undefined): string {
@@ -79,6 +113,8 @@ export function CustomerUsersPage() {
   const [menuPermissions, setMenuPermissions] = useState<string[]>(DEFAULT_CUSTOMER_MENUS);
   const [featurePermissions, setFeaturePermissions] = useState<string[]>([]);
   const [specialDiscountRate, setSpecialDiscountRate] = useState("");
+  const [allowedBrandIds, setAllowedBrandIds] = useState<number[]>([]);
+  const [brandDiscounts, setBrandDiscounts] = useState<CustomerBrandDiscount[]>([]);
 
   const customerUsersQuery = useQuery({
     queryKey: ["customer-users", deferredSearch],
@@ -101,6 +137,7 @@ export function CustomerUsersPage() {
     [customerUsersQuery.data?.feature_permissions]
   );
   const defaultMenuPermissions = customerUsersQuery.data?.default_menu_permissions ?? DEFAULT_CUSTOMER_MENUS;
+  const brandOptions = customerUsersQuery.data?.brands ?? [];
   const menuLabelByKey = useMemo(() => {
     const labels = new Map<string, string>();
     menuPermissionOptions.forEach((permission) => labels.set(permission.key, permission.label));
@@ -116,6 +153,7 @@ export function CustomerUsersPage() {
   }, [featurePermissionOptions, menuPermissionOptions]);
   const totalCount = customerUsersQuery.data?.total_count ?? 0;
   const listedCount = rows.length;
+  const selectedCustomerHasUser = Boolean(selectedCustomer?.user);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -123,12 +161,21 @@ export function CustomerUsersPage() {
         throw new Error("Cari seçilmedi.");
       }
 
+      const nextPassword = password.trim() || (selectedCustomer.user ? "" : randomPassword());
+
       return createCustomerUser(selectedCustomer.id, {
-        password: password.trim() || undefined,
+        password: nextPassword || undefined,
         is_active: true,
         menu_permissions: menuPermissions,
         feature_permissions: featurePermissions,
         special_discount_rate: specialDiscountRate.trim() !== "" ? Number(specialDiscountRate.replace(",", ".")) : null,
+        allowed_brand_ids: allowedBrandIds,
+        brand_discounts: brandDiscounts.map((row) => ({
+          brand_id: row.brand_id,
+          discount_1: Number(String(row.discount_1 ?? 0).replace(",", ".")) || 0,
+          discount_2: Number(String(row.discount_2 ?? 0).replace(",", ".")) || 0,
+          discount_3: Number(String(row.discount_3 ?? 0).replace(",", ".")) || 0,
+        })),
       });
     },
     onSuccess: async (response) => {
@@ -139,6 +186,8 @@ export function CustomerUsersPage() {
       setMenuPermissions(defaultMenuPermissions);
       setFeaturePermissions(featureDefaultsForMenus(defaultMenuPermissions, featurePermissionOptions));
       setSpecialDiscountRate("");
+      setAllowedBrandIds([]);
+      setBrandDiscounts([]);
       await queryClient.invalidateQueries({ queryKey: ["customer-users"] });
     },
     onError: (error) => {
@@ -147,8 +196,8 @@ export function CustomerUsersPage() {
   });
 
   const openModal = (customer: CustomerUserRecord) => {
-    const nextMenuPermissions = customer.user?.menu_permissions?.length
-      ? customer.user.menu_permissions
+    const nextMenuPermissions = customer.user
+      ? customer.user.menu_permissions ?? []
       : defaultMenuPermissions;
 
     setSelectedCustomer(customer);
@@ -156,27 +205,19 @@ export function CustomerUsersPage() {
     setShowPassword(false);
     setMenuPermissions(nextMenuPermissions);
     setFeaturePermissions(
-      customer.user?.feature_permissions?.length
-        ? customer.user.feature_permissions
+      customer.user
+        ? customer.user.feature_permissions ?? []
         : featureDefaultsForMenus(nextMenuPermissions, featurePermissionOptions)
     );
     setSpecialDiscountRate(customer.special_discount_rate ?? "");
+    setAllowedBrandIds(customer.allowed_brand_ids ?? brandOptions.map((brand) => brand.id));
+    setBrandDiscounts(customer.brand_discounts ?? []);
   };
 
   const submit = () => {
     const trimmedPassword = password.trim();
 
-    if (menuPermissions.length === 0) {
-      toast.error("En az bir sayfa seçilmeli.");
-      return;
-    }
-
-    if (!selectedCustomer?.user && trimmedPassword.length < 6) {
-      toast.error("Yeni müşteri kullanıcısı için şifre en az 6 karakter olmalı.");
-      return;
-    }
-
-    if (selectedCustomer?.user && trimmedPassword !== "" && trimmedPassword.length < 6) {
+    if (selectedCustomerHasUser && trimmedPassword !== "" && trimmedPassword.length < 6) {
       toast.error("Şifre en az 6 karakter olmalı.");
       return;
     }
@@ -212,7 +253,7 @@ export function CustomerUsersPage() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 text-[var(--foreground)]">
+    <div className="customer-users-page mx-auto flex w-full max-w-[1480px] flex-col gap-4 text-[var(--foreground)]">
       <section className="dashboard-panel-card rounded-[18px] p-4 lg:p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -234,11 +275,12 @@ export function CustomerUsersPage() {
         </div>
       </section>
 
-      <section className="dashboard-panel-card overflow-hidden rounded-[18px]">
-        <div className="grid grid-cols-[minmax(120px,190px)_minmax(240px,1fr)_130px_170px] border-b border-[var(--brand-border)] bg-[var(--brand-primary)] px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-[var(--primary-foreground)]">
+      <section className="customer-users-list dashboard-panel-card overflow-hidden rounded-[18px]">
+        <div className="customer-users-list-head grid grid-cols-[minmax(120px,190px)_minmax(240px,1fr)_130px_150px_170px] border-b border-[var(--brand-border)] bg-[var(--brand-primary)] px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-[var(--primary-foreground)]">
           <span>Cari Kodu</span>
           <span>Cari İsmi</span>
           <span>İskonto</span>
+          <span>Kampanya</span>
           <span className="text-right">İşlem</span>
         </div>
 
@@ -255,27 +297,43 @@ export function CustomerUsersPage() {
               <p className="mt-1 text-sm font-semibold text-[var(--muted-foreground)]">Arama değerini kontrol edin.</p>
             </div>
           ) : (
-            rows.map((customer) => (
+            rows.map((customer) => {
+              const blockedCustomerUser = isBlockedCustomerUser(customer);
+
+              return (
               <div
                 key={customer.id}
-                className="grid min-h-[64px] grid-cols-[minmax(120px,190px)_minmax(240px,1fr)_130px_170px] items-center gap-3 px-4 py-3 text-sm"
+                className="customer-user-row grid min-h-[64px] grid-cols-[minmax(120px,190px)_minmax(240px,1fr)_130px_150px_170px] items-center gap-3 px-4 py-3 text-sm"
               >
                 <span className="truncate font-black text-[var(--foreground)]">{customer.code}</span>
-                <span className="truncate font-semibold text-[var(--foreground)]">{customer.name}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-[var(--foreground)]">{customer.name}</span>
+                  {blockedCustomerUser ? (
+                    <span className="mt-1 inline-flex rounded-full border border-slate-400/30 bg-slate-500/14 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
+                      İşlem carisi - kullanıcı açılamaz
+                    </span>
+                  ) : null}
+                </span>
                 <span className="font-black text-emerald-200">{formatDiscount(customer.special_discount_rate)}</span>
+                <span className="w-fit rounded-full border border-emerald-300/35 bg-emerald-400/12 px-2.5 py-1 text-xs font-black text-emerald-200">
+                  {customer.user?.feature_permissions?.includes("search.campaigns") ?? true ? "Açık" : "Kapalı"}
+                </span>
                 <div className="flex justify-end">
                   <Button
                     type="button"
                     size="sm"
-                    className="h-9 rounded-xl px-3 font-black"
+                    disabled={blockedCustomerUser}
+                    title={blockedCustomerUser ? "Bu cari işlem/satış/depo carisi olduğu için müşteri kullanıcısı açılamaz." : undefined}
+                    className="h-9 rounded-xl px-3 font-black disabled:cursor-not-allowed disabled:border-slate-400/25 disabled:bg-slate-600/22 disabled:text-[var(--muted-foreground)] disabled:shadow-none"
                     onClick={() => openModal(customer)}
                   >
-                    {customer.user ? <KeyRound className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
-                    {customer.user ? "Şifre" : "Aç"}
+                    {blockedCustomerUser ? <XCircle className="h-4 w-4" /> : customer.user ? <KeyRound className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+                    {blockedCustomerUser ? "İptal" : customer.user ? "Düzenle" : "Aç"}
                   </Button>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
       </section>
@@ -315,7 +373,7 @@ export function CustomerUsersPage() {
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       type={showPassword ? "text" : "password"}
-                      placeholder={selectedCustomer.user ? "Boş kalırsa değişmez" : "En az 6 karakter"}
+                      placeholder={selectedCustomerHasUser ? "Boş kalırsa değişmez" : "En az 6 karakter"}
                       className="admin-dashboard-input h-11 rounded-xl pr-11 font-semibold"
                     />
                     <button
@@ -350,10 +408,10 @@ export function CustomerUsersPage() {
                 </div>
               </div>
 
-              {selectedCustomer.user ? (
+              {selectedCustomerHasUser ? (
                 <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-200">
                   <CheckCircle2 className="h-4 w-4" />
-                  Mevcut kullanıcı: {selectedCustomer.user.username}
+                  Mevcut kullanıcı: {selectedCustomer?.user?.username}
                 </div>
               ) : null}
 
@@ -427,6 +485,64 @@ export function CustomerUsersPage() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+                    Marka Görünürlüğü ve İskontolar
+                  </h3>
+                  <p className="mt-1 text-xs font-semibold text-[var(--muted-foreground)]">
+                    İşaretli markalar görünür; üç iskonto sırasıyla zincir halinde uygulanır.
+                  </p>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-[var(--brand-border)]">
+                  <div className="grid grid-cols-[minmax(160px,1fr)_repeat(3,90px)] gap-2 bg-[var(--surface-soft)] px-3 py-2 text-xs font-black">
+                    <span>Marka</span><span>İskonto-1</span><span>İskonto-2</span><span>İskonto-3</span>
+                  </div>
+                  <div className="max-h-72 divide-y divide-[var(--brand-border)] overflow-y-auto">
+                    {brandOptions.map((brand) => {
+                      const visible = allowedBrandIds.includes(brand.id);
+                      const discounts = brandDiscounts.find((row) => row.brand_id === brand.id) ?? {
+                        brand_id: brand.id,
+                        discount_1: 0,
+                        discount_2: 0,
+                        discount_3: 0,
+                      };
+                      const setDiscount = (key: "discount_1" | "discount_2" | "discount_3", value: string) => {
+                        setBrandDiscounts((current) => [
+                          ...current.filter((row) => row.brand_id !== brand.id),
+                          { ...discounts, [key]: value },
+                        ]);
+                      };
+
+                      return (
+                        <div key={brand.id} className="grid grid-cols-[minmax(160px,1fr)_repeat(3,90px)] items-center gap-2 px-3 py-2">
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 text-left text-xs font-black"
+                            onClick={() => setAllowedBrandIds((current) =>
+                              visible ? current.filter((id) => id !== brand.id) : [...current, brand.id]
+                            )}
+                          >
+                            {visible ? <CheckCircle2 className="h-4 w-4 text-emerald-300" /> : <XCircle className="h-4 w-4 text-rose-300" />}
+                            <span className="truncate">{brand.name}</span>
+                          </button>
+                          {(["discount_1", "discount_2", "discount_3"] as const).map((key) => (
+                            <Input
+                              key={key}
+                              inputMode="decimal"
+                              value={String(discounts[key] ?? 0)}
+                              disabled={!visible}
+                              onChange={(event) => setDiscount(key, event.target.value)}
+                              className="h-9 rounded-lg text-center text-xs font-black"
+                            />
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>

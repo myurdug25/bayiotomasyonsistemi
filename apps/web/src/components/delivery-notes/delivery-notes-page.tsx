@@ -35,6 +35,7 @@ import {
 } from "@/lib/api";
 import { printPageInPlace } from "@/lib/print-page";
 import { LogoSyncBadge, LogoSyncInline } from "@/components/integrations/logo-sync-badge";
+import { useSession } from "@/components/auth/session-provider";
 
 type EditLine = {
   id: number;
@@ -49,12 +50,12 @@ const panelClass =
   "border-[var(--brand-border)] bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[0_18px_34px_-28px_rgba(33,52,22,0.28)]";
 const EMPTY_DELIVERY_NOTES: PosSaleListItemDto[] = [];
 
-function formatMoney(value: string | number) {
+function formatMoney(value: string | number, currency = "TRY") {
   const amount = typeof value === "number" ? value : Number(value);
 
   return new Intl.NumberFormat("tr-TR", {
     style: "currency",
-    currency: "TRY",
+    currency,
     minimumFractionDigits: 2,
   }).format(Number.isFinite(amount) ? amount : 0);
 }
@@ -104,17 +105,27 @@ function detailCustomerLabel(sale: PosSaleDto) {
 }
 
 export function DeliveryNotesPage() {
+  const { user } = useSession();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [cursor, setCursor] = useState<string | null>(null);
   const [selectedSaleId, setSelectedSaleId] = useState<number | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editReceiptNo, setEditReceiptNo] = useState("");
   const [editLines, setEditLines] = useState<EditLine[]>([]);
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const searchQuery = deferredSearchTerm.trim();
+  const userBranchIdentity = [
+    user?.username,
+    user?.branch_code,
+    user?.branch_name,
+    user?.region_code,
+    user?.region_name,
+  ].filter(Boolean).join(" ").toLocaleUpperCase("tr-TR");
+  const displayCurrency = userBranchIdentity.includes("BATUM") ? "GEL" : "TRY";
 
   const deliveryNotesQuery = useQuery({
     queryKey: ["delivery-notes", searchQuery, dateFrom, dateTo, cursor],
@@ -172,7 +183,14 @@ export function DeliveryNotesPage() {
         ],
       }),
     onSuccess: async (response) => {
-      toast.success("İrsaliye belgesi güncellendi.");
+      const status = response.data.logo_sync_status;
+      if (status === "queued") {
+        toast.success("İrsaliye düzenlemesi Logo ERP güncellemesi için kuyruğa alındı.");
+      } else if (status === "synced") {
+        toast.success("İrsaliye PowerSA ve Logo ERP’de başarıyla güncellendi.");
+      } else {
+        toast.success("İrsaliye düzenlemesi kaydedildi.");
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["delivery-notes"] }),
         queryClient.invalidateQueries({ queryKey: ["pos"] }),
@@ -193,6 +211,7 @@ export function DeliveryNotesPage() {
         queryClient.invalidateQueries({ queryKey: ["delivery-notes"] }),
         queryClient.invalidateQueries({ queryKey: ["pos"] }),
       ]);
+      setDeleteConfirmOpen(false);
       setSelectedSaleId(null);
       setEditMode(false);
     },
@@ -222,16 +241,12 @@ export function DeliveryNotesPage() {
     }
 
     setSelectedSaleId(null);
+    setDeleteConfirmOpen(false);
     setEditMode(false);
   };
 
   const deleteSelectedSale = () => {
     if (!selectedSale) {
-      return;
-    }
-
-    const confirmed = window.confirm(`${selectedSale.receipt_no} numaralı irsaliye belgesi kalıcı olarak silinsin mi?`);
-    if (!confirmed) {
       return;
     }
 
@@ -339,7 +354,7 @@ export function DeliveryNotesPage() {
           </div>
           <div className="rounded-[24px] border border-[var(--brand-border)] bg-[var(--surface)] p-5 shadow-[0_14px_28px_-24px_rgba(0,0,0,0.18)]">
             <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Toplam</p>
-            <p className="mt-2 text-2xl font-black text-[var(--brand-primary-strong)]">{formatMoney(totalAmount)}</p>
+            <p className="mt-2 text-2xl font-black text-[var(--brand-primary-strong)]">{formatMoney(totalAmount, displayCurrency)}</p>
           </div>
         </div>
       </div>
@@ -397,7 +412,7 @@ export function DeliveryNotesPage() {
                     <TableCell className="border-r border-[var(--brand-border)]">
                       <LogoSyncBadge status={row.logo_sync_status} />
                     </TableCell>
-                    <TableCell className="border-r border-[var(--brand-border)] text-right font-black text-[var(--brand-primary-strong)]">{formatMoney(row.grand_total)}</TableCell>
+                    <TableCell className="border-r border-[var(--brand-border)] text-right font-black text-[var(--brand-primary-strong)]">{formatMoney(row.grand_total, displayCurrency)}</TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-2">
                         <Button
@@ -504,7 +519,7 @@ export function DeliveryNotesPage() {
                   <div className="space-y-1.5 md:text-right">
                     <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Tutar</p>
                     <p className="whitespace-nowrap text-base font-black text-[var(--brand-primary-strong)]">
-                      {formatMoney(editMode ? editTotal : selectedSale.grand_total)}
+                      {formatMoney(editMode ? editTotal : selectedSale.grand_total, displayCurrency)}
                     </p>
                   </div>
                 </div>
@@ -560,7 +575,7 @@ export function DeliveryNotesPage() {
                                 className="h-10 border-[var(--brand-border)] bg-[var(--surface)] text-right font-black text-[var(--foreground)]"
                               />
                             </TableCell>
-                            <TableCell className="border-r border-[var(--brand-border)] text-right font-black text-[var(--brand-primary-strong)]">{formatMoney(calculateLineTotal(line))}</TableCell>
+                            <TableCell className="border-r border-[var(--brand-border)] text-right font-black text-[var(--brand-primary-strong)]">{formatMoney(calculateLineTotal(line), displayCurrency)}</TableCell>
                             <TableCell className="text-right">
                               <Button
                                 type="button"
@@ -584,8 +599,12 @@ export function DeliveryNotesPage() {
                             </TableCell>
                             <TableCell className="border-r border-[var(--brand-border)] truncate text-[var(--muted-foreground)]">{item.brand ?? "-"}</TableCell>
                             <TableCell className="border-r border-[var(--brand-border)] text-right font-black">{item.qty}</TableCell>
-                            <TableCell className="border-r border-[var(--brand-border)] text-right">{formatMoney(item.unit_price)}</TableCell>
-                            <TableCell className="text-right font-black text-[var(--brand-primary-strong)]">{formatMoney(item.line_total)}</TableCell>
+                            <TableCell className="border-r border-[var(--brand-border)] text-right">
+                              {formatMoney(displayCurrency === "GEL" ? item.unit_price_vat_included ?? item.unit_price : item.unit_price, displayCurrency)}
+                            </TableCell>
+                            <TableCell className="text-right font-black text-[var(--brand-primary-strong)]">
+                              {formatMoney(displayCurrency === "GEL" ? item.line_total_vat_included ?? item.line_total : item.line_total, displayCurrency)}
+                            </TableCell>
                           </TableRow>
                         ))}
                   </TableBody>
@@ -635,7 +654,7 @@ export function DeliveryNotesPage() {
                 variant="destructive"
                 className="h-11 rounded-xl px-5 font-black"
                 disabled={!selectedSale || deleteSaleMutation.isPending || updateSaleMutation.isPending}
-                onClick={deleteSelectedSale}
+                onClick={() => setDeleteConfirmOpen(true)}
               >
                 {deleteSaleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 Belge Sil
@@ -656,6 +675,63 @@ export function DeliveryNotesPage() {
                 Kapat
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          if (!deleteSaleMutation.isPending) {
+            setDeleteConfirmOpen(open);
+          }
+        }}
+      >
+        <DialogContent className="max-w-[460px] rounded-3xl border border-red-200/70 bg-[var(--surface)] p-0 shadow-[0_28px_80px_-40px_rgba(127,29,29,0.55)]">
+          <DialogHeader className="border-b border-red-100 bg-[linear-gradient(180deg,rgba(254,242,242,0.96)_0%,rgba(255,255,255,0.9)_100%)] px-6 py-5 text-left">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-700">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-xl font-black text-red-950">İrsaliye silinsin mi?</DialogTitle>
+                <DialogDescription className="mt-1 text-sm font-semibold leading-6 text-red-900/75">
+                  Bu belge PowerSA’dan kaldırılır ve Logo ERP silme kuyruğuna alınır.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3 px-6 py-5">
+            <div className="rounded-2xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[var(--muted-foreground)]">Belge No</p>
+              <p className="mt-1 break-all text-base font-black text-[var(--foreground)]">{selectedSale?.receipt_no ?? "-"}</p>
+            </div>
+            <p className="text-sm font-semibold leading-6 text-[var(--muted-foreground)]">
+              Sadece mevcut ay içindeki ve gün sonu kilidine takılmayan irsaliyeler silinebilir.
+            </p>
+          </div>
+
+          <DialogFooter className="border-t border-[var(--brand-border)] bg-[var(--surface-soft)] px-6 py-4 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 rounded-xl px-5 font-black"
+              disabled={deleteSaleMutation.isPending}
+              onClick={() => setDeleteConfirmOpen(false)}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="h-11 rounded-xl px-5 font-black"
+              disabled={!selectedSale || deleteSaleMutation.isPending}
+              onClick={deleteSelectedSale}
+            >
+              {deleteSaleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Belgeyi Sil
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

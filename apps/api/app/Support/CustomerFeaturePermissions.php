@@ -62,18 +62,25 @@ final class CustomerFeaturePermissions
             ['key' => 'search.stock', 'label' => 'Stokları gör', 'menu_key' => 'search'],
             ['key' => 'search.add_to_cart', 'label' => 'Sepete ekle', 'menu_key' => 'search'],
             ['key' => 'search.product_detail', 'label' => 'Ürün detayları', 'menu_key' => 'search'],
+            ['key' => 'search.campaigns', 'label' => 'Kampanyaları göster', 'menu_key' => 'search'],
             ['key' => 'catalogs.new_products', 'label' => 'Yeni ürünler', 'menu_key' => 'catalogs'],
             ['key' => 'catalogs.hot_products', 'label' => 'Kampanyalar', 'menu_key' => 'catalogs'],
             ['key' => 'cart.view', 'label' => 'Sepeti gör', 'menu_key' => 'cart'],
             ['key' => 'cart.checkout', 'label' => 'Sipariş gönder', 'menu_key' => 'cart'],
+            ['key' => 'cart.payment.show', 'label' => 'Ödeme Şekli Alanını Göster', 'menu_key' => 'cart'],
+            ['key' => 'cart.sale_type.detailed', 'label' => 'Satış tipi: 1-F', 'menu_key' => 'cart'],
+            ['key' => 'cart.sale_type.excluded', 'label' => 'Satış tipi: 2-0', 'menu_key' => 'cart'],
+            ['key' => 'cart.sale_type.included', 'label' => 'Satış tipi: 3-B', 'menu_key' => 'cart'],
             ['key' => 'orders.list', 'label' => 'Sipariş listesi', 'menu_key' => 'orders'],
             ['key' => 'orders.detail', 'label' => 'Sipariş detayı', 'menu_key' => 'orders'],
+            ['key' => 'customer-complaints.create', 'label' => 'Dilek / Şikayet gönder', 'menu_key' => 'customer-complaints'],
             ['key' => 'ledger.balance', 'label' => 'Bakiye gör', 'menu_key' => 'ledger'],
             ['key' => 'ledger.movements', 'label' => 'Hareketleri gör', 'menu_key' => 'ledger'],
             ['key' => 'reports.customer_balance', 'label' => 'Cari bakiye raporu', 'menu_key' => 'reports'],
             ['key' => 'reports.order_balance', 'label' => 'Sipariş bakiye raporu', 'menu_key' => 'reports'],
             ['key' => 'returns.create', 'label' => 'İade / arıza oluştur', 'menu_key' => 'returns'],
             ['key' => 'returns.list', 'label' => 'İade / arıza listesi', 'menu_key' => 'returns'],
+            ['key' => 'rack-addresses.update', 'label' => 'Raf adresi güncelleme', 'menu_key' => 'rack-addresses'],
         ], array_map(
             fn (array $warehouse): array => [
                 'key' => $warehouse['key'],
@@ -100,10 +107,29 @@ final class CustomerFeaturePermissions
      */
     public static function keys(): array
     {
-        return array_map(
+        return array_values(array_unique(array_merge(array_map(
             fn (array $definition): string => $definition['key'],
             self::definitions()
-        );
+        ), self::legacyPaymentKeys())));
+    }
+
+    /**
+     * Eski müşteri kayıtlarını kayıp yaşamadan okuyabilmek için kabul edilir,
+     * fakat yönetim ekranında artık tek tek ödeme seçeneği olarak gösterilmez.
+     *
+     * @return list<string>
+     */
+    public static function legacyPaymentKeys(): array
+    {
+        return [
+            'cart.payment.account',
+            'cart.payment.cash',
+            'cart.payment.transfer',
+            'cart.payment.single_payment',
+            'cart.payment.check',
+            'cart.payment.note',
+            'cart.payment.physical_pos',
+        ];
     }
 
     /**
@@ -144,6 +170,8 @@ final class CustomerFeaturePermissions
             array_filter(
                 self::definitions(),
                 fn (array $definition): bool => isset($menus[$definition['menu_key']])
+                    && $definition['key'] !== 'cart.payment.show'
+                    && ! str_starts_with($definition['key'], 'cart.sale_type.')
             )
         ));
     }
@@ -160,5 +188,29 @@ final class CustomerFeaturePermissions
         }
 
         return self::defaultsForMenus(MenuPermissions::forUser($user));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function checkoutSummaryModesForUser(User $user): array
+    {
+        $permissions = self::forUser($user);
+        $permissionSet = array_flip($permissions);
+
+        $modes = [];
+        $mapping = [
+            'cart.sale_type.detailed' => 'detailed',
+            'cart.sale_type.excluded' => 'excluded',
+            'cart.sale_type.included' => 'included',
+        ];
+
+        foreach ($mapping as $permission => $mode) {
+            if (isset($permissionSet[$permission])) {
+                $modes[] = $mode;
+            }
+        }
+
+        return $modes;
     }
 }
