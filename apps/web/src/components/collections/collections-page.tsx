@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Banknote,
   CreditCard,
   Factory,
@@ -45,7 +46,9 @@ import {
 } from "@/components/ui/dialog";
 import {
   ApiClientError,
+  approveCustomerCollection,
   type CustomerCollectionsResponse,
+  type CollectionApprovalRecord,
   type CollectionRecord,
   type PosSessionDto,
   type FinanceDefinitionDto,
@@ -54,19 +57,27 @@ import {
   getCurrentPosSession,
   listCustomerCollections,
   listFinanceDefinitions,
+  listCollectionApprovals,
   createFinanceDefinition,
+  rejectCustomerCollection,
   sendCustomerCollections,
   updateCustomerCollection,
   listCustomers,
   type CustomerListItem,
 } from "@/lib/api";
 import { notifyPosDayEndRefresh } from "@/lib/pos-day-end-events";
+import {
+  canUseThermalBrowserPrintFallback,
+  printThermalReceipt,
+  tryThermalReceiptNativeBridge,
+} from "@/lib/thermal-print";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-const METHODS = ["cash", "transfer", "check", "cc", "factory_cc"] as const;
+const METHODS = ["cash", "transfer", "check", "note", "cc", "factory_cc"] as const;
 
 type FormMethodType = (typeof METHODS)[number];
-type MethodType = FormMethodType | "note" | "invoice";
+type MethodType = FormMethodType | "invoice";
 type FactoryPosType = string;
 type PosBankType = string;
 type CheckImageDraft = {
@@ -99,8 +110,8 @@ type CheckDraftItem = {
 const METHOD_LABELS: Record<FormMethodType | MethodType, string> = {
   cash: "Nakit",
   transfer: "Havale/EFT",
-  check: "Çek / Senet",
-  note: "Çek / Senet",
+  check: "Çek",
+  note: "Senet",
   cc: "Fiziksel Pos",
   factory_cc: "Fabrika Kart Çekimi",
   invoice: "Fatura",
@@ -118,6 +129,10 @@ const METHOD_STYLES: Record<FormMethodType, { active: string; idle: string }> = 
   check: {
     active: "border-amber-300/70 bg-amber-300/14 text-amber-100 shadow-[0_18px_34px_-30px_rgba(251,191,36,0.7)]",
     idle: "border-white/10 bg-white/[0.035] text-slate-300 hover:border-amber-300/35 hover:bg-amber-300/8 hover:text-amber-100",
+  },
+  note: {
+    active: "border-violet-300/70 bg-violet-300/14 text-violet-100 shadow-[0_18px_34px_-30px_rgba(167,139,250,0.7)]",
+    idle: "border-white/10 bg-white/[0.035] text-slate-300 hover:border-violet-300/35 hover:bg-violet-300/8 hover:text-violet-100",
   },
   cc: {
     active: "border-rose-300/70 bg-rose-300/14 text-rose-100 shadow-[0_18px_34px_-30px_rgba(251,113,133,0.7)]",
@@ -147,8 +162,15 @@ const COLLECTION_FIELD_LABELS: Record<string, string> = {
   "reference_fields.factory_pos_account": "Cari Pos Seçimi",
 };
 
-const STANDARD_VALOR_DAY_LIMIT = 60;
 const COLLECTION_RECEIPT_CAPTURE_ATTR = "data-collection-receipt-capture";
+
+function isPaperInstrumentMethod(method: FormMethodType): method is "check" | "note" {
+  return method === "check" || method === "note";
+}
+
+function paperInstrumentLabel(method: FormMethodType): "Çek" | "Senet" {
+  return method === "note" ? "Senet" : "Çek";
+}
 
 const html2CanvasSafeColor = (value: string, fallback: string) => {
   const normalized = value.trim().toLowerCase();
@@ -308,19 +330,12 @@ function toApiAmount(value: unknown): number {
 }
 
 function formatAmountInput(value: string): string {
-  const normalized = value.replace(/[^\d,.]/g, "");
-  const decimalSeparator = decimalSeparatorForAmount(normalized);
-  const separatorIndex = decimalSeparator ? normalized.lastIndexOf(decimalSeparator) : -1;
-  const integerRaw = separatorIndex === -1 ? normalized : normalized.slice(0, separatorIndex);
-  const decimalRaw = separatorIndex === -1 ? "" : normalized.slice(separatorIndex + 1).replace(/\D/g, "");
-  const integerDigits = integerRaw.replace(/[^\d]/g, "");
-  const formattedInteger = integerDigits ? Number(integerDigits).toLocaleString("tr-TR") : "";
+  const digits = value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  const padded = (digits || "0").padStart(3, "0");
+  const integerDigits = padded.slice(0, -2);
+  const decimalDigits = padded.slice(-2);
 
-  if (separatorIndex !== -1) {
-    return `${formattedInteger},${decimalRaw.slice(0, 2)}`;
-  }
-
-  return formattedInteger;
+  return `${Number(integerDigits).toLocaleString("tr-TR")},${decimalDigits}`;
 }
 
 function getDayDifference(startDateValue: string, endDateValue: string): number | null {
@@ -396,6 +411,23 @@ function containsBlockedForeignBankTerm(definition: FinanceDefinitionDto): boole
   );
 }
 
+function isBatumUserScope(user: ReturnType<typeof useSession>["user"]): boolean {
+  const rawUser = (user ?? {}) as Record<string, unknown>;
+  const roleText = Array.isArray(user?.roles)
+    ? user.roles.map((role) => `${role.slug} ${role.name ?? ""}`).join(" ")
+    : "";
+  const haystack = [
+    rawUser.username,
+    rawUser.name,
+    rawUser.branch_code,
+    rawUser.branch_name,
+    rawUser.region_code,
+    roleText,
+  ].join(" ").toLocaleLowerCase("tr-TR");
+
+  return haystack.includes("batum");
+}
+
 function financeDefinitionLabel(definition: FinanceDefinitionDto): string {
   const name = normalizeOptionText(definition.logo_name) || normalizeOptionText(definition.name);
   const code = normalizeOptionText(definition.logo_code) || normalizeOptionText(definition.code);
@@ -426,18 +458,21 @@ function getCollectionClientValidationMessage(input: {
     return "Tarih zorunlu.";
   }
 
-  if (input.method === "check") {
-    if (!input.bankName.trim()) {
-      return "Çek / Senet için banka adı zorunlu.";
+  if (isPaperInstrumentMethod(input.method)) {
+    const label = paperInstrumentLabel(input.method);
+    const isCheck = input.method === "check";
+
+    if (isCheck && !input.bankName.trim()) {
+      return `${label} için banka adı zorunlu.`;
     }
-    if (!input.checkNo.trim()) {
-      return "Çek / Senet için numara zorunlu.";
+    if (isCheck && !input.checkNo.trim()) {
+      return `${label} için numara zorunlu.`;
     }
     if (!input.dueDate) {
-      return "Çek / Senet için vade tarihi zorunlu.";
+      return `${label} için vade tarihi zorunlu.`;
     }
     if (!input.checkValorDays.trim()) {
-      return "Çek / Senet için valör hesabı zorunlu.";
+      return `${label} için valör hesabı zorunlu.`;
     }
     const valorDays = Number(input.checkValorDays);
     if (!Number.isInteger(valorDays) || valorDays < 0) {
@@ -538,10 +573,21 @@ function getCollectionStatusLabel(row: CollectionRecord): string {
     return "Hatalı";
   }
 
-  return "Kaydedildi";
+  return "Logo'ya Gönderilmedi";
 }
 
-function buildCombinedCheckReferenceFields(items: CheckDraftItem[]): Record<string, string | number | boolean> {
+function getReceiptSalespersonName(
+  customer: { salesperson?: { name?: string | null } | null } | null | undefined,
+  user: { name?: string | null; username?: string | null } | null | undefined
+): string {
+  return customer?.salesperson?.name?.trim() || user?.name?.trim() || user?.username?.trim() || "-";
+}
+
+function buildCombinedCheckReferenceFields(
+  items: CheckDraftItem[],
+  instrumentMethod: "check" | "note" = "check"
+): Record<string, string | number | boolean> {
+  const numberField = instrumentMethod === "note" ? "note_no" : "check_no";
   const maxValorDays = Math.max(...items.map((item) => Number(item.valorDays || 0)));
   const totalValorDays = items.reduce((total, item) => total + Number(item.valorDays || 0), 0);
   const latestDueDate = items
@@ -551,24 +597,25 @@ function buildCombinedCheckReferenceFields(items: CheckDraftItem[]): Record<stri
   const checkNumbers = items.map((item) => item.checkNo).filter(Boolean);
   const images = items.flatMap((item) =>
     item.images.map(({ name, type, data }) => ({
-      check_no: item.checkNo,
+      [numberField]: item.checkNo,
       name,
       type,
       data,
     }))
   );
   const fields: Record<string, string | number | boolean> = {
-    bank_name: bankNames.length === 1 ? bankNames[0] : "Çoklu Banka",
-    check_no: items.length === 1 ? checkNumbers[0] : `${items.length} Çek / Senet`,
     due_date: latestDueDate,
     valor_days: maxValorDays,
     total_valor_days: totalValorDays,
-    check_count: items.length,
+    instrument_type: instrumentMethod,
+    instrument_count: items.length,
+    check_count: instrumentMethod === "check" ? items.length : 0,
+    note_count: instrumentMethod === "note" ? items.length : 0,
     check_items_json: JSON.stringify(
       items.map((item) => ({
         amount: toAmount(item.amount),
         bank_name: item.bankName,
-        check_no: item.checkNo,
+        [numberField]: item.checkNo,
         due_date: item.dueDate,
         valor_days: Number(item.valorDays || 0),
         image_count: item.images.length,
@@ -576,9 +623,12 @@ function buildCombinedCheckReferenceFields(items: CheckDraftItem[]): Record<stri
     ),
   };
 
-  if (maxValorDays > STANDARD_VALOR_DAY_LIMIT) {
-    fields.requires_manager_approval = true;
-    fields.manager_approval_reason = "valor_limit_exceeded";
+  if (bankNames.length > 0) {
+    fields.bank_name = bankNames.length === 1 ? bankNames[0] : "Çoklu Banka";
+  }
+
+  if (checkNumbers.length > 0) {
+    fields[numberField] = items.length === 1 ? checkNumbers[0] : `${items.length} ${instrumentMethod === "note" ? "Senet" : "Çek"}`;
   }
 
   if (images.length > 0) {
@@ -607,7 +657,7 @@ function getCollectionImagePreviews(row: CollectionRecord): CollectionImagePrevi
           return;
         }
 
-        const typedImage = image as Partial<CollectionImagePreview> & { check_no?: string };
+        const typedImage = image as Partial<CollectionImagePreview> & { check_no?: string; note_no?: string };
         if (typeof typedImage.data !== "string" || !typedImage.data) {
           return;
         }
@@ -617,7 +667,12 @@ function getCollectionImagePreviews(row: CollectionRecord): CollectionImagePrevi
           name: typeof typedImage.name === "string" && typedImage.name ? typedImage.name : `Çek / senet resmi ${index + 1}`,
           type: typeof typedImage.type === "string" && typedImage.type ? typedImage.type : "image/*",
           data: typedImage.data,
-          checkNo: typeof typedImage.check_no === "string" ? typedImage.check_no : undefined,
+          checkNo:
+            typeof typedImage.check_no === "string"
+              ? typedImage.check_no
+              : typeof typedImage.note_no === "string"
+                ? typedImage.note_no
+                : undefined,
         });
       });
     } catch {
@@ -631,7 +686,12 @@ function getCollectionImagePreviews(row: CollectionRecord): CollectionImagePrevi
       name: typeof fields.image_name === "string" && fields.image_name ? fields.image_name : "Çek / senet resmi",
       type: typeof fields.image_type === "string" && fields.image_type ? fields.image_type : "image/*",
       data: fields.image_data,
-      checkNo: typeof fields.check_no === "string" ? fields.check_no : undefined,
+      checkNo:
+        typeof fields.check_no === "string"
+          ? fields.check_no
+          : typeof fields.note_no === "string"
+            ? fields.note_no
+            : undefined,
     });
   }
 
@@ -712,10 +772,6 @@ function getFormMethodFromCollection(row: CollectionRecord): FormMethodType {
 
   if (row.method === "cc" && fields.collection_channel === "factory") {
     return "factory_cc";
-  }
-
-  if (row.method === "note") {
-    return "check";
   }
 
   if (METHODS.includes(row.method as FormMethodType)) {
@@ -957,8 +1013,13 @@ export function CollectionsPage() {
     () => (Array.isArray(user?.roles) ? user.roles.map((role) => role.slug) : []),
     [user?.roles]
   );
-  const isPointUser = roleSlugs.includes("point");
   const isAdminUser = roleSlugs.includes("admin");
+  const isCustomerUser = roleSlugs.includes("customer");
+  const isBatumUser = useMemo(() => isBatumUserScope(user), [user]);
+  const availableMethods = useMemo<FormMethodType[]>(
+    () => (isBatumUser ? ["cash", "transfer", "cc"] : [...METHODS]),
+    [isBatumUser]
+  );
 
   const [page, setPage] = useState(1);
 
@@ -973,9 +1034,28 @@ export function CollectionsPage() {
   const [deletingCollectionId, setDeletingCollectionId] = useState<number | null>(null);
   const [currentPointSession, setCurrentPointSession] = useState<PosSessionDto | null>(null);
   const [financeDefinitions, setFinanceDefinitions] = useState<FinanceDefinitionDto[]>([]);
+  const [approvalRows, setApprovalRows] = useState<CollectionApprovalRecord[]>([]);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalActionId, setApprovalActionId] = useState<number | null>(null);
+  const listRequestSequenceRef = useRef(0);
+  const visibleListRequestSequenceRef = useRef(0);
+  const collectionStatusRefreshTimersRef = useRef<number[]>([]);
+  const locallySavedCollectionIdsRef = useRef<Set<number>>(new Set());
+  const canReviewCollections = useMemo(
+    () => roleSlugs.some((role) => [
+      "admin",
+      "global",
+      "global_user",
+      "moderator",
+      "accounting",
+      "muhasebe",
+      "dealer_admin",
+    ].includes(role)),
+    [roleSlugs]
+  );
 
   const [method, setMethod] = useState<FormMethodType>("cash");
-  const [amount, setAmount] = useState("0");
+  const [amount, setAmount] = useState("0,00");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
 
@@ -987,55 +1067,171 @@ export function CollectionsPage() {
   const [factoryPos, setFactoryPos] = useState<FactoryPosType>("");
   const [checkDraftItems, setCheckDraftItems] = useState<CheckDraftItem[]>([]);
   const [previewImage, setPreviewImage] = useState<CollectionImagePreview | null>(null);
-  const [receiptActionsUnlocked, setReceiptActionsUnlocked] = useState(false);
 
-  const fetchList = (targetPage = page, silent = false) => {
+  const clearCollectionStatusRefreshTimers = () => {
+    collectionStatusRefreshTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    collectionStatusRefreshTimersRef.current = [];
+  };
+
+  const scheduleCollectionStatusRefreshes = (targetPage = page) => {
+    clearCollectionStatusRefreshTimers();
+
+    collectionStatusRefreshTimersRef.current = [2500, 8000, 18000, 35000, 65000].map((delay) =>
+      window.setTimeout(() => {
+        void fetchList(targetPage, true);
+      }, delay)
+    );
+  };
+
+  const fetchList = (targetPage = page, silent = false): Promise<void> => {
     if (!selectedCustomer) {
+      listRequestSequenceRef.current += 1;
+      visibleListRequestSequenceRef.current += 1;
       setPayload(null);
       setPage(1);
-      return;
+      setListLoading(false);
+      return Promise.resolve();
     }
+
+    const requestSequence = ++listRequestSequenceRef.current;
+    const visibleRequestSequence = !silent ? ++visibleListRequestSequenceRef.current : null;
 
     if (!silent) {
       setListLoading(true);
       setError(null);
     }
 
-    void listCustomerCollections(selectedCustomer.id, {
-      per_page: 30,
+    return listCustomerCollections(selectedCustomer.id, {
+      per_page: 10,
       page: targetPage,
+      // Totals are not required by the active UI. Keeping this lightweight
+      // avoids the invoice + currency aggregate scan on every refresh/save.
+      include_summary: false,
+      compact: true,
     })
       .then((response) => {
-        setPayload({
-          ...response,
-          data: Array.isArray(response.data) ? response.data : [],
-          tabs: Array.isArray(response.tabs) ? response.tabs : [],
+        if (requestSequence !== listRequestSequenceRef.current) {
+          return;
+        }
+
+        setPayload((current) => {
+          const responseRows = Array.isArray(response.data) ? response.data : [];
+          const responseIds = new Set(responseRows.map((row) => row.id));
+          const preservedLocalRows = (Array.isArray(current?.data) ? current.data : [])
+            .filter((row) => locallySavedCollectionIdsRef.current.has(row.id) && !responseIds.has(row.id));
+
+          return {
+            ...response,
+            data: [...preservedLocalRows, ...responseRows],
+            tabs: current?.tabs ?? (Array.isArray(response.tabs) ? response.tabs : []),
+            logo_sync: response.logo_sync ?? current?.logo_sync,
+          };
         });
         setPage(targetPage);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Tahsilat listesi alınamadı"))
+      .catch((err) => {
+        if (requestSequence === listRequestSequenceRef.current) {
+          setError(err instanceof Error ? err.message : "Tahsilat listesi alınamadı");
+        }
+      })
       .finally(() => {
-        if (!silent) {
+        if (!silent && visibleRequestSequence === visibleListRequestSequenceRef.current) {
           setListLoading(false);
         }
       });
   };
 
+  const fetchApprovals = (silent = false) => {
+    if (!silent) {
+      setApprovalLoading(true);
+    }
+
+    void listCollectionApprovals()
+      .then((response) => setApprovalRows(Array.isArray(response.data) ? response.data : []))
+      .catch(() => setApprovalRows([]))
+      .finally(() => {
+        if (!silent) {
+          setApprovalLoading(false);
+        }
+      });
+  };
+
+  const putCollectionInRecentList = (collection: CollectionRecord) => {
+    locallySavedCollectionIdsRef.current.add(collection.id);
+
+    setPayload((current) => {
+      if (!selectedCustomer) {
+        return current;
+      }
+
+      const existingRows = Array.isArray(current?.data) ? current.data : [];
+      const nextRows = [
+        collection,
+        ...existingRows.filter((row) => row.id !== collection.id),
+      ].slice(0, 10);
+      const wasAlreadyListed = existingRows.some((row) => row.id === collection.id);
+
+      return {
+        customer_id: selectedCustomer.id,
+        filters: current?.filters ?? {
+          method: null,
+          date_from: null,
+          date_to: null,
+        },
+        tabs: current?.tabs ?? [],
+        logo_sync: current?.logo_sync,
+        data: nextRows,
+        meta: {
+          current_page: 1,
+          last_page: current?.meta.last_page ?? 1,
+          per_page: current?.meta.per_page ?? 10,
+          total: Math.max(1, (current?.meta.total ?? 0) + (wasAlreadyListed ? 0 : 1)),
+        },
+      };
+    });
+  };
+
   useEffect(() => {
-    setReceiptActionsUnlocked(false);
-    fetchList(1);
+    setPayload(null);
+    clearCollectionStatusRefreshTimers();
+    void fetchList(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer?.id]);
 
+  useEffect(() => () => clearCollectionStatusRefreshTimers(), []);
+
+  useEffect(() => {
+    if (!canReviewCollections) {
+      setApprovalRows([]);
+      setApprovalLoading(false);
+      return;
+    }
+
+    const initialTimer = window.setTimeout(() => fetchApprovals(), 750);
+    const timer = window.setInterval(() => fetchApprovals(true), 30000);
+
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [canReviewCollections, user?.id]);
+
   useEffect(() => {
     handleRefreshFinanceDefinitions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBatumUser]);
 
   const handleRefreshFinanceDefinitions = () => {
-    void listFinanceDefinitions()
+    void listFinanceDefinitions(undefined, false, isBatumUser ? "batum" : "turkey")
       .then((response) => setFinanceDefinitions(response.data))
       .catch((err) => setError(err instanceof Error ? err.message : "Finans tanımları alınamadı"));
   };
+
+  useEffect(() => {
+    if (!availableMethods.includes(method)) {
+      setMethod(availableMethods[0] ?? "cash");
+    }
+  }, [availableMethods, method]);
 
   useEffect(() => {
     const hasPendingLogoWrite = (Array.isArray(payload?.data) ? payload.data : []).some(
@@ -1045,16 +1241,20 @@ export function CollectionsPage() {
       return;
     }
 
-    const timer = window.setInterval(() => fetchList(page, true), 1500);
+    const timer = window.setInterval(() => fetchList(page, true), 4000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, payload?.data, selectedCustomer?.id]);
 
   const bankOptions = useMemo(
     () => financeDefinitions
-      .filter((item) => item.type === "bank" && item.is_active && !containsBlockedForeignBankTerm(item))
-      .map((item) => ({ value: item.code, label: financeDefinitionLabel(item) })),
-    [financeDefinitions]
+      .filter((item) =>
+        item.type === "bank"
+        && item.is_active
+        && (isBatumUser ? containsBlockedForeignBankTerm(item) : !containsBlockedForeignBankTerm(item))
+      )
+      .map((item) => ({ value: item.code, label: financeDefinitionLabel(item), id: item.id })),
+    [financeDefinitions, isBatumUser]
   );
   const factoryOptions = useMemo(
     () => financeDefinitions
@@ -1073,13 +1273,6 @@ export function CollectionsPage() {
   useEffect(() => {
     let cancelled = false;
 
-    if (!isPointUser) {
-      setCurrentPointSession(null);
-      return () => {
-        cancelled = true;
-      };
-    }
-
     void getCurrentPosSession()
       .then((response) => {
         if (!cancelled) {
@@ -1095,25 +1288,29 @@ export function CollectionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isPointUser]);
+  }, []);
 
   const referenceFields = useMemo(() => {
     const fields: Record<string, string | number | boolean> = {};
 
-    if (method === "check") {
-      fields.bank_name = bankName;
-      fields.check_no = checkNo;
+    if (isPaperInstrumentMethod(method)) {
+      if (method === "check" && bankName.trim() !== "") {
+        fields.bank_name = bankName.trim();
+      }
+      if (method === "check") {
+        fields.check_no = checkNo.trim();
+      }
       fields.due_date = dueDate;
       fields.valor_days = Number(checkValorDays);
-      if (Number(checkValorDays) > STANDARD_VALOR_DAY_LIMIT) {
-        fields.requires_manager_approval = "1";
-        fields.manager_approval_reason = "valor_limit_exceeded";
-      }
     }
 
     if (method === "transfer") {
       fields.bank_code = posBank;
       fields.bank_name = bankOptions.find((option) => option.value === posBank)?.label ?? posBank;
+      const financeDefinitionId = bankOptions.find((option) => option.value === posBank)?.id;
+      if (financeDefinitionId !== undefined) {
+        fields.finance_definition_id = financeDefinitionId;
+      }
     }
 
     if (method === "factory_cc") {
@@ -1123,6 +1320,10 @@ export function CollectionsPage() {
 
     if (method === "cc") {
       fields.pos_bank = posBank;
+      const financeDefinitionId = bankOptions.find((option) => option.value === posBank)?.id;
+      if (financeDefinitionId !== undefined) {
+        fields.finance_definition_id = financeDefinitionId;
+      }
     }
 
     return fields;
@@ -1137,8 +1338,9 @@ export function CollectionsPage() {
     bankOptions,
   ]);
 
-  const isListDisabled = listLoading || saving || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
-  const isFormDisabled = saving || listLoading || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
+  const isListDisabled = listLoading || deletingCollectionId !== null || !selectedCustomer;
+  // Loading the history must never block a new collection entry.
+  const isFormDisabled = saving || sendingCollections || deletingCollectionId !== null || !selectedCustomer;
   const rawRows = useMemo(() => (Array.isArray(payload?.data) ? payload.data : []), [payload?.data]);
   const displayRows = useMemo(
     () => rawRows.filter((row) => row.sync_status !== "synced"),
@@ -1161,35 +1363,24 @@ export function CollectionsPage() {
       return "";
     }
 
-    const rows = displayRows.map((row, index) => {
-      const fields = getCollectionReferenceFields(row);
-      const referenceText = row.reference_no ? ` - Ref: ${row.reference_no}` : "";
-      const transferBankText =
-        row.method === "transfer" && fields.bank_name
-          ? ` - Banka: ${fields.bank_name}`
-          : "";
-      const physicalPosBankText =
-        row.method === "cc" && fields.collection_channel !== "factory" && fields.pos_bank
-          ? ` - Banka: ${getPosBankLabel(String(fields.pos_bank))}`
-          : "";
-      const noteText = row.note ? ` - ${row.note}` : "";
-
-      return `${index + 1}. ${formatLedgerDate(row.date)} - ${getCollectionMethodLabel(row)} - ${formatAmount(String(row.amount), String(row.currency))}${referenceText}${transferBankText}${physicalPosBankText}${noteText}`;
-    });
+    const debtAmount = toApiAmount(selectedCustomer.balance_summary?.total_due ?? "0");
+    const debtCurrency = selectedCustomer.balance_summary?.currency ?? displayRows[0]?.currency ?? "TRY";
+    const remainingBalance = debtAmount - collectionReceiptTotal;
+    const paymentRows = displayRows.map((row) =>
+      `${getCollectionMethodLabel(row)}: ${formatAmount(String(row.amount), String(row.currency))}`
+    );
 
     return [
-      "POWERSA TAHSİLAT MAKBUZU",
-      `Cari: ${selectedCustomer.title}`,
+      "GUCSA",
+      "Güçsa Filitrecim Grup A.Ş.",
+      `Cari İsim: ${selectedCustomer.title}`,
       `Cari Kodu: ${selectedCustomer.code}`,
-      `Tarih: ${new Date().toLocaleString("tr-TR")}`,
-      "",
-      ...rows,
-      "",
-      `Toplam: ${formatAmount(collectionReceiptTotal, displayRows[0]?.currency ?? "TRY")}`,
+      `Plasiyer: ${getReceiptSalespersonName(selectedCustomer, user)}`,
+      ...paymentRows,
+      `KALAN BAKİYE: ${formatAmount(remainingBalance, debtCurrency)}`,
     ].join("\n");
-  }, [collectionReceiptTotal, displayRows, selectedCustomer]);
-  const checkValorNeedsManagerApproval =
-    method === "check" && checkValorDays.trim() !== "" && Number(checkValorDays) > STANDARD_VALOR_DAY_LIMIT;
+  }, [collectionReceiptTotal, displayRows, selectedCustomer, user]);
+  const paperInstrumentNeedsApproval = false;
   const checkDraftTotal = useMemo(
     () => checkDraftItems.reduce((total, item) => total + toAmount(item.amount), 0),
     [checkDraftItems]
@@ -1210,7 +1401,8 @@ export function CollectionsPage() {
   const collectionSummaryCurrency = displayRows[0]?.currency ?? customerDebtCurrency;
   const balanceSourceLabel = selectedCustomer?.balance_source === "logo" ? "Logo bakiyesi" : "B2B bakiyesi";
   const currentDebtAfterCollections = customerDebtAmount - collectionGrandTotal;
-  const canUseReceiptActions = displayRows.length > 0 && (receiptActionsUnlocked || sendableRows.length === 0);
+  const canUseReceiptActions = displayRows.length > 0;
+  const canPrintReceipt = displayRows.length > 0 && !listLoading;
   const hasQueuedCollectionRows = displayRows.some((row) => row.source_system === "b2b" && row.sync_status === "pending");
   const sendActionLabel = sendingCollections
     ? "Gönderiliyor..."
@@ -1232,7 +1424,7 @@ export function CollectionsPage() {
     "border border-red-200/30 bg-[linear-gradient(135deg,#ff6161_0%,#e62d2d_48%,#8f1717_100%)] text-white shadow-[0_18px_34px_-20px_rgba(255,77,79,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-18px_rgba(255,77,79,1)] disabled:translate-y-0 disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500 disabled:shadow-none";
 
   const buildPointCollectionMeta = () => {
-    if (!isPointUser || !currentPointSession) {
+    if (!currentPointSession) {
       return undefined;
     }
 
@@ -1244,7 +1436,7 @@ export function CollectionsPage() {
   };
 
   const refreshPointDayEnd = () => {
-    if (!isPointUser) {
+    if (!currentPointSession) {
       return;
     }
 
@@ -1252,7 +1444,7 @@ export function CollectionsPage() {
   };
 
   const resetCollectionForm = () => {
-    setAmount("0");
+    setAmount("0,00");
     setDate(new Date().toISOString().slice(0, 10));
     setNote("");
     setBankName("");
@@ -1260,7 +1452,26 @@ export function CollectionsPage() {
     setDueDate("");
     setCheckValorDays("");
     setPosBank(bankOptions[0]?.value ?? "");
-    setFactoryPos(factoryOptions[0]?.value ?? "");
+    setFactoryPos("");
+  };
+
+  const handleMethodChange = (nextMethod: FormMethodType) => {
+    if (nextMethod === method) {
+      return;
+    }
+
+    setEditingCollection(null);
+    setMethod(nextMethod);
+    setAmount("0,00");
+    setNote("");
+    setBankName("");
+    setCheckNo("");
+    setDueDate("");
+    setCheckValorDays("");
+    setPosBank(bankOptions[0]?.value ?? "");
+    setFactoryPos("");
+    setCheckDraftItems([]);
+    setError(null);
   };
 
   const cancelCollectionEdit = () => {
@@ -1288,12 +1499,12 @@ export function CollectionsPage() {
     setDueDate(String(fields.due_date ?? ""));
     setCheckValorDays(String(fields.valor_days ?? ""));
     setPosBank(getPosBankValue(String(fields.pos_bank ?? fields.bank_code ?? "")));
-    setFactoryPos(String(fields.factory_pos_account ?? factoryOptions[0]?.value ?? ""));
+    setFactoryPos(String(fields.factory_pos_account ?? ""));
     setCheckDraftItems([]);
   };
 
   const resetCheckDraftForm = () => {
-    setAmount("0");
+    setAmount("0,00");
     setNote("");
     setBankName("");
     setCheckNo("");
@@ -1309,7 +1520,7 @@ export function CollectionsPage() {
 
   const addCheckDraftItem = () => {
     const validationMessage = getCollectionClientValidationMessage({
-      method: "check",
+      method,
       amount,
       date,
       bankName,
@@ -1387,7 +1598,7 @@ export function CollectionsPage() {
   const addImagesToLatestCheckDraftItem = (fileList: FileList | null) => {
     const latestItem = checkDraftItems.at(-1);
     if (!latestItem) {
-      setError("Önce çek / senet satırını tamamlayın, ardından resim ekleyin.");
+      setError(`Önce ${paperInstrumentLabel(method).toLocaleLowerCase("tr-TR")} satırını tamamlayın, ardından resim ekleyin.`);
       return;
     }
 
@@ -1408,7 +1619,7 @@ export function CollectionsPage() {
       return;
     }
 
-    if (method === "check" && !editingCollection) {
+    if (isPaperInstrumentMethod(method) && !editingCollection) {
       addCheckDraftItem();
       return;
     }
@@ -1454,7 +1665,6 @@ export function CollectionsPage() {
     if (editingCollection) {
       void updateCustomerCollection(selectedCustomer.id, editingCollection.id, submitPayload)
         .then(() => {
-          setReceiptActionsUnlocked(false);
           setEditingCollection(null);
           resetCollectionForm();
           fetchList(page);
@@ -1466,11 +1676,10 @@ export function CollectionsPage() {
     }
 
     void createCustomerCollection(selectedCustomer.id, submitPayload)
-      .then(() => {
-        setReceiptActionsUnlocked(false);
+      .then((response) => {
         resetCollectionForm();
         setPage(1);
-        fetchList(1);
+        putCollectionInRecentList(response.collection);
         refreshPointDayEnd();
       })
       .catch((err) => setError(getCollectionApiErrorMessage(err)))
@@ -1483,12 +1692,12 @@ export function CollectionsPage() {
     }
 
     if (checkDraftItems.length === 0) {
-      setError("Önce en az bir çek / senet tamamlayın.");
+      setError(`Önce en az bir ${paperInstrumentLabel(method).toLocaleLowerCase("tr-TR")} tamamlayın.`);
       return;
     }
 
     if (checkDraftMissingImages) {
-      setError("Çek / senet tahsilatı göndermek için her satıra en az bir resim ekleyin.");
+      setError(`${paperInstrumentLabel(method)} tahsilatı göndermek için her satıra en az bir resim ekleyin.`);
       return;
     }
 
@@ -1496,20 +1705,19 @@ export function CollectionsPage() {
     setError(null);
 
     void createCustomerCollection(selectedCustomer.id, {
-      method: "check",
+      method: method === "note" ? "note" : "check",
       amount: checkDraftTotal,
       currency: customerDebtCurrency,
       date: checkDraftItems[0]?.date ?? date,
       note: note || checkDraftItems.find((item) => item.note.trim())?.note || undefined,
-      reference_fields: buildCombinedCheckReferenceFields(checkDraftItems),
+      reference_fields: buildCombinedCheckReferenceFields(checkDraftItems, method === "note" ? "note" : "check"),
       meta: buildPointCollectionMeta(),
     })
-      .then(() => {
-        setReceiptActionsUnlocked(false);
+      .then((response) => {
         setCheckDraftItems([]);
         resetCheckDraftForm();
         setPage(1);
-        fetchList(1);
+        putCollectionInRecentList(response.collection);
         refreshPointDayEnd();
       })
       .catch((err) => setError(getCollectionApiErrorMessage(err)))
@@ -1532,11 +1740,47 @@ export function CollectionsPage() {
 
     void sendCustomerCollections(selectedCustomer.id, collectionIds)
       .then(() => {
-        setReceiptActionsUnlocked(true);
-        fetchList(page);
+        collectionIds.forEach((id) => locallySavedCollectionIdsRef.current.delete(id));
+        setPayload((current) => {
+          if (!current) {
+            return current;
+          }
+
+          const pendingIds = new Set(collectionIds);
+
+          return {
+            ...current,
+            data: current.data.map((row) =>
+              pendingIds.has(row.id)
+                ? { ...row, sync_status: "pending", sync_error: null }
+                : row
+            ),
+          };
+        });
+        void fetchList(page);
+        scheduleCollectionStatusRefreshes(page);
       })
       .catch((err) => setError(getCollectionSendErrorMessage(err)))
       .finally(() => setSendingCollections(false));
+  };
+
+  const handleApprovalDecision = (row: CollectionApprovalRecord, approved: boolean) => {
+    setError(null);
+    setApprovalActionId(row.id);
+
+    const request = approved
+      ? approveCustomerCollection(row.customer_id, row.id)
+      : rejectCustomerCollection(row.customer_id, row.id);
+
+    void request
+      .then(() => {
+        fetchApprovals(true);
+        if (selectedCustomer?.id === row.customer_id) {
+          fetchList(page, true);
+        }
+      })
+      .catch((err) => setError(getCollectionApiErrorMessage(err)))
+      .finally(() => setApprovalActionId(null));
   };
 
   const deleteCollection = (row: CollectionRecord) => {
@@ -1564,7 +1808,6 @@ export function CollectionsPage() {
           setEditingCollection(null);
           resetCollectionForm();
         }
-        setReceiptActionsUnlocked(false);
         fetchList(page);
         refreshPointDayEnd();
       })
@@ -1575,8 +1818,58 @@ export function CollectionsPage() {
       });
   };
 
-  const printCollections = () => {
-    window.print();
+  const printCollections = async () => {
+    if (!selectedCustomer || displayRows.length === 0) {
+      setError("Yazdırılacak tahsilat kaydı bulunamadı.");
+      return;
+    }
+
+    const remainingBalance = customerDebtAmount - collectionReceiptTotal;
+    const paymentRows = displayRows.map((row) =>
+      `${getCollectionMethodLabel(row)}: ${formatAmount(String(row.amount), String(row.currency))}`
+    );
+    const receiptLines = [
+      "GUCSA",
+      "Güçsa Filitrecim Grup A.Ş.",
+      `Cari İsim: ${selectedCustomer.title}`,
+      `Cari Kodu: ${selectedCustomer.code}`,
+      `Plasiyer: ${getReceiptSalespersonName(selectedCustomer, user)}`,
+      ...paymentRows,
+      `KALAN BAKİYE: ${formatAmount(remainingBalance, customerDebtCurrency)}`,
+    ];
+
+    const receiptPayload = {
+      title: "GUCSA TAHSİLAT MAKBUZU",
+      plainTextLines: receiptLines,
+      customerCode: selectedCustomer.code,
+      customerTitle: selectedCustomer.title,
+      cashierName: user?.name ?? user?.username ?? null,
+      date: new Date().toLocaleString("tr-TR"),
+      totalLabel: "Toplam",
+      total: formatAmount(collectionReceiptTotal, displayRows[0]?.currency ?? "TRY"),
+      footer: "Güçsa Filitrecim Grup A.Ş.",
+    };
+
+    setError(null);
+
+    const bridgeResult = await tryThermalReceiptNativeBridge(receiptPayload);
+    if (bridgeResult.ok) {
+      return;
+    }
+
+    if (!canUseThermalBrowserPrintFallback()) {
+      toast.error("BOS Print Bridge açılamadı. APK kurulu ve yazıcı seçili olmalı.");
+      return;
+    }
+
+    const opened = printThermalReceipt(receiptPayload);
+
+    if (!opened) {
+      toast.error("Yazdırma penceresi açılamadı. Tarayıcı popup iznini kontrol edin.");
+      return;
+    }
+
+    toast.error("BOS Print Bridge açılamadı. Masaüstü yazdırma ekranı açıldı.");
   };
 
   const openWhatsappReceiptText = (popup?: Window | null) => {
@@ -1685,6 +1978,83 @@ export function CollectionsPage() {
   return (
     <>
     <div className="admin-collections-page">
+      {approvalRows.length > 0 || approvalLoading ? (
+        <Card className={cn(shellCardClassName, "mb-4 border-amber-300/25 bg-amber-300/8")}>
+          <CardContent className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.12em] text-amber-100/80">Onay Bekleyen Çek/Senet</p>
+                <p className="text-xs font-bold text-slate-300">Size atanmış kayıtlar onaydan sonra Logo kuyruğuna alınır.</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 rounded-[12px] border-amber-200/35 bg-transparent text-xs font-black text-amber-100 hover:bg-amber-200/10"
+                onClick={() => fetchApprovals()}
+                disabled={approvalLoading}
+              >
+                {approvalLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                Yenile
+              </Button>
+            </div>
+            <div className="grid gap-2">
+              {approvalRows.map((row) => (
+                <div
+                  key={row.id}
+                  className="grid gap-3 rounded-[16px] border border-white/10 bg-black/20 p-3 text-sm font-bold text-slate-100 lg:grid-cols-[1.2fr_0.8fr_0.7fr_auto] lg:items-center"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-black text-white">
+                      {row.method_label} · {row.customer_name ?? row.customer_code ?? "Cari"}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-slate-400">
+                      Gönderen: {row.sender_name ?? row.sender_username ?? "-"} · No: {row.document_no ?? row.reference_no ?? "-"}
+                    </p>
+                  </div>
+                  <div className="text-slate-200">
+                    <span className="text-slate-500">Tutar: </span>
+                    {formatAmount(row.amount, row.currency)}
+                  </div>
+                  <div className="text-slate-200">
+                    <span className="text-slate-500">Vade: </span>
+                    {row.due_date ? formatLedgerDate(row.due_date) : "-"}
+                  </div>
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <Button
+                      type="button"
+                      className="h-9 rounded-[12px] bg-emerald-500 px-3 text-xs font-black text-white hover:bg-emerald-400"
+                      onClick={() => handleApprovalDecision(row, true)}
+                      disabled={approvalActionId === row.id}
+                    >
+                      {approvalActionId === row.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Onayla
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-9 rounded-[12px] bg-red-600 px-3 text-xs font-black text-white hover:bg-red-500"
+                      onClick={() => handleApprovalDecision(row, false)}
+                      disabled={approvalActionId === row.id}
+                    >
+                      Reddet
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+      <div className="mb-4 flex items-center justify-start">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 rounded-[14px] border-white/12 bg-white/[0.045] px-4 text-sm font-black text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-white/[0.08] hover:text-white"
+          onClick={() => window.history.back()}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Geri
+        </Button>
+      </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(520px,0.92fr)_minmax(520px,1fr)] xl:items-start">
         <Card className={cn(shellCardClassName, "xl:sticky xl:top-[116px]")}>
           <CardContent className="space-y-5 p-5 lg:p-6">
@@ -1711,13 +2081,20 @@ export function CollectionsPage() {
 
             <div className="space-y-2">
               <label className={fieldLabelClassName}>Ödeme Yöntemi</label>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                {METHODS.map((value) => (
+              <div
+                className={cn(
+                  "grid gap-3",
+                  availableMethods.length <= 3
+                    ? "grid-cols-1 sm:grid-cols-3"
+                    : "grid-cols-2 md:grid-cols-3 xl:grid-cols-6"
+                )}
+              >
+                {availableMethods.map((value) => (
                   <button
                     key={value}
                     type="button"
                     disabled={isFormDisabled}
-                    onClick={() => setMethod(value)}
+                    onClick={() => handleMethodChange(value)}
                     className={cn(
                       "flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-[16px] border px-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
                       method === value
@@ -1757,7 +2134,7 @@ export function CollectionsPage() {
               </div>
             ) : null}
 
-            {method !== "check" ? (
+            {!isPaperInstrumentMethod(method) ? (
               <div className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_190px]">
                   <div className="space-y-1">
@@ -1770,6 +2147,13 @@ export function CollectionsPage() {
                       value={amount}
                       disabled={isFormDisabled}
                       onChange={(event) => setAmount(formatAmountInput(event.target.value))}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey && !isFormDisabled) {
+                          event.preventDefault();
+                          submitCollection();
+                        }
+                      }}
                       placeholder="0,00"
                       className="h-16 rounded-[14px] border-[var(--brand-border)] bg-[var(--surface-soft)] text-3xl font-black text-[var(--brand-primary-strong)] placeholder:text-[var(--muted-foreground)]"
                     />
@@ -1791,8 +2175,8 @@ export function CollectionsPage() {
               </div>
             ) : null}
 
-            <div className="grid gap-3 md:grid-cols-2" onKeyDown={method === "check" ? handleCheckEntryKeyDown : undefined}>
-              {method === "check" ? (
+            <div className="grid gap-3 md:grid-cols-2" onKeyDown={isPaperInstrumentMethod(method) ? handleCheckEntryKeyDown : undefined}>
+              {isPaperInstrumentMethod(method) ? (
                 <>
                   <div className="flex min-h-14 items-center justify-between gap-3 rounded-[14px] border border-amber-300/30 bg-amber-300/10 px-4 md:col-span-2">
                     <span className="text-[11px] font-black uppercase tracking-[0.11em] text-amber-200">
@@ -1812,6 +2196,7 @@ export function CollectionsPage() {
                       value={amount}
                       disabled={isFormDisabled}
                       onChange={(event) => setAmount(formatAmountInput(event.target.value))}
+                      onFocus={(event) => event.currentTarget.select()}
                       placeholder="0,00"
                       className={fieldClassName}
                     />
@@ -1828,36 +2213,32 @@ export function CollectionsPage() {
                       className={fieldClassName}
                     />
                   </div>
-                  <div className={fieldShellClassName}>
-                    <label className={fieldLabelClassName}>
-                      Banka Adı
-                    </label>
-                    <Input
-                      value={bankName}
-                      disabled={isFormDisabled}
-                      onChange={(event) => setBankName(event.target.value)}
-                      placeholder=""
-                      className={fieldClassName}
-                    />
-                  </div>
-                  <div className={fieldShellClassName}>
-                    <label className={fieldLabelClassName}>
-                      Çek / Senet No
-                    </label>
-                    <Input
-                      value={checkNo}
-                      disabled={isFormDisabled}
-                      onChange={(event) => setCheckNo(event.target.value)}
-                      placeholder=""
-                      className={fieldClassName}
-                    />
-                  </div>
+                  {method === "check" ? (
+                    <>
+                      <div className={fieldShellClassName}>
+                        <label className={fieldLabelClassName}>Banka Adı</label>
+                        <Input
+                          value={bankName}
+                          disabled={isFormDisabled}
+                          onChange={(event) => setBankName(event.target.value)}
+                          placeholder=""
+                          className={fieldClassName}
+                        />
+                      </div>
+                      <div className={fieldShellClassName}>
+                        <label className={fieldLabelClassName}>Çek No</label>
+                        <Input
+                          value={checkNo}
+                          disabled={isFormDisabled}
+                          onChange={(event) => setCheckNo(event.target.value)}
+                          placeholder=""
+                          className={fieldClassName}
+                        />
+                      </div>
+                    </>
+                  ) : null}
                   <div className="md:col-span-2">
-                    {checkValorNeedsManagerApproval ? (
-                      <p className="rounded-[12px] border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-200">
-                        60 günü aşan valör müdür onayına gönderilir.
-                      </p>
-                    ) : null}
+                    {paperInstrumentNeedsApproval ? null : null}
                   </div>
                 </>
               ) : null}
@@ -1885,7 +2266,7 @@ export function CollectionsPage() {
                       disabled={isFormDisabled}
                     >
                       <SelectTrigger className={fieldClassName}>
-                        <SelectValue />
+                        <SelectValue placeholder={method === "factory_cc" ? "Seçiniz" : "Banka seçin"} />
                       </SelectTrigger>
                       <SelectContent>
                         {(method === "factory_cc" ? factoryOptions : bankOptions).map((option) => (
@@ -1920,10 +2301,10 @@ export function CollectionsPage() {
               ) : null}
             </div>
 
-            {method === "check" ? (
+            {isPaperInstrumentMethod(method) ? (
               <div className="space-y-2 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.035] p-2.5">
                 <div className="flex items-center justify-between gap-3 px-0.5">
-                  <p className="text-[13px] font-black text-amber-100">Tamamlanan Çek / Senetler</p>
+                  <p className="text-[13px] font-black text-amber-100">Tamamlanan {paperInstrumentLabel(method)}ler</p>
                   <p className="whitespace-nowrap text-[13px] font-black text-amber-100">{formatAmount(checkDraftTotal, customerDebtCurrency)}</p>
                 </div>
                 <label
@@ -1957,7 +2338,7 @@ export function CollectionsPage() {
                 </label>
                 {checkDraftItems.length === 0 ? (
                   <p className="rounded-[12px] border border-dashed border-amber-300/20 px-3 py-3 text-center text-xs font-semibold text-[var(--muted-foreground)]">
-                    Henüz tamamlanan çek / senet yok.
+                    Henüz tamamlanan {paperInstrumentLabel(method).toLocaleLowerCase("tr-TR")} yok.
                   </p>
                 ) : (
                   <div className="overflow-x-auto rounded-[12px] border border-white/10">
@@ -1975,7 +2356,7 @@ export function CollectionsPage() {
                       </thead>
                       <tbody className="divide-y divide-white/10">
                         {checkDraftItems.map((item) => {
-                          const needsApproval = Number(item.valorDays) > STANDARD_VALOR_DAY_LIMIT;
+                          const needsApproval = false;
                           const missingImage = item.images.length === 0;
 
                           return (
@@ -2064,39 +2445,50 @@ export function CollectionsPage() {
                 )}
                 {checkDraftItems.length > 0 && checkDraftMissingImages ? (
                   <p className="rounded-[12px] border border-red-300/25 bg-red-500/10 px-3 py-2 text-sm font-black text-red-100">
-                    Resim eklenmeyen çek / senet satırı gönderilemez.
+                    Resim eklenmeyen {paperInstrumentLabel(method).toLocaleLowerCase("tr-TR")} satırı gönderilemez.
                   </p>
                 ) : null}
               </div>
             ) : null}
 
-            {error ? (
-              <p className="rounded-[14px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
-                {error}
-              </p>
-            ) : null}
+            <Dialog open={Boolean(error)} onOpenChange={(open) => !open && setError(null)}>
+              <DialogContent className="border-red-200 bg-white text-slate-950 shadow-2xl sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-lg font-black text-red-700">
+                    <X className="h-5 w-5 rounded-full bg-red-100 p-1 text-red-600" />
+                    İşlem Tamamlanamadı
+                  </DialogTitle>
+                </DialogHeader>
+                <p className="text-sm font-semibold leading-6 text-slate-700">
+                  {error}
+                </p>
+                <DialogFooter>
+                  <Button className="rounded-[12px] bg-red-600 px-5 font-black text-white hover:bg-red-700" onClick={() => setError(null)}>
+                    Tamam
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <Button
               className={cn(
                 premiumRedActionClassName,
                 "h-12 w-full rounded-[14px] text-sm font-black",
-                checkValorNeedsManagerApproval && "from-amber-300 to-amber-600"
+                paperInstrumentNeedsApproval && "from-amber-300 to-amber-600"
               )}
               disabled={isFormDisabled}
-              onClick={method === "check" && checkDraftItems.length > 0 ? submitCheckDraftItems : submitCollection}
+              onClick={isPaperInstrumentMethod(method) && checkDraftItems.length > 0 ? submitCheckDraftItems : submitCollection}
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving
                 ? "Kaydediliyor..."
                 : editingCollection
                   ? "Tahsilatı Güncelle"
-                  : method === "check"
+                  : isPaperInstrumentMethod(method)
                     ? checkDraftItems.length > 0
-                      ? "Çek / Senetleri Gönder"
-                      : "Çek / Senet Ekle"
-                    : checkValorNeedsManagerApproval
-                      ? "Müdüre Onaya Gönder"
-                      : "Tahsilatı Kaydet"}
+                      ? `${paperInstrumentLabel(method)}leri Gönder`
+                      : `${paperInstrumentLabel(method)} Ekle`
+                    : "Tahsilatı Kaydet"}
             </Button>
           </CardContent>
         </Card>
@@ -2106,17 +2498,17 @@ export function CollectionsPage() {
             <div
               ref={collectionReceiptCaptureRef}
               data-collection-receipt-capture="true"
-              className="space-y-4 rounded-[20px] bg-[rgba(8,18,27,0.96)]"
+              className="collection-recent-panel space-y-4 rounded-[20px] bg-[rgba(8,18,27,0.96)] p-3 sm:p-4"
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-[15px] border border-[var(--brand-border)] bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
+                  <span className="collection-recent-icon inline-flex h-12 w-12 items-center justify-center rounded-[15px] border border-[var(--brand-border)] bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
                     <Wallet className="h-5 w-5" />
                   </span>
                   <p className="text-2xl font-black leading-tight text-[var(--brand-primary-strong)]">Son Tahsilatlar</p>
                 </div>
                 <Button
-                  className="h-12 rounded-[12px]"
+                  className="collection-refresh-button h-12 rounded-[12px]"
                   variant="outline"
                   disabled={isListDisabled}
                   onClick={() => {
@@ -2160,7 +2552,7 @@ export function CollectionsPage() {
                     return (
                       <div
                         key={row.id}
-                        className="flex flex-col gap-3 rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface)] p-3 shadow-[0_14px_28px_-26px_rgba(0,0,0,0.2)] transition-colors hover:border-[var(--brand-primary)]/50 hover:bg-emerald-300/[0.055] sm:flex-row sm:items-center"
+                        className="collection-recent-row flex flex-col gap-3 rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface)] p-3 shadow-[0_14px_28px_-26px_rgba(0,0,0,0.2)] transition-colors hover:border-[var(--brand-primary)]/50 hover:bg-emerald-300/[0.055] sm:flex-row sm:items-center"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-4">
                           {primaryImage ? (
@@ -2191,11 +2583,11 @@ export function CollectionsPage() {
                             </span>
                           )}
                           <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-base font-black text-[var(--brand-primary-strong)]">{getCollectionMethodLabel(row)}</p>
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <p className="shrink-0 text-sm font-black text-[var(--brand-primary-strong)]">{getCollectionMethodLabel(row)}</p>
                               <span
                                 className={cn(
-                                  "rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em]",
+                                  "collection-recent-status rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em]",
                                   row.sync_status === "synced"
                                     ? "border-emerald-300/40 bg-emerald-300/10 text-emerald-200"
                                     : row.sync_status === "pending"
@@ -2209,35 +2601,35 @@ export function CollectionsPage() {
                               >
                                 {getCollectionStatusLabel(row)}
                               </span>
+                              <span className="shrink-0 text-xs font-black text-[var(--muted-foreground)]">
+                                {formatLedgerDate(row.date)}
+                                {row.reference_no ? ` · ${row.reference_no}` : ""}
+                              </span>
+                              {displayNote ? (
+                                <span className="min-w-[10rem] flex-1 truncate text-xs font-semibold text-[var(--muted-foreground)]">
+                                  {displayNote}
+                                </span>
+                              ) : null}
                             </div>
-                            <p className="mt-1 truncate text-sm font-semibold text-[var(--muted-foreground)]">
-                              {formatLedgerDate(row.date)}
-                              {row.reference_no ? ` · ${row.reference_no}` : ""}
-                            </p>
                             {row.method === "cc" && referenceFields.collection_channel === "factory" ? (
-                              <p className="mt-1 truncate text-sm font-semibold text-orange-200">
+                              <p className="collection-recent-meta mt-1 truncate text-xs font-semibold text-orange-200">
                                 Fabrika kart çekimi
                               </p>
                             ) : null}
                             {row.method === "transfer" && referenceFields.bank_name ? (
-                              <p className="mt-1 truncate text-sm font-semibold text-sky-200">
+                              <p className="collection-recent-meta mt-1 truncate text-xs font-semibold text-sky-200">
                                 Banka: {String(referenceFields.bank_name)}
                               </p>
                             ) : null}
                             {row.method === "cc" &&
                             referenceFields.collection_channel !== "factory" &&
                             referenceFields.pos_bank ? (
-                              <p className="mt-1 truncate text-sm font-semibold text-rose-200">
+                              <p className="collection-recent-meta mt-1 truncate text-xs font-semibold text-rose-200">
                                 Banka: {bankOptions.find((option) => option.value === referenceFields.pos_bank)?.label ?? getPosBankLabel(String(referenceFields.pos_bank))}
                               </p>
                             ) : null}
-                            {displayNote ? (
-                              <p className="mt-1 max-w-[42rem] text-sm leading-snug text-[var(--muted-foreground)]">
-                                {displayNote}
-                              </p>
-                            ) : null}
                             {row.sync_status === "failed" && row.sync_error ? (
-                              <p className="mt-1 line-clamp-2 text-xs font-semibold text-red-300">{row.sync_error}</p>
+                              <p className="collection-recent-error mt-1 line-clamp-2 text-xs font-semibold text-red-300">{row.sync_error}</p>
                             ) : null}
                           </div>
                         </div>
@@ -2275,7 +2667,7 @@ export function CollectionsPage() {
               )}
 
               {selectedCustomer && payload ? (
-                <div className="grid gap-2 rounded-[16px] border border-[var(--brand-border)] bg-[linear-gradient(180deg,rgba(13,27,36,0.92)_0%,rgba(8,18,27,0.96)_100%)] p-2 shadow-[0_18px_34px_-30px_rgba(0,0,0,0.55)] md:grid-cols-3">
+                <div className="collection-recent-summary grid gap-2 rounded-[16px] border border-[var(--brand-border)] bg-[linear-gradient(180deg,rgba(13,27,36,0.92)_0%,rgba(8,18,27,0.96)_100%)] p-2 shadow-[0_18px_34px_-30px_rgba(0,0,0,0.55)] md:grid-cols-3">
                   {[
                     { label: "Cari Bakiye", value: formatAmount(customerDebtAmount, customerDebtCurrency), tone: "text-[var(--brand-primary-strong)]", sub: customerDebtStatus },
                     { label: "İşlem Toplamı", value: formatAmount(collectionGrandTotal, collectionSummaryCurrency), tone: "text-emerald-100", sub: `${displayRows.length} kayıt` },
@@ -2283,7 +2675,7 @@ export function CollectionsPage() {
                   ].map((card) => (
                     <div
                       key={card.label}
-                      className="flex min-h-[58px] min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[12px] border border-white/10 bg-white/[0.035] px-3 py-2"
+                      className="collection-recent-summary-card flex min-h-[58px] min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[12px] border border-white/10 bg-white/[0.035] px-3 py-2"
                     >
                       <span className="min-w-0 shrink truncate whitespace-nowrap text-[clamp(8px,1.15vw,10px)] font-black uppercase tracking-[0.04em] text-slate-500">
                         {card.label}
@@ -2319,7 +2711,7 @@ export function CollectionsPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={listLoading || !canUseReceiptActions}
+                  disabled={!canPrintReceipt}
                   onClick={printCollections}
                   className="h-11 rounded-[12px]"
                 >

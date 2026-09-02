@@ -37,7 +37,10 @@ import { LogoSyncInline } from "@/components/integrations/logo-sync-badge";
 
 type RequestType = "return" | "damaged" | "faulty";
 type StatusFilter = "all" | "submitted" | "reviewing" | "approved" | "rejected" | "completed";
+type RequestListFilter = "active" | StatusFilter;
 type ReturnWorkflowStatus = Exclude<StatusFilter, "all">;
+const ACTIVE_REQUEST_STATUSES: ReturnWorkflowStatus[] = ["submitted", "reviewing"];
+const REQUEST_PAGE_SIZE = 8;
 
 const REQUEST_TYPES: Array<{
   value: RequestType;
@@ -85,7 +88,8 @@ const REASON_OPTIONS: Record<RequestType, Array<{ value: string; label: string }
   ],
 };
 
-const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
+const STATUS_OPTIONS: Array<{ value: RequestListFilter; label: string }> = [
+  { value: "active", label: "Aktif Talepler" },
   { value: "all", label: "Tümü" },
   { value: "submitted", label: "Yeni" },
   { value: "reviewing", label: "İncelemede" },
@@ -95,9 +99,9 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
 ];
 
 const SHELL_CARD_CLASSNAME =
-  "overflow-hidden border-[var(--brand-border)] bg-[linear-gradient(180deg,var(--surface)_0%,var(--surface-soft)_100%)] shadow-[0_18px_34px_-28px_rgba(33,52,22,0.28)]";
+  "overflow-hidden rounded-[26px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(9,34,27,0.96)_0%,rgba(8,20,28,0.96)_52%,rgba(20,52,37,0.94)_100%)] shadow-[0_26px_70px_-44px_rgba(16,185,129,0.7)]";
 const FIELD_CLASSNAME =
-  "border-[var(--brand-border)] bg-[var(--surface)] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]";
+  "rounded-[16px] border-emerald-300/20 bg-white/[0.045] text-[var(--foreground)] shadow-inner shadow-black/10 placeholder:text-[var(--muted-foreground)] focus:border-emerald-300/45";
 
 const REVIEW_ACTIONS: Record<
   ReturnWorkflowStatus,
@@ -111,9 +115,8 @@ const REVIEW_ACTIONS: Record<
   reviewing: [
     { status: "approved", label: "Onayla", variant: "secondary" },
     { status: "rejected", label: "Reddet", variant: "destructive" },
-    { status: "completed", label: "Tamamla", variant: "default" },
   ],
-  approved: [{ status: "completed", label: "Tamamla", variant: "default" }],
+  approved: [],
   rejected: [],
   completed: [],
 };
@@ -239,15 +242,15 @@ function getLogoWorkflowMeta(requestType: RequestType | string | null | undefine
 } {
   if (isScrapRequest(requestType)) {
     return {
-      title: "Toptan satış iadesi + fire fişi",
-      description: "Onaylanınca Logo'da iade kaydı ve diğer malzeme fire fişi kuyruğa alınır.",
+      title: "Fire fişi",
+      description: "Depocu onaylayınca Logo diğer malzeme fire fişi kuyruğuna alınır.",
       scrapLabel: "Fire fişi",
     };
   }
 
   return {
     title: "Toptan satış iadesi",
-    description: "Onaylanınca yalnızca Logo toptan satış iade kuyruğuna alınır.",
+    description: "Depocu onaylayınca Logo toptan satış iade kuyruğuna alınır.",
     scrapLabel: "Fire yok",
   };
 }
@@ -258,7 +261,7 @@ function getDefaultResolutionNote(status: ReturnWorkflowStatus): string {
   }
 
   if (status === "approved") {
-    return "Talep onaylandı.";
+    return "Talep onaylandı ve Logo kuyruğuna alındı.";
   }
 
   if (status === "rejected") {
@@ -286,12 +289,44 @@ function RequestTypeBadge({ requestType }: { requestType: RequestType | string |
   );
 }
 
+function LogoApprovalWaitNotice({ label }: { label: string }) {
+  return (
+    <div className="rounded-2xl bg-[var(--surface-soft)] p-3">
+      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
+      <div className="mt-2 inline-flex w-fit items-center rounded-full border border-amber-300/45 bg-amber-300/12 px-3 py-1 text-xs font-black text-amber-100">
+        Onay bekliyor
+      </div>
+      <p className="mt-2 text-xs font-semibold text-[var(--muted-foreground)]">
+        Depocu onayından sonra Logo kuyruğuna alınır.
+      </p>
+    </div>
+  );
+}
+
 export function ReturnsPage() {
   const queryClient = useQueryClient();
   const { user, selectedCustomer } = useAuth();
   const roleSlugs = user?.roles?.map((role) => role.slug) ?? [];
   const isSalesperson = roleSlugs.includes("salesperson");
-  const canReviewReturns = roleSlugs.includes("admin") || roleSlugs.includes("salesperson");
+  const userBranchSignal = [
+    user?.branch_code,
+    user?.branch_name,
+    user?.region_code,
+    user?.region_name,
+    user?.username,
+    user?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleUpperCase("tr-TR");
+  const isBatumReturnOperator =
+    !isSalesperson &&
+    (user?.menu_permissions?.includes("returns") ?? false) &&
+    userBranchSignal.includes("BATUM");
+  const canReviewReturns =
+    roleSlugs.includes("admin") ||
+    roleSlugs.includes("warehouse") ||
+    isBatumReturnOperator;
 
   const [requestType, setRequestType] = useState<RequestType>("return");
   const [reasonCode, setReasonCode] = useState(REASON_OPTIONS.return[0].value);
@@ -300,32 +335,68 @@ export function ReturnsPage() {
   const [orderSearch, setOrderSearch] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [selectedOrderItemId, setSelectedOrderItemId] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<RequestListFilter>("active");
+  const [requestPagination, setRequestPagination] = useState<{
+    scopeKey: string;
+    cursor?: string;
+    stack: string[];
+  }>({ scopeKey: "", stack: [] });
 
   const debouncedOrderSearch = useDebouncedValue(orderSearch, 400);
+  const normalizedOrderSearch = debouncedOrderSearch.trim();
+  const canRunOrderSearch = normalizedOrderSearch.length === 0 || normalizedOrderSearch.length >= 2;
+  const requestScopeKey = `${selectedCustomer?.id ?? "all"}:${statusFilter}`;
+  const effectiveRequestCursor = requestPagination.scopeKey === requestScopeKey ? requestPagination.cursor : undefined;
+  const effectiveRequestCursorStack = requestPagination.scopeKey === requestScopeKey ? requestPagination.stack : [];
+  const selectedRequestStatuses = useMemo<ReturnWorkflowStatus[] | undefined>(() => {
+    if (statusFilter === "active") {
+      return ACTIVE_REQUEST_STATUSES;
+    }
+
+    if (statusFilter === "all") {
+      return undefined;
+    }
+
+    return [statusFilter];
+  }, [statusFilter]);
 
   const ordersQuery = useQuery({
-    queryKey: ["returns", "orders", debouncedOrderSearch, selectedCustomer?.id ?? null],
+    queryKey: ["returns", "orders", normalizedOrderSearch, selectedCustomer?.id ?? null],
     queryFn: () =>
       listOrders({
-        q: debouncedOrderSearch || undefined,
+        q: normalizedOrderSearch || undefined,
         customer_id: selectedCustomer?.id ?? undefined,
         limit: 40,
       }),
-    enabled: Boolean(user) && (!isSalesperson || Boolean(selectedCustomer)),
+    enabled: Boolean(user) && (!isSalesperson || Boolean(selectedCustomer)) && canRunOrderSearch,
+    retry: 1,
     staleTime: 60_000,
   });
 
   const returnRequestsQuery = useQuery({
-    queryKey: ["returns", "requests", statusFilter, selectedCustomer?.id ?? null],
+    queryKey: ["returns", "requests", statusFilter, selectedCustomer?.id ?? null, effectiveRequestCursor ?? null],
     queryFn: () =>
       listReturnRequests({
         customer_id: selectedCustomer?.id ?? undefined,
-        statuses: statusFilter === "all" ? undefined : [statusFilter],
-        limit: 12,
+        statuses: selectedRequestStatuses,
+        limit: REQUEST_PAGE_SIZE,
+        cursor: effectiveRequestCursor,
       }),
     enabled: Boolean(user) && (!isSalesperson || Boolean(selectedCustomer)),
     staleTime: 30_000,
+    refetchInterval: (query) => {
+      const rows = query.state.data?.data ?? [];
+      const hasWaitingLogoSync = rows.some((row) => {
+        const isScrap = isScrapRequest(row.request_type);
+        const status = isScrap ? row.scrap_logo_sync_status : row.logo_sync_status;
+
+        return row.status === "approved" || row.status === "completed"
+          ? !status || status === "queued" || status === "failed"
+          : false;
+      });
+
+      return hasWaitingLogoSync ? 5000 : false;
+    },
   });
 
   const orderOptions = useMemo(() => ordersQuery.data?.data ?? [], [ordersQuery.data?.data]);
@@ -394,6 +465,11 @@ export function ReturnsPage() {
     onSuccess: (response) => {
       toast.success(`Talep durumu güncellendi: ${getStatusMeta(response.data.status).label}`);
       void queryClient.invalidateQueries({ queryKey: ["returns", "requests"] });
+      for (const delayMs of [3000, 8000, 15000]) {
+        window.setTimeout(() => {
+          void queryClient.invalidateQueries({ queryKey: ["returns", "requests"] });
+        }, delayMs);
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Talep durumu güncellenemedi");
@@ -438,7 +514,7 @@ export function ReturnsPage() {
     setOrderSearch("");
     setSelectedOrderId("");
     setSelectedOrderItemId("");
-    setStatusFilter("all");
+    setStatusFilter("active");
   };
 
   const handleSubmit = () => {
@@ -470,9 +546,35 @@ export function ReturnsPage() {
 
   const summary = returnRequestsQuery.data?.summary;
   const totalCount = summary?.total_count ?? requestRows.length;
+  const nextRequestCursor = returnRequestsQuery.data?.next_cursor ?? null;
+  const hasNextRequestPage = Boolean(nextRequestCursor);
+  const hasPreviousRequestPage = effectiveRequestCursorStack.length > 0;
+  const requestPageNumber = effectiveRequestCursorStack.length + 1;
+
+  const handleNextRequestPage = () => {
+    if (!nextRequestCursor) {
+      return;
+    }
+
+    setRequestPagination({
+      scopeKey: requestScopeKey,
+      cursor: nextRequestCursor,
+      stack: [...effectiveRequestCursorStack, effectiveRequestCursor ?? ""],
+    });
+  };
+
+  const handlePreviousRequestPage = () => {
+    const previousCursor = effectiveRequestCursorStack[effectiveRequestCursorStack.length - 1];
+
+    setRequestPagination({
+      scopeKey: requestScopeKey,
+      cursor: previousCursor ? previousCursor : undefined,
+      stack: effectiveRequestCursorStack.slice(0, -1),
+    });
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 text-slate-100">
       {!canLoadPage ? (
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="p-4 text-sm font-semibold text-amber-800">Önce müşteri seçin.</CardContent>
@@ -519,7 +621,9 @@ export function ReturnsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-extrabold text-[var(--brand-primary-strong)]">Toptan satış iadesi</p>
-                  <p className="text-xs font-semibold text-[var(--muted-foreground)]">Her onaylı talep Logo iade kuyruğuna gider.</p>
+                  <p className="text-xs font-semibold text-[var(--muted-foreground)]">
+                    Normal iadede depocu onayı sonrası Logo iade kuyruğuna gider.
+                  </p>
                 </div>
               </div>
               <ArrowRight className="hidden h-5 w-5 text-[var(--muted-foreground)] sm:block" />
@@ -547,8 +651,11 @@ export function ReturnsPage() {
                   className={FIELD_CLASSNAME}
                   value={orderSearch}
                   onChange={(event) => setOrderSearch(event.target.value)}
-                  placeholder="Sipariş no veya müşteri"
+                  placeholder="Sipariş no, müşteri, ürün kodu, OEM veya rakip kod"
                 />
+                {!canRunOrderSearch ? (
+                  <p className="text-xs font-semibold text-[var(--muted-foreground)]">Arama için en az 2 karakter yazın.</p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Sipariş</label>
@@ -591,7 +698,20 @@ export function ReturnsPage() {
               </Select>
             </div>
 
-            {ordersQuery.isLoading || orderDetailQuery.isLoading ? (
+            {ordersQuery.isError ? (
+              <div className="rounded-3xl border border-red-300/35 bg-red-500/10 p-5 text-sm font-bold text-red-100">
+                Sipariş araması yapılamadı. {ordersQuery.error instanceof Error ? ordersQuery.error.message : "Lütfen tekrar deneyin."}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 border-red-200/40 bg-red-500/10 text-red-50 hover:bg-red-500/20"
+                  onClick={() => void ordersQuery.refetch()}
+                >
+                  Tekrar Dene
+                </Button>
+              </div>
+            ) : ordersQuery.isLoading || orderDetailQuery.isLoading ? (
               <div className="grid gap-3 md:grid-cols-3">
                 {Array.from({ length: 3 }).map((_, index) => (
                   <Skeleton key={`return-form-skeleton-${index}`} className="h-12 w-full" />
@@ -614,10 +734,11 @@ export function ReturnsPage() {
                     {selectedOrderItem.returnable_quantity ?? selectedOrderItem.quantity}
                   </p>
                 </div>
-                <div className="sm:col-span-4 grid gap-3 rounded-2xl bg-[var(--surface-soft)] p-3 text-sm font-semibold text-[var(--muted-foreground)] sm:grid-cols-4">
+                <div className="sm:col-span-4 grid gap-3 rounded-2xl bg-[var(--surface-soft)] p-3 text-sm font-semibold text-[var(--muted-foreground)] sm:grid-cols-5">
                   <span>Sevk: <strong className="text-[var(--brand-primary-strong)]">{selectedOrderItem.shipped_qty ?? "-"}</strong></span>
                   <span>Önceki iade/ariza: <strong className="text-[var(--brand-primary-strong)]">{selectedOrderItem.returned_quantity ?? 0}</strong></span>
                   <span>Birim: <strong className="text-[var(--brand-primary-strong)]">{formatCurrency(selectedOrderItem.unit_net_price, selectedOrderItem.currency)}</strong></span>
+                  <span>Toplam: <strong className="text-[var(--brand-primary-strong)]">{formatCurrency(selectedOrderItem.line_total, selectedOrderItem.currency)}</strong></span>
                   <span>Logo stok: <strong className="text-[var(--brand-primary-strong)]">{selectedOrderItem.logo_stock?.erzurum_depo_available_total ?? selectedOrderItem.logo_stock?.available_total ?? "-"}</strong></span>
                 </div>
               </div>
@@ -672,7 +793,7 @@ export function ReturnsPage() {
               </Button>
               <Button
                 type="button"
-                className="bg-[linear-gradient(135deg,var(--brand-primary)_0%,#d8df72_100%)] px-6 text-[var(--primary-foreground)] hover:opacity-95"
+                className="rounded-[16px] bg-[linear-gradient(135deg,#ff5b5b_0%,#dc2626_48%,#991b1b_100%)] px-7 font-black text-white shadow-[0_18px_40px_-24px_rgba(239,68,68,0.95)] hover:brightness-110"
                 onClick={handleSubmit}
                 disabled={
                   requestMutation.isPending ||
@@ -697,7 +818,7 @@ export function ReturnsPage() {
                   {toCount(totalCount)}
                 </Badge>
               </div>
-              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as RequestListFilter)}>
                 <SelectTrigger className={FIELD_CLASSNAME + " w-full sm:w-[170px]"}>
                   <SelectValue placeholder="Durum" />
                 </SelectTrigger>
@@ -759,16 +880,9 @@ export function ReturnsPage() {
                     </div>
                   </div>
 
-                  <div className={`mt-3 grid gap-3 ${isScrapRequest(row.request_type) ? "md:grid-cols-2" : ""}`}>
-                    <LogoSyncInline
-                      className="rounded-2xl bg-[var(--surface-soft)] p-3"
-                      label="Logo İade"
-                      status={row.logo_sync_status}
-                      error={row.logo_sync_error}
-                      externalRef={row.logo_external_ref}
-                      lastSyncedAt={row.logo_last_synced_at}
-                    />
+                  <div className="mt-3 grid gap-3">
                     {isScrapRequest(row.request_type) ? (
+                      row.scrap_logo_sync_status ? (
                       <LogoSyncInline
                         className="rounded-2xl bg-orange-50 p-3"
                         label="Logo Fire Fişi"
@@ -777,7 +891,21 @@ export function ReturnsPage() {
                         externalRef={row.scrap_logo_external_ref}
                         lastSyncedAt={row.scrap_logo_last_synced_at}
                       />
-                    ) : null}
+                      ) : (
+                        <LogoApprovalWaitNotice label="Logo Fire Fişi" />
+                      )
+                    ) : row.logo_sync_status ? (
+                      <LogoSyncInline
+                        className="rounded-2xl bg-[var(--surface-soft)] p-3"
+                        label="Logo İade"
+                        status={row.logo_sync_status}
+                        error={row.logo_sync_error}
+                        externalRef={row.logo_external_ref}
+                        lastSyncedAt={row.logo_last_synced_at}
+                      />
+                    ) : (
+                      <LogoApprovalWaitNotice label="Logo İade" />
+                    )}
                   </div>
 
                   {row.resolution_note?.trim() ? (
@@ -824,6 +952,35 @@ export function ReturnsPage() {
               </div>
             )}
             </div>
+
+            {requestRows.length > 0 || hasPreviousRequestPage || hasNextRequestPage ? (
+              <div className="flex flex-col gap-2 rounded-2xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-2 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-sm font-bold text-[var(--muted-foreground)]">
+                  Sayfa {toCount(requestPageNumber)} · Bu sayfada {toCount(requestRows.length)} talep
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-[var(--brand-border)] bg-[var(--surface)]"
+                    disabled={!hasPreviousRequestPage || returnRequestsQuery.isFetching}
+                    onClick={handlePreviousRequestPage}
+                  >
+                    Önceki
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-[var(--brand-primary)] text-[var(--primary-foreground)] hover:opacity-95"
+                    disabled={!hasNextRequestPage || returnRequestsQuery.isFetching}
+                    onClick={handleNextRequestPage}
+                  >
+                    Sonraki
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>
