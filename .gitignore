@@ -89,4 +89,14 @@ tools/*.zip
 tools/**/bin/
 tools/**/obj/
 tools/logo-sync/.sync-state/
+tools/logo-sync/apps/
+tools/logo-sync/.sync-source-manifest.json
+tools/print-bridge/**/*.apk
+tools/print-bridge/android/.gradle/
+tools/print-bridge/android/local.properties
 *.publish/
+
+# Codex local diagnostics and one-off deploy scratch files
+.codex-deploy/
+tmp-light-qa/
+sidebar/
