@@ -1,0 +1,30 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.powersa.printbridge"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.powersa.printbridge"
+        minSdk 21
+        targetSdk 35
+        versionCode 21
+        versionName "1.0.20"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+}
+
+dependencies {
+    testImplementation "junit:junit:4.13.2"
+}

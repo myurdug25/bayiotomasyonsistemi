@@ -1,4 +1,4 @@
-const CACHE_NAME = "powersa-b2b-pwa-v1";
+const CACHE_NAME = "bos-pwa-cache-v20260825-mobile";
 const CORE_ASSETS = [
   "/manifest.json",
   "/manifest.webmanifest",
@@ -29,12 +29,21 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
 
-  if (request.method !== "GET") {
+  if (request.method !== "GET" || request.cache === "only-if-cached") {
     return;
   }
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || !CORE_ASSETS.includes(url.pathname)) {
+
+  if (
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith("/api") ||
+    url.pathname.startsWith("/backend") ||
+    url.pathname.startsWith("/sanctum") ||
+    url.pathname.startsWith("/_next/data") ||
+    url.pathname.includes("hot-update") ||
+    !CORE_ASSETS.includes(url.pathname)
+  ) {
     return;
   }
 

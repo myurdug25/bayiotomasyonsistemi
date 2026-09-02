@@ -98,6 +98,9 @@ tools/logo-sync/truncate*.mjs
 tools/print-bridge/**/*.apk
 tools/print-bridge/android/.gradle/
 tools/print-bridge/android/local.properties
+tools/print-bridge/android/**/build/
+tools/windows-installer/**/bin/
+tools/windows-installer/**/obj/
 *.publish/
 
 # Codex local diagnostics and one-off deploy scratch files

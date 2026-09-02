@@ -7,6 +7,7 @@ const next = require("next");
 const port = Number.parseInt(process.env.PORT || "3000", 10);
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const LOGIN_VERSION = "20260605-login-fast";
+const apiBaseUrl = new URL(process.env.NEXT_PUBLIC_API_BASE_URL || "https://bayiotomasyonsistemi.com/backend");
 const nextStaticDir = path.join(__dirname, ".next", "static");
 const legacyLoginHideCss = [
   "html,body{visibility:hidden!important;opacity:0!important;background:#0d1814!important}",
@@ -34,7 +35,7 @@ const securityHeaders = [
   ["X-Content-Type-Options", "nosniff"],
   ["X-Frame-Options", "SAMEORIGIN"],
   ["Referrer-Policy", "strict-origin-when-cross-origin"],
-  ["Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()"],
+  ["Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), bluetooth=(self)"],
   ["Content-Security-Policy", "upgrade-insecure-requests; frame-ancestors 'self'"],
 ];
 const compatibilityAssets = new Map([
@@ -75,12 +76,12 @@ function proxyBackendRequest(req, res) {
   const targetPath = `/backend${req.url || "/"}`;
   const headers = { ...req.headers };
 
-  headers.host = "powersab2b.com";
+  headers.host = apiBaseUrl.host;
 
   const proxy = https.request(
     {
-      hostname: "powersab2b.com",
-      port: 443,
+      hostname: apiBaseUrl.hostname,
+      port: Number(apiBaseUrl.port || 443),
       path: targetPath,
       method: req.method,
       headers,
