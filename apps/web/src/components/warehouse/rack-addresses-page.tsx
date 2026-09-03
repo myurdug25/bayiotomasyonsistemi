@@ -233,7 +233,7 @@ export function RackAddressesPage() {
             type="button"
             disabled={!editable || changedProducts.length === 0 || isSaving}
             onClick={() => bulkUpdateMutation.mutate()}
-            className="rack-save-all-button h-[52px] rounded-2xl border border-[#aa0b21] bg-[linear-gradient(135deg,#ff5156,#c60e28_58%,#990f20)] px-5 font-black text-white shadow-[0_18px_38px_-24px_rgba(198,14,40,0.78)] hover:brightness-110 disabled:!border-[#d29ca5] disabled:!bg-[#e7b9c0] disabled:!text-[#762f3a] disabled:opacity-100"
+            className="rack-save-all-button h-[52px] rounded-2xl border border-[#aa0b21] bg-red-600 from-red-500 bg-[linear-gradient(135deg,#ff5156,#c60e28_58%,#990f20)] px-5 font-black text-white shadow-[0_18px_38px_-24px_rgba(198,14,40,0.78)] hover:brightness-110 disabled:!border-[#d29ca5] disabled:!bg-[#e7b9c0] disabled:!text-[#762f3a] disabled:opacity-100"
           >
             {bulkUpdateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Değişenleri Kaydet
