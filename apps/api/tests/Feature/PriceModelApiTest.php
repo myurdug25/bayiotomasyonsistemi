@@ -141,6 +141,111 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('items.0.unit_price', '210.90');
     }
 
+    public function test_products_search_returns_logo_price_cards_for_hover(): void
+    {
+        $dealer = $this->createDealer('DLR-PRC-CARDS');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [, $product] = $this->createCustomerAndProduct($dealer, $user);
+
+        $aPriceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $f1PriceListId = (int) DB::table('price_lists')->insertGetId([
+            'code' => 'F1',
+            'name' => 'Logo F1 Usta',
+            'discount_rate' => 0,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $retailPriceListId = (int) DB::table('price_lists')->insertGetId([
+            'code' => 'PRK',
+            'name' => 'Logo Perakende',
+            'discount_rate' => 0,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $dealer->update(['price_list_id' => $aPriceListId]);
+        DB::table('base_prices')->insert([
+            [
+                'price_list_id' => $aPriceListId,
+                'product_id' => $product->id,
+                'list_price' => 101.88,
+                'currency' => 'TRY',
+                'updated_at' => now(),
+            ],
+            [
+                'price_list_id' => $f1PriceListId,
+                'product_id' => $product->id,
+                'list_price' => 166.06,
+                'currency' => 'TRY',
+                'updated_at' => now(),
+            ],
+            [
+                'price_list_id' => $retailPriceListId,
+                'product_id' => $product->id,
+                'list_price' => 193.57,
+                'currency' => 'TRY',
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku)
+            ->assertOk()
+            ->assertJsonPath('data.0.price_cards.0.code', 'F1')
+            ->assertJsonPath('data.0.price_cards.0.label', 'Usta Satış')
+            ->assertJsonPath('data.0.price_cards.0.price', '166.06')
+            ->assertJsonPath('data.0.price_cards.1.code', 'PRK')
+            ->assertJsonPath('data.0.price_cards.1.label', 'Perakende Satış')
+            ->assertJsonPath('data.0.price_cards.1.price', '193.57');
+    }
+
+    public function test_customer_login_can_only_checkout_with_one_f_even_when_extra_sale_types_are_assigned(): void
+    {
+        $dealer = $this->createDealer('DLR-PRC-CUST-1F');
+        [$customer, $product] = $this->createCustomerAndProduct($dealer);
+        $customerUser = $this->createUserWithRole('customer', $dealer);
+        $customerUser->forceFill([
+            'selected_customer_id' => $customer->id,
+            'customer_scope' => 'assigned',
+            'menu_permissions' => ['cart', 'orders'],
+            'feature_permissions' => [
+                'cart.view',
+                'cart.checkout',
+                'cart.sale_type.detailed',
+                'cart.sale_type.excluded',
+                'cart.sale_type.included',
+            ],
+        ])->save();
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 100.00,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($customerUser);
+        $cartResponse = $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+        ])->assertOk();
+
+        $this->postJson('/api/orders', [
+            'cart_id' => $cartResponse->json('cart.id'),
+            'customer_id' => $customer->id,
+            'checkout_summary_mode' => 'excluded',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['checkout_summary_mode']);
+    }
+
     public function test_customer_price_group_falls_back_to_dealer_price_until_grouped_product_price_is_synced(): void
     {
         $dealer = $this->createDealer('DLR-PRC-F3-FALLBACK');

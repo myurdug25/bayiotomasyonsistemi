@@ -447,6 +447,7 @@ class DayEndReportService
             if ($cardAmount > 0 && $cardSaleCustomer['code'] === null && $cardSaleCustomer['name'] === null) {
                 $cardSaleCustomer = $this->defaultPointSaleCustomerPayload($session, $user, 'card');
             }
+            $payloadCurrency = $this->reportCurrency($cashboxLabel, $cashSaleCustomer, $cardSaleCustomer);
 
             $payload = [
                 'export_key' => $exportKey,
@@ -454,7 +455,7 @@ class DayEndReportService
                 'date' => $reportDate,
                 'cash_amount' => number_format($cashAmount, 2, '.', ''),
                 'card_amount' => number_format($cardAmount, 2, '.', ''),
-                'currency' => str_contains($cashboxLabel, 'BATUM') ? 'GEL' : 'TRY',
+                'currency' => $payloadCurrency,
                 'cashbox_code' => $cashboxPayload['code'],
                 'cashbox_name' => $cashboxPayload['name'],
                 'opened_by_user_id' => $session->opened_by,
@@ -755,6 +756,29 @@ class DayEndReportService
         $cashboxCode = $sale->posSession?->cashbox?->code;
 
         return is_string($cashboxCode) && trim($cashboxCode) !== '' ? trim($cashboxCode) : null;
+    }
+
+    /**
+     * @param  array{code:?string,name:?string}  $cashSaleCustomer
+     * @param  array{code:?string,name:?string}  $cardSaleCustomer
+     */
+    private function reportCurrency(string $cashboxLabel, array $cashSaleCustomer, array $cardSaleCustomer): string
+    {
+        $signals = [
+            $cashboxLabel,
+            $cashSaleCustomer['code'] ?? null,
+            $cashSaleCustomer['name'] ?? null,
+            $cardSaleCustomer['code'] ?? null,
+            $cardSaleCustomer['name'] ?? null,
+        ];
+
+        foreach ($signals as $signal) {
+            if (str_contains($this->normalizeReportText((string) $signal), 'BATUM')) {
+                return 'GEL';
+            }
+        }
+
+        return 'TRY';
     }
 
     /**

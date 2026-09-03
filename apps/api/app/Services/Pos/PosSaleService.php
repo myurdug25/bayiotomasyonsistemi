@@ -54,7 +54,6 @@ class PosSaleService
             }
 
             $this->assertCanOperateSession($user, $session);
-            $pointCurrency = $this->pointCurrency($session, $user);
 
             $customer = Customer::query()->lockForUpdate()->find((int) $payload['customer_id']);
             if (! $customer instanceof Customer) {
@@ -64,6 +63,7 @@ class PosSaleService
             }
 
             $this->assertCustomerBelongsToSessionScope($user, $customer, $session);
+            $pointCurrency = $this->pointCurrency($session, $user, $customer);
 
             $itemsPayload = collect((array) $payload['items']);
             $paymentsPayload = collect((array) $payload['payments']);
@@ -921,14 +921,29 @@ class PosSaleService
 
     private function pointCurrencyForSale(PosSale $sale, User $user): string
     {
-        $sale->loadMissing('posSession.cashbox', 'posSession.openedBy');
+        $sale->loadMissing('customer', 'posSession.cashbox', 'posSession.openedBy');
 
-        return $this->pointCurrency($sale->posSession, $user);
+        return $this->pointCurrency($sale->posSession, $user, $sale->customer);
     }
 
-    private function pointCurrency(?PosSession $session, User $user): string
+    private function pointCurrency(?PosSession $session, User $user, ?Customer $customer = null): string
     {
         $session?->loadMissing('cashbox', 'openedBy');
+
+        $customerSignals = [
+            $customer?->code,
+            $customer?->name,
+            $customer?->branch_code,
+            $customer?->branch_name,
+            $customer?->region_code,
+            $customer?->region_name,
+        ];
+
+        foreach ($customerSignals as $value) {
+            if ($this->isBatumPointSignal($value)) {
+                return self::BATUM_POINT_CURRENCY;
+            }
+        }
 
         $userBranchSignals = [
             $user->username,

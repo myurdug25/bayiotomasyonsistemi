@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -118,11 +119,13 @@ function cartErrorMessage(err: unknown, fallback: string): string {
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const { status, user, selectedCustomer } = useSession();
+  const selectedCustomerId = selectedCustomer?.id ?? null;
   const roleSlugs = Array.isArray(user?.roles) ? user.roles.map((role) => role.slug) : [];
   const warehouseTransferRequired = roleSlugs.includes("salesperson");
 
   const [open, setOpen] = useState(false);
   const [cartData, setCartData] = useState<CartResponse | null>(null);
+  const hasLoadedCartRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [mutating, setMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,11 +154,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setLoading(true);
+    setLoading((current) => current || !hasLoadedCartRef.current);
     setError(null);
 
     try {
-      const data = await getCart(selectedCustomer ? { customer_id: selectedCustomer.id } : undefined);
+      const data = await getCart(selectedCustomerId ? { customer_id: selectedCustomerId } : undefined);
+      hasLoadedCartRef.current = true;
       setCartData(data);
 
       setShippingMethod(data.cart?.shipping_method ?? "depo_teslim");
@@ -166,7 +170,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [selectedCustomer, status, warehouseTransferRequired]);
+  }, [selectedCustomerId, status, warehouseTransferRequired]);
 
   const setWarehouseTransferValue = useCallback(
     (value: boolean) => {

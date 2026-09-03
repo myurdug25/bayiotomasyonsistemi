@@ -859,7 +859,7 @@ class LogoProductSyncService
     {
         $entries = $record['price_entries'] ?? null;
         $entries = is_array($entries) ? $entries : [];
-        $logoGroupCodes = collect(range(1, 12))->map(fn (int $index): string => "F{$index}")->all();
+        $logoGroupCodes = collect(range(1, 12))->map(fn (int $index): string => "F{$index}")->push('PRK')->all();
         $incomingGroupCodes = [];
         $synced = 0;
 
@@ -869,7 +869,7 @@ class LogoProductSyncService
             }
 
             $code = strtoupper($this->nullableString($entry['price_list_code'] ?? null) ?? '');
-            if (preg_match('/^F(?:[1-9]|1[0-2])$/', $code) !== 1) {
+            if (preg_match('/^F(?:[1-9]|1[0-2])$/', $code) !== 1 && $code !== 'PRK') {
                 continue;
             }
 
@@ -878,7 +878,7 @@ class LogoProductSyncService
             $priceList = PriceList::query()->firstOrCreate(
                 ['code' => $code],
                 [
-                    'name' => "Logo {$code}",
+                    'name' => $code === 'PRK' ? 'Logo Perakende' : "Logo {$code}",
                     'discount_rate' => 0,
                     'is_active' => true,
                 ],
@@ -990,8 +990,7 @@ class LogoProductSyncService
         ?string $externalReference,
         ?string $syncRunId = null,
         ?string $sourceTable = null,
-    ): array
-    {
+    ): array {
         $meta = is_array($product?->meta) ? $product->meta : [];
 
         Arr::set($meta, 'integrations.logo.synced_at', now()->toIso8601String());

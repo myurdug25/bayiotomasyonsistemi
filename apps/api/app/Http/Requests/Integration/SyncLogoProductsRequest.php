@@ -58,8 +58,8 @@ class SyncLogoProductsRequest extends FormRequest
             'records.*.price_entries.*.price_list_code' => [
                 'required',
                 'string',
-                'max:3',
-                'regex:/^F(?:[1-9]|1[0-2])$/',
+                'max:8',
+                'regex:/^(?:F(?:[1-9]|1[0-2])|PRK|PERAK)$/',
             ],
             'records.*.price_entries.*.list_price' => ['required', 'numeric', 'min:0'],
             'records.*.price_entries.*.currency' => ['nullable', 'string', 'size:3'],

@@ -2654,6 +2654,7 @@ function resolveLogoPriceGroupCode(row) {
     readFirst(row, ["CLSPECODE3", "clspecode3"]),
     readFirst(row, ["CLSPECODE4", "clspecode4"]),
     readFirst(row, ["CLSPECODE5", "clspecode5"]),
+    readFirst(row, ["GRPCODE", "grpcode", "GROUPCODE", "groupcode"]),
     readFirst(row, ["CLIENTCODE", "clientcode"]),
     readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]),
   ]) {
@@ -2661,6 +2662,10 @@ function resolveLogoPriceGroupCode(row) {
     const exactMatch = normalized.match(/^F[1-9][0-9]*$/);
     if (exactMatch) {
       return exactMatch[0];
+    }
+
+    if (["PRK", "PERAK", "PERAKENDE"].includes(normalized) || normalized.includes("PERAKENDE")) {
+      return "PRK";
     }
   }
 

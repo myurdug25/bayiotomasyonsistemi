@@ -434,6 +434,10 @@ export function CartPage() {
   const selectedCustomerRequiresDetailedInvoice = Boolean(selectedCustomer?.e_invoice_user);
   const saleTypeFeaturePermissionSet = featurePermissionSet;
   const allowedVatSummaryModes = useMemo(() => {
+    if (isCustomerUser) {
+      return ["detailed"] satisfies VatSummaryMode[];
+    }
+
     if (selectedCustomerRequiresDetailedInvoice) {
       return ["detailed"] satisfies VatSummaryMode[];
     }
@@ -444,12 +448,6 @@ export function CartPage() {
 
     if (customerUserModes.length > 0) {
       return customerUserModes;
-    }
-
-    if (isCustomerUser) {
-      return CHECKOUT_SUMMARY_MODE_ORDER.filter((mode) =>
-        saleTypeFeaturePermissionSet.has(CHECKOUT_SUMMARY_MODE_FEATURES[mode])
-      );
     }
 
     if (roleSlugSet.has("salesperson")) {
@@ -715,16 +713,17 @@ export function CartPage() {
   const shouldHidePaymentArea = true;
   const shouldHideSaleTypeSelector = isBatumBranch || isBatumSelectedCustomer;
   const shouldShowSaleTypeSelector = !shouldHideSaleTypeSelector && !isTransferMode && allowedVatSummaryModes.length > 0;
-  const displayCurrency = isBatumBranch ? "GEL" : currency;
-  const showShippingAndTransferControls = !isBatumBranch || isWarehouseOrderCustomer(selectedCustomer);
+  const isBatumCurrencyScope = isBatumBranch || isBatumSelectedCustomer;
+  const displayCurrency = isBatumCurrencyScope ? "GEL" : currency;
+  const showShippingAndTransferControls = !isBatumCurrencyScope || isWarehouseOrderCustomer(selectedCustomer);
   const canUseAccountPayment = true;
   const allowedCombinedPaymentOptions = COMBINED_PAYMENT_OPTIONS;
   const visiblePaymentMethods = PAYMENT_METHODS.filter((method) => {
-    if (isBatumBranch) return method.key === "current_account" && canUseAccountPayment;
+    if (isBatumCurrencyScope) return method.key === "current_account" && canUseAccountPayment;
     if (method.key === "current_account") return canUseAccountPayment;
     return allowedCombinedPaymentOptions.length > 0;
   });
-  const checkoutDisplayTotal = isTransferMode ? subtotal : isBatumBranch
+  const checkoutDisplayTotal = isTransferMode ? subtotal : isBatumCurrencyScope
     ? grandTotal
     : hasMixedVatSummaryModes
     ? mixedVatTotals.payable
@@ -741,10 +740,10 @@ export function CartPage() {
     Boolean(isCombinedPayment && "requiresReference" in selectedCombinedPayment && selectedCombinedPayment.requiresReference);
 
   useEffect(() => {
-    if (isBatumBranch && selectedPaymentMethod !== "current_account") {
+    if (isBatumCurrencyScope && selectedPaymentMethod !== "current_account") {
       setSelectedPaymentMethod("current_account");
     }
-  }, [isBatumBranch, selectedPaymentMethod]);
+  }, [isBatumCurrencyScope, selectedPaymentMethod]);
   useEffect(() => {
     if (shouldHidePaymentArea && selectedPaymentMethod !== "current_account") {
       setSelectedPaymentMethod("current_account");
@@ -873,7 +872,7 @@ export function CartPage() {
     const cleanNote = orderNote.trim();
     const paymentNoteParts: string[] = [];
 
-    if (!isBatumBranch && isBankTransferPayment) {
+    if (!isBatumCurrencyScope && isBankTransferPayment) {
       paymentNoteParts.push(`Referans kodu: ${generatedTransferReference}`);
     }
 
@@ -881,7 +880,7 @@ export function CartPage() {
       paymentNoteParts.push(`Ulaşım / nakliye bedeli: ${formatTryAmount(shippingFeeAmount, displayCurrency)}`);
     }
 
-    if (!isBatumBranch && !isTransferMode && shippingMethod === "kargo" && selectedShippingWarehouse) {
+    if (!isBatumCurrencyScope && !isTransferMode && shippingMethod === "kargo" && selectedShippingWarehouse) {
       const warehouseLabel = [
         selectedShippingWarehouse.warehouse_name,
         selectedShippingWarehouse.warehouse_code ? `Kod: ${selectedShippingWarehouse.warehouse_code}` : null,
@@ -889,7 +888,7 @@ export function CartPage() {
       paymentNoteParts.push(`Kargo hedef depo: ${warehouseLabel}`);
     }
 
-    if (!isBatumBranch && isTransferMode && selectedWarehouse) {
+    if (!isBatumCurrencyScope && isTransferMode && selectedWarehouse) {
       const warehouseLabel = [
         selectedWarehouse.warehouse_name,
         selectedWarehouse.warehouse_code ? `Kod: ${selectedWarehouse.warehouse_code}` : null,
@@ -904,7 +903,7 @@ export function CartPage() {
     }
 
     return cleanNote ? `${cleanNote}\n${paymentNote}` : paymentNote;
-  }, [displayCurrency, generatedTransferReference, isBankTransferPayment, isBatumBranch, isTransferMode, orderNote, selectedShippingWarehouse, selectedWarehouse, shippingFeeAmount, shippingMethod]);
+  }, [displayCurrency, generatedTransferReference, isBankTransferPayment, isBatumCurrencyScope, isTransferMode, orderNote, selectedShippingWarehouse, selectedWarehouse, shippingFeeAmount, shippingMethod]);
 
   const shouldShowWarehouseTransferPanel =
     showShippingAndTransferControls &&
@@ -1029,7 +1028,7 @@ export function CartPage() {
           <CardContent className="space-y-3 p-3 2xl:p-4">
             <StepTitle step={2} title="Ödeme Şekli" />
 
-            <div className={cn("grid gap-2.5 2xl:gap-3", isBatumBranch ? "grid-cols-1" : "md:grid-cols-2")}>
+            <div className={cn("grid gap-2.5 2xl:gap-3", isBatumCurrencyScope ? "grid-cols-1" : "md:grid-cols-2")}>
               {visiblePaymentMethods.map((method) => {
                 const Icon = method.icon;
                 const active = selectedPaymentMethod === method.key;
@@ -1331,7 +1330,7 @@ export function CartPage() {
                     {items.map((item) => {
                       const effectiveUnitPrice =
                         item.quantity > 0 ? toAmount(item.line_total) / item.quantity : toAmount(item.unit_net_price);
-                      const batumVatMultiplier = isBatumBranch ? 1 + toAmount(item.vat_rate) / 100 : 1;
+                      const batumVatMultiplier = isBatumCurrencyScope ? 1 + toAmount(item.vat_rate) / 100 : 1;
                       const displayedUnitPrice = effectiveUnitPrice * batumVatMultiplier;
                       const displayedLineTotal = toAmount(item.line_total) * batumVatMultiplier;
                       const itemVatMode = effectiveVatSummaryModeForProduct(item.product_id);
@@ -1426,7 +1425,7 @@ export function CartPage() {
         )}
       >
         <div className="grid items-start gap-4">
-          <Card className={cn("dashboard-panel-card h-full overflow-hidden", isBatumBranch && "h-full")}>
+          <Card className={cn("dashboard-panel-card h-full overflow-hidden", isBatumCurrencyScope && "h-full")}>
             <CardContent className="space-y-3 p-4 2xl:p-5">
               <StepTitle step={noteStepNumber} title="Sipariş Notu" icon={PencilLine} />
 

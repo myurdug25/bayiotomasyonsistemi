@@ -501,6 +501,12 @@ export type ProductSearchItem = {
   currency?: string | null;
   special_discount_rate?: string | null;
   special_discounted_price?: string | null;
+  price_cards?: Array<{
+    code: string;
+    label: string;
+    price: string | null;
+    currency: string | null;
+  }>;
   campaigns?: Array<{
     key: string;
     name: string;

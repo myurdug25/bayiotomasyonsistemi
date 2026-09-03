@@ -1219,6 +1219,98 @@ class PointPosAccessApiTest extends TestCase
             ->assertJsonPath('data.opened_by.id', $admin->id);
     }
 
+    public function test_admin_pos_sale_for_selected_batum_customer_records_gel_currency(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-BATUM-ADMIN-'.Str::upper(Str::random(4)),
+            'name' => 'Batum Admin Dealer',
+            'is_active' => true,
+        ]);
+        $admin = $this->createUserWithRole('admin');
+        $admin->forceFill([
+            'menu_permissions' => ['pos', 'pos-expenses', 'pos-day-end'],
+        ])->save();
+        $cashbox = Cashbox::query()->create([
+            'code' => 'MAIN-POS-BATUM-CUSTOMER',
+            'name' => 'Merkez POS Kasasi',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'code' => '120-00-001',
+            'name' => 'Batum Perakende Nakit Satis',
+            'branch_code' => 'BATUM',
+            'region_code' => 'BATUM',
+            'is_active' => true,
+        ]);
+        $product = Product::withoutEvents(function (): Product {
+            return Product::query()->create([
+                'sku' => 'POS-BATUM-'.Str::upper(Str::random(5)),
+                'name' => 'Batum Admin POS Urun',
+                'vat_rate' => 0,
+                'is_active' => true,
+                'meta' => ['integrations' => ['logo' => ['external_ref' => 'POS-BATUM']]],
+            ]);
+        });
+        DB::table('stock_summary')->insert([
+            'product_id' => $product->id,
+            'available_total' => 10,
+            'reserved_total' => 0,
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($admin);
+
+        $openResponse = $this->postJson('/api/pos/sessions/open', [
+            'cashbox_id' => $cashbox->id,
+            'opening_cash' => 0,
+        ])->assertCreated();
+
+        $this->postJson('/api/pos/sales', [
+            'pos_session_id' => $openResponse->json('data.id'),
+            'customer_id' => $customer->id,
+            'sale_type' => 'cash',
+            'document_type' => 'invoice',
+            'receipt_no' => 'POS-BATUM-ADMIN',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'qty' => 1,
+                    'unit_price' => 50,
+                    'vat_rate' => 0,
+                ],
+            ],
+            'payments' => [
+                [
+                    'method' => 'cash',
+                    'amount' => 50,
+                ],
+            ],
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('collections', [
+            'customer_id' => $customer->id,
+            'currency' => 'GEL',
+            'reference_no' => 'POS-BATUM-ADMIN',
+        ]);
+        $this->assertDatabaseHas('ledger_entries', [
+            'customer_id' => $customer->id,
+            'type' => 'invoice',
+            'currency' => 'GEL',
+            'reference_no' => 'POS-BATUM-ADMIN',
+        ]);
+
+        $this->postJson('/api/pos/reports/day-end/save?pos_session_id='.$openResponse->json('data.id').'&date='.now()->toDateString())
+            ->assertOk();
+
+        $state = IntegrationSyncState::query()
+            ->where('domain', 'pos-day-ends')
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame('GEL', data_get($state->meta, 'payload.currency'));
+    }
+
     public function test_point_user_can_collect_customer_payment_and_it_reflects_in_day_end(): void
     {
         $dealer = Dealer::query()->create([

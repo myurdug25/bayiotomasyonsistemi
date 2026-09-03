@@ -385,6 +385,47 @@ class LogoProductSyncApiTest extends TestCase
         ]);
     }
 
+    public function test_logo_product_sync_persists_perakende_price_card(): void
+    {
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'price_list_code' => 'A',
+                'records' => [[
+                    'external_ref' => 'PRICE-GROUP-PRK',
+                    'sku' => 'PRK 001',
+                    'name' => 'Perakende Fiyat Test Urunu',
+                    'list_price' => 101.88,
+                    'currency' => 'TRY',
+                    'price_entries' => [
+                        [
+                            'price_list_code' => 'PRK',
+                            'list_price' => 193.57,
+                            'currency' => 'TRY',
+                        ],
+                    ],
+                ]],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.prices_synced', 2);
+
+        $productId = (int) Product::query()->where('sku', 'PRK 001')->value('id');
+        $retailPriceListId = (int) DB::table('price_lists')->where('code', 'PRK')->value('id');
+
+        $this->assertDatabaseHas('price_lists', [
+            'id' => $retailPriceListId,
+            'code' => 'PRK',
+            'name' => 'Logo Perakende',
+        ]);
+        $this->assertDatabaseHas('base_prices', [
+            'product_id' => $productId,
+            'price_list_id' => $retailPriceListId,
+            'list_price' => 193.57,
+        ]);
+    }
+
     public function test_logo_product_sync_removes_stale_f_group_prices_when_logo_no_longer_sends_them(): void
     {
         $this

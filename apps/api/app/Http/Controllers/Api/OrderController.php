@@ -24,7 +24,6 @@ use App\Services\Orders\CustomerOrderRiskGuard;
 use App\Services\Orders\ShippingChargeService;
 use App\Services\Users\UserPermissionService;
 use App\Support\Cart\CheckoutNoteCleaner;
-use App\Support\CustomerFeaturePermissions;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
 use App\Support\Warehouse\WarehouseBranchResolver;
@@ -356,6 +355,11 @@ class OrderController extends Controller
             $isWarehouseTransfer = $forceWarehouseTransfer || (bool) $cart->is_warehouse_transfer;
             $isDepotTransferRequest = (bool) ($validated['warehouse_transfer_request'] ?? false);
             if (! $isDepotTransferRequest) {
+                $this->ensureCustomerAccountUsesDetailedMode(
+                    $user,
+                    $requestedCheckoutSummaryMode,
+                    $requestedItemCheckoutSummaryModes
+                );
                 [$checkoutSummaryMode, $itemCheckoutSummaryModes] = $this->normalizeCheckoutSummaryModesForCheckout(
                     $user,
                     $cart->customer,
@@ -1056,6 +1060,30 @@ class OrderController extends Controller
 
     /**
      * @param  array<string, string>  $itemModes
+     */
+    private function ensureCustomerAccountUsesDetailedMode(User $user, ?string $mode, array $itemModes): void
+    {
+        if (! $user->hasRole('customer')) {
+            return;
+        }
+
+        if ($mode !== null && $mode !== 'detailed') {
+            throw ValidationException::withMessages([
+                'checkout_summary_mode' => ['Müşteri hesabından sadece 1-F satış tipiyle sipariş gönderilebilir.'],
+            ]);
+        }
+
+        foreach ($itemModes as $itemMode) {
+            if ($itemMode !== 'detailed') {
+                throw ValidationException::withMessages([
+                    'item_checkout_summary_modes' => ['Müşteri hesabından sadece 1-F satış tipiyle sipariş gönderilebilir.'],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $itemModes
      * @return array{0:string,1:array<string,string>}
      */
     private function normalizeCheckoutSummaryModesForCheckout(User $user, ?Customer $customer, string $mode, array $itemModes): array
@@ -1085,18 +1113,16 @@ class OrderController extends Controller
      */
     private function checkoutSummaryModesForOrder(User $user, ?Customer $customer): array
     {
+        if ($user->hasRole('customer')) {
+            return ['detailed'];
+        }
+
         if ($customer instanceof Customer) {
             $customerUser = $this->customerUserForCustomer($customer);
 
             if ($customerUser instanceof User && $this->hasExplicitCheckoutSummaryModePermissions($customerUser)) {
                 return app(UserPermissionService::class)->checkoutSummaryModes($customerUser);
             }
-        }
-
-        if ($user->hasRole('customer')) {
-            $modes = app(UserPermissionService::class)->checkoutSummaryModes($user);
-
-            return $modes === [] ? ['detailed'] : $modes;
         }
 
         if ($user->hasRole('salesperson')) {

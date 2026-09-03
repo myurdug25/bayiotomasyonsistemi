@@ -41,7 +41,7 @@ class ProductSearchController extends Controller
 
     private const SEARCH_RELATED_CACHE_TTL_SECONDS = 300;
 
-    private const SEARCH_RESPONSE_CACHE_VERSION = 20;
+    private const SEARCH_RESPONSE_CACHE_VERSION = 21;
 
     public function __invoke(
         SearchProductsRequest $request,
@@ -1244,8 +1244,9 @@ class ProductSearchController extends Controller
                 ->find($selectedCustomerId)
             : null;
         $campaignsByProduct = app(ProductCampaignPricing::class)->forProducts($productIds, $user, $selectedCustomerId);
+        $priceCardsByProduct = $this->priceCardsByProduct($productIds, $user, $displayCustomer, $cache);
 
-        return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $brandDiscounts, $campaignsByProduct, $user, $displayCustomer) {
+        return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $brandDiscounts, $campaignsByProduct, $priceCardsByProduct, $user, $displayCustomer) {
             $meta = $this->productMeta($item);
             $sourceCurrency = (string) ($item->currency ?? 'TRY');
             $rawNetPrice = $this->resolveHotPrice(
@@ -1297,6 +1298,7 @@ class ProductSearchController extends Controller
                 'special_discount_rate' => $specialDiscountRate !== null ? number_format($specialDiscountRate, 2, '.', '') : null,
                 'brand_discount_chain' => $brandDiscountChain,
                 'special_discounted_price' => DisplayCurrency::formatPrice($rawSpecialDiscountedPrice, $sourceCurrency, $user, $displayCustomer),
+                'price_cards' => $priceCardsByProduct->get((int) $item->id, []),
                 'campaigns' => $campaignsByProduct->get((int) $item->id, []),
                 'vat_rate' => $item->vat_rate !== null ? number_format((float) $item->vat_rate, 2, '.', '') : null,
                 'available_total' => $this->resolveVisibleAvailableTotal($meta, (int) $item->available_total, $stockScope),
@@ -1430,6 +1432,102 @@ class ProductSearchController extends Controller
         } else {
             $query->whereIn('products.brand_id', $ids);
         }
+    }
+
+    /**
+     * @param  list<int>  $productIds
+     * @return Collection<int, list<array<string, string|null>>>
+     */
+    private function priceCardsByProduct(array $productIds, User $user, ?Customer $displayCustomer, ?CacheRepository $cache = null): Collection
+    {
+        if ($productIds === []) {
+            return collect();
+        }
+
+        $cacheKey = 'product-price-cards:'.md5(json_encode([
+            self::SEARCH_RESPONSE_CACHE_VERSION,
+            $productIds,
+            $user->id,
+            $displayCustomer?->id,
+        ], JSON_THROW_ON_ERROR));
+        $loader = function () use ($productIds, $user, $displayCustomer): Collection {
+            return DB::table('base_prices as bp')
+                ->join('price_lists as pl', 'pl.id', '=', 'bp.price_list_id')
+                ->whereIn('bp.product_id', $productIds)
+                ->where('pl.is_active', true)
+                ->where(function ($query): void {
+                    $query->whereRaw("UPPER(pl.code) LIKE 'F%'")
+                        ->orWhereRaw("UPPER(pl.code) IN ('PRK', 'PERAK', 'PERAKENDE')")
+                        ->orWhereRaw("UPPER(pl.name) LIKE '%PERAKENDE%'");
+                })
+                ->select([
+                    'bp.product_id',
+                    'bp.list_price',
+                    'bp.currency',
+                    'pl.code',
+                    'pl.name',
+                ])
+                ->get()
+                ->groupBy(fn ($row): int => (int) $row->product_id)
+                ->map(function (Collection $rows) use ($user, $displayCustomer): array {
+                    return $rows
+                        ->filter(fn ($row): bool => $this->isVisiblePriceCardCode((string) $row->code, (string) $row->name))
+                        ->sortBy(fn ($row): array => $this->priceCardSortKey((string) $row->code, (string) $row->name))
+                        ->map(function ($row) use ($user, $displayCustomer): array {
+                            $code = mb_strtoupper((string) $row->code, 'UTF-8');
+                            $currency = (string) ($row->currency ?? 'TRY');
+
+                            return [
+                                'code' => $code,
+                                'label' => $this->priceCardLabel($code, (string) $row->name),
+                                'price' => DisplayCurrency::formatPrice((string) $row->list_price, $currency, $user, $displayCustomer),
+                                'currency' => DisplayCurrency::normalize($currency, $user, $displayCustomer),
+                            ];
+                        })
+                        ->values()
+                        ->all();
+                });
+        };
+
+        return $cache ? $cache->remember($cacheKey, 90, $loader) : $loader();
+    }
+
+    private function priceCardLabel(string $code, string $name): string
+    {
+        $normalizedName = mb_strtoupper($name, 'UTF-8');
+
+        if (str_contains($normalizedName, 'PERAKENDE') || in_array($code, ['PRK', 'PERAK', 'PERAKENDE'], true)) {
+            return 'Perakende Satış';
+        }
+
+        if (preg_match('/^F([1-9]|1[0-2])$/', $code) === 1) {
+            return 'Usta Satış';
+        }
+
+        return $name !== '' ? $name : $code;
+    }
+
+    private function isVisiblePriceCardCode(string $code, string $name): bool
+    {
+        $normalizedCode = mb_strtoupper($code, 'UTF-8');
+        $normalizedName = mb_strtoupper($name, 'UTF-8');
+
+        return preg_match('/^F([1-9]|1[0-2])$/', $normalizedCode) === 1
+            || str_contains($normalizedName, 'PERAKENDE')
+            || in_array($normalizedCode, ['PRK', 'PERAK', 'PERAKENDE'], true);
+    }
+
+    /**
+     * @return array{0:int,1:int,2:string}
+     */
+    private function priceCardSortKey(string $code, string $name): array
+    {
+        $normalizedCode = mb_strtoupper($code, 'UTF-8');
+        if (preg_match('/^F([1-9]|1[0-2])$/', $normalizedCode, $matches) === 1) {
+            return [0, (int) $matches[1], $normalizedCode];
+        }
+
+        return [1, 999, mb_strtoupper($name, 'UTF-8') ?: $normalizedCode];
     }
 
     /**

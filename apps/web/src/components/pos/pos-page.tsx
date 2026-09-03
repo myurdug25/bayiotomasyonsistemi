@@ -145,6 +145,25 @@ function includesBatum(value?: string | number | null): boolean {
   return String(value ?? "").trim().toLocaleUpperCase("tr-TR").includes("BATUM");
 }
 
+function isBatumCustomerIdentity(customer?: CustomerListItem | null): boolean {
+  if (!customer) {
+    return false;
+  }
+
+  return [
+    customer.code,
+    customer.title,
+    customer.city,
+    customer.district,
+    customer.branch_code,
+    customer.branch_name,
+    customer.region_code,
+    customer.region_name,
+    customer.source_system,
+    customer.source_reference,
+  ].some(includesBatum);
+}
+
 function productPointStockLocations(product: ProductSearchItem): PointStockLocation[] {
   if (product.stock_locations && product.stock_locations.length > 0) {
     return product.stock_locations;
@@ -1846,12 +1865,13 @@ export function PosPage() {
 
   const selectedCustomer = selectedCustomerId ? customersById[selectedCustomerId] ?? null : null;
   const selectedCustomerIsAnonymous = isPointRole && isAnonymousPointCustomer(selectedCustomer);
-  const pointSaleAppliesVat = Boolean(selectedCustomer) && (isBatumPointFlowByUser || !selectedCustomerIsAnonymous);
-  const pointPriceIncludesVat = isBatumPointFlowByUser || (pointSaleAppliesVat && isVatIncludedPointCustomer(selectedCustomer));
-  const pointDisplayCurrencyLabel = pointBranchName === "Batum"
+  const isBatumPointCurrencyScope = isBatumPointFlowByUser || isBatumCustomerIdentity(selectedCustomer);
+  const pointSaleAppliesVat = Boolean(selectedCustomer) && (isBatumPointCurrencyScope || !selectedCustomerIsAnonymous);
+  const pointPriceIncludesVat = isBatumPointCurrencyScope || (pointSaleAppliesVat && isVatIncludedPointCustomer(selectedCustomer));
+  const pointDisplayCurrencyLabel = isBatumPointCurrencyScope
     ? BATUM_POINT_DISPLAY_CURRENCY_LABEL
     : TURKEY_POINT_DISPLAY_CURRENCY_LABEL;
-  const pointLedgerCurrency = pointBranchName === "Batum" ? BATUM_POINT_LEDGER_CURRENCY : ERZURUM_POINT_LEDGER_CURRENCY;
+  const pointLedgerCurrency = isBatumPointCurrencyScope ? BATUM_POINT_LEDGER_CURRENCY : ERZURUM_POINT_LEDGER_CURRENCY;
   const formatCurrency = useCallback(
     (value: number | string) => formatPointAmount(value, pointDisplayCurrencyLabel),
     [pointDisplayCurrencyLabel]

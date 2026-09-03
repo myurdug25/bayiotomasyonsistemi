@@ -814,21 +814,25 @@ const ProductRow = memo(function ProductRow({
       ? formatProductModalPrice(product, product.list_price ?? effectiveNetPrice, true, "GEL")
       : formatPriceValue(product.list_price ?? effectiveNetPrice, product.currency)
     : "-";
-  const listPriceNumber = Number(product.list_price ?? effectiveNetPrice ?? 0);
-  const retailPriceText = canViewPrices
-    ? pricesIncludeVat
-      ? formatProductModalPrice(product, String(listPriceNumber * 0.9), true, "GEL")
-      : formatPriceValue(String(listPriceNumber * 0.9), product.currency)
-    : "-";
-  const masterPriceText = canViewPrices
-    ? pricesIncludeVat
-      ? formatProductModalPrice(product, String(listPriceNumber * 0.8), true, "GEL")
-      : formatPriceValue(String(listPriceNumber * 0.8), product.currency)
-    : "-";
+  const priceCards = product.price_cards ?? [];
+  const masterPriceCard = priceCards.find((card) => /^F(?:[1-9]|1[0-2])$/.test(card.code));
+  const retailPriceCard = priceCards.find((card) =>
+    ["PRK", "PERAK", "PERAKENDE"].includes(card.code) || card.label.toLocaleUpperCase("tr-TR").includes("PERAKENDE")
+  );
+  const formatPriceCard = (card: NonNullable<ProductSearchItem["price_cards"]>[number] | undefined) => {
+    if (!card?.price) return "-";
+
+    return pricesIncludeVat
+      ? formatProductModalPrice(product, card.price, true, card.currency ?? undefined)
+      : formatPriceValue(card.price, card.currency ?? product.currency);
+  };
+  const retailPriceText = formatPriceCard(retailPriceCard);
+  const masterPriceText = formatPriceCard(masterPriceCard);
   const competitorCodes = product.competitor_codes ?? [];
   const vehicleFitments = product.vehicle_fitments ?? [];
   const previousPurchase = normalizePreviousPurchase(product.previous_purchase);
   const isCampaignRow = Boolean(campaignNames && campaignNames.length > 0);
+  const shouldShowPriceCards = showRetailPriceHint && hasPrice && Boolean(masterPriceCard || retailPriceCard);
 
   return (
     <div
@@ -887,16 +891,20 @@ const ProductRow = memo(function ProductRow({
           <p className="flex max-w-full justify-center text-center text-[11px] font-extrabold text-[var(--foreground)]">
             <span className="group/retail-price relative inline-flex max-w-full">
               <span className="truncate">{priceText}</span>
-              {showRetailPriceHint && hasPrice ? (
+              {shouldShowPriceCards ? (
                 <>
-                  <span className="product-price-tooltip pointer-events-none absolute right-full top-1/2 z-50 mr-2 hidden w-max -translate-y-1/2 whitespace-nowrap rounded-xl border border-emerald-200/35 bg-[#101b18]/98 px-4 py-2 text-left font-black text-[#f3fff5] opacity-0 shadow-[0_18px_38px_-18px_rgba(0,0,0,0.98),0_0_28px_-12px_rgba(139,209,159,0.9)] ring-1 ring-white/10 group-hover/retail-price:block group-hover/retail-price:opacity-100">
-                    <span className="block text-[11px] uppercase tracking-[0.1em] text-[#9fb5a8]">Usta Satış</span>
-                    <span className="mt-1 block text-[18px] leading-none text-[#faee56]">{masterPriceText}</span>
-                  </span>
-                  <span className="product-price-tooltip pointer-events-none absolute left-full top-1/2 z-50 ml-2 hidden w-max -translate-y-1/2 whitespace-nowrap rounded-xl border border-emerald-200/35 bg-[#101b18]/98 px-4 py-2 text-left font-black text-[#f3fff5] opacity-0 shadow-[0_18px_38px_-18px_rgba(0,0,0,0.98),0_0_28px_-12px_rgba(139,209,159,0.9)] ring-1 ring-white/10 group-hover/retail-price:block group-hover/retail-price:opacity-100">
-                    <span className="block text-[11px] uppercase tracking-[0.1em] text-[#9fb5a8]">Perakende Satış</span>
-                    <span className="mt-1 block text-[18px] leading-none text-[#faee56]">{retailPriceText}</span>
-                  </span>
+                  {masterPriceCard ? (
+                    <span className="product-price-tooltip pointer-events-none absolute right-full top-1/2 z-50 mr-2 hidden w-max -translate-y-1/2 whitespace-nowrap rounded-xl border border-emerald-200/35 bg-[#101b18]/98 px-4 py-2 text-left font-black text-[#f3fff5] opacity-0 shadow-[0_18px_38px_-18px_rgba(0,0,0,0.98),0_0_28px_-12px_rgba(139,209,159,0.9)] ring-1 ring-white/10 group-hover/retail-price:block group-hover/retail-price:opacity-100">
+                      <span className="block text-[11px] uppercase tracking-[0.1em] text-[#9fb5a8]">Usta Satış {masterPriceCard.code}</span>
+                      <span className="mt-1 block text-[18px] leading-none text-[#faee56]">{masterPriceText}</span>
+                    </span>
+                  ) : null}
+                  {retailPriceCard ? (
+                    <span className="product-price-tooltip pointer-events-none absolute left-full top-1/2 z-50 ml-2 hidden w-max -translate-y-1/2 whitespace-nowrap rounded-xl border border-emerald-200/35 bg-[#101b18]/98 px-4 py-2 text-left font-black text-[#f3fff5] opacity-0 shadow-[0_18px_38px_-18px_rgba(0,0,0,0.98),0_0_28px_-12px_rgba(139,209,159,0.9)] ring-1 ring-white/10 group-hover/retail-price:block group-hover/retail-price:opacity-100">
+                      <span className="block text-[11px] uppercase tracking-[0.1em] text-[#9fb5a8]">Perakende Satış</span>
+                      <span className="mt-1 block text-[18px] leading-none text-[#faee56]">{retailPriceText}</span>
+                    </span>
+                  ) : null}
                 </>
               ) : null}
             </span>
