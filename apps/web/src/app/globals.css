@@ -11652,3 +11652,388 @@ html[data-ui-theme="light"] .app-shell-root .returns-page .returns-pagination bu
     flex: 1 1 100% !important;
   }
 }
+
+/* Rack addresses light theme polish */
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page {
+  --rack-page-bg: #f3f7f4;
+  --rack-panel: #ffffff;
+  --rack-panel-soft: #f7faf8;
+  --rack-panel-tint: #eef8f3;
+  --rack-border: #c6d8cc;
+  --rack-border-strong: #9fbdad;
+  --rack-text: #10291d;
+  --rack-muted: #536a5e;
+  --rack-green: #087a52;
+  --rack-green-strong: #055c3f;
+  --rack-green-soft: #e3f6ed;
+  --rack-red: #c60e28;
+  --rack-red-strong: #990f20;
+  --rack-gold: #b68008;
+  --rack-gold-strong: #8e5e02;
+  --rack-gold-soft: #fff6d8;
+  color: var(--rack-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-hero,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-table {
+  border: 1px solid var(--rack-border) !important;
+  background: var(--rack-panel) !important;
+  color: var(--rack-text) !important;
+  box-shadow:
+    0 18px 48px -38px rgba(16, 41, 29, 0.32),
+    0 1px 0 rgba(255, 255, 255, 0.96) inset !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-hero-heading {
+  border-color: var(--rack-border) !important;
+  background:
+    radial-gradient(circle at 7% 0%, rgba(182, 128, 8, 0.1) 0%, transparent 32%),
+    linear-gradient(135deg, #ffffff 0%, #f5fbf8 52%, #eef8f3 100%) !important;
+  color: var(--rack-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-hero-icon {
+  border-color: #efd486 !important;
+  background: linear-gradient(135deg, #fff8dc 0%, #f3dfa1 100%) !important;
+  color: var(--rack-gold-strong) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-hero-icon svg {
+  color: inherit !important;
+  stroke: currentColor !important;
+  stroke-width: 2.25 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-hero-heading p:first-of-type {
+  color: #6f540a !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-hero-heading h1 {
+  color: var(--rack-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-hero-heading h1 + p {
+  color: #3f5c4d !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-branch-badge,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-permission-badge {
+  min-height: 46px !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  padding: 0.6rem 1rem !important;
+  opacity: 1 !important;
+  box-shadow: 0 10px 22px -18px rgba(16, 41, 29, 0.35) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-branch-badge {
+  border-color: #efd486 !important;
+  background: var(--rack-gold-soft) !important;
+  color: #624706 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-permission-badge {
+  border-color: #aee4c9 !important;
+  background: var(--rack-green-soft) !important;
+  color: var(--rack-green-strong) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-toolbar {
+  border-top: 1px solid rgba(198, 216, 204, 0.54) !important;
+  background: linear-gradient(180deg, var(--rack-panel-tint) 0%, #f8fbf9 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-toolbar .relative > svg {
+  color: var(--rack-green) !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-search-input,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-warehouse-select,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-new-input {
+  border: 1px solid var(--rack-border-strong) !important;
+  background: #ffffff !important;
+  color: var(--rack-text) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(16, 41, 29, 0.04),
+    0 10px 24px -22px rgba(16, 41, 29, 0.36) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-search-input::placeholder,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-new-input::placeholder {
+  color: #6b7f74 !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-search-input:focus,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-search-input:focus-visible,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-warehouse-select:focus,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-new-input:focus,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-new-input:focus-visible {
+  border-color: var(--rack-green) !important;
+  box-shadow:
+    0 0 0 3px rgba(8, 122, 82, 0.16),
+    0 12px 28px -24px rgba(16, 41, 29, 0.42) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-equivalent-toggle:not(:disabled) {
+  border-color: #e6cb77 !important;
+  background: #fffaf0 !important;
+  color: #2a2818 !important;
+  box-shadow: 0 10px 24px -20px rgba(182, 128, 8, 0.38) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-equivalent-toggle:hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-equivalent-toggle:focus-visible:not(:disabled) {
+  border-color: var(--rack-gold) !important;
+  background: var(--rack-gold-soft) !important;
+  color: #241b05 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-save-all-button:not(:disabled) {
+  border: 1px solid #aa0b21 !important;
+  background: linear-gradient(135deg, #f23845 0%, var(--rack-red) 58%, var(--rack-red-strong) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 15px 32px -21px rgba(198, 14, 40, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-save-all-button:hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-save-all-button:focus-visible:not(:disabled) {
+  background: linear-gradient(135deg, #dc2938 0%, #b50f25 58%, #870b1b 100%) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-save-all-button:disabled {
+  border: 1px solid #d29ca5 !important;
+  background: #e7b9c0 !important;
+  color: #762f3a !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-save-all-button :where(svg, span),
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button :where(svg, span) {
+  color: inherit !important;
+  stroke: currentColor !important;
+  fill: none !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-save-all-button svg,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button svg {
+  stroke-width: 2.35 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-table {
+  overflow: hidden !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-table-header {
+  border-color: #9fbbaa !important;
+  background: #e2eee7 !important;
+  color: #143526 !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-table-header > div {
+  color: #143526 !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  line-height: 1.12 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-table-body {
+  background: var(--rack-panel) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row {
+  min-height: 62px !important;
+  border-bottom: 1px solid #d5e2db !important;
+  background: #ffffff !important;
+  color: var(--rack-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row:nth-child(even) {
+  background: #fafcfb !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row:hover {
+  background: #edf6f1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row[data-changed="true"] {
+  background:
+    linear-gradient(90deg, rgba(182, 128, 8, 0.22) 0 4px, transparent 4px),
+    linear-gradient(180deg, #fff9e8 0%, #fffdf5 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-product-code {
+  color: #062b1f !important;
+  font-size: 14px !important;
+  font-weight: 850 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-product-name {
+  color: #08251b !important;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-product-brand {
+  color: #375548 !important;
+  font-size: 10px !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-text-cell,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-text-cell span {
+  color: #284438 !important;
+  font-size: 12px !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-current-address {
+  max-width: 100% !important;
+  border: 1px solid #a9d6cb !important;
+  background: #e9fbf7 !important;
+  color: #0a4f45 !important;
+  font-weight: 850 !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-new-input {
+  min-width: 150px !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row[data-changed="true"] .rack-new-input {
+  border-color: var(--rack-gold) !important;
+  background: #fffef8 !important;
+  box-shadow:
+    0 0 0 3px rgba(182, 128, 8, 0.12),
+    0 10px 22px -20px rgba(182, 128, 8, 0.46) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button {
+  height: 42px !important;
+  width: 42px !important;
+  min-height: 42px !important;
+  min-width: 42px !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button:not(:disabled) {
+  border: 1px solid var(--rack-gold-strong) !important;
+  background: linear-gradient(135deg, #d39b16 0%, #a56f05 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 20px -14px rgba(165, 111, 5, 0.72) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button:hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button:focus-visible:not(:disabled) {
+  border-color: #744d02 !important;
+  background: linear-gradient(135deg, #c58a12 0%, #8f6004 100%) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button:disabled {
+  border: 1px solid #c6d4cc !important;
+  background: #e7eeea !important;
+  color: #5f7469 !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-empty-state {
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%) !important;
+  color: #3e5a4d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-empty-state svg {
+  color: var(--rack-gold) !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+@media (max-width: 1279px) {
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-table {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-table-body {
+    display: grid !important;
+    gap: 0.8rem !important;
+    background: transparent !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row {
+    min-height: 0 !important;
+    border: 1px solid var(--rack-border) !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+    box-shadow: 0 14px 34px -28px rgba(16, 41, 29, 0.34) !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row > div > div:first-child:not(.rack-product-code):not(.rack-product-name):not(.rack-product-brand) {
+    color: #5b6f65 !important;
+    opacity: 1 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page {
+    gap: 0.75rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-hero-heading,
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-toolbar {
+    padding: 0.85rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-toolbar {
+    grid-template-columns: 1fr !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-search-input,
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-warehouse-select,
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-equivalent-toggle,
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-save-all-button {
+    min-height: 46px !important;
+    width: 100% !important;
+    font-size: 0.8rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.6rem 0.75rem !important;
+    padding: 0.8rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row > div:nth-child(2),
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-address-row > div:nth-child(8) {
+    grid-column: 1 / -1 !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-row-save-button {
+    height: 44px !important;
+    width: 44px !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+}

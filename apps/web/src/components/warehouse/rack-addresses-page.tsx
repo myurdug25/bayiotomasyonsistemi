@@ -152,10 +152,10 @@ export function RackAddressesPage() {
 
   return (
     <div className="rack-addresses-page mx-auto flex w-full max-w-[1680px] flex-col gap-4 text-[var(--foreground)]">
-      <section className="dashboard-panel-card overflow-hidden rounded-[24px] border-amber-300/20 p-0 shadow-[0_24px_70px_-48px_rgba(245,158,11,0.75)]">
-        <div className="flex flex-col gap-4 border-b border-amber-300/15 bg-[radial-gradient(circle_at_8%_0%,rgba(245,158,11,0.2),transparent_34%),linear-gradient(135deg,rgba(16,47,35,0.96),rgba(19,29,24,0.96))] p-5 lg:flex-row lg:items-center lg:justify-between">
+      <section className="rack-address-hero dashboard-panel-card overflow-hidden rounded-[24px] border-amber-300/20 p-0 shadow-[0_24px_70px_-48px_rgba(245,158,11,0.75)]">
+        <div className="rack-hero-heading flex flex-col gap-4 border-b border-amber-300/15 bg-[radial-gradient(circle_at_8%_0%,rgba(245,158,11,0.2),transparent_34%),linear-gradient(135deg,rgba(16,47,35,0.96),rgba(19,29,24,0.96))] p-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-200/35 bg-amber-300/15 text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
+            <div className="rack-hero-icon flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-200/35 bg-amber-300/15 text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
               <Archive className="h-7 w-7" />
             </div>
             <div>
@@ -168,29 +168,29 @@ export function RackAddressesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className="rounded-full border-amber-200/40 bg-amber-300/15 px-4 py-2 text-sm font-black text-amber-100">
+            <Badge className="rack-branch-badge rounded-full border-amber-200/40 bg-amber-300/15 px-4 py-2 text-sm font-black text-amber-100">
               {displayWarehouse?.name ?? "Depo"} · {products.length} kayıt
             </Badge>
             {editable ? (
-              <Badge className="rounded-full border-emerald-200/35 bg-emerald-400/15 px-4 py-2 text-sm font-black text-emerald-100">
+              <Badge className="rack-permission-badge rounded-full border-emerald-200/35 bg-emerald-400/15 px-4 py-2 text-sm font-black text-emerald-100">
                 Güncelleme Yetkili
               </Badge>
             ) : (
-              <Badge className="rounded-full border-red-200/35 bg-red-500/15 px-4 py-2 text-sm font-black text-red-100">
+              <Badge className="rack-permission-badge rounded-full border-red-200/35 bg-red-500/15 px-4 py-2 text-sm font-black text-red-100">
                 Sadece Görüntüleme
               </Badge>
             )}
           </div>
         </div>
 
-        <div className="grid gap-3 p-4 lg:grid-cols-[minmax(280px,1fr)_220px_auto_auto] lg:items-center">
+        <div className="rack-toolbar grid gap-3 p-4 lg:grid-cols-[minmax(280px,1fr)_220px_auto_auto] lg:items-center">
           <div className="relative">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-emerald-100/55" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Ürün kodu, ürün adı, OEM, rakip kod veya raf ara..."
-              className="h-[52px] rounded-2xl border-emerald-300/20 bg-black/25 pl-12 text-base font-bold text-white placeholder:text-emerald-100/45"
+              className="rack-search-input h-[52px] rounded-2xl border-emerald-300/20 bg-black/25 pl-12 text-base font-bold text-white placeholder:text-emerald-100/45"
             />
           </div>
 
@@ -201,7 +201,7 @@ export function RackAddressesPage() {
                 setWarehouseCode(event.target.value);
                 setDrafts({});
               }}
-              className="h-[52px] rounded-2xl border border-emerald-300/20 bg-[#061a13] px-4 text-sm font-black text-emerald-50 outline-none"
+              className="rack-warehouse-select h-[52px] rounded-2xl border border-emerald-300/20 bg-[#061a13] px-4 text-sm font-black text-emerald-50 outline-none"
             >
               {warehouseOptions.map((option) => (
                 <option key={option.code} value={option.code}>
@@ -210,7 +210,7 @@ export function RackAddressesPage() {
               ))}
             </select>
           ) : (
-            <div className="flex h-[52px] items-center rounded-2xl border border-emerald-300/20 bg-[#061a13] px-4 text-sm font-black text-emerald-50">
+            <div className="rack-warehouse-select flex h-[52px] items-center rounded-2xl border border-emerald-300/20 bg-[#061a13] px-4 text-sm font-black text-emerald-50">
               {displayWarehouse?.name ?? warehouseOptions[0]?.name ?? "DEPO"}
             </div>
           )}
@@ -219,7 +219,7 @@ export function RackAddressesPage() {
             type="button"
             variant="outline"
             className={cn(
-              "h-[52px] rounded-2xl border-amber-200/35 px-4 font-black",
+              "rack-equivalent-toggle h-[52px] rounded-2xl border-amber-200/35 px-4 font-black",
               includeEquivalents
                 ? "bg-amber-300/20 text-amber-100"
                 : "bg-black/20 text-emerald-100"
@@ -233,7 +233,7 @@ export function RackAddressesPage() {
             type="button"
             disabled={!editable || changedProducts.length === 0 || isSaving}
             onClick={() => bulkUpdateMutation.mutate()}
-            className="h-[52px] rounded-2xl bg-[linear-gradient(135deg,#facc15,#d97706)] px-5 font-black text-[#1f1400] shadow-[0_18px_38px_-24px_rgba(250,204,21,0.95)] hover:brightness-110"
+            className="rack-save-all-button h-[52px] rounded-2xl border border-[#aa0b21] bg-[linear-gradient(135deg,#ff5156,#c60e28_58%,#990f20)] px-5 font-black text-white shadow-[0_18px_38px_-24px_rgba(198,14,40,0.78)] hover:brightness-110 disabled:!border-[#d29ca5] disabled:!bg-[#e7b9c0] disabled:!text-[#762f3a] disabled:opacity-100"
           >
             {bulkUpdateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Değişenleri Kaydet
@@ -248,8 +248,8 @@ export function RackAddressesPage() {
         </section>
       ) : null}
 
-      <section className="dashboard-panel-card overflow-hidden rounded-[22px]">
-        <div className="hidden grid-cols-[0.85fr_1.55fr_0.72fr_1.08fr_0.78fr_0.82fr_0.82fr_1.24fr_56px] gap-3 border-b border-emerald-300/15 bg-[linear-gradient(90deg,rgba(22,163,74,0.68),rgba(16,185,129,0.26))] px-4 py-3 text-xs font-black uppercase tracking-[0.1em] text-emerald-50 xl:grid">
+      <section className="rack-address-table dashboard-panel-card overflow-hidden rounded-[22px]">
+        <div className="rack-address-table-header hidden grid-cols-[0.85fr_1.55fr_0.72fr_1.08fr_0.78fr_0.82fr_0.82fr_1.24fr_56px] gap-3 border-b border-emerald-300/15 bg-[linear-gradient(90deg,rgba(22,163,74,0.68),rgba(16,185,129,0.26))] px-4 py-3 text-xs font-black uppercase tracking-[0.1em] text-emerald-50 xl:grid">
           <div>Ürün Kodu</div>
           <div>Ürün Adı</div>
           <div>OEM</div>
@@ -261,14 +261,14 @@ export function RackAddressesPage() {
           <div className="text-right">İşlem</div>
         </div>
 
-        <div className="divide-y divide-emerald-300/10">
+        <div className="rack-address-table-body divide-y divide-emerald-300/10">
           {shelvesQuery.isLoading ? (
-            <div className="flex h-56 flex-col items-center justify-center text-center text-sm font-bold text-emerald-100/70">
+            <div className="rack-empty-state flex h-56 flex-col items-center justify-center text-center text-sm font-bold text-emerald-100/70">
               <Loader2 className="mb-3 h-6 w-6 animate-spin" />
               Raf kayıtları yükleniyor...
             </div>
           ) : products.length === 0 ? (
-            <div className="flex h-56 flex-col items-center justify-center text-center text-sm font-bold text-emerald-100/70">
+            <div className="rack-empty-state flex h-56 flex-col items-center justify-center text-center text-sm font-bold text-emerald-100/70">
               <PackageSearch className="mb-3 h-8 w-8 text-emerald-100/45" />
               Kayıt bulunamadı.
             </div>
@@ -280,28 +280,29 @@ export function RackAddressesPage() {
               return (
                 <div
                   key={product.id}
+                  data-changed={changed}
                   className="rack-address-row grid grid-cols-1 gap-3 px-4 py-3 hover:bg-emerald-400/5 xl:grid-cols-[0.85fr_1.55fr_0.72fr_1.08fr_0.78fr_0.82fr_0.82fr_1.24fr_56px] xl:items-center"
                 >
                   <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Ürün Kodu</div>
-                    <div className="truncate font-black text-white" title={product.product_code}>
+                    <div className="rack-product-code truncate font-black text-white" title={product.product_code}>
                       {product.product_code}
                     </div>
                   </div>
                   <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Ürün Adı</div>
-                    <div className="truncate font-black text-white" title={product.product_name}>
+                    <div className="rack-product-name truncate font-black text-white" title={product.product_name}>
                       {product.product_name}
                     </div>
-                    <div className="truncate text-xs font-bold uppercase tracking-wide text-emerald-100/55">{product.brand ?? "-"}</div>
+                    <div className="rack-product-brand truncate text-xs font-bold uppercase tracking-wide text-emerald-100/55">{product.brand ?? "-"}</div>
                   </div>
-                  <div className="min-w-0 font-bold text-emerald-100/80">
+                  <div className="rack-text-cell min-w-0 font-bold text-emerald-100/80">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">OEM</div>
                     <span className="block truncate" title={product.oem ?? "-"}>
                       {product.oem ?? "-"}
                     </span>
                   </div>
-                  <div className="min-w-0 font-bold text-emerald-100/75">
+                  <div className="rack-text-cell min-w-0 font-bold text-emerald-100/75">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Rakip Kod</div>
                     <span className="block truncate" title={product.competitor_codes.join(", ")}>
                       {product.competitor_codes.length > 0 ? product.competitor_codes.join(", ") : "-"}
@@ -310,18 +311,18 @@ export function RackAddressesPage() {
                   <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Raf Adresi</div>
                     {product.shelf_address ? (
-                      <Badge className="max-w-full rounded-full border-cyan-200/30 bg-cyan-400/12 text-cyan-100">
+                      <Badge className="rack-current-address max-w-full rounded-full border-cyan-200/30 bg-cyan-400/12 text-cyan-100">
                         <span className="truncate">{product.shelf_address}</span>
                       </Badge>
                     ) : (
                       <span className="font-bold text-emerald-100/35">-</span>
                     )}
                   </div>
-                  <div className="min-w-0 text-xs font-bold text-emerald-100/65">
+                  <div className="rack-text-cell min-w-0 text-xs font-bold text-emerald-100/65">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Son Güncelleme</div>
                     <span className="block truncate">{formatDateTime(product.shelf_updated_at)}</span>
                   </div>
-                  <div className="min-w-0 text-xs font-bold text-emerald-100/65">
+                  <div className="rack-text-cell min-w-0 text-xs font-bold text-emerald-100/65">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Güncelleyen</div>
                     <span className="block truncate" title={product.shelf_updated_by ?? "-"}>
                       {product.shelf_updated_by ?? "-"}
@@ -335,7 +336,7 @@ export function RackAddressesPage() {
                       onChange={(event) => setDrafts((current) => ({ ...current, [product.id]: event.target.value }))}
                       placeholder="A26.6,A79.1"
                       className={cn(
-                        "h-11 w-full min-w-0 rounded-xl border-emerald-300/20 bg-black/25 px-4 font-black text-white",
+                        "rack-new-input h-11 w-full min-w-0 rounded-xl border-emerald-300/20 bg-black/25 px-4 font-black text-white",
                         changed && "border-amber-200/70 bg-amber-300/10"
                       )}
                     />
@@ -346,7 +347,9 @@ export function RackAddressesPage() {
                       size="icon"
                       disabled={!editable || !changed || isSaving}
                       onClick={() => updateMutation.mutate({ product, shelfAddress: draftValue })}
-                      className="h-11 w-11 shrink-0 rounded-xl bg-[linear-gradient(135deg,#facc15,#d97706)] text-[#1f1400] hover:brightness-110"
+                      aria-label="Bu satırdaki raf adresini kaydet"
+                      title="Bu satırdaki raf adresini kaydet"
+                      className="rack-row-save-button h-11 w-11 shrink-0 rounded-xl border border-[#8e5e02] bg-[linear-gradient(135deg,#d39b16,#a56f05)] text-white shadow-[0_8px_18px_-14px_rgba(165,111,5,0.72)] hover:brightness-110 disabled:!border-[#c6d4cc] disabled:!bg-[#e7eeea] disabled:!text-[#5f7469] disabled:opacity-100"
                     >
                       {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                     </Button>
