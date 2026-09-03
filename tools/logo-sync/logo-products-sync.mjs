@@ -2511,6 +2511,7 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
   const beginDateColumn = findColumn(schema.columns, ["BEGDATE", "BEGIN_DATE", "STARTDATE"]);
   const endDateColumn = findColumn(schema.columns, ["ENDDATE", "END_DATE", "STOPDATE"]);
   const activeColumn = findColumn(schema.columns, ["ACTIVE", "IS_ACTIVE"]);
+  const groupedPricePredicate = buildLogoGroupedPricePredicate(schema.columns);
 
   if (!referenceColumn || !amountColumn) {
     console.warn(
@@ -2530,7 +2531,9 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
 
   if (priceTypeColumn && currentConfig.logo.priceType !== undefined) {
     request.input("priceType", sql.Int, currentConfig.logo.priceType);
-    query += ` AND ${priceTypeColumn} = @priceType`;
+    query += groupedPricePredicate
+      ? ` AND (${priceTypeColumn} = @priceType OR ${groupedPricePredicate})`
+      : ` AND ${priceTypeColumn} = @priceType`;
   }
 
   if (activeColumn) {
@@ -2670,6 +2673,39 @@ function resolveLogoPriceGroupCode(row) {
   }
 
   return null;
+}
+
+function buildLogoGroupedPricePredicate(columns) {
+  const candidateColumns = [
+    "CLSPECODE",
+    "CLSPECODE2",
+    "CLSPECODE3",
+    "CLSPECODE4",
+    "CLSPECODE5",
+    "GRPCODE",
+    "GROUPCODE",
+    "CLIENTCODE",
+    "DEFINITION_",
+    "DEFINITION",
+    "NAME",
+  ]
+    .map((name) => findColumn(columns, [name]))
+    .filter((name, index, names) => Boolean(name) && names.indexOf(name) === index);
+
+  if (candidateColumns.length === 0) {
+    return null;
+  }
+
+  const fCodes = Array.from({ length: 99 }, (_, index) => `'F${index + 1}'`).join(", ");
+  const exactCodes = `${fCodes}, 'PRK', 'PERAK', 'PERAKENDE'`;
+
+  return candidateColumns
+    .map((column) => {
+      const normalized = `UPPER(LTRIM(RTRIM(CAST(${column} AS NVARCHAR(180)))))`;
+
+      return `(${normalized} IN (${exactCodes}) OR ${normalized} LIKE 'F[0-9]%' OR ${normalized} LIKE '%PERAKENDE%')`;
+    })
+    .join(" OR ");
 }
 
 function isLogoCampaignPriceRow(row) {

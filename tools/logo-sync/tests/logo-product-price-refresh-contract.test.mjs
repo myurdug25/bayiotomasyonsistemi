@@ -53,6 +53,14 @@ test("Logo price rows read customer special-code fields as F group prices", () =
   assert.match(productsSource, /CLSPECODE2/);
 });
 
+test("Logo price type filter still includes customer-group sales price rows", () => {
+  assert.match(productsSource, /buildLogoGroupedPricePredicate/);
+  assert.match(productsSource, /groupedPricePredicate/);
+  assert.match(productsSource, /OR \$\{groupedPricePredicate\}/);
+  assert.match(productsSource, /LIKE 'F\[0-9\]%'/);
+  assert.match(productsSource, /PERAKENDE/);
+});
+
 test("Logo conditional price rows are sent as campaign prices", () => {
   assert.match(productsSource, /buildLogoCampaignPrice/);
   assert.match(productsSource, /campaign_prices/);
