@@ -147,17 +147,17 @@ function PanelFrame({
     <section
       className={cn(
         compact ? "min-h-[168px]" : "min-h-[236px]",
-        "overflow-hidden rounded-[14px] border shadow-[0_18px_42px_-36px_rgba(0,0,0,0.78)]",
+        "day-end-panel-frame overflow-hidden rounded-[14px] border shadow-[0_18px_42px_-36px_rgba(0,0,0,0.78)]",
         toneClasses.frame,
         className
       )}
     >
-      <div className={cn("border-b px-4 py-2.5 text-center text-base font-black shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]", toneClasses.header)}>
+      <div className={cn("day-end-panel-header border-b px-4 py-2.5 text-center text-base font-black shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]", toneClasses.header)}>
         {title}
       </div>
-      <div className="flex h-[calc(100%-50px)] flex-col">
+      <div className="day-end-panel-body flex h-[calc(100%-50px)] flex-col">
         {children}
-        <div className={cn("mt-auto flex h-10 items-center justify-end border-t px-4 text-base font-black", toneClasses.total)}>
+        <div className={cn("day-end-card-total mt-auto flex h-10 items-center justify-end border-t px-4 text-base font-black", toneClasses.total)}>
           {compactMoney(total, currencyLabel)}
         </div>
       </div>
@@ -167,7 +167,7 @@ function PanelFrame({
 
 function EmptyRows({ label = "Kayıt yok", tone = "emerald" }: { label?: string; tone?: PanelTone }) {
   return (
-    <div className={cn("flex min-h-[120px] flex-1 items-center justify-center px-4 text-sm font-black", panelToneClassNames[tone].empty)}>
+    <div className={cn("day-end-empty-state flex min-h-[120px] flex-1 items-center justify-center px-4 text-sm font-black", panelToneClassNames[tone].empty)}>
       {label}
     </div>
   );
@@ -194,7 +194,7 @@ function SalePanel({
 
   return (
     <PanelFrame title={title} total={reportTableTotal(rows)} currencyLabel={currencyLabel} className={className} tone={tone} compact={compact}>
-      <div className={cn("grid grid-cols-[104px_minmax(0,1fr)_118px_86px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
+      <div className={cn("day-end-table-head grid grid-cols-[104px_minmax(0,1fr)_118px_86px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
         <span className="truncate px-4 py-2.5">Belge No</span>
         <span className="truncate px-4 py-2.5">Firma İsmi</span>
         <span className="truncate px-4 py-2.5 text-right">Tutar</span>
@@ -206,7 +206,7 @@ function SalePanel({
             <div
               key={`${title}-${row.id}`}
               className={cn(
-                "grid grid-cols-[104px_minmax(0,1fr)_118px_86px] border-b border-white/10 text-[13px] font-extrabold",
+                "day-end-table-row grid grid-cols-[104px_minmax(0,1fr)_118px_86px] border-b border-white/10 text-[13px] font-extrabold",
                 panelRowClassName(index, tone)
               )}
             >
@@ -220,7 +220,7 @@ function SalePanel({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-8 rounded-lg border-white/25 bg-white/10 px-2 text-[11px] font-black text-inherit hover:bg-white/20"
+                  className="day-end-detail-button h-8 rounded-lg border-white/25 bg-white/10 px-2 text-[11px] font-black text-inherit hover:bg-white/20"
                   onClick={() => onDetail(row)}
                 >
                   <Eye className="h-3.5 w-3.5" />
@@ -242,7 +242,7 @@ function CollectionPanel({ title, rows, tone, currencyLabel, compact = false }: 
 
   return (
     <PanelFrame title={title} total={reportTableTotal(rows)} currencyLabel={currencyLabel} tone={tone} compact={compact}>
-      <div className={cn("grid grid-cols-[minmax(0,1fr)_118px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
+      <div className={cn("day-end-table-head grid grid-cols-[minmax(0,1fr)_118px] border-b text-[12px] font-black uppercase tracking-[0.02em]", toneClasses.tableHead)}>
         <span className="truncate px-4 py-2.5">Cari İsim</span>
         <span className="truncate px-4 py-2.5 text-right">Tutar</span>
       </div>
@@ -252,7 +252,7 @@ function CollectionPanel({ title, rows, tone, currencyLabel, compact = false }: 
             <div
               key={`${title}-${row.id}`}
               className={cn(
-                "grid grid-cols-[minmax(0,1fr)_118px] border-b border-white/10 text-[13px] font-extrabold",
+                "day-end-table-row grid grid-cols-[minmax(0,1fr)_118px] border-b border-white/10 text-[13px] font-extrabold",
                 panelRowClassName(index, tone)
               )}
             >
@@ -274,12 +274,12 @@ function ExpenseDetailsPanel({ report, currencyLabel }: { report: PosDayEndRepor
   const expenses = report.expenses.recent ?? [];
 
   return (
-    <section className="overflow-hidden rounded-[14px] border border-[#f3c74f]/55 bg-[linear-gradient(180deg,#34280a_0%,#171204_100%)] shadow-[0_18px_42px_-36px_rgba(243,199,79,0.7)] xl:col-span-2">
-      <div className="border-b border-[#f3c74f]/35 bg-[linear-gradient(135deg,#e7b72e_0%,#9f6f09_100%)] px-4 py-2 text-center text-base font-black text-[#151006]">
+    <section className="day-end-expense-details-card overflow-hidden rounded-[14px] border border-[#f3c74f]/55 bg-[linear-gradient(180deg,#34280a_0%,#171204_100%)] shadow-[0_18px_42px_-36px_rgba(243,199,79,0.7)] xl:col-span-2">
+      <div className="day-end-expense-details-header border-b border-[#f3c74f]/35 bg-[linear-gradient(135deg,#e7b72e_0%,#9f6f09_100%)] px-4 py-2 text-center text-base font-black text-[#151006]">
         Masraf Detayları
       </div>
       {expenses.length > 0 ? (
-        <div className="max-h-[170px] divide-y divide-[#f3c74f]/15 overflow-auto">
+        <div className="day-end-expense-details-body max-h-[170px] divide-y divide-[#f3c74f]/15 overflow-auto">
           {expenses.map((expense) => (
             <div key={expense.id} className="flex items-center justify-between gap-4 px-4 py-2 text-sm font-extrabold text-[#fff7d5]">
               <span className="min-w-0 truncate">{expense.category || expense.note || "Masraf"}</span>
@@ -288,7 +288,7 @@ function ExpenseDetailsPanel({ report, currencyLabel }: { report: PosDayEndRepor
           ))}
         </div>
       ) : (
-        <div className="flex min-h-[90px] items-center justify-center px-4 text-sm font-bold text-[#d8cfae]">Seçili tarihte masraf yok.</div>
+        <div className="day-end-empty-state day-end-expense-details-body flex min-h-[90px] items-center justify-center px-4 text-sm font-bold text-[#d8cfae]">Seçili tarihte masraf yok.</div>
       )}
     </section>
   );
@@ -415,6 +415,7 @@ function SummaryRow({ label, value, tone = "neutral" }: { label: string; value: 
   return (
     <div
       className={cn(
+        "day-end-summary-row",
         isBandRow
           ? "flex min-w-0 items-center justify-between gap-4"
           : "grid grid-cols-[minmax(0,1fr)_minmax(126px,148px)] items-center gap-2",
@@ -424,7 +425,7 @@ function SummaryRow({ label, value, tone = "neutral" }: { label: string; value: 
       <span className={cn("min-w-0 truncate whitespace-nowrap text-[15px] font-black leading-tight", toneClasses.label)}>{label}</span>
       <span
         className={cn(
-          "flex h-11 shrink-0 items-center justify-end rounded-[10px] border px-3 text-right text-[17px] font-black leading-none tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
+          "day-end-summary-value flex h-11 shrink-0 items-center justify-end rounded-[10px] border px-3 text-right text-[17px] font-black leading-none tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
           isBandRow ? "min-w-[112px] px-0" : "",
           toneClasses.value
         )}
@@ -456,9 +457,10 @@ function DayEndStatCard({
   return (
     <div
       className={cn(
-        "flex min-h-[58px] items-center justify-between gap-3 rounded-[14px] border px-3 py-2 shadow-[0_16px_36px_-32px_rgba(0,0,0,0.9)]",
+        "day-end-stat-card flex min-h-[58px] items-center justify-between gap-3 rounded-[14px] border px-3 py-2 shadow-[0_16px_36px_-32px_rgba(0,0,0,0.9)]",
         toneClasses
       )}
+      data-tone={tone}
     >
       <div className="min-w-0">
         <div className="truncate text-[10px] font-black uppercase tracking-[0.11em] opacity-75">{label}</div>
@@ -479,15 +481,15 @@ function DayEndSaveAction({
   historical: boolean;
 }) {
   return (
-    <div className="mt-auto border-t border-[#2f7d4d] pt-4">
+    <div className="day-end-save-area mt-auto border-t border-[#2f7d4d] pt-4">
       {historical ? (
-        <p className="mb-3 rounded-[12px] border border-[#e4c20d]/45 bg-[#241f0a] px-3 py-2 text-xs font-black text-[#ffe77a]">
+        <p className="day-end-historical-note mb-3 rounded-[12px] border border-[#e4c20d]/45 bg-[#241f0a] px-3 py-2 text-xs font-black text-[#ffe77a]">
           Geçmiş tarih raporu sadece görüntülenir. Gün sonu kaydı bugünkü açık oturum için alınır.
         </p>
       ) : null}
       <Button
         type="submit"
-        className="h-[54px] w-full rounded-[14px] !bg-[linear-gradient(135deg,#ff5757_0%,#dc2626_48%,#991b1b_100%)] text-lg font-black !text-white shadow-[0_18px_34px_-24px_rgba(220,38,38,0.68)] hover:brightness-110 disabled:opacity-60"
+        className="day-end-save-button h-[54px] w-full rounded-[14px] !bg-[linear-gradient(135deg,#ff5757_0%,#dc2626_48%,#991b1b_100%)] text-lg font-black !text-white shadow-[0_18px_34px_-24px_rgba(220,38,38,0.68)] hover:brightness-110 disabled:opacity-60"
         disabled={disabled}
       >
         {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
@@ -734,7 +736,7 @@ export function PosDayEndPage() {
           <Button
             type="button"
             variant="outline"
-            className="h-10 shrink-0 rounded-[14px] !border-[#3c5d48] !bg-[#13251b] px-3 text-xs font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+            className="day-end-back-button h-10 shrink-0 rounded-[14px] !border-[#3c5d48] !bg-[#13251b] px-3 text-xs font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
             onClick={() => router.back()}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -758,7 +760,7 @@ export function PosDayEndPage() {
             <Button
               type="button"
               variant="ghost"
-              className="h-8 w-8 rounded-[12px] !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+              className="day-end-date-nav-button h-8 w-8 rounded-[12px] !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
               onClick={() => setSelectedReportDate((value) => addDaysToDateInputValue(value, -1))}
               disabled={busy}
               aria-label="Önceki gün"
@@ -769,13 +771,13 @@ export function PosDayEndPage() {
               type="date"
               value={selectedReportDate}
               onChange={(event) => setSelectedReportDate(event.target.value || todayReportDate)}
-              className="h-8 w-[142px] rounded-[12px] border-[#ff3b30] bg-[#3a0909] px-3 text-center text-[13px] font-black text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_0_22px_rgba(255,59,48,0.45)] [color-scheme:dark]"
+              className="day-end-date-input h-8 w-[142px] rounded-[12px] border-[#ff3b30] bg-[#3a0909] px-3 text-center text-[13px] font-black text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_0_22px_rgba(255,59,48,0.45)] [color-scheme:dark]"
               disabled={busy}
             />
             <Button
               type="button"
               variant="ghost"
-              className="h-8 w-8 rounded-[12px] !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+              className="day-end-date-nav-button h-8 w-8 rounded-[12px] !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
               onClick={() => setSelectedReportDate((value) => addDaysToDateInputValue(value, 1))}
               disabled={busy}
               aria-label="Sonraki gün"
@@ -786,7 +788,7 @@ export function PosDayEndPage() {
           <Button
             type="button"
             variant="outline"
-            className="h-10 shrink-0 rounded-[14px] !border-[#e4c20d]/70 !bg-[#231f0b] px-3 text-xs font-black !text-[#ffe77a] hover:!bg-[#3a310f] hover:!text-[#fff1a3]"
+            className="day-end-today-button h-10 shrink-0 rounded-[14px] !border-[#e4c20d]/70 !bg-[#231f0b] px-3 text-xs font-black !text-[#ffe77a] hover:!bg-[#3a310f] hover:!text-[#fff1a3]"
             onClick={() => setSelectedReportDate(todayReportDate)}
             disabled={busy || isSelectedReportToday}
           >
@@ -795,7 +797,7 @@ export function PosDayEndPage() {
           <Button
             type="button"
             variant="outline"
-            className="h-10 shrink-0 rounded-[14px] !border-[#3c5d48] !bg-[#13251b] px-3 text-xs font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
+            className="day-end-yesterday-button h-10 shrink-0 rounded-[14px] !border-[#3c5d48] !bg-[#13251b] px-3 text-xs font-black !text-[#dcebe0] hover:!bg-[#1c3928] hover:!text-white"
             onClick={() => setSelectedReportDate(addDaysToDateInputValue(todayReportDate, -1))}
             disabled={busy}
           >
@@ -804,7 +806,7 @@ export function PosDayEndPage() {
           <Button
             type="button"
             variant="outline"
-            className="h-10 shrink-0 rounded-[14px] !border-slate-500/70 !bg-slate-100 px-4 text-xs font-black !text-slate-950 shadow-[0_16px_28px_-22px_rgba(0,0,0,0.9)] hover:!bg-white hover:!text-slate-950"
+            className="day-end-refresh-button h-10 shrink-0 rounded-[14px] !border-slate-500/70 !bg-slate-100 px-4 text-xs font-black !text-slate-950 shadow-[0_16px_28px_-22px_rgba(0,0,0,0.9)] hover:!bg-white hover:!text-slate-950"
             onClick={() => {
               void currentSessionQuery.refetch();
               void currentSessionsQuery.refetch();
@@ -814,7 +816,7 @@ export function PosDayEndPage() {
           >
             <RefreshCcw className="h-4 w-4" /> Yenile
           </Button>
-          <Button asChild className="h-10 shrink-0 rounded-[14px] !bg-[#3f7b58] px-4 text-xs font-black !text-white shadow-[0_18px_34px_-26px_rgba(0,0,0,0.86)] hover:!bg-[#4c8b67] hover:!text-white">
+          <Button asChild className="day-end-return-sales-button h-10 shrink-0 rounded-[14px] !bg-[#3f7b58] px-4 text-xs font-black !text-white shadow-[0_18px_34px_-26px_rgba(0,0,0,0.86)] hover:!bg-[#4c8b67] hover:!text-white">
             <Link href="/pos">
               <ShoppingCart className="h-4 w-4" /> Satışa Dön
             </Link>
@@ -831,7 +833,7 @@ export function PosDayEndPage() {
       ) : null}
 
       {!sessionLoading && !session ? (
-        <section className="rounded-[12px] border border-[#d7e5db] bg-[#111b15] p-5">
+        <section className="day-end-empty-session rounded-[12px] border border-[#d7e5db] bg-[#111b15] p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-lg font-black text-[#f4f8f5]">
@@ -876,10 +878,10 @@ export function PosDayEndPage() {
                 <SalePanel title={cardSalePanelTitle} rows={reportTables.card_sales} tone="emerald" currencyLabel={currencyLabel} onDetail={setSelectedSaleDetail} compact />
 
                 <form
-                  className="flex min-h-[420px] flex-col rounded-[14px] border border-[#34463a] bg-[linear-gradient(180deg,rgba(24,38,30,0.98)_0%,rgba(11,24,17,0.99)_100%)] p-4 shadow-[0_18px_42px_-36px_rgba(0,0,0,0.82)] xl:row-span-3 xl:min-h-full"
+                  className="day-end-summary-panel flex min-h-[420px] flex-col rounded-[14px] border border-[#34463a] bg-[linear-gradient(180deg,rgba(24,38,30,0.98)_0%,rgba(11,24,17,0.99)_100%)] p-4 shadow-[0_18px_42px_-36px_rgba(0,0,0,0.82)] xl:row-span-3 xl:min-h-full"
                   onSubmit={closeSessionSubmit}
                 >
-                  <div className="mb-3 rounded-[12px] border border-[#ff3b30] bg-[linear-gradient(180deg,#4b0c0c_0%,#210707_100%)] p-3 shadow-[0_0_28px_rgba(255,59,48,0.34)]">
+                  <div className="day-end-selected-date-card mb-3 rounded-[12px] border border-[#ff3b30] bg-[linear-gradient(180deg,#4b0c0c_0%,#210707_100%)] p-3 shadow-[0_0_28px_rgba(255,59,48,0.34)]">
                     <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#a9bdb0]">
                       <CalendarDays className="h-4 w-4" />
                       Seçili Tarih
@@ -888,14 +890,14 @@ export function PosDayEndPage() {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="space-y-2 rounded-[12px] border border-[#49c879]/35 bg-[#0b2015] p-3">
+                    <div className="day-end-summary-group space-y-2 rounded-[12px] border border-[#49c879]/35 bg-[#0b2015] p-3">
                       <div className="text-[11px] font-black uppercase tracking-[0.12em] text-[#bff7cf]">Satışlar</div>
                       <SummaryRow label="Cari Satış" value={compactMoney(normalSaleTotal, currencyLabel)} />
                       <SummaryRow label={cashSalePanelTitle} value={compactMoney(cashSaleTotal, currencyLabel)} />
                       <SummaryRow label={cardSalePanelTitle} value={compactMoney(cardSaleTotal, currencyLabel)} />
                       <SummaryRow label="Toplam Satış" value={compactMoney(salesTotal, currencyLabel)} tone="redTotal" />
                     </div>
-                    <div className="space-y-2 rounded-[12px] border border-[#49c879]/35 bg-[#0b2015] p-3">
+                    <div className="day-end-summary-group space-y-2 rounded-[12px] border border-[#49c879]/35 bg-[#0b2015] p-3">
                       <div className="text-[11px] font-black uppercase tracking-[0.12em] text-[#bff7cf]">Tahsilatlar</div>
                       <SummaryRow label="Nakit Tahsilat" value={compactMoney(cashCollectionTotal, currencyLabel)} />
                       <SummaryRow label="Kredi Kartı Tahsilat" value={compactMoney(cardCollectionTotal, currencyLabel)} />
@@ -917,7 +919,7 @@ export function PosDayEndPage() {
               </section>
             </>
           ) : (
-            <section className="rounded-[12px] border border-[#d7e5db] bg-[#111b15] p-5">
+            <section className="day-end-empty-session rounded-[12px] border border-[#d7e5db] bg-[#111b15] p-5">
               <p className="text-sm font-black text-[#aebcb1]">Canlı özet verisi alınamadı.</p>
             </section>
           )}

@@ -10684,8 +10684,380 @@ html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-
     padding: 0.75rem !important;
   }
 
-  html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-action-grid button {
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-action-grid button {
     min-height: 44px !important;
     width: 100% !important;
+  }
+}
+
+/* POS day end light theme polish: scoped after broad light-mode audit rules. */
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page {
+  --dayend-page-bg: #f2f6f3;
+  --dayend-surface: #ffffff;
+  --dayend-surface-soft: #f7faf8;
+  --dayend-surface-green: #e8f5ed;
+  --dayend-text-primary: #10291d;
+  --dayend-text-secondary: #3a5548;
+  --dayend-text-muted: #687d71;
+  --dayend-border: #cfddd5;
+  --dayend-border-strong: #abc2b6;
+  --dayend-green: #087a52;
+  --dayend-green-hover: #05633f;
+  --dayend-green-soft: #dff2e8;
+  --dayend-red: #ce1c2d;
+  --dayend-red-hover: #a90f20;
+  --dayend-red-soft: #fde7e9;
+  --dayend-gold: #b68008;
+  --dayend-gold-soft: #fff2c6;
+  --dayend-yellow: #e1b400;
+  --dayend-yellow-soft: #fff4b3;
+  --dayend-navy: #17324a;
+  --dayend-shadow: 0 6px 18px rgba(24, 62, 43, 0.09);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(8, 122, 82, 0.09) 0%, transparent 30%),
+    linear-gradient(180deg, #fbfdfb 0%, var(--dayend-page-bg) 100%) !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .pos-day-end-toolbar,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-empty-session {
+  border-color: var(--dayend-border) !important;
+  background: linear-gradient(180deg, #ffffff 0%, var(--dayend-surface-soft) 100%) !important;
+  color: var(--dayend-text-primary) !important;
+  box-shadow: var(--dayend-shadow) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .pos-day-end-title > span {
+  border-color: rgba(8, 122, 82, 0.42) !important;
+  background: linear-gradient(180deg, #139263 0%, var(--dayend-green-hover) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 28px -20px rgba(5, 99, 63, 0.7) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .pos-day-end-title h1,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-empty-session p:first-child {
+  color: var(--dayend-text-primary) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .pos-day-end-title p,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-empty-session p {
+  color: var(--dayend-text-secondary) !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-session-select,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-date-control,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-date-input {
+  border-color: var(--dayend-border-strong) !important;
+  background: var(--dayend-surface) !important;
+  color: var(--dayend-text-primary) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), var(--dayend-shadow) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-date-input {
+  border-color: #e5a5ac !important;
+  background: #fff7f8 !important;
+  color-scheme: light !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.day-end-back-button, .day-end-yesterday-button, .day-end-date-nav-button):not(:disabled) {
+  border-color: rgba(8, 122, 82, 0.42) !important;
+  background: linear-gradient(135deg, #ffffff 0%, #eef7f2 100%) !important;
+  color: var(--dayend-text-primary) !important;
+  box-shadow: var(--dayend-shadow) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-back-button:not(:disabled) {
+  border-color: rgba(8, 122, 82, 0.5) !important;
+  background: linear-gradient(135deg, #0c7d55 0%, var(--dayend-green-hover) 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.day-end-back-button, .day-end-yesterday-button, .day-end-date-nav-button):hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.day-end-back-button, .day-end-yesterday-button, .day-end-date-nav-button):focus-visible:not(:disabled) {
+  border-color: var(--dayend-green) !important;
+  background: linear-gradient(135deg, var(--dayend-green) 0%, var(--dayend-green-hover) 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-today-button:not(:disabled) {
+  border-color: rgba(182, 128, 8, 0.58) !important;
+  background: linear-gradient(135deg, #fff7bb 0%, #f1c83c 54%, var(--dayend-gold) 100%) !important;
+  color: #1d1704 !important;
+  box-shadow: 0 14px 28px -20px rgba(182, 128, 8, 0.74) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-today-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fff29a 0%, #e4b822 54%, #996c06 100%) !important;
+  color: #151004 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-refresh-button:not(:disabled) {
+  border-color: rgba(23, 50, 74, 0.52) !important;
+  background: linear-gradient(135deg, #274765 0%, var(--dayend-navy) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 28px -20px rgba(23, 50, 74, 0.62) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-refresh-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1f3d59 0%, #0f2538 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-return-sales-button,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-return-sales-button:not(:disabled) {
+  border-color: rgba(8, 122, 82, 0.52) !important;
+  background: linear-gradient(135deg, #119564 0%, var(--dayend-green) 58%, var(--dayend-green-hover) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 30px -20px rgba(8, 122, 82, 0.74) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-return-sales-button:not(:disabled) {
+  border-color: rgba(8, 122, 82, 0.52) !important;
+  background: linear-gradient(135deg, #119564 0%, var(--dayend-green) 58%, var(--dayend-green-hover) 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-return-sales-button:hover {
+  background: linear-gradient(135deg, #0d855a 0%, #05633f 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(.day-end-back-button, .day-end-today-button, .day-end-yesterday-button, .day-end-refresh-button, .day-end-return-sales-button, .day-end-date-nav-button, .day-end-detail-button, .day-end-save-button) :where(svg, span, p, strong) {
+  color: currentColor !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-stat-card {
+  border-color: var(--dayend-border) !important;
+  background: linear-gradient(180deg, var(--dayend-surface) 0%, var(--dayend-surface-soft) 100%) !important;
+  color: var(--dayend-text-primary) !important;
+  box-shadow: var(--dayend-shadow) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-stat-card[data-tone="green"] {
+  border-color: #b9dfcd !important;
+  background: linear-gradient(180deg, #eefaf4 0%, var(--dayend-green-soft) 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-stat-card > div:first-child,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-stat-card > div:last-child {
+  color: var(--dayend-text-primary) !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-panel-frame {
+  border-color: var(--dayend-border-strong) !important;
+  background: linear-gradient(180deg, var(--dayend-surface) 0%, var(--dayend-surface-soft) 100%) !important;
+  color: var(--dayend-text-primary) !important;
+  box-shadow: 0 14px 34px -26px rgba(24, 62, 43, 0.26) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-panel-header {
+  border-color: rgba(8, 122, 82, 0.42) !important;
+  background: linear-gradient(135deg, #129362 0%, var(--dayend-green) 55%, var(--dayend-green-hover) 100%) !important;
+  color: #ffffff !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-panel-body {
+  background: var(--dayend-surface) !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-table-head {
+  border-color: var(--dayend-border) !important;
+  background: linear-gradient(180deg, #eef7f2 0%, #e2f0e8 100%) !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-table-row {
+  border-color: #dce8e1 !important;
+  background: #ffffff !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-table-row:nth-child(even) {
+  background: #f7faf8 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-empty-state {
+  border-top: 1px solid #e0ebe5 !important;
+  background: linear-gradient(180deg, #fbfdfc 0%, var(--dayend-surface-soft) 100%) !important;
+  color: var(--dayend-text-secondary) !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-card-total {
+  border-color: #c7dacf !important;
+  background: linear-gradient(180deg, #edf5f0 0%, #e4f0e9 100%) !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-detail-button:not(:disabled) {
+  border-color: #bdd2c6 !important;
+  background: #ffffff !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-detail-button:hover:not(:disabled) {
+  border-color: var(--dayend-green) !important;
+  background: var(--dayend-green-soft) !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-expense-details-card {
+  border-color: #d7b94d !important;
+  background: linear-gradient(180deg, #fffdf4 0%, #fff8de 100%) !important;
+  color: #2f2607 !important;
+  box-shadow: 0 14px 34px -26px rgba(182, 128, 8, 0.32) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-expense-details-header {
+  border-color: rgba(137, 95, 6, 0.38) !important;
+  background: linear-gradient(135deg, #f2cf5a 0%, var(--dayend-gold) 100%) !important;
+  color: #241a03 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-expense-details-body {
+  background: #fff9e7 !important;
+  color: #42350b !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-expense-details-body > div {
+  border-color: rgba(182, 128, 8, 0.18) !important;
+  color: #42350b !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-expense-details-body :where(span, p) {
+  color: inherit !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-panel {
+  border-color: var(--dayend-border-strong) !important;
+  background: linear-gradient(180deg, #eef7f2 0%, #e6f1eb 100%) !important;
+  color: var(--dayend-text-primary) !important;
+  box-shadow: 0 16px 36px -26px rgba(24, 62, 43, 0.3) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-selected-date-card {
+  border-color: #e9a3ac !important;
+  background: linear-gradient(180deg, #fff7f8 0%, var(--dayend-red-soft) 100%) !important;
+  color: #721421 !important;
+  box-shadow: 0 12px 24px -20px rgba(206, 28, 45, 0.45) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-selected-date-card :where(div, svg) {
+  color: #721421 !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-group {
+  border-color: var(--dayend-border) !important;
+  background: #ffffff !important;
+  color: var(--dayend-text-primary) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-group > div:first-child {
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-row {
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-row > span:first-child {
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-value {
+  border-color: var(--dayend-border) !important;
+  background: #f9fcfa !important;
+  color: var(--dayend-text-primary) !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-row:has(.text-white) {
+  border-color: #e9a3ac !important;
+  background: linear-gradient(180deg, #fff4f5 0%, var(--dayend-red-soft) 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-row:has(.text-\[\#061b0c\]) {
+  border-color: #a7d9bd !important;
+  background: linear-gradient(180deg, #ecf9f2 0%, var(--dayend-green-soft) 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-row:has(.text-\[\#ffb4b4\]) {
+  border-color: #e2a5ad !important;
+  background: linear-gradient(180deg, #fff3f4 0%, #f9dfe3 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-row:has(.text-\[\#171203\]) {
+  border-color: rgba(182, 128, 8, 0.42) !important;
+  background: linear-gradient(180deg, #fff7bb 0%, var(--dayend-yellow-soft) 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-save-area {
+  border-color: var(--dayend-border-strong) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-historical-note {
+  border-color: rgba(182, 128, 8, 0.42) !important;
+  background: #fff8d8 !important;
+  color: #5e4100 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-save-button:not(:disabled) {
+  border-color: #a80b20 !important;
+  background: linear-gradient(135deg, #f23845 0%, #bd0c24 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 32px -20px rgba(186, 12, 36, 0.72) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-save-button:hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-save-button:focus-visible:not(:disabled) {
+  background: linear-gradient(135deg, #db2938 0%, #9e071c 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-save-button:disabled {
+  border-color: #d5b1b7 !important;
+  background: #ead6da !important;
+  color: #7b414b !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(button:disabled, button[disabled], [aria-disabled="true"]) {
+  opacity: 1 !important;
+}
+
+@media (max-width: 1280px) {
+  html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-panel {
+    min-height: 0 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  html[data-ui-theme="light"] .app-shell-root .pos-day-end-page {
+    padding: 0.45rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-panel-frame,
+  html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-panel,
+  html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-expense-details-card {
+    border-radius: 12px !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-table-head,
+  html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-table-row {
+    min-width: 420px !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-save-button {
+    min-height: 48px !important;
   }
 }
