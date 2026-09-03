@@ -47,13 +47,15 @@ type FormState = {
 };
 
 const SHELL_CARD_CLASSNAME =
-  "overflow-hidden rounded-[28px] border border-emerald-300/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_36%),linear-gradient(145deg,rgba(7,22,16,0.96)_0%,rgba(10,31,22,0.94)_48%,rgba(20,22,12,0.92)_100%)] shadow-[0_28px_70px_-52px_rgba(16,185,129,0.75)]";
+  "new-customer-shell overflow-hidden rounded-[28px] border border-emerald-300/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_36%),linear-gradient(145deg,rgba(7,22,16,0.96)_0%,rgba(10,31,22,0.94)_48%,rgba(20,22,12,0.92)_100%)] shadow-[0_28px_70px_-52px_rgba(16,185,129,0.75)]";
 const SOFT_PANEL_CLASSNAME =
-  "rounded-[22px] border border-white/10 bg-white/[0.035] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_18px_38px_-34px_rgba(0,0,0,0.72)] backdrop-blur";
+  "new-customer-section rounded-[22px] border border-white/10 bg-white/[0.035] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_18px_38px_-34px_rgba(0,0,0,0.72)] backdrop-blur";
 const FIELD_CLASSNAME =
-  "h-11 rounded-[14px] border-emerald-300/20 bg-[#07170f]/70 text-[var(--foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] placeholder:text-[var(--muted-foreground)] focus-visible:ring-2 focus-visible:ring-emerald-300/20";
-const SECTION_TITLE_CLASSNAME = "text-[11px] font-black uppercase tracking-[0.18em] text-emerald-200/85";
-const FIELD_LABEL_CLASSNAME = "text-xs font-black uppercase tracking-[0.12em] text-emerald-100/75";
+  "new-customer-field h-11 rounded-[14px] border-emerald-300/20 bg-[#07170f]/70 text-[var(--foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] placeholder:text-[var(--muted-foreground)] focus-visible:ring-2 focus-visible:ring-emerald-300/20";
+const SELECT_FIELD_CLASSNAME = `${FIELD_CLASSNAME} new-customer-select`;
+const SECTION_TITLE_CLASSNAME = "new-customer-section-title text-[11px] font-black uppercase tracking-[0.18em] text-emerald-200/85";
+const FIELD_LABEL_CLASSNAME = "new-customer-label text-xs font-black uppercase tracking-[0.12em] text-emerald-100/75";
+const SELECT_CONTENT_CLASSNAME = "new-customer-select-content";
 
 function createInitialForm(user?: { name?: string | null; email?: string | null; phone?: string | null } | null): FormState {
   return {
@@ -227,35 +229,35 @@ export function NewCustomerCardPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="new-customer-card-page space-y-4">
       <Card className={SHELL_CARD_CLASSNAME}>
         <CardContent className="p-0">
-          <div className="relative overflow-hidden border-b border-emerald-300/15 px-4 py-4 sm:px-6">
+          <div className="new-customer-hero relative overflow-hidden border-b border-emerald-300/15 px-4 py-4 sm:px-6">
             <div className="absolute right-0 top-0 h-28 w-64 rounded-full bg-emerald-300/10 blur-3xl" />
             <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[18px] border border-emerald-200/25 bg-[linear-gradient(135deg,rgba(52,211,153,0.24),rgba(20,83,45,0.28))] text-emerald-100 shadow-[0_16px_32px_-24px_rgba(16,185,129,0.9)]">
+                <div className="new-customer-hero-icon flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[18px] border border-emerald-200/25 bg-[linear-gradient(135deg,rgba(52,211,153,0.24),rgba(20,83,45,0.28))] text-emerald-100 shadow-[0_16px_32px_-24px_rgba(16,185,129,0.9)]">
                   <UserPlus className="h-6 w-6" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="new-customer-eyebrow flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-amber-200" />
                     <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-100/80">PowerSA Cari Yönetimi</p>
                   </div>
-                  <h2 className="mt-1 truncate text-2xl font-black tracking-tight text-white sm:text-3xl">Yeni Cari Oluştur</h2>
-                  <p className="mt-1 text-sm font-semibold text-emerald-100/70">Logo uyumlu il/ilçe, plasiyer ve e-tahsilat bilgileriyle hızlı cari açılışı.</p>
+                  <h2 className="new-customer-title mt-1 truncate text-2xl font-black tracking-tight text-white sm:text-3xl">Yeni Cari Oluştur</h2>
+                  <p className="new-customer-subtitle mt-1 text-sm font-semibold text-emerald-100/70">Logo uyumlu il/ilçe, plasiyer ve e-tahsilat bilgileriyle hızlı cari açılışı.</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center text-xs font-black text-emerald-50">
-                <div className="rounded-[16px] border border-emerald-300/20 bg-emerald-300/10 px-3 py-2">
+              <div className="new-customer-badges grid grid-cols-3 gap-2 text-center text-xs font-black text-emerald-50">
+                <div className="new-customer-badge new-customer-badge--logo rounded-[16px] border border-emerald-300/20 bg-emerald-300/10 px-3 py-2">
                   <CheckCircle2 className="mx-auto mb-1 h-4 w-4 text-emerald-200" />
                   Logo Hazır
                 </div>
-                <div className="rounded-[16px] border border-sky-300/20 bg-sky-300/10 px-3 py-2">
+                <div className="new-customer-badge new-customer-badge--city rounded-[16px] border border-sky-300/20 bg-sky-300/10 px-3 py-2">
                   <MapPin className="mx-auto mb-1 h-4 w-4 text-sky-200" />
                   81 İl
                 </div>
-                <div className="rounded-[16px] border border-amber-300/20 bg-amber-300/10 px-3 py-2">
+                <div className="new-customer-badge new-customer-badge--safe rounded-[16px] border border-amber-300/20 bg-amber-300/10 px-3 py-2">
                   <ShieldCheck className="mx-auto mb-1 h-4 w-4 text-amber-200" />
                   Güvenli
                 </div>
@@ -263,15 +265,15 @@ export function NewCustomerCardPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 p-4 sm:p-6 xl:grid-cols-[1.25fr_0.95fr]">
+          <div className="new-customer-form-grid grid gap-4 p-4 sm:p-6 xl:grid-cols-[1.25fr_0.95fr]">
             <section className={SOFT_PANEL_CLASSNAME + " p-4"}>
               <div className="mb-4 flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-[14px] bg-emerald-300/12 text-emerald-100">
+                <span className="new-customer-section-icon new-customer-section-icon--customer flex h-9 w-9 items-center justify-center rounded-[14px] bg-emerald-300/12 text-emerald-100">
                   <Building2 className="h-4 w-4" />
                 </span>
                 <div>
                   <p className={SECTION_TITLE_CLASSNAME}>Cari Bilgileri</p>
-                  <p className="text-xs font-semibold text-emerald-100/55">Temel bilgiler ve vergi bilgileri</p>
+                  <p className="new-customer-section-copy text-xs font-semibold text-emerald-100/55">Temel bilgiler ve vergi bilgileri</p>
                 </div>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
@@ -287,10 +289,10 @@ export function NewCustomerCardPage() {
                 <div className="space-y-1.5">
                   <label className={FIELD_LABEL_CLASSNAME}>Şahıs / Tüzel</label>
                   <Select value={form.customer_kind} onValueChange={(value) => updateField("customer_kind", value as CustomerKind)}>
-                    <SelectTrigger className={FIELD_CLASSNAME}>
+                    <SelectTrigger className={SELECT_FIELD_CLASSNAME}>
                       <SelectValue placeholder="Cari tipi seç" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className={SELECT_CONTENT_CLASSNAME}>
                       {CUSTOMER_KIND_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
@@ -349,12 +351,12 @@ export function NewCustomerCardPage() {
 
             <section className={SOFT_PANEL_CLASSNAME + " p-4"}>
               <div className="mb-4 flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-[14px] bg-sky-300/12 text-sky-100">
+                <span className="new-customer-section-icon new-customer-section-icon--location flex h-9 w-9 items-center justify-center rounded-[14px] bg-sky-300/12 text-sky-100">
                   <PhoneCall className="h-4 w-4" />
                 </span>
                 <div>
                   <p className={SECTION_TITLE_CLASSNAME}>İletişim / Lokasyon</p>
-                  <p className="text-xs font-semibold text-emerald-100/55">Telefon, il ve ilçe seçimi</p>
+                  <p className="new-customer-section-copy text-xs font-semibold text-emerald-100/55">Telefon, il ve ilçe seçimi</p>
                 </div>
               </div>
               <div className="grid gap-3">
@@ -373,10 +375,10 @@ export function NewCustomerCardPage() {
                   <div className="space-y-1.5">
                     <label className={FIELD_LABEL_CLASSNAME}>İl</label>
                     <Select value={form.city} onValueChange={(value) => updateField("city", value)}>
-                      <SelectTrigger className={FIELD_CLASSNAME}>
+                      <SelectTrigger className={SELECT_FIELD_CLASSNAME}>
                         <SelectValue placeholder="İl seç" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className={SELECT_CONTENT_CLASSNAME}>
                         {TURKEY_PROVINCES.map((province) => (
                           <SelectItem key={province} value={province}>
                             {province}
@@ -388,10 +390,10 @@ export function NewCustomerCardPage() {
                   <div className="space-y-1.5">
                     <label className={FIELD_LABEL_CLASSNAME}>İlçe</label>
                     <Select value={form.district} onValueChange={(value) => updateField("district", value)} disabled={!form.city}>
-                      <SelectTrigger className={FIELD_CLASSNAME}>
+                      <SelectTrigger className={SELECT_FIELD_CLASSNAME}>
                         <SelectValue placeholder={form.city ? "İlçe seç" : "Önce il seç"} />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className={SELECT_CONTENT_CLASSNAME}>
                         {districtOptions.map((district) => (
                           <SelectItem key={`${form.city}-${district}`} value={district}>
                             {district}
@@ -416,15 +418,15 @@ export function NewCustomerCardPage() {
             <section className={SOFT_PANEL_CLASSNAME + " p-4 xl:col-span-2"}>
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-[14px] bg-amber-300/12 text-amber-100">
+                  <span className="new-customer-section-icon new-customer-section-icon--logo flex h-9 w-9 items-center justify-center rounded-[14px] bg-amber-300/12 text-amber-100">
                     <Users className="h-4 w-4" />
                   </span>
                   <div>
                     <p className={SECTION_TITLE_CLASSNAME}>Logo / Plasiyer Ayarları</p>
-                    <p className="text-xs font-semibold text-emerald-100/55">Seçilen bilgiler cari kartına ve Logo kuyruğuna taşınır</p>
+                    <p className="new-customer-section-copy text-xs font-semibold text-emerald-100/55">Seçilen bilgiler cari kartına ve Logo kuyruğuna taşınır</p>
                   </div>
                 </div>
-                <div className="rounded-[14px] border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs font-black text-amber-100">
+                <div className="new-customer-code-preview rounded-[14px] border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs font-black text-amber-100">
                   {eCollectionPreview}
                 </div>
               </div>
@@ -436,10 +438,10 @@ export function NewCustomerCardPage() {
                     onValueChange={(value) => updateField("salesperson_user_id", value)}
                     disabled={!canChooseSalesperson || salespeopleQuery.isLoading}
                   >
-                    <SelectTrigger className={FIELD_CLASSNAME}>
+                    <SelectTrigger className={SELECT_FIELD_CLASSNAME}>
                       <SelectValue placeholder={salespeopleQuery.isLoading ? "Plasiyerler yükleniyor" : "Plasiyer seç"} />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className={SELECT_CONTENT_CLASSNAME}>
                       {salespersonOptions.map((salesperson) => (
                         <SelectItem key={salesperson.id} value={String(salesperson.id)}>
                           {salesperson.name}
@@ -451,10 +453,10 @@ export function NewCustomerCardPage() {
                 <div className="space-y-1.5">
                   <label className={FIELD_LABEL_CLASSNAME}>Özel Kodu</label>
                   <Select value={form.logo_special_code} onValueChange={(value) => updateField("logo_special_code", value)}>
-                    <SelectTrigger className={FIELD_CLASSNAME + " font-bold"}>
+                    <SelectTrigger className={SELECT_FIELD_CLASSNAME + " font-bold"}>
                       <SelectValue placeholder="Özel kod seç" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className={SELECT_CONTENT_CLASSNAME}>
                       {LOGO_SPECIAL_CODE_OPTIONS.map((option) => (
                         <SelectItem key={option} value={option}>
                           {option}
@@ -466,10 +468,10 @@ export function NewCustomerCardPage() {
                 <div className="space-y-1.5">
                   <label className={FIELD_LABEL_CLASSNAME}>Yetki Kodu</label>
                   <Select value={form.logo_authorization_code || "none"} onValueChange={(value) => updateField("logo_authorization_code", value === "none" ? "" : value)}>
-                    <SelectTrigger className={FIELD_CLASSNAME}>
+                    <SelectTrigger className={SELECT_FIELD_CLASSNAME}>
                       <SelectValue placeholder="Yetki kodu seç" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className={SELECT_CONTENT_CLASSNAME}>
                       <SelectItem value="none">Boş</SelectItem>
                       {LOGO_AUTHORIZATION_CODE_OPTIONS.map((option) => (
                         <SelectItem key={option} value={option}>
@@ -482,17 +484,17 @@ export function NewCustomerCardPage() {
               </div>
             </section>
 
-            <div className="flex flex-wrap justify-end gap-2 xl:col-span-2">
+            <div className="new-customer-actions flex flex-wrap justify-end gap-2 xl:col-span-2">
               <Button
                 variant="outline"
-                className="h-12 rounded-[16px] border-emerald-300/20 bg-white/[0.035] px-5 font-black text-emerald-50 hover:bg-white/[0.07]"
+                className="new-customer-clear-button h-12 rounded-[16px] border-emerald-300/20 bg-white/[0.035] px-5 font-black text-emerald-50 hover:bg-white/[0.07]"
                 onClick={() => setForm(createInitialForm(user))}
                 disabled={createMutation.isPending}
               >
                 Temizle
               </Button>
               <Button
-                className="h-12 rounded-[16px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-7 font-black text-white shadow-[0_18px_38px_rgba(225,29,46,0.34)] hover:brightness-110"
+                className="new-customer-submit-button h-12 rounded-[16px] border border-red-300/45 bg-red-600 from-red-500 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-7 font-black text-white shadow-[0_18px_38px_rgba(225,29,46,0.34)] hover:brightness-110"
                 onClick={handleSubmit}
                 disabled={createMutation.isPending}
               >
