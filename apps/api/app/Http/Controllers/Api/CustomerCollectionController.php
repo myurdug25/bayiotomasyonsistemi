@@ -65,7 +65,7 @@ class CustomerCollectionController extends Controller
                 'tabs' => $collectionSummary['tabs'],
                 'logo_sync' => $collectionSummary['logo_sync'],
                 'data' => collect($paginator->items())
-                    ->map(fn (LedgerEntry $item) => $this->invoiceEntryPayload($item, $displayUser))
+                    ->map(fn (LedgerEntry $item) => $this->invoiceEntryPayload($item, $displayUser, $customer))
                     ->values(),
                 'meta' => [
                     'current_page' => $paginator->currentPage(),
@@ -97,8 +97,8 @@ class CustomerCollectionController extends Controller
             'logo_sync' => $collectionSummary['logo_sync'],
             'data' => collect($paginator->items())
                 ->map(fn ($item) => $compact
-                    ? $this->compactCollectionPayload($item, $request)
-                    : (new CollectionResource($item))->toArray($request))
+                    ? $this->compactCollectionPayload($item->setRelation('customer', $customer), $request)
+                    : (new CollectionResource($item->setRelation('customer', $customer)))->toArray($request))
                 ->values(),
             'meta' => [
                 'current_page' => $paginator->currentPage(),
@@ -218,7 +218,8 @@ class CustomerCollectionController extends Controller
             $summaries[$summaryKey]['total_amount'] += DisplayCurrency::convertPrice(
                 (float) $row->total_amount,
                 (string) $row->currency,
-                $user
+                $user,
+                $customer
             );
 
             $status = (string) $row->sync_status;
@@ -290,7 +291,7 @@ class CustomerCollectionController extends Controller
         return [
             'count' => (int) (clone $query)->count(),
             'total_amount' => (float) $currencyTotals->sum(
-                fn ($row) => DisplayCurrency::convertPrice((float) $row->total_amount, (string) $row->currency, $user)
+                fn ($row) => DisplayCurrency::convertPrice((float) $row->total_amount, (string) $row->currency, $user, $customer)
             ),
         ];
     }
@@ -319,7 +320,7 @@ class CustomerCollectionController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function invoiceEntryPayload(LedgerEntry $entry, ?User $user): array
+    private function invoiceEntryPayload(LedgerEntry $entry, ?User $user, Customer $customer): array
     {
         $date = $entry->date ?? $entry->entry_date;
         $amount = (float) ($entry->debit ?? $entry->amount ?? 0);
@@ -342,8 +343,8 @@ class CustomerCollectionController extends Controller
             'created_by_user_id' => $entry->created_by_user_id,
             'collection_date' => $date,
             'method' => 'invoice',
-            'amount' => DisplayCurrency::formatPrice($amount, $sourceCurrency, $user) ?? number_format($amount, 2, '.', ''),
-            'currency' => DisplayCurrency::normalize($sourceCurrency, $user),
+            'amount' => DisplayCurrency::formatPrice($amount, $sourceCurrency, $user, $customer) ?? number_format($amount, 2, '.', ''),
+            'currency' => DisplayCurrency::normalize($sourceCurrency, $user, $customer),
             'reference_no' => $entry->reference_no,
             'reference_fields' => null,
             'note' => $entry->description,
@@ -444,6 +445,12 @@ class CustomerCollectionController extends Controller
                 ];
             }
 
+            $collectionCurrency = DisplayCurrency::normalize(
+                strtoupper((string) ($validated['currency'] ?? 'TRY')),
+                $user,
+                $customer
+            );
+
             $collection = CollectionModel::create([
                 'dealer_id' => $customer->dealer_id,
                 'customer_id' => $customer->id,
@@ -458,7 +465,7 @@ class CustomerCollectionController extends Controller
                 'collection_date' => $collectionDate,
                 'method' => $validated['method'],
                 'amount' => $validated['amount'],
-                'currency' => strtoupper($validated['currency'] ?? 'TRY'),
+                'currency' => $collectionCurrency,
                 'reference_no' => $referenceNo,
                 'reference_fields' => $referenceFields,
                 'note' => $automaticNote,

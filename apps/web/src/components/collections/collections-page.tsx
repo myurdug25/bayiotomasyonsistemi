@@ -63,6 +63,7 @@ import {
   sendCustomerCollections,
   updateCustomerCollection,
   listCustomers,
+  type CustomerSummary,
   type CustomerListItem,
 } from "@/lib/api";
 import { notifyPosDayEndRefresh } from "@/lib/pos-day-end-events";
@@ -426,6 +427,34 @@ function isBatumUserScope(user: ReturnType<typeof useSession>["user"]): boolean 
   ].join(" ").toLocaleLowerCase("tr-TR");
 
   return haystack.includes("batum");
+}
+
+function isBatumCustomerScope(customer?: CustomerSummary | null): boolean {
+  if (!customer) {
+    return false;
+  }
+
+  const haystack = [
+    customer.code,
+    customer.title,
+    customer.name,
+    customer.branch_code,
+    customer.branch_name,
+    customer.region_code,
+    customer.region_name,
+    customer.city,
+    customer.district,
+  ]
+    .join(" ")
+    .toLocaleLowerCase("tr-TR");
+
+  if (haystack.includes("batum")) {
+    return true;
+  }
+
+  const codeSegments = customer.code.trim().split(/[^0-9]+/).filter(Boolean);
+
+  return codeSegments[1] === "00";
 }
 
 function financeDefinitionLabel(definition: FinanceDefinitionDto): string {
@@ -1014,11 +1043,14 @@ export function CollectionsPage() {
     [user?.roles]
   );
   const isAdminUser = roleSlugs.includes("admin");
-  const isCustomerUser = roleSlugs.includes("customer");
   const isBatumUser = useMemo(() => isBatumUserScope(user), [user]);
+  const isBatumCollectionScope = useMemo(
+    () => isBatumUser || isBatumCustomerScope(selectedCustomer),
+    [isBatumUser, selectedCustomer]
+  );
   const availableMethods = useMemo<FormMethodType[]>(
-    () => (isBatumUser ? ["cash", "transfer", "cc"] : [...METHODS]),
-    [isBatumUser]
+    () => (isBatumCollectionScope ? ["cash", "transfer", "cc"] : [...METHODS]),
+    [isBatumCollectionScope]
   );
 
   const [page, setPage] = useState(1);
@@ -1219,10 +1251,10 @@ export function CollectionsPage() {
   useEffect(() => {
     handleRefreshFinanceDefinitions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isBatumUser]);
+  }, [isBatumCollectionScope]);
 
   const handleRefreshFinanceDefinitions = () => {
-    void listFinanceDefinitions(undefined, false, isBatumUser ? "batum" : "turkey")
+    void listFinanceDefinitions(undefined, false, isBatumCollectionScope ? "batum" : "turkey")
       .then((response) => setFinanceDefinitions(response.data))
       .catch((err) => setError(err instanceof Error ? err.message : "Finans tanımları alınamadı"));
   };
@@ -1251,10 +1283,10 @@ export function CollectionsPage() {
       .filter((item) =>
         item.type === "bank"
         && item.is_active
-        && (isBatumUser ? containsBlockedForeignBankTerm(item) : !containsBlockedForeignBankTerm(item))
+        && (isBatumCollectionScope ? containsBlockedForeignBankTerm(item) : !containsBlockedForeignBankTerm(item))
       )
       .map((item) => ({ value: item.code, label: financeDefinitionLabel(item), id: item.id })),
-    [financeDefinitions, isBatumUser]
+    [financeDefinitions, isBatumCollectionScope]
   );
   const factoryOptions = useMemo(
     () => financeDefinitions
@@ -1394,7 +1426,7 @@ export function CollectionsPage() {
     [checkDraftItems]
   );
   const customerDebtBalance = selectedCustomer?.balance_summary?.total_due ?? "0";
-  const customerDebtCurrency = selectedCustomer?.balance_summary?.currency ?? "TRY";
+  const customerDebtCurrency = isBatumCollectionScope ? "GEL" : selectedCustomer?.balance_summary?.currency ?? "TRY";
   const customerDebtAmount = toApiAmount(customerDebtBalance);
   const customerDebtStatus =
     customerDebtAmount > 0 ? "Borçlu" : customerDebtAmount < 0 ? "Alacaklı" : "Dengede";

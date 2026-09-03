@@ -3246,6 +3246,64 @@ class PointPosAccessApiTest extends TestCase
             ]);
     }
 
+    public function test_admin_selected_batum_customer_collections_use_lari_currency(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-ADMIN-BATUM-COL-'.Str::upper(Str::random(4)),
+            'name' => 'Admin Batum Collection Dealer',
+            'is_active' => true,
+        ]);
+
+        $admin = $this->createUserWithRole('admin', $dealer);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'code' => '120-00-042',
+            'name' => 'Batum Perakende Nakit Tahsilat',
+            'city' => 'BATUMI',
+            'district' => 'BATUMI',
+            'source_system' => 'logo',
+            'is_active' => true,
+        ]);
+
+        Collection::query()->create([
+            'dealer_id' => $dealer->id,
+            'customer_id' => $customer->id,
+            'date' => '2026-06-01',
+            'collection_date' => '2026-06-01',
+            'method' => 'cash',
+            'amount' => 170,
+            'currency' => 'TRY',
+        ]);
+
+        $this->actingAs($admin);
+
+        $this->getJson("/api/customers/{$customer->id}/collections?method=cash")
+            ->assertOk()
+            ->assertJsonPath('data.0.amount', '10.00')
+            ->assertJsonPath('data.0.currency', 'GEL')
+            ->assertJsonFragment([
+                'method' => 'cash',
+                'count' => 1,
+                'total_amount' => '10.00',
+            ]);
+
+        $this->postJson("/api/customers/{$customer->id}/collections", [
+            'method' => 'cash',
+            'amount' => 25,
+            'currency' => 'TRY',
+            'date' => '2026-06-05',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('collection.amount', '25.00')
+            ->assertJsonPath('collection.currency', 'GEL');
+
+        $this->assertDatabaseHas('collections', [
+            'customer_id' => $customer->id,
+            'amount' => '25.00',
+            'currency' => 'GEL',
+        ]);
+    }
+
     public function test_batum_branch_point_user_can_collect_batum_city_customer(): void
     {
         $dealer = Dealer::query()->create([

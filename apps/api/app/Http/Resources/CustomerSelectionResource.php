@@ -317,7 +317,7 @@ class CustomerSelectionResource extends JsonResource
             return 'GEL';
         }
 
-        return DisplayCurrency::normalize($currency, $user);
+        return DisplayCurrency::normalize($currency, $user, $this->resource instanceof Customer ? $this->resource : null);
     }
 
     private function usesLariCustomerDisplay(?User $user): bool
