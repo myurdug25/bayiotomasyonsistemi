@@ -2014,11 +2014,6 @@ class ProductSearchController extends Controller
                 return $this->resolveFeatureStockVisibilityScope($user);
             }
 
-            $selectedCustomerScope = $this->resolveSelectedCustomerStockVisibilityScope($user, $requestedCustomerId);
-            if ($selectedCustomerScope !== null) {
-                return $selectedCustomerScope;
-            }
-
             return null;
         }
 

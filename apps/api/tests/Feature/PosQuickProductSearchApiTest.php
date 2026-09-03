@@ -681,7 +681,7 @@ class PosQuickProductSearchApiTest extends TestCase
         $response->assertJsonPath('data.0.sku', 'ADM-1401');
     }
 
-    public function test_admin_pos_quick_search_uses_selected_customer_branch_stock_only(): void
+    public function test_admin_pos_quick_search_keeps_stock_independent_from_selected_customer(): void
     {
         $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
         $dealer = Dealer::query()->create([
@@ -744,10 +744,13 @@ class PosQuickProductSearchApiTest extends TestCase
         $this->actingAs($admin)
             ->getJson('/api/pos/products/quick-search?q=BRANCH-1401&limit=5&code_only=1')
             ->assertOk()
-            ->assertJsonPath('data.0.available_total', 7)
-            ->assertJsonCount(1, 'data.0.stock_locations')
-            ->assertJsonPath('data.0.stock_locations.0.branch', 'BATUM DEPO')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'BATUM-RAF-995');
+            ->assertJsonPath('data.0.available_total', 127)
+            ->assertJsonCount(2, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.0.branch', 'ERZURUM DEPO')
+            ->assertJsonPath('data.0.stock_locations.1.branch', 'BATUM DEPO')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B.4')
+            ->assertJsonPath('data.0.net_price', '12.35')
+            ->assertJsonPath('data.0.currency', 'GEL');
     }
 
     public function test_admin_pos_quick_search_explicit_customer_overrides_stale_session_customer(): void
@@ -821,10 +824,13 @@ class PosQuickProductSearchApiTest extends TestCase
         $this->actingAs($admin)
             ->getJson('/api/pos/products/quick-search?q=SWITCH-1401&limit=5&code_only=1&customer_id='.$batumCustomer->id)
             ->assertOk()
-            ->assertJsonPath('data.0.available_total', 9)
-            ->assertJsonCount(1, 'data.0.stock_locations')
-            ->assertJsonPath('data.0.stock_locations.0.branch', 'BATUM DEPO')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'BATUM-RAF-995');
+            ->assertJsonPath('data.0.available_total', 129)
+            ->assertJsonCount(2, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.0.branch', 'ERZURUM DEPO')
+            ->assertJsonPath('data.0.stock_locations.1.branch', 'BATUM DEPO')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B.4')
+            ->assertJsonPath('data.0.net_price', '12.35')
+            ->assertJsonPath('data.0.currency', 'GEL');
     }
 
     public function test_admin_shared_pos_search_uses_trabzon_and_samsun_customer_stock_scope(): void
@@ -918,37 +924,37 @@ class PosQuickProductSearchApiTest extends TestCase
         $this->actingAs($admin)
             ->getJson('/api/products/search?q=SHARED-BRANCH-1401&limit=5&customer_id='.$trabzonCustomer->id)
             ->assertOk()
-            ->assertJsonPath('data.0.available_total', 61)
-            ->assertJsonCount(1, 'data.0.stock_locations')
-            ->assertJsonPath('data.0.stock_locations.0.branch', 'TRABZON DEPO')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'T.61');
+            ->assertJsonPath('data.0.available_total', 236)
+            ->assertJsonCount(3, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.1.branch', 'TRABZON DEPO')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'T.61');
 
         $this->actingAs($admin)
             ->getJson('/api/pos/products/quick-search?q=SHARED-BRANCH-1401&limit=5&code_only=1&customer_id='.$trabzonCustomer->id)
             ->assertOk()
-            ->assertJsonPath('data.0.available_total', 61)
-            ->assertJsonCount(1, 'data.0.stock_locations')
-            ->assertJsonPath('data.0.stock_locations.0.branch', 'TRABZON DEPO')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'TRABZON-RAF-61');
+            ->assertJsonPath('data.0.available_total', 236)
+            ->assertJsonCount(3, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.1.branch', 'TRABZON DEPO')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'T.61');
 
         $this->actingAs($admin)
             ->getJson('/api/products/search?q=SHARED-BRANCH-1401&limit=5&customer_id='.$samsunCustomer->id)
             ->assertOk()
-            ->assertJsonPath('data.0.available_total', 55)
-            ->assertJsonCount(1, 'data.0.stock_locations')
-            ->assertJsonPath('data.0.stock_locations.0.branch', 'SAMSUN DEPO')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'S.55');
+            ->assertJsonPath('data.0.available_total', 236)
+            ->assertJsonCount(3, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.2.branch', 'SAMSUN DEPO')
+            ->assertJsonPath('data.0.stock_locations.2.shelf_address', 'S.55');
 
         $this->actingAs($admin)
             ->getJson('/api/pos/products/quick-search?q=SHARED-BRANCH-1401&limit=5&code_only=1&customer_id='.$samsunCustomer->id)
             ->assertOk()
-            ->assertJsonPath('data.0.available_total', 55)
-            ->assertJsonCount(1, 'data.0.stock_locations')
-            ->assertJsonPath('data.0.stock_locations.0.branch', 'SAMSUN DEPO')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'SAMSUN-RAF-55');
+            ->assertJsonPath('data.0.available_total', 236)
+            ->assertJsonCount(3, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.2.branch', 'SAMSUN DEPO')
+            ->assertJsonPath('data.0.stock_locations.2.shelf_address', 'S.55');
     }
 
-    public function test_admin_shared_product_search_uses_batum_customer_stock_scope(): void
+    public function test_admin_shared_product_search_uses_batum_customer_for_currency_not_stock_scope(): void
     {
         $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
         $dealer = Dealer::query()->create([
@@ -1012,10 +1018,11 @@ class PosQuickProductSearchApiTest extends TestCase
         $this->actingAs($admin)
             ->getJson('/api/products/search?q=CS0040-BATUM&limit=5&customer_id='.$batumCustomer->id)
             ->assertOk()
-            ->assertJsonPath('data.0.available_total', 17)
-            ->assertJsonCount(1, 'data.0.stock_locations')
-            ->assertJsonPath('data.0.stock_locations.0.branch', 'BATUM DEPO')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'B.4')
+            ->assertJsonPath('data.0.available_total', 137)
+            ->assertJsonCount(2, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.0.branch', 'ERZURUM DEPO')
+            ->assertJsonPath('data.0.stock_locations.1.branch', 'BATUM DEPO')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B.4')
             ->assertJsonPath('data.0.net_price', '12.35')
             ->assertJsonPath('data.0.currency', 'GEL');
     }

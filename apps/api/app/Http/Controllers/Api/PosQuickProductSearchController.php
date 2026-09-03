@@ -15,7 +15,6 @@ use App\Support\Pricing\CustomerPriceListResolver;
 use App\Support\Pricing\DealerNetPriceExpression;
 use App\Support\Pricing\DisplayCurrency;
 use App\Support\Products\ProductCodeNormalizer;
-use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -438,45 +437,6 @@ class PosQuickProductSearchController extends Controller
             return $userScope;
         }
 
-        $selectedCustomerId = $requestedCustomerId
-            ?? ($user->selected_customer_id !== null ? (int) $user->selected_customer_id : null);
-
-        if ($user->hasAnyRole(['admin', 'moderator']) && $selectedCustomerId !== null) {
-            $selectedCustomer = Customer::query()
-                ->select([
-                    'id',
-                    'code',
-                    'name',
-                    'salesperson_user_id',
-                    'branch_code',
-                    'branch_name',
-                    'region_code',
-                    'region_name',
-                    'city',
-                    'meta',
-                ])
-                ->with('salesperson:id,username,branch_code,branch_name,region_code,region_name')
-                ->find($selectedCustomerId);
-
-            if ($selectedCustomer instanceof Customer) {
-                $branchCode = app(WarehouseBranchResolver::class)
-                    ->resolveBranchCode($user, $selectedCustomer);
-                $warehouseKey = match ($branchCode) {
-                    'BATUM' => 'search.stock.warehouse.batum',
-                    'TRABZON' => 'search.stock.warehouse.trabzon',
-                    'SAMSUN' => 'search.stock.warehouse.samsun',
-                    'ERZURUM' => $this->selectedCustomerUsesErzurumPoint($selectedCustomer)
-                        ? 'search.stock.warehouse.erzurum_point'
-                        : 'search.stock.warehouse.erzurum_depo',
-                    default => null,
-                };
-
-                if ($warehouseKey !== null) {
-                    return $this->stockScopeFromWarehouseKeys([$warehouseKey]);
-                }
-            }
-        }
-
         if ($user->hasAnyRole(['admin', 'moderator'])) {
             return null;
         }
@@ -578,31 +538,6 @@ class PosQuickProductSearchController extends Controller
         }
 
         return $this->stockScopeFromWarehouseKeys($warehouseKeys);
-    }
-
-    private function selectedCustomerUsesErzurumPoint(Customer $customer): bool
-    {
-        $identity = implode(' ', array_filter([
-            $customer->code,
-            $customer->name,
-            $customer->branch_code,
-            $customer->branch_name,
-            $customer->salesperson?->username,
-            $customer->salesperson?->branch_code,
-            $customer->salesperson?->branch_name,
-        ]));
-        $normalized = $this->normalizeScopeMatchText($this->normalizeScopeText($identity) ?? '');
-
-        return $this->scopeTextContainsToken($normalized, 'POINT')
-            || str_contains($normalized, 'HIZLI SATIS');
-    }
-
-    private function scopeTextContainsToken(string $text, string $token): bool
-    {
-        return (bool) preg_match(
-            '/(?:^|\s)'.preg_quote($token, '/').'(?:\s|$)/u',
-            $text
-        );
     }
 
     private function normalizeScopeMatchText(string $value): string

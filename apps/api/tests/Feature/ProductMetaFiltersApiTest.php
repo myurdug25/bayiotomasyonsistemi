@@ -856,7 +856,7 @@ class ProductMetaFiltersApiTest extends TestCase
         $response->assertJsonPath('data.0.stock_locations.0.shelf_address', 'A26.6');
     }
 
-    public function test_admin_product_search_uses_selected_customer_warehouse_stock(): void
+    public function test_admin_product_search_keeps_stock_independent_from_selected_customer(): void
     {
         $context = $this->createSalesContext();
         $product = $this->createProductWithMeta(
@@ -919,10 +919,12 @@ class ProductMetaFiltersApiTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data.0.id', $product->id);
-        $response->assertJsonPath('data.0.available_total', 7);
-        $response->assertJsonCount(1, 'data.0.stock_locations');
-        $response->assertJsonPath('data.0.stock_locations.0.warehouse_code', '2');
-        $response->assertJsonPath('data.0.stock_locations.0.stock', 7);
+        $response->assertJsonPath('data.0.available_total', 19);
+        $response->assertJsonCount(2, 'data.0.stock_locations');
+        $response->assertJsonPath('data.0.stock_locations.0.warehouse_code', '0');
+        $response->assertJsonPath('data.0.stock_locations.0.stock', 12);
+        $response->assertJsonPath('data.0.stock_locations.1.warehouse_code', '2');
+        $response->assertJsonPath('data.0.stock_locations.1.stock', 7);
     }
 
     public function test_admin_product_search_switches_between_batum_code_and_erzurum_customer_stock(): void
@@ -987,10 +989,12 @@ class ProductMetaFiltersApiTest extends TestCase
             )
             ->assertOk()
             ->assertJsonPath('data.0.id', $product->id)
-            ->assertJsonPath('data.0.available_total', 8)
-            ->assertJsonCount(1, 'data.0.stock_locations')
-            ->assertJsonPath('data.0.stock_locations.0.warehouse_code', '4')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'B995.1');
+            ->assertJsonPath('data.0.available_total', 31)
+            ->assertJsonCount(2, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.0.warehouse_code', '1')
+            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'E25.1')
+            ->assertJsonPath('data.0.stock_locations.1.warehouse_code', '4')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B995.1');
 
         $this->actingAs($admin)
             ->getJson(
@@ -1000,10 +1004,12 @@ class ProductMetaFiltersApiTest extends TestCase
             )
             ->assertOk()
             ->assertJsonPath('data.0.id', $product->id)
-            ->assertJsonPath('data.0.available_total', 23)
-            ->assertJsonCount(1, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.available_total', 31)
+            ->assertJsonCount(2, 'data.0.stock_locations')
             ->assertJsonPath('data.0.stock_locations.0.warehouse_code', '1')
-            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'E25.1');
+            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'E25.1')
+            ->assertJsonPath('data.0.stock_locations.1.warehouse_code', '4')
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B995.1');
     }
 
     public function test_products_search_returns_products_by_brand_name_and_applies_sort(): void
