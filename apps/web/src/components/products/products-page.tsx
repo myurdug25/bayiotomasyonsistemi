@@ -691,7 +691,7 @@ const ProductStockCell = memo(function ProductStockCell({
     const label = tone === "high" ? "Stok Var" : tone === "low" ? "Stok Az" : "Stok Yok";
 
     return (
-      <div className="flex h-full w-full items-center justify-center px-1 text-center">
+      <div className="product-stock-cell flex h-full w-full items-center justify-center px-1 text-center">
         <span
           className={cn(
             "inline-flex min-h-7 items-center justify-center rounded-full border px-2.5 text-[10px] font-black",
@@ -717,7 +717,7 @@ const ProductStockCell = memo(function ProductStockCell({
   }
 
   return (
-    <div className="admin-product-stock h-full w-full min-w-0">
+    <div className="admin-product-stock product-stock-cell h-full w-full min-w-0">
       <div
         className="grid h-full overflow-hidden bg-transparent"
         style={{ gridTemplateColumns: `repeat(${branchRows.length}, minmax(0, 1fr))` }}
@@ -731,7 +731,7 @@ const ProductStockCell = memo(function ProductStockCell({
             <div
               key={`${product.id}-branch-stock-${branch.key}`}
               className={cn(
-                "flex min-w-0 flex-col items-center justify-center gap-0.5 border-l border-[var(--brand-border)] px-1 py-0.5 text-center leading-none first:border-l-0",
+                  "product-stock-branch flex min-w-0 flex-col items-center justify-center gap-0.5 border-l border-[var(--brand-border)] px-1 py-0.5 text-center leading-none first:border-l-0",
                 isPositive
                   ? "bg-emerald-300/10 text-emerald-100"
                   : "text-[var(--muted-foreground)]",
@@ -743,7 +743,7 @@ const ProductStockCell = memo(function ProductStockCell({
               </span>
               <span
                 className={cn(
-                  "inline-flex min-h-4 w-auto max-w-full min-w-0 items-center justify-center gap-1 rounded-md border px-1.5 text-[9px] font-black leading-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+                  "product-shelf-badge inline-flex min-h-4 w-auto max-w-full min-w-0 items-center justify-center gap-1 rounded-md border px-1.5 text-[9px] font-black leading-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
                   hasShelfAddress
                     ? "border-sky-300/35 bg-sky-300/14 text-sky-100"
                     : "border-slate-500/20 bg-slate-500/10 text-slate-400"
@@ -844,7 +844,7 @@ const ProductRow = memo(function ProductRow({
     <div
       style={style}
       role="row"
-      className="admin-product-row w-full"
+      className="admin-product-row product-result-row w-full"
     >
       <div
         className={cn(
@@ -858,7 +858,7 @@ const ProductRow = memo(function ProductRow({
           <ProductImageCell product={product} onPreviewImage={onPreviewImage} />
         </div>
 
-        <div role="cell" className="flex min-w-0 items-center border-l border-[var(--brand-border)] px-1.5 py-0.5">
+        <div role="cell" className="product-sku-cell flex min-w-0 items-center border-l border-[var(--brand-border)] px-1.5 py-0.5">
           <p className="truncate text-[13px] font-black tracking-[0.02em] text-[#f8fff9] drop-shadow-[0_1px_1px_rgba(0,0,0,0.42)]">
             {product.sku}
           </p>
@@ -893,7 +893,7 @@ const ProductRow = memo(function ProductRow({
           </p>
         </div>
 
-        <div role="cell" className="admin-product-price flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1.5 py-0.5">
+        <div role="cell" className="admin-product-price product-list-price-cell flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1.5 py-0.5">
           <p className="flex max-w-full justify-center text-center text-[11px] font-extrabold text-[var(--foreground)]">
             <span className="group/retail-price relative inline-flex max-w-full">
               <span className="truncate">{priceText}</span>
@@ -924,7 +924,7 @@ const ProductRow = memo(function ProductRow({
         <div role="cell" className="relative flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5">
           <details data-product-info className="group/details relative">
             <summary
-              className="flex h-7 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#faee56]/55 bg-[#6b611f] text-[#fff4a3] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_18px_-18px_rgba(250,238,86,0.9)] transition-colors hover:bg-[#7d7228] [&::-webkit-details-marker]:hidden"
+              className="product-info-button flex h-7 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#faee56]/55 bg-[#6b611f] text-[#fff4a3] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_18px_-18px_rgba(250,238,86,0.9)] transition-colors hover:bg-[#7d7228] [&::-webkit-details-marker]:hidden"
               title="Ürün bilgileri"
               aria-label={`${product.sku} ürün bilgileri`}
             >
@@ -1012,7 +1012,7 @@ const ProductRow = memo(function ProductRow({
             size="icon"
             onClick={() => onOpenCartModal(product, qty)}
 	            disabled={!canAdd}
-            className="cart-primary-button relative mx-auto h-8 w-8 rounded-lg border border-red-200/45 bg-gradient-to-b from-[#ff4a43] via-[#d71920] to-[#8d070d] text-white shadow-[0_2px_0_#8a070d,0_10px_18px_-18px_rgba(255,35,35,0.9),inset_0_1px_0_rgba(255,255,255,0.48)] transition-transform hover:-translate-y-0.5 hover:from-[#ff625b] hover:via-[#e51f26] hover:to-[#9b080e] active:translate-y-0.5 active:shadow-[0_1px_0_#8a070d,0_8px_18px_-18px_rgba(255,35,35,0.82),inset_0_1px_0_rgba(255,255,255,0.34)] disabled:!translate-y-0 disabled:!border-slate-500/40 disabled:!bg-[#617488] disabled:!bg-none disabled:!text-[#07120d] disabled:!shadow-none"
+            className="cart-primary-button product-cart-button relative mx-auto h-8 w-8 rounded-lg border border-red-200/45 bg-gradient-to-b from-[#ff4a43] via-[#d71920] to-[#8d070d] text-white shadow-[0_2px_0_#8a070d,0_10px_18px_-18px_rgba(255,35,35,0.9),inset_0_1px_0_rgba(255,255,255,0.48)] transition-transform hover:-translate-y-0.5 hover:from-[#ff625b] hover:via-[#e51f26] hover:to-[#9b080e] active:translate-y-0.5 active:shadow-[0_1px_0_#8a070d,0_8px_18px_-18px_rgba(255,35,35,0.82),inset_0_1px_0_rgba(255,255,255,0.34)] disabled:!translate-y-0 disabled:!border-slate-500/40 disabled:!bg-[#617488] disabled:!bg-none disabled:!text-[#07120d] disabled:!shadow-none"
             aria-label={`${product.sku} sepete ekle`}
             title="Sepete ekle"
           >
@@ -1923,7 +1923,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
             <Button
               type="button"
-              className="h-10 w-full rounded-lg border border-[#3f8f54] bg-[#2f7f56] px-4 text-sm font-black text-white shadow-[0_12px_22px_-20px_rgba(47,127,86,0.9)] hover:bg-[#276d49] hover:text-white"
+              className="product-search-button h-10 w-full rounded-lg border border-[#3f8f54] bg-[#2f7f56] px-4 text-sm font-black text-white shadow-[0_12px_22px_-20px_rgba(47,127,86,0.9)] hover:bg-[#276d49] hover:text-white"
               onClick={handleSubmitSearch}
             >
               <Search className="h-4 w-4" />
@@ -1933,7 +1933,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
             <Button
               type="button"
               variant="outline"
-              className="h-10 w-full rounded-lg border-[#ef4444] bg-[#dc2626] px-4 text-sm font-black text-white shadow-[0_12px_22px_-20px_rgba(220,38,38,0.95)] hover:border-[#dc2626] hover:bg-[#b91c1c] hover:text-white disabled:border-[#dc2626] disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-70"
+              className="product-clear-button h-10 w-full rounded-lg border-[#ef4444] bg-[#dc2626] px-4 text-sm font-black text-white shadow-[0_12px_22px_-20px_rgba(220,38,38,0.95)] hover:border-[#dc2626] hover:bg-[#b91c1c] hover:text-white disabled:border-[#dc2626] disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-70"
               disabled={!search && !normalizedSearch && !hasMetaFilters && !showAllProducts && sort === "recommended"}
               onClick={handleResetFilters}
             >
@@ -1947,7 +1947,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                 setShowAllProducts((current) => !current);
               }}
               className={cn(
-                "h-10 w-full rounded-lg text-sm font-extrabold",
+                "product-show-all-toggle h-10 w-full rounded-lg text-sm font-extrabold",
                 showAllProducts ? "admin-primary-action" : "admin-dashboard-ghost"
               )}
             >
@@ -2040,7 +2040,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                     role="row"
                     className={cn(
                       PRODUCT_TABLE_GRID,
-                      "z-30 border border-emerald-300/35 bg-[radial-gradient(circle_at_8%_16%,rgba(34,197,94,0.42)_0%,transparent_34%),linear-gradient(135deg,rgba(15,118,54,0.96)_0%,rgba(3,48,31,0.98)_100%)] text-[9px] font-black uppercase tracking-[0.08em] text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(34,197,94,0.12),0_16px_34px_-30px_rgba(34,197,94,0.84)] lg:sticky lg:top-0"
+                      "product-results-table-head z-30 border border-emerald-300/35 bg-[radial-gradient(circle_at_8%_16%,rgba(34,197,94,0.42)_0%,transparent_34%),linear-gradient(135deg,rgba(15,118,54,0.96)_0%,rgba(3,48,31,0.98)_100%)] text-[9px] font-black uppercase tracking-[0.08em] text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(34,197,94,0.12),0_16px_34px_-30px_rgba(34,197,94,0.84)] lg:sticky lg:top-0"
                     )}
                     style={tableGridStyle}
                   >
@@ -2063,7 +2063,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                       ) : visibleStockColumns.length > 0 ? visibleStockColumns.map((branch) => (
                         <span
                           key={`stock-head-${branch.key}`}
-                          className="flex min-w-0 items-center justify-center whitespace-nowrap border-l border-white/10 px-1 py-2 text-center text-[7px] tracking-[0.02em] first:border-l-0"
+                          className="product-stock-header-cell flex min-w-0 items-center justify-center whitespace-nowrap border-l border-white/10 px-1 py-2 text-center text-[7px] tracking-[0.02em] first:border-l-0"
                         >
                           {branch.label}
                         </span>
@@ -2073,11 +2073,11 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         </span>
                       )}
                     </span>
-	                    <span role="columnheader" className="flex items-center justify-center border-l border-white/10 px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Bilgi</span>
-		                    <span role="columnheader" className="right-0 z-30 flex items-center justify-center border-l border-white/10 bg-[linear-gradient(135deg,rgba(10,96,54,0.98)_0%,rgba(3,48,31,1)_100%)] px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)] shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] lg:sticky">Sepet</span>
+	                    <span role="columnheader" className="product-info-header-cell flex items-center justify-center border-l border-white/10 px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Bilgi</span>
+		                    <span role="columnheader" className="product-cart-header-cell right-0 z-30 flex items-center justify-center border-l border-white/10 bg-[linear-gradient(135deg,rgba(10,96,54,0.98)_0%,rgba(3,48,31,1)_100%)] px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)] shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] lg:sticky">Sepet</span>
                   </div>
                 </div>
-                <div className={cn("rounded-xl border border-t-0 border-[var(--brand-border)]", compact ? "min-h-[360px]" : "min-h-[520px]")}>
+                <div className={cn("product-results-body rounded-xl border border-t-0 border-[var(--brand-border)]", compact ? "min-h-[360px]" : "min-h-[520px]")}>
                   {products.map((product) => {
                     const qty = qtyByProductId.get(product.id) ?? 0;
                     const campaignNames = canViewCampaigns
@@ -2112,7 +2112,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                     ref={infiniteScrollMarkerRef}
                     className={cn(
                       PRODUCT_TABLE_GRID,
-                      "min-h-16 border-b border-l-4 border-[var(--brand-border)] border-l-transparent bg-[var(--surface)]"
+                      "product-results-status-row min-h-16 border-b border-l-4 border-[var(--brand-border)] border-l-transparent bg-[var(--surface)]"
                     )}
                     style={tableGridStyle}
                   >
