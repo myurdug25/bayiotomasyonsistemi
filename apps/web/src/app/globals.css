@@ -9781,12 +9781,12 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-table-head [role="columnheader"] {
-  min-height: 52px !important;
+  min-height: 46px !important;
   align-items: center !important;
   color: var(--search-light-text) !important;
-  font-size: 12px !important;
+  font-size: 11px !important;
   line-height: 1.15 !important;
-  letter-spacing: 0.02em !important;
+  letter-spacing: 0.018em !important;
   text-shadow: none !important;
   filter: none !important;
   box-shadow: none !important;
@@ -9795,12 +9795,20 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-table-head .product-stock-header-cell {
-  padding-inline: 0.25rem !important;
+  padding-inline: 0.2rem !important;
   color: #183729 !important;
-  font-size: 10.5px !important;
-  line-height: 1.1 !important;
+  font-size: 9.75px !important;
+  font-weight: 750 !important;
+  line-height: 1.05 !important;
   white-space: normal !important;
-  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-table-head .product-stock-header-cell:not(:has(br)) {
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-table-head .product-info-header-cell {
@@ -9824,7 +9832,7 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid {
-  min-height: 48px !important;
+  min-height: 58px !important;
   border-color: var(--search-light-border) !important;
   background: #ffffff !important;
   color: var(--search-light-text) !important;
@@ -9854,8 +9862,29 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-r
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-sku-cell p {
-  font-size: 14px !important;
+  font-size: 15px !important;
+  font-weight: 750 !important;
   letter-spacing: 0 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(3) p:first-child {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(3) p:last-child {
+  font-size: 9.5px !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(4) p {
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  line-height: 1.18 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(5) p {
+  font-size: 10.5px !important;
+  white-space: normal !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-list-price-cell,
@@ -9868,22 +9897,43 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-list-pr
   width: 100% !important;
   color: #183729 !important;
   font-size: 12px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-branch {
   background: #f5fbf7 !important;
   color: var(--search-light-text) !important;
+  gap: 2px !important;
+  padding-block: 0.25rem !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-branch span:first-child {
   color: #076342 !important;
-  font-size: 13px !important;
+  font-size: 13.5px !important;
+  font-weight: 750 !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-badge {
+  width: max-content !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  padding: 1px 6px !important;
   border-color: #aad8d4 !important;
   background: #dff5f1 !important;
   color: #22544e !important;
+  font-size: 9.75px !important;
+  font-weight: 650 !important;
+  line-height: 1.05 !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-badge > span {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-status-row {
@@ -9903,6 +9953,8 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-a
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-info-button:not(:disabled) {
+  width: 38px !important;
+  height: 32px !important;
   background: linear-gradient(180deg, #a99015 0%, var(--search-light-gold) 100%) !important;
   border-color: rgba(143, 120, 17, 0.72) !important;
   color: #ffffff !important;
@@ -9922,6 +9974,8 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-cart-bu
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-cart-button:not(:disabled) {
+  width: 40px !important;
+  height: 36px !important;
   background: linear-gradient(180deg, #ff4b4f 0%, var(--search-light-red) 58%, var(--search-light-red-hover) 100%) !important;
   border-color: rgba(179, 18, 24, 0.62) !important;
   color: #ffffff !important;

@@ -72,13 +72,12 @@ type ProductSearchPageParam = {
 
 function productTableGridStyle(stockColumnCount: number): CSSProperties {
   const normalizedStockColumnCount = Math.max(stockColumnCount, 1);
-  const stockColumnWidth = Math.min(190, Math.max(78, normalizedStockColumnCount * 50));
-  const minWidth = 820 + stockColumnWidth;
-  const stockColumnFlex = normalizedStockColumnCount >= 5 ? 0.94 : normalizedStockColumnCount === 2 ? 0.58 : 0.42;
+  const stockColumnWidth = Math.min(390, Math.max(300, normalizedStockColumnCount * 66));
+  const minWidth = Math.max(1200, 842 + stockColumnWidth);
 
   return {
     minWidth,
-    gridTemplateColumns: `36px minmax(78px,0.58fr) minmax(58px,0.36fr) minmax(230px,1.55fr) minmax(58px,0.32fr) 44px 72px minmax(${stockColumnWidth}px,${stockColumnFlex}fr) 72px 50px`,
+    gridTemplateColumns: `42px minmax(118px,0.68fr) minmax(86px,0.46fr) minmax(330px,1.85fr) minmax(100px,0.52fr) 54px 96px minmax(${stockColumnWidth}px,0.98fr) 54px 56px`,
   };
 }
 
@@ -379,6 +378,28 @@ const BRANCH_STOCK_COLUMNS = [
   { key: "batum", label: "Batum", title: "Batum", permissionKey: "search.stock.warehouse.batum", aliases: ["4", "batum depo", "batum", "batumi"] },
 ] as const;
 type BranchStockColumn = (typeof BRANCH_STOCK_COLUMNS)[number];
+
+function productBranchStockHeaderLabel(branch: BranchStockColumn) {
+  if (branch.key === "erz-depo") {
+    return (
+      <>
+        ERZ.<br />
+        DEPO
+      </>
+    );
+  }
+
+  if (branch.key === "erz-point") {
+    return (
+      <>
+        ERZ.<br />
+        POINT
+      </>
+    );
+  }
+
+  return <>{branch.label}</>;
+}
 
 function normalizeBranchText(value: string | null | undefined): string {
   return (value ?? "")
@@ -2065,7 +2086,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                           key={`stock-head-${branch.key}`}
                           className="product-stock-header-cell flex min-w-0 items-center justify-center whitespace-nowrap border-l border-white/10 px-1 py-2 text-center text-[7px] tracking-[0.02em] first:border-l-0"
                         >
-                          {branch.label}
+                          {productBranchStockHeaderLabel(branch)}
                         </span>
                       )) : (
                         <span className="flex min-w-0 items-center justify-center whitespace-nowrap px-1 py-2 text-center text-[7px] tracking-[0.02em]">

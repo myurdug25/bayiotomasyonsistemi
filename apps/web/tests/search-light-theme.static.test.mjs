@@ -27,6 +27,17 @@ test("search page exposes stable hooks for light table polish", () => {
   });
 });
 
+test("search table stays compact without clipping stock shelf labels", () => {
+  assert.match(productsSource, /function productBranchStockHeaderLabel/);
+  assert.match(productsSource, /minWidth = Math\.max\(1200, 842 \+ stockColumnWidth\)/);
+  assert.match(productsSource, /stockColumnWidth = Math\.min\(390, Math\.max\(300, normalizedStockColumnCount \* 66\)\)/);
+  assert.match(css, /font-size:\s*11px !important/);
+  assert.match(css, /font-size:\s*9\.75px !important/);
+  assert.match(css, /white-space:\s*nowrap !important/);
+  assert.match(css, /text-overflow:\s*clip !important/);
+  assert.match(css, /width:\s*max-content !important/);
+});
+
 test("search light theme polish is scoped to light search page only", () => {
   assert.match(css, /\/\* Search page light table polish/);
   assert.match(css, /html\[data-ui-theme="light"\] \.app-shell-root \.admin-catalog-page/);
