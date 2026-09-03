@@ -375,7 +375,7 @@ export function CustomerSelectionPage() {
 
               <Button
                 type="button"
-                className="h-12 min-w-0 rounded-[13px] border border-[#3f8f54] bg-[#2f7f56] px-3 text-[14px] font-black text-white shadow-[0_12px_22px_-20px_rgba(47,127,86,0.9)] hover:bg-[#276d49] hover:text-white"
+                className="customers-search-button h-12 min-w-0 rounded-[13px] border border-[#3f8f54] bg-[#2f7f56] px-3 text-[14px] font-black text-white shadow-[0_12px_22px_-20px_rgba(47,127,86,0.9)] hover:bg-[#276d49] hover:text-white"
                 disabled={filtersDisabled}
                 onClick={submitSearch}
               >
@@ -386,7 +386,7 @@ export function CustomerSelectionPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="h-12 min-w-0 rounded-[13px] border-[#ef4444] bg-[#dc2626] px-3 text-[14px] font-black text-white shadow-[0_12px_22px_-20px_rgba(220,38,38,0.95)] hover:border-[#dc2626] hover:bg-[#b91c1c] hover:text-white disabled:border-[#dc2626] disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-70"
+                className="customers-clear-button h-12 min-w-0 rounded-[13px] border-[#ef4444] bg-[#dc2626] px-3 text-[14px] font-black text-white shadow-[0_12px_22px_-20px_rgba(220,38,38,0.95)] hover:border-[#dc2626] hover:bg-[#b91c1c] hover:text-white disabled:border-[#dc2626] disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-70"
                 disabled={filtersDisabled || (!queryInput && !submittedQuery)}
                 onClick={clearSearch}
               >
@@ -400,7 +400,7 @@ export function CustomerSelectionPage() {
                 onPressedChange={setHasCart}
                 aria-label="Has cart filter"
                 className={cn(
-                  "h-12 flex-1 justify-center gap-2 rounded-[13px] border px-2 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(20,54,34,0.7)] transition-all hover:scale-[1.01] hover:shadow-[0_14px_24px_-22px_rgba(20,54,34,0.85)] sm:px-3 sm:text-[13px]",
+                  "customers-cart-filter-button h-12 flex-1 justify-center gap-2 rounded-[13px] border px-2 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(20,54,34,0.7)] transition-all hover:scale-[1.01] hover:shadow-[0_14px_24px_-22px_rgba(20,54,34,0.85)] sm:px-3 sm:text-[13px]",
                   hasCart
                     ? "border-[#3f8f54] bg-[#2f7f56] text-white hover:bg-[#276d49]"
                     : isDarkMode
@@ -418,7 +418,7 @@ export function CustomerSelectionPage() {
                 onPressedChange={setHasOrderBalance}
                 aria-label="Has order balance filter"
                 className={cn(
-                  "h-12 flex-1 justify-center gap-2 rounded-[13px] border px-2 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(145,40,38,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_14px_24px_-22px_rgba(145,40,38,0.9)] sm:px-3 sm:text-[13px]",
+                  "customers-balance-filter-button h-12 flex-1 justify-center gap-2 rounded-[13px] border px-2 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(145,40,38,0.8)] transition-all hover:scale-[1.01] hover:shadow-[0_14px_24px_-22px_rgba(145,40,38,0.9)] sm:px-3 sm:text-[13px]",
                   hasOrderBalance
                     ? "border-[#c3403c] bg-[#b83232] text-white hover:bg-[#9f292b]"
                     : isDarkMode
@@ -439,7 +439,7 @@ export function CustomerSelectionPage() {
                 <SelectTrigger
                   aria-label="Cari fiyat grubu filtresi"
                   className={cn(
-                    "h-12 rounded-[13px] border px-3 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(20,54,34,0.7)] sm:text-[13px]",
+                    "customers-f-group-trigger h-12 rounded-[13px] border px-3 text-[12px] font-black shadow-[0_10px_20px_-18px_rgba(20,54,34,0.7)] sm:text-[13px]",
                     selectedPriceGroup
                       ? "border-[#3f8f54] bg-[#2f7f56] text-white"
                       : isDarkMode
@@ -452,7 +452,7 @@ export function CustomerSelectionPage() {
                     <SelectValue placeholder="F Grubu" />
                   </span>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="customers-f-group-content">
                   <SelectItem value={ALL_PRICE_GROUPS}>Tüm F Grupları</SelectItem>
                   {priceGroupOptions.map((option) => (
                     <SelectItem key={option.code} value={option.code}>
@@ -783,10 +783,10 @@ export function CustomerSelectionPage() {
                                 size="default"
                                 variant={isSelected ? "secondary" : "default"}
                                 className={cn(
-                                  "h-8 min-w-[78px] rounded-lg px-3 text-xs font-black",
+                                  "customer-select-button h-8 min-w-[78px] rounded-lg px-3 text-xs font-black",
                                   isSelected
-                                    ? "border border-[#2f7f56] bg-[#2f7f56] text-white shadow-[0_10px_20px_-16px_rgba(47,127,86,0.85)] hover:bg-[#276d49] hover:text-white"
-                                    : "border border-red-200/45 bg-gradient-to-b from-[#ef3340] via-[#d71920] to-[#b30824] text-white shadow-[0_12px_22px_-16px_rgba(239,51,64,0.95),inset_0_1px_0_rgba(255,255,255,0.42)] hover:from-[#ff4d57] hover:via-[#e31d28] hover:to-[#b30824] hover:text-white"
+                                    ? "customer-select-button--selected border border-[#2f7f56] bg-[#2f7f56] text-white shadow-[0_10px_20px_-16px_rgba(47,127,86,0.85)] hover:bg-[#276d49] hover:text-white"
+                                    : "customer-select-button--choose border border-red-200/45 bg-gradient-to-b from-[#ef3340] via-[#d71920] to-[#b30824] text-white shadow-[0_12px_22px_-16px_rgba(239,51,64,0.95),inset_0_1px_0_rgba(255,255,255,0.42)] hover:from-[#ff4d57] hover:via-[#e31d28] hover:to-[#b30824] hover:text-white"
                                 )}
                                 onClick={(event) => {
                                   event.stopPropagation();

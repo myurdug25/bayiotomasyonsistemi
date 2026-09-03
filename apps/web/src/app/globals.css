@@ -8745,6 +8745,216 @@ html[data-ui-theme="light"] .app-shell-root :where(.page-shell-main, .app-conten
   box-shadow: none !important;
 }
 
+/* Customer selection light theme polish: scoped to /customers so dark mode and logic stay untouched. */
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page {
+  --customers-light-bg: #f3f8f5;
+  --customers-light-surface: #ffffff;
+  --customers-light-surface-soft: #f7fbf9;
+  --customers-light-toolbar: #eef8f3;
+  --customers-light-head: #dfeee7;
+  --customers-light-row: #ffffff;
+  --customers-light-row-alt: #f8fbfa;
+  --customers-light-row-hover: #ebf7f0;
+  --customers-light-text: #08231a;
+  --customers-light-muted: #4f655b;
+  --customers-light-border: #c9ddd2;
+  --customers-light-border-strong: #9fc2b0;
+  --customers-light-green: #087a52;
+  --customers-light-green-strong: #056241;
+  --customers-light-red: #d71920;
+  --customers-light-red-strong: #ad141b;
+  color: var(--customers-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .dashboard-panel-card,
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .dashboard-panel-card > [data-slot="card-content"] {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 251, 249, 0.98) 100%) !important;
+  border-color: var(--customers-light-border) !important;
+  box-shadow: 0 1px 2px rgba(8, 35, 26, 0.04), 0 20px 44px rgba(8, 35, 26, 0.08) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-filter {
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--customers-light-toolbar) 100%) !important;
+  border: 1px solid var(--customers-light-border) !important;
+  box-shadow: 0 12px 30px -24px rgba(8, 35, 26, 0.42) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-dashboard-input,
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-f-group-trigger {
+  background: #ffffff !important;
+  border-color: var(--customers-light-border-strong) !important;
+  color: var(--customers-light-text) !important;
+  box-shadow: inset 0 1px 0 rgba(8, 35, 26, 0.04), 0 0 0 1px rgba(8, 122, 82, 0.04) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-dashboard-input::placeholder {
+  color: #65786e !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-search-button:not(:disabled) {
+  background: linear-gradient(135deg, #0c8c60 0%, var(--customers-light-green) 55%, var(--customers-light-green-strong) 100%) !important;
+  border-color: rgba(5, 98, 65, 0.56) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 36px -24px rgba(8, 122, 82, 0.82) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-clear-button:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customer-select-button--choose:not(:disabled) {
+  background: linear-gradient(135deg, #ff5257 0%, var(--customers-light-red) 58%, var(--customers-light-red-strong) 100%) !important;
+  border-color: rgba(173, 20, 27, 0.54) !important;
+  color: #ffffff !important;
+  box-shadow: 0 18px 38px -24px rgba(215, 25, 32, 0.8) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customer-select-button--selected:not(:disabled) {
+  background: linear-gradient(135deg, #0c8c60 0%, var(--customers-light-green) 55%, var(--customers-light-green-strong) 100%) !important;
+  border-color: rgba(5, 98, 65, 0.56) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 34px -24px rgba(8, 122, 82, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-cart-filter-button,
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-balance-filter-button,
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-f-group-trigger {
+  min-width: 0 !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-cart-filter-button:not(:disabled)[data-state="off"],
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-f-group-trigger:not([data-state="open"]) {
+  background: #f1faf5 !important;
+  border-color: #b5d8c3 !important;
+  color: #176b3a !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-balance-filter-button:not(:disabled)[data-state="off"] {
+  background: #fff4f3 !important;
+  border-color: #efc1bd !important;
+  color: #a9232a !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-cart-filter-button:not(:disabled)[data-state="on"],
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-f-group-trigger[data-state="open"] {
+  background: linear-gradient(135deg, #0c8c60 0%, var(--customers-light-green) 55%, var(--customers-light-green-strong) 100%) !important;
+  border-color: rgba(5, 98, 65, 0.56) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customers-balance-filter-button:not(:disabled)[data-state="on"] {
+  background: linear-gradient(135deg, #ff5257 0%, var(--customers-light-red) 58%, var(--customers-light-red-strong) 100%) !important;
+  border-color: rgba(173, 20, 27, 0.54) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page :where(button, [role="combobox"]) :where(svg, span) {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list {
+  background: var(--customers-light-surface) !important;
+  border: 1px solid var(--customers-light-border) !important;
+  box-shadow: 0 1px 2px rgba(8, 35, 26, 0.04), 0 20px 46px rgba(8, 35, 26, 0.08) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-header"] {
+  background: linear-gradient(180deg, #eaf5ef 0%, var(--customers-light-head) 100%) !important;
+  border-color: var(--customers-light-border) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-head"] {
+  color: #123528 !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-row"] {
+  background: var(--customers-light-row) !important;
+  border-color: #dbe7e0 !important;
+  color: var(--customers-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-body"] [data-slot="table-row"]:nth-child(even) {
+  background: var(--customers-light-row-alt) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-row"]:hover {
+  background: var(--customers-light-row-hover) !important;
+  border-left-color: var(--customers-light-green) !important;
+  box-shadow: inset 4px 0 0 var(--customers-light-green), 0 12px 30px -24px rgba(8, 122, 82, 0.42) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list :where(p, span, strong, td) {
+  color: var(--customers-light-text) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-cell"] > p,
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-cell"] > div > p {
+  color: var(--customers-light-muted) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-cell"]:nth-child(2) p {
+  color: #0b2d21 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customer-select-button:not(:disabled):hover {
+  filter: saturate(1.06) brightness(1.02);
+  transform: translateY(-1px);
+}
+
+html[data-ui-theme="light"] .customers-f-group-content {
+  background: #ffffff !important;
+  border-color: #bfd6ca !important;
+  color: #08231a !important;
+  box-shadow: 0 20px 42px -24px rgba(8, 35, 26, 0.35) !important;
+}
+
+@media (max-width: 899px) {
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-row"] {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%) !important;
+    border-color: var(--customers-light-border) !important;
+    border-left-color: var(--customers-light-green) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 14px 30px -24px rgba(8, 35, 26, 0.42) !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-cell"]:not([colspan])::before {
+    color: #5b7066 !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-cell"]:nth-child(8)::before {
+    content: "F Kodu" !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-list [data-slot="table-cell"]:nth-child(9)::before {
+    content: "İşlem" !important;
+  }
+}
+
+@media (max-width: 767px) {
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-filter {
+    border-radius: 8px !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-filter button,
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .admin-customer-filter [role="combobox"] {
+    border-radius: 8px !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-customers-page .customer-select-button {
+    min-height: 2.3rem !important;
+  }
+}
+
 /* Light mode hardening: keep operational pages readable, not half-dark. */
 html[data-ui-theme="light"] .app-shell-root {
   --bos-light-page: #f4f9f6;
