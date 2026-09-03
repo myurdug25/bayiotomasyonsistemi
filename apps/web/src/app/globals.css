@@ -11035,6 +11035,56 @@ html[data-ui-theme="light"] .app-shell-root .pos-day-end-page :where(button:disa
   opacity: 1 !important;
 }
 
+html[data-ui-theme="light"] .app-shell-root div.pos-day-end-page {
+  background-color: var(--dayend-page-bg) !important;
+  background-image:
+    radial-gradient(circle at 12% 0%, rgba(8, 122, 82, 0.09) 0%, transparent 30%),
+    linear-gradient(180deg, #fbfdfb 0%, var(--dayend-page-bg) 100%) !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page section.day-end-panel-frame,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page section.day-end-panel-frame[class*="bg-"],
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page section.day-end-panel-frame[class*="!bg-"] {
+  background-color: var(--dayend-surface) !important;
+  background-image: linear-gradient(180deg, var(--dayend-surface) 0%, var(--dayend-surface-soft) 100%) !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page form.day-end-summary-panel,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page form.day-end-summary-panel[class*="bg-"] {
+  background-color: #e6f1eb !important;
+  background-image: linear-gradient(180deg, #eef7f2 0%, #e6f1eb 100%) !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page div.day-end-selected-date-card,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page div.day-end-selected-date-card[class*="bg-"] {
+  background-color: var(--dayend-red-soft) !important;
+  background-image: linear-gradient(180deg, #fff7f8 0%, var(--dayend-red-soft) 100%) !important;
+  color: #721421 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page div.day-end-summary-group,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page div.day-end-summary-group[class*="bg-"] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: var(--dayend-text-primary) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page section.day-end-expense-details-card,
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page section.day-end-expense-details-card[class*="bg-"] {
+  background-color: #fff8de !important;
+  background-image: linear-gradient(180deg, #fffdf4 0%, #fff8de 100%) !important;
+  color: #2f2607 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .pos-day-end-page button.day-end-save-button:not(:disabled) {
+  background-color: #bd0c24 !important;
+  background-image: linear-gradient(135deg, #f23845 0%, #bd0c24 100%) !important;
+  color: #ffffff !important;
+}
+
 @media (max-width: 1280px) {
   html[data-ui-theme="light"] .app-shell-root .pos-day-end-page .day-end-summary-panel {
     min-height: 0 !important;

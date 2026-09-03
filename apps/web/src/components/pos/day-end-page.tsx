@@ -719,7 +719,7 @@ export function PosDayEndPage() {
   const sessionLoading = canSelectSession ? currentSessionsQuery.isLoading : currentSessionQuery.isLoading;
 
   const content = (
-    <div className="pos-day-end-page min-h-[calc(100vh-16px)] space-y-3 bg-[linear-gradient(180deg,#07120e_0%,#0b1712_55%,#06110d_100%)] p-3 !text-[#eef8ef]">
+    <div className="pos-day-end-page min-h-[calc(100vh-16px)] space-y-3 bg-[linear-gradient(180deg,#07120e_0%,#0b1712_55%,#06110d_100%)] p-3 text-[#eef8ef]">
       <section className="pos-day-end-toolbar flex flex-col gap-3 rounded-[16px] border border-[#24382d] bg-[linear-gradient(135deg,rgba(17,32,24,0.96)_0%,rgba(9,22,16,0.98)_100%)] px-4 py-3 shadow-[0_18px_48px_-42px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] xl:flex-row xl:items-center xl:justify-between">
         <div className="pos-day-end-title flex min-w-0 items-center gap-3 xl:max-w-[430px]">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] border border-[#3c5d48] bg-[#203d2c] text-[#edf7ef] shadow-[0_18px_38px_-30px_rgba(0,0,0,0.88)]">
