@@ -101,7 +101,7 @@ const STATUS_OPTIONS: Array<{ value: RequestListFilter; label: string }> = [
 const SHELL_CARD_CLASSNAME =
   "overflow-hidden rounded-[26px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(9,34,27,0.96)_0%,rgba(8,20,28,0.96)_52%,rgba(20,52,37,0.94)_100%)] shadow-[0_26px_70px_-44px_rgba(16,185,129,0.7)]";
 const FIELD_CLASSNAME =
-  "rounded-[16px] border-emerald-300/20 bg-white/[0.045] text-[var(--foreground)] shadow-inner shadow-black/10 placeholder:text-[var(--muted-foreground)] focus:border-emerald-300/45";
+  "returns-field rounded-[16px] border-emerald-300/20 bg-white/[0.045] text-[var(--foreground)] shadow-inner shadow-black/10 placeholder:text-[var(--muted-foreground)] focus:border-emerald-300/45";
 
 const REVIEW_ACTIONS: Record<
   ReturnWorkflowStatus,
@@ -274,7 +274,7 @@ function getDefaultResolutionNote(status: ReturnWorkflowStatus): string {
 function RequestStatusBadge({ status }: { status: string | null | undefined }) {
   const meta = getStatusMeta(status);
   return (
-    <Badge variant="outline" className={`font-semibold ${meta.className}`}>
+    <Badge variant="outline" className={`returns-status-badge font-semibold ${meta.className}`}>
       {meta.label}
     </Badge>
   );
@@ -283,7 +283,7 @@ function RequestStatusBadge({ status }: { status: string | null | undefined }) {
 function RequestTypeBadge({ requestType }: { requestType: RequestType | string | null | undefined }) {
   const meta = getTypeMeta(requestType);
   return (
-    <Badge variant="outline" className={`font-semibold ${meta.className}`}>
+    <Badge variant="outline" className={`returns-type-badge font-semibold ${meta.className}`}>
       {meta.label}
     </Badge>
   );
@@ -574,24 +574,24 @@ export function ReturnsPage() {
   };
 
   return (
-    <div className="space-y-5 text-slate-100">
+    <div className="returns-page space-y-5 text-slate-100">
       {!canLoadPage ? (
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="p-4 text-sm font-semibold text-amber-800">Önce müşteri seçin.</CardContent>
         </Card>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.92fr)]">
-        <Card className={SHELL_CARD_CLASSNAME}>
+      <div className="returns-main-grid grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.92fr)]">
+        <Card className={`${SHELL_CARD_CLASSNAME} returns-panel returns-create-panel`}>
           <CardContent className="space-y-5 p-4 sm:p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--brand-border)] bg-[var(--surface-soft)] text-[var(--brand-primary)]">
+            <div className="returns-panel-header flex items-center gap-3">
+              <div className="returns-panel-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--brand-border)] bg-[var(--surface-soft)] text-[var(--brand-primary)]">
                 <ClipboardList className="h-6 w-6" />
               </div>
               <h2 className="text-2xl font-extrabold tracking-tight text-[var(--brand-primary-strong)]">Yeni Talep</h2>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="returns-type-grid grid gap-3 sm:grid-cols-3">
               {REQUEST_TYPES.map((type) => {
                 const Icon = type.icon;
                 const active = requestType === type.value;
@@ -600,8 +600,10 @@ export function ReturnsPage() {
                   <button
                     key={type.value}
                     type="button"
+                    aria-pressed={active}
+                    data-selected={active}
                     onClick={() => setRequestType(type.value)}
-                    className={`min-h-[112px] rounded-3xl border p-4 text-left transition-all ${
+                    className={`returns-type-card min-h-[112px] rounded-3xl border p-4 text-left transition-all ${
                       active
                         ? "border-[var(--brand-primary)] bg-[var(--brand-primary-soft)] text-[var(--brand-primary-strong)] shadow-[0_18px_30px_-24px_rgba(67,131,75,0.55)]"
                         : "border-[var(--brand-border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--brand-primary)]"
@@ -614,9 +616,9 @@ export function ReturnsPage() {
               })}
             </div>
 
-            <div className="grid gap-3 rounded-2xl border border-[var(--brand-border)] bg-[var(--surface)] p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+            <div className="returns-workflow-strip grid gap-3 rounded-2xl border border-[var(--brand-border)] bg-[var(--surface)] p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+                <div className="returns-workflow-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
                   <ReceiptText className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
@@ -626,10 +628,10 @@ export function ReturnsPage() {
                   </p>
                 </div>
               </div>
-              <ArrowRight className="hidden h-5 w-5 text-[var(--muted-foreground)] sm:block" />
+              <ArrowRight className="returns-workflow-arrow hidden h-5 w-5 text-[var(--muted-foreground)] sm:block" />
               <div className="flex min-w-0 items-center gap-3">
                 <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+                  className={`returns-workflow-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
                     isScrapRequest(requestType)
                       ? "border-orange-200 bg-orange-50 text-orange-700"
                       : "border-[var(--brand-border)] bg-[var(--surface-soft)] text-[var(--muted-foreground)]"
@@ -660,7 +662,7 @@ export function ReturnsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Sipariş</label>
                 <Select value={resolvedSelectedOrderId} onValueChange={setSelectedOrderId}>
-                  <SelectTrigger className={FIELD_CLASSNAME}>
+                  <SelectTrigger className={`${FIELD_CLASSNAME} returns-select-trigger`}>
                     <SelectValue placeholder="Sipariş seçin" />
                   </SelectTrigger>
                   {orderOptions.length > 0 ? (
@@ -683,7 +685,7 @@ export function ReturnsPage() {
                 onValueChange={setSelectedOrderItemId}
                 disabled={orderDetailQuery.isLoading || orderItems.length === 0}
               >
-                <SelectTrigger className={FIELD_CLASSNAME}>
+                <SelectTrigger className={`${FIELD_CLASSNAME} returns-select-trigger returns-product-select-trigger`}>
                   <SelectValue placeholder="Ürün seçin" />
                 </SelectTrigger>
                 {orderItems.length > 0 ? (
@@ -743,7 +745,7 @@ export function ReturnsPage() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-3xl border border-[var(--brand-border)] bg-[var(--surface)] p-5 text-sm font-semibold text-[var(--muted-foreground)]">
+              <div className="returns-info-message rounded-3xl border border-[var(--brand-border)] bg-[var(--surface)] p-5 text-sm font-semibold text-[var(--muted-foreground)]">
                 {orderOptions.length > 0 ? "Ürün seçin." : "İade için uygun sipariş bulunamadı."}
               </div>
             )}
@@ -764,7 +766,7 @@ export function ReturnsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Neden</label>
                 <Select value={resolvedReasonCode} onValueChange={setReasonCode}>
-                  <SelectTrigger className={FIELD_CLASSNAME}>
+                  <SelectTrigger className={`${FIELD_CLASSNAME} returns-select-trigger`}>
                     <SelectValue placeholder="Neden seçin" />
                   </SelectTrigger>
                   <SelectContent>
@@ -787,13 +789,13 @@ export function ReturnsPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="outline" className="border-[var(--brand-border)] bg-[var(--surface)]" onClick={handleReset}>
+            <div className="returns-form-actions flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" className="returns-reset-button border-[var(--brand-border)] bg-[var(--surface)]" onClick={handleReset}>
                 Temizle
               </Button>
               <Button
                 type="button"
-                className="rounded-[16px] bg-[linear-gradient(135deg,#ff5b5b_0%,#dc2626_48%,#991b1b_100%)] px-7 font-black text-white shadow-[0_18px_40px_-24px_rgba(239,68,68,0.95)] hover:brightness-110"
+                className="returns-submit-button rounded-[16px] border border-[#aa0b21] bg-[linear-gradient(135deg,#ff5b5b_0%,#dc2626_48%,#991b1b_100%)] px-7 font-black text-white shadow-[0_18px_40px_-24px_rgba(239,68,68,0.95)] hover:brightness-110 disabled:!border-[#d29ca5] disabled:!bg-[#e7b9c0] disabled:!text-[#762f3a] disabled:opacity-100"
                 onClick={handleSubmit}
                 disabled={
                   requestMutation.isPending ||
@@ -808,9 +810,9 @@ export function ReturnsPage() {
           </CardContent>
         </Card>
 
-        <Card className={SHELL_CARD_CLASSNAME}>
+        <Card className={`${SHELL_CARD_CLASSNAME} returns-panel returns-requests-panel`}>
           <CardContent className="space-y-4 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="returns-panel-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <RefreshCcw className="h-5 w-5 text-[var(--brand-primary)]" />
                 <h2 className="text-xl font-extrabold text-[var(--brand-primary-strong)]">Talepler</h2>
@@ -819,7 +821,7 @@ export function ReturnsPage() {
                 </Badge>
               </div>
               <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as RequestListFilter)}>
-                <SelectTrigger className={FIELD_CLASSNAME + " w-full sm:w-[170px]"}>
+                <SelectTrigger className={`${FIELD_CLASSNAME} returns-select-trigger returns-filter-trigger w-full sm:w-[170px]`}>
                   <SelectValue placeholder="Durum" />
                 </SelectTrigger>
                 <SelectContent>
@@ -848,7 +850,7 @@ export function ReturnsPage() {
               requestRows.map((row) => (
                 <div
                   key={row.id}
-                  className="rounded-3xl border border-[var(--brand-border)] bg-[var(--surface)] p-4 shadow-[0_14px_26px_-24px_rgba(0,0,0,0.18)]"
+                  className="returns-request-card rounded-3xl border border-[var(--brand-border)] bg-[var(--surface)] p-4 shadow-[0_14px_26px_-24px_rgba(0,0,0,0.18)]"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -947,14 +949,14 @@ export function ReturnsPage() {
                 </div>
               ))
             ) : (
-              <div className="rounded-3xl bg-[var(--surface)] px-6 py-12 text-center">
+              <div className="returns-request-empty rounded-3xl bg-[var(--surface)] px-6 py-12 text-center">
                 <p className="text-lg font-extrabold text-[var(--brand-primary-strong)]">Kayıt yok</p>
               </div>
             )}
             </div>
 
             {requestRows.length > 0 || hasPreviousRequestPage || hasNextRequestPage ? (
-              <div className="flex flex-col gap-2 rounded-2xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="returns-pagination flex flex-col gap-2 rounded-2xl border border-[var(--brand-border)] bg-[var(--surface-soft)] p-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm font-bold text-[var(--muted-foreground)]">
                   Sayfa {toCount(requestPageNumber)} · Bu sayfada {toCount(requestRows.length)} talep
                 </span>
