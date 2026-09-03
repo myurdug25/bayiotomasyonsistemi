@@ -109,7 +109,7 @@ const panelToneClassNames: Record<
   }
 > = {
   emerald: {
-    frame: "border-[#32d36f]/70 !bg-[linear-gradient(180deg,rgba(12,45,27,0.98)_0%,rgba(6,26,16,0.99)_100%)] shadow-[0_0_0_1px_rgba(79,255,141,0.12),0_22px_52px_-36px_rgba(50,211,111,0.72)]",
+    frame: "border-[#32d36f]/70 bg-[linear-gradient(180deg,rgba(12,45,27,0.98)_0%,rgba(6,26,16,0.99)_100%)] shadow-[0_0_0_1px_rgba(79,255,141,0.12),0_22px_52px_-36px_rgba(50,211,111,0.72)]",
     header: "border-[#32d36f]/70 bg-[linear-gradient(135deg,#2ee06f_0%,#138c45_52%,#075d2a_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]",
     tableHead: "border-[#8fe3a8]/70 bg-[linear-gradient(180deg,#d9ffe0_0%,#a9eeb9_100%)] text-[#062412]",
     total: "border-[#2cc967]/45 bg-[linear-gradient(180deg,#123d25_0%,#071f13_100%)] text-white",
