@@ -31,6 +31,9 @@ test("search table stays compact without clipping stock shelf labels", () => {
   assert.match(productsSource, /function productBranchStockHeaderLabel/);
   assert.match(productsSource, /minWidth = Math\.max\(1200, 842 \+ stockColumnWidth\)/);
   assert.match(productsSource, /stockColumnWidth = Math\.min\(390, Math\.max\(300, normalizedStockColumnCount \* 66\)\)/);
+  assert.match(css, /\.admin-product-row-grid \{\s*min-height:\s*34px !important/s);
+  assert.match(css, /\.product-results-table-head \[role="columnheader"\] \{\s*min-height:\s*40px !important/s);
+  assert.match(css, /\.product-results-status-row \{\s*min-height:\s*44px !important/s);
   assert.match(css, /font-size:\s*11px !important/);
   assert.match(css, /font-size:\s*9\.75px !important/);
   assert.match(css, /white-space:\s*nowrap !important/);

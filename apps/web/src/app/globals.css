@@ -9781,7 +9781,7 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-table-head [role="columnheader"] {
-  min-height: 46px !important;
+  min-height: 40px !important;
   align-items: center !important;
   color: var(--search-light-text) !important;
   font-size: 11px !important;
@@ -9832,7 +9832,7 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid {
-  min-height: 58px !important;
+  min-height: 34px !important;
   border-color: var(--search-light-border) !important;
   background: #ffffff !important;
   color: var(--search-light-text) !important;
@@ -9852,6 +9852,9 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-r
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"] {
   border-color: var(--search-light-border) !important;
+  min-height: 34px !important;
+  padding-top: 0.125rem !important;
+  padding-bottom: 0.125rem !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-sku-cell p,
@@ -9905,7 +9908,8 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-b
   background: #f5fbf7 !important;
   color: var(--search-light-text) !important;
   gap: 2px !important;
-  padding-block: 0.25rem !important;
+  min-height: 34px !important;
+  padding-block: 0.1rem !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-branch span:first-child {
@@ -9937,13 +9941,13 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-b
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-status-row {
-  min-height: 56px !important;
+  min-height: 44px !important;
   border-color: var(--search-light-border) !important;
   background: #fbfdfb !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-status-row > div {
-  padding-block: 0.85rem !important;
+  padding-block: 0.55rem !important;
   color: #3f554a !important;
 }
 
