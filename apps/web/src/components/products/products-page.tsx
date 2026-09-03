@@ -1156,6 +1156,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     ]
   );
   const isBatumPriceScope = normalizeBranchText(branchIdentity).includes("batum");
+  const showPriceCardsOnSearch = isPointPanel || isBatumPriceScope;
   const visibleStockColumns = useMemo(
     () => (isCustomerUser && !canViewSearchStock ? [] : visibleBranchStockColumns(featurePermissionSet, roleSlugs, user?.username, branchIdentity)),
     [branchIdentity, canViewSearchStock, featurePermissionSet, isCustomerUser, roleSlugs, user?.username]
@@ -2087,7 +2088,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         pricesIncludeVat={isBatumPriceScope}
                         canViewStock={canViewSearchStock}
                         visibleStockColumns={visibleStockColumns}
-                        showRetailPriceHint={isPointPanel}
+                        showRetailPriceHint={showPriceCardsOnSearch}
                         tableGridStyle={tableGridStyle}
                         campaignNames={campaignNames}
                         onOpenCartModal={handleOpenCartModal}

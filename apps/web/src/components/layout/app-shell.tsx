@@ -2361,6 +2361,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const next = pathname ? `&next=${encodeURIComponent(pathname)}` : "";
     return `/login?v=20260605-login-fast${next}`;
   }, [pathname]);
+  const handleLogout = useCallback(async () => {
+    router.replace("/login?v=20260605-login-fast");
+    await logout();
+    queryClient.clear();
+  }, [logout, queryClient, router]);
 
   useEffect(() => {
     if (status !== "guest") {
@@ -2621,7 +2626,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               title="Oturumu kapat"
               className="h-12 w-12 shrink-0 rounded-[14px] border-[#1b3f31] bg-[#06130f] p-0 text-[#e8f1e9] hover:bg-[#0b2118] hover:text-white"
               onClick={() => {
-                void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+                void handleLogout();
               }}
             >
               <LogOut className="h-5 w-5" />
@@ -2646,7 +2651,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           title="Çıkış yap"
           className="fixed right-3 top-3 z-[120] h-10 rounded-xl border-red-300/35 bg-red-950/90 px-3 text-xs font-black text-red-100 shadow-xl backdrop-blur-md hover:bg-red-900 hover:text-white lg:hidden"
           onClick={() => {
-            void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+            void handleLogout();
           }}
         >
           <LogOut className="mr-2 h-4 w-4" />
@@ -2672,7 +2677,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           title="Çıkış yap"
           className="fixed right-3 top-3 z-[120] h-10 rounded-xl border-red-300/35 bg-red-950/90 px-3 text-xs font-black text-red-100 shadow-xl backdrop-blur-md hover:bg-red-900 hover:text-white lg:hidden"
           onClick={() => {
-            void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+            void handleLogout();
           }}
         >
           <LogOut className="mr-2 h-4 w-4" />
@@ -2696,7 +2701,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           title="Çıkış yap"
           className="fixed right-3 top-3 z-[120] h-10 rounded-xl border-red-300/35 bg-red-950/90 px-3 text-xs font-black text-red-100 shadow-xl backdrop-blur-md hover:bg-red-900 hover:text-white lg:hidden"
           onClick={() => {
-            void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+            void handleLogout();
           }}
         >
           <LogOut className="mr-2 h-4 w-4" />
@@ -2725,7 +2730,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           title="Çıkış yap"
           className="fixed right-3 top-3 z-[120] h-10 rounded-xl border-red-300/35 bg-red-950/90 px-3 text-xs font-black text-red-100 shadow-xl backdrop-blur-md hover:bg-red-900 hover:text-white lg:hidden"
           onClick={() => {
-            void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+            void handleLogout();
           }}
         >
           <LogOut className="mr-2 h-4 w-4" />
@@ -2776,7 +2781,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => {
-                  void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+                  void handleLogout();
                 }}
                 className={cn(
                   "absolute bottom-4 left-2 right-2 z-30 inline-flex h-11 items-center justify-center rounded-2xl border text-[var(--sidebar-foreground)] transition hover:-translate-y-0.5 hover:text-white",
@@ -2803,7 +2808,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onReorderItems={handleSidebarItemsReorder}
               reorderEnabled={sidebarReorderEnabled}
               onLogout={() => {
-                void logout().then(() => router.replace("/login?v=20260605-login-fast"));
+                void handleLogout();
               }}
             />
           )}
@@ -3043,7 +3048,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     aria-label="Çıkış yap"
                     title="Çıkış yap"
                     className="mobile-header-logout hidden h-10 w-10 shrink-0 rounded-full border-red-300/35 bg-red-950/75 text-red-100 hover:border-red-200/60 hover:bg-red-900 hover:text-white max-lg:inline-flex"
-                    onClick={() => void logout().then(() => router.replace("/login?v=20260605-login-fast"))}
+                    onClick={() => void handleLogout()}
                   >
                     <LogOut className="h-4 w-4" />
                   </Button>

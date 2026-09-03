@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -52,6 +52,10 @@ export function PointSidebarNav({ iconVariant = "default" }: PointSidebarNavProp
       typeof window !== "undefined" &&
       window.localStorage.getItem(POINT_SIDEBAR_COLLAPSED_STORAGE_KEY) === "1"
   );
+  const handleLogout = useCallback(async () => {
+    router.replace("/login?v=20260605-login-fast");
+    await logout();
+  }, [logout, router]);
 
   useEffect(() => {
     document.documentElement.dataset.pointSidebarCollapsed = collapsed ? "true" : "false";
@@ -193,9 +197,7 @@ export function PointSidebarNav({ iconVariant = "default" }: PointSidebarNavProp
           <button
             type="button"
             onClick={() => {
-              void logout().then(() => {
-                void router.replace("/login?v=20260605-login-fast");
-              });
+              void handleLogout();
             }}
             className={cn(
               "flex h-14 items-center justify-center rounded-[16px] border border-[#61352f] bg-[linear-gradient(135deg,#3d1814_0%,#1c0d0b_100%)] text-sm font-black text-[#ffe4df] shadow-[0_18px_32px_-28px_rgba(0,0,0,0.9)] transition hover:border-[#ef8f80]/70 hover:bg-[#4b1f19] hover:text-white",
