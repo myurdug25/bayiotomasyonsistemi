@@ -398,6 +398,67 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('data.0.code', 'F1-NEW-CUSTOMER');
     }
 
+    public function test_logo_campaign_price_tiers_are_limited_to_matching_customer_price_group(): void
+    {
+        $dealer = $this->createDealer('DLR-CAMPAIGN-PRICE-TIER-GROUP');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$f1Customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $f1Customer->update(['meta' => ['price_group' => 'F1']]);
+
+        $f2Customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => 'CR-CAMPAIGN-TIER-F2',
+            'name' => 'F2 Campaign Tier Customer',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F2'],
+        ]);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 100,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-F1-TIER-1',
+            'campaign_key' => 'logo:f1-tier-price',
+            'name' => 'F1 Logo Fiyat Kampanyasi',
+            'condition' => 'p1>4',
+            'min_quantity' => 5,
+            'unit_price' => 166.06,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['price_group' => 'F1'],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$f1Customer->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.campaigns.0.name', 'F1 Logo Fiyat Kampanyasi');
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$f2Customer->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data.0.campaigns');
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $f2Customer->id,
+            'product_id' => $product->id,
+            'quantity' => 5,
+            'campaign_key' => 'logo:f1-tier-price',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['campaign_key']);
+    }
+
     public function test_logo_campaign_sync_requires_integration_key(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');

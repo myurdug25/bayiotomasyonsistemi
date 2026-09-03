@@ -45,3 +45,19 @@ test("full catalog sync marks the final API request as authoritative", () => {
   assert.match(productsSource, /syncState\.sync_run_id = authoritativeSyncRunId/);
   assert.match(productsSource, /index === requestChunks\.length - 1/);
 });
+
+test("Logo price rows read customer special-code fields as F group prices", () => {
+  assert.match(productsSource, /CLSPECODE5/);
+  assert.match(productsSource, /CLSPECODE4/);
+  assert.match(productsSource, /CLSPECODE3/);
+  assert.match(productsSource, /CLSPECODE2/);
+});
+
+test("Logo conditional price rows are sent as campaign prices", () => {
+  assert.match(productsSource, /buildLogoCampaignPrice/);
+  assert.match(productsSource, /campaign_prices/);
+  assert.match(productsSource, /price_group: priceGroupCode/);
+  assert.match(productsSource, /logo_price_group: priceGroupCode/);
+  assert.match(productsSource, /resolveLogoCampaignMinQuantity/);
+  assert.doesNotMatch(productsSource, /if \(isLogoCampaignPriceRow\(row\)\) \{\s*continue;\s*\}/);
+});

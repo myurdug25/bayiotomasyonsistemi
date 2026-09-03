@@ -133,7 +133,7 @@ class ProductSearchController extends Controller
                         meili: $meili
                     );
                 }
-            } catch (\Throwable $exception) {
+            } catch (Throwable $exception) {
                 $meili->markSearchUnavailable($exception);
                 report($exception);
             }
@@ -423,7 +423,7 @@ class ProductSearchController extends Controller
 
                     $this->applyTextSearchRanking($query, $search, $normalizedSearch, false);
                 }
-            } catch (\Throwable $exception) {
+            } catch (Throwable $exception) {
                 report($exception);
 
                 $preferInlineSpecialCodeVisibility = false;
@@ -1238,9 +1238,14 @@ class ProductSearchController extends Controller
         $vehicleFitmentsByProduct = $this->vehicleFitmentsByProduct($productIds, $cache);
         $specialDiscountRate = $this->customerSpecialDiscountRate($selectedCustomerId);
         $brandDiscounts = $this->customerBrandDiscounts($selectedCustomerId);
+        $displayCustomer = $selectedCustomerId !== null
+            ? Customer::query()
+                ->select(['id', 'code', 'branch_code', 'branch_name', 'region_code', 'region_name'])
+                ->find($selectedCustomerId)
+            : null;
         $campaignsByProduct = app(ProductCampaignPricing::class)->forProducts($productIds, $user, $selectedCustomerId);
 
-        return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $brandDiscounts, $campaignsByProduct, $user) {
+        return $items->map(function ($item) use ($cache, $dealerId, $stockScope, $competitorCodesByProduct, $openCartQuantityByProduct, $previousPurchasesByProduct, $vehicleFitmentsByProduct, $specialDiscountRate, $brandDiscounts, $campaignsByProduct, $user, $displayCustomer) {
             $meta = $this->productMeta($item);
             $sourceCurrency = (string) ($item->currency ?? 'TRY');
             $rawNetPrice = $this->resolveHotPrice(
@@ -1286,12 +1291,12 @@ class ProductSearchController extends Controller
                     'specode5' => $this->resolveProductMetaValue($meta, 'specode5'),
                     'stok_turu' => $this->resolveProductMetaValue($meta, 'stok_turu'),
                 ],
-                'net_price' => DisplayCurrency::formatPrice($rawNetPrice, $sourceCurrency, $user),
-                'list_price' => DisplayCurrency::formatPrice($rawListPrice, $sourceCurrency, $user),
-                'currency' => DisplayCurrency::normalize($sourceCurrency, $user),
+                'net_price' => DisplayCurrency::formatPrice($rawNetPrice, $sourceCurrency, $user, $displayCustomer),
+                'list_price' => DisplayCurrency::formatPrice($rawListPrice, $sourceCurrency, $user, $displayCustomer),
+                'currency' => DisplayCurrency::normalize($sourceCurrency, $user, $displayCustomer),
                 'special_discount_rate' => $specialDiscountRate !== null ? number_format($specialDiscountRate, 2, '.', '') : null,
                 'brand_discount_chain' => $brandDiscountChain,
-                'special_discounted_price' => DisplayCurrency::formatPrice($rawSpecialDiscountedPrice, $sourceCurrency, $user),
+                'special_discounted_price' => DisplayCurrency::formatPrice($rawSpecialDiscountedPrice, $sourceCurrency, $user, $displayCustomer),
                 'campaigns' => $campaignsByProduct->get((int) $item->id, []),
                 'vat_rate' => $item->vat_rate !== null ? number_format((float) $item->vat_rate, 2, '.', '') : null,
                 'available_total' => $this->resolveVisibleAvailableTotal($meta, (int) $item->available_total, $stockScope),
@@ -2009,16 +2014,21 @@ class ProductSearchController extends Controller
                 return $this->resolveFeatureStockVisibilityScope($user);
             }
 
+            $selectedCustomerScope = $this->resolveSelectedCustomerStockVisibilityScope($user, $requestedCustomerId);
+            if ($selectedCustomerScope !== null) {
+                return $selectedCustomerScope;
+            }
+
             return null;
+        }
+
+        if ($user->feature_permissions !== null) {
+            return $this->resolveFeatureStockVisibilityScope($user);
         }
 
         $userScope = $this->resolveUserSpecificStockVisibilityScope($user);
         if ($userScope !== null) {
             return $userScope;
-        }
-
-        if ($user->feature_permissions !== null) {
-            return $this->resolveFeatureStockVisibilityScope($user);
         }
 
         $scopes = [];

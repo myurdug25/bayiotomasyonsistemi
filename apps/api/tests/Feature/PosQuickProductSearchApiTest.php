@@ -948,6 +948,78 @@ class PosQuickProductSearchApiTest extends TestCase
             ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'SAMSUN-RAF-55');
     }
 
+    public function test_admin_shared_product_search_uses_batum_customer_stock_scope(): void
+    {
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-POS-BATUM-'.Str::upper(Str::random(4)),
+            'name' => 'POS Batum Scope Dealer',
+            'price_list_id' => $priceListId > 0 ? $priceListId : null,
+            'is_active' => true,
+        ]);
+        $batumCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'code' => '120-00-040',
+            'name' => 'Batum Requested Customer',
+            'branch_code' => 'BATUM',
+            'is_active' => true,
+        ]);
+        $admin = User::factory()->create([
+            'dealer_id' => null,
+            'selected_customer_id' => $batumCustomer->id,
+            'is_active' => true,
+        ]);
+        $admin->roles()->sync([
+            Role::query()->firstOrCreate(['slug' => 'admin'], ['name' => 'Admin'])->id,
+        ]);
+        $brand = Brand::query()->create([
+            'name' => 'POS Batum Branch Brand',
+            'slug' => 'pos-batum-branch-brand',
+            'is_active' => true,
+        ]);
+        $product = $this->createLogoProduct($brand->id, 'CS0040-BATUM', 'Batum Stock Product', 'BATUM-GROUP', 'E');
+        $meta = $product->meta;
+        data_set($meta, 'integrations.logo.payload.logo_stock.warehouses', [
+            [
+                'warehouse_code' => '1',
+                'warehouse_name' => 'ERZURUM DEPO',
+                'available_total' => 120,
+                'shelf_address' => 'E.1',
+            ],
+            [
+                'warehouse_code' => '4',
+                'warehouse_name' => 'BATUM DEPO',
+                'available_total' => 17,
+                'shelf_address' => 'B.4',
+            ],
+        ]);
+        data_set($meta, 'integrations.logo.payload.raw.RAF995', 'BATUM-RAF-995');
+        $product->forceFill(['meta' => $meta])->saveQuietly();
+        DB::table('stock_summary')->insert([
+            'product_id' => $product->id,
+            'available_total' => 137,
+            'reserved_total' => 0,
+            'updated_at' => now(),
+        ]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 210.00,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson('/api/products/search?q=CS0040-BATUM&limit=5&customer_id='.$batumCustomer->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.available_total', 17)
+            ->assertJsonCount(1, 'data.0.stock_locations')
+            ->assertJsonPath('data.0.stock_locations.0.branch', 'BATUM DEPO')
+            ->assertJsonPath('data.0.stock_locations.0.shelf_address', 'B.4')
+            ->assertJsonPath('data.0.net_price', '12.35')
+            ->assertJsonPath('data.0.currency', 'GEL');
+    }
+
     private function createLogoProduct(int $brandId, string $sku, string $name, string $groupCode, string $specode4): Product
     {
         return Product::withoutEvents(function () use ($brandId, $sku, $name, $groupCode, $specode4): Product {

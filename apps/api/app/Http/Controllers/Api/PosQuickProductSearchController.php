@@ -139,7 +139,7 @@ class PosQuickProductSearchController extends Controller
                     );
 
                     return response()->json([
-                        'data' => $this->mapProducts($exactItems, $cache, $dealerId, $request->user(), $stockScope),
+                        'data' => $this->mapProducts($exactItems, $cache, $dealerId, $request->user(), $stockScope, $selectedCustomerId),
                         'limit' => $limit,
                         'search_backend' => 'pos_quick',
                     ]);
@@ -154,7 +154,7 @@ class PosQuickProductSearchController extends Controller
                 );
 
                 return response()->json([
-                    'data' => $this->mapProducts(collect(), $cache, $dealerId, $request->user(), $stockScope),
+                    'data' => $this->mapProducts(collect(), $cache, $dealerId, $request->user(), $stockScope, $selectedCustomerId),
                     'limit' => $limit,
                     'search_backend' => 'pos_quick',
                 ]);
@@ -183,7 +183,7 @@ class PosQuickProductSearchController extends Controller
                         );
 
                         return response()->json([
-                            'data' => $this->mapProducts($groupItems, $cache, $dealerId, $request->user(), $stockScope),
+                            'data' => $this->mapProducts($groupItems, $cache, $dealerId, $request->user(), $stockScope, $selectedCustomerId),
                             'limit' => $limit,
                             'search_backend' => 'pos_quick',
                         ]);
@@ -206,7 +206,7 @@ class PosQuickProductSearchController extends Controller
                 );
 
                 return response()->json([
-                    'data' => $this->mapProducts($fastItems, $cache, $dealerId, $request->user(), $stockScope),
+                    'data' => $this->mapProducts($fastItems, $cache, $dealerId, $request->user(), $stockScope, $selectedCustomerId),
                     'limit' => $limit,
                     'search_backend' => 'pos_quick',
                 ]);
@@ -304,7 +304,7 @@ class PosQuickProductSearchController extends Controller
         );
 
         return response()->json([
-            'data' => $this->mapProducts($items, $cache, $dealerId, $request->user(), $stockScope),
+            'data' => $this->mapProducts($items, $cache, $dealerId, $request->user(), $stockScope, $selectedCustomerId),
             'limit' => $limit,
             'search_backend' => 'pos_quick',
         ]);
@@ -366,7 +366,7 @@ class PosQuickProductSearchController extends Controller
      * @param  Collection<int, mixed>  $items
      * @return Collection<int, array<string, mixed>>
      */
-    private function mapProducts(Collection $items, CacheRepository $cache, int $dealerId, User $user, ?array $stockScope): Collection
+    private function mapProducts(Collection $items, CacheRepository $cache, int $dealerId, User $user, ?array $stockScope, ?int $selectedCustomerId): Collection
     {
         $productIds = $items
             ->pluck('id')
@@ -381,8 +381,13 @@ class PosQuickProductSearchController extends Controller
             ->orderBy('code')
             ->get()
             ->groupBy('product_id');
+        $displayCustomer = $selectedCustomerId !== null
+            ? Customer::query()
+                ->select(['id', 'code', 'branch_code', 'branch_name', 'region_code', 'region_name'])
+                ->find($selectedCustomerId)
+            : null;
 
-        return $items->map(function ($item) use ($cache, $dealerId, $competitorCodesByProduct, $user, $stockScope) {
+        return $items->map(function ($item) use ($cache, $dealerId, $competitorCodesByProduct, $user, $stockScope, $displayCustomer) {
             $sourceCurrency = (string) ($item->currency ?? 'TRY');
             $meta = is_array($item->meta) ? $item->meta : [];
             $availableTotal = (int) $item->available_total;
@@ -402,8 +407,8 @@ class PosQuickProductSearchController extends Controller
                     'id' => $item->brand_id !== null ? (int) $item->brand_id : null,
                     'name' => $item->brand_name,
                 ],
-                'net_price' => DisplayCurrency::formatPrice($rawNetPrice, $sourceCurrency, $user),
-                'currency' => DisplayCurrency::normalize($sourceCurrency, $user),
+                'net_price' => DisplayCurrency::formatPrice($rawNetPrice, $sourceCurrency, $user, $displayCustomer),
+                'currency' => DisplayCurrency::normalize($sourceCurrency, $user, $displayCustomer),
                 'available_total' => $this->resolveVisibleAvailableTotal($meta, $availableTotal, $stockScope),
                 'stock_locations' => $this->resolveStockLocations($meta, $availableTotal, $stockScope),
                 'shelf_address' => $this->resolvePrimaryShelfAddress($meta, $stockScope),

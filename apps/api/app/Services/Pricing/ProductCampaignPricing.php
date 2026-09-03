@@ -40,10 +40,15 @@ class ProductCampaignPricing
             ->orderBy('min_quantity')
             ->orderByDesc('priority')
             ->get()
+            ->filter(fn (ProductCampaignPrice $price): bool => $this->tierMatchesCustomerGroups(
+                $price,
+                $customerGroups,
+                $customer instanceof Customer
+            ))
             ->groupBy('product_id')
             ->map(fn (Collection $prices): array => $this->windowSelector->select($prices)
                 ->groupBy('campaign_key')
-                ->map(fn (Collection $tiers): array => $this->campaignPayload($tiers, $user))
+                ->map(fn (Collection $tiers): array => $this->campaignPayload($tiers, $user, $customer))
                 ->values()
                 ->all());
 
@@ -107,26 +112,32 @@ class ProductCampaignPricing
         $tiers = $this->activeQuery()
             ->where('product_id', $productId)
             ->get();
+        $customer = $customerId ? Customer::find($customerId) : null;
+        $customerGroups = $customer instanceof Customer ? $this->groupResolver->resolveAll($customer) : [];
         $tier = $this->windowSelector->select($tiers)
+            ->filter(fn (ProductCampaignPrice $price): bool => $this->tierMatchesCustomerGroups(
+                $price,
+                $customerGroups,
+                $customer instanceof Customer
+            ))
             ->where('campaign_key', $campaignKey)
             ->where('min_quantity', '<=', max(1, $quantity))
             ->sortByDesc(fn (ProductCampaignPrice $price): string => sprintf('%010d|%010d', $price->min_quantity, $price->priority))
             ->first();
 
         if ($tier instanceof ProductCampaignPrice) {
-            $price = DisplayCurrency::formatPrice($tier->unit_price, $tier->currency, $user);
+            $price = DisplayCurrency::formatPrice($tier->unit_price, $tier->currency, $user, $customer);
 
             return [
                 'campaign_key' => $tier->campaign_key,
                 'name' => $tier->name,
                 'unit_price' => $price ?? number_format((float) $tier->unit_price, 2, '.', ''),
-                'currency' => DisplayCurrency::normalize($tier->currency, $user),
+                'currency' => DisplayCurrency::normalize($tier->currency, $user, $customer),
                 'discount_percent' => null,
                 'tier' => $tier,
             ];
         }
 
-        $customer = $customerId ? Customer::find($customerId) : null;
         if (! $customer instanceof Customer) {
             return null;
         }
@@ -175,7 +186,7 @@ class ProductCampaignPricing
      * @param  Collection<int, ProductCampaignPrice>  $tiers
      * @return array<string, mixed>
      */
-    private function campaignPayload(Collection $tiers, User $user): array
+    private function campaignPayload(Collection $tiers, User $user, ?Customer $customer): array
     {
         /** @var ProductCampaignPrice $first */
         $first = $tiers->first();
@@ -187,9 +198,9 @@ class ProductCampaignPricing
                 ->unique(fn (ProductCampaignPrice $tier): string => $tier->min_quantity.'|'.$tier->unit_price.'|'.$tier->currency)
                 ->map(fn (ProductCampaignPrice $tier): array => [
                     'min_quantity' => $tier->min_quantity,
-                    'unit_price' => DisplayCurrency::formatPrice($tier->unit_price, $tier->currency, $user)
+                    'unit_price' => DisplayCurrency::formatPrice($tier->unit_price, $tier->currency, $user, $customer)
                         ?? number_format((float) $tier->unit_price, 2, '.', ''),
-                    'currency' => DisplayCurrency::normalize($tier->currency, $user),
+                    'currency' => DisplayCurrency::normalize($tier->currency, $user, $customer),
                     'condition' => $tier->condition,
                     'starts_at' => $tier->starts_at?->toDateString(),
                     'ends_at' => $tier->ends_at?->toDateString(),
@@ -197,5 +208,37 @@ class ProductCampaignPricing
                 ->values()
                 ->all(),
         ];
+    }
+
+    /**
+     * @param  list<string>  $customerGroups
+     */
+    private function tierMatchesCustomerGroups(
+        ProductCampaignPrice $tier,
+        array $customerGroups,
+        bool $hasSelectedCustomer
+    ): bool {
+        $priceGroup = $this->normalizeTierPriceGroup(
+            data_get($tier->meta, 'price_group')
+                ?? data_get($tier->meta, 'logo_price_group')
+                ?? data_get($tier->meta, 'price_list_code')
+        );
+
+        if ($priceGroup === null) {
+            return true;
+        }
+
+        if (! $hasSelectedCustomer) {
+            return true;
+        }
+
+        return in_array($priceGroup, $customerGroups, true);
+    }
+
+    private function normalizeTierPriceGroup(mixed $value): ?string
+    {
+        $normalized = mb_strtoupper(trim((string) $value), 'UTF-8');
+
+        return $normalized === '' ? null : $normalized;
     }
 }

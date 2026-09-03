@@ -2582,6 +2582,10 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
         priority: normalizeInteger(readFirst(row, ["PRIORITY", "priority"])),
         clientcode: normalizeString(readFirst(row, ["CLIENTCODE", "clientcode"])),
         clspecode: normalizeString(readFirst(row, ["CLSPECODE", "clspecode"])),
+        clspecode2: normalizeString(readFirst(row, ["CLSPECODE2", "clspecode2"])),
+        clspecode3: normalizeString(readFirst(row, ["CLSPECODE3", "clspecode3"])),
+        clspecode4: normalizeString(readFirst(row, ["CLSPECODE4", "clspecode4"])),
+        clspecode5: normalizeString(readFirst(row, ["CLSPECODE5", "clspecode5"])),
         payplanref: normalizeString(readFirst(row, ["PAYPLANREF", "payplanref"])),
         mtrltype: normalizeInteger(readFirst(row, ["MTRLTYPE", "mtrltype"])),
         leadtime: normalizeInteger(readFirst(row, ["LEADTIME", "leadtime"])),
@@ -2593,14 +2597,31 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
       }),
     };
 
-    if (isLogoCampaignPriceRow(row)) {
-      continue;
-    }
-
     const productPrices = snapshot.get(productRef) ?? {
       primary: null,
       entries: [],
+      campaign_prices: [],
     };
+
+    if (isLogoCampaignPriceRow(row)) {
+      const campaignPrice = buildLogoCampaignPrice(row, price, priceGroupCode, {
+        logicalRefColumn,
+        beginDateColumn,
+        endDateColumn,
+      });
+
+      if (
+        campaignPrice &&
+        !productPrices.campaign_prices.some(
+          (entry) => entry.source_reference === campaignPrice.source_reference
+        )
+      ) {
+        productPrices.campaign_prices.push(campaignPrice);
+      }
+
+      snapshot.set(productRef, productPrices);
+      continue;
+    }
 
     if (
       priceGroupCode &&
@@ -2629,11 +2650,15 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
 function resolveLogoPriceGroupCode(row) {
   for (const value of [
     readFirst(row, ["CLSPECODE", "clspecode"]),
+    readFirst(row, ["CLSPECODE2", "clspecode2"]),
+    readFirst(row, ["CLSPECODE3", "clspecode3"]),
+    readFirst(row, ["CLSPECODE4", "clspecode4"]),
+    readFirst(row, ["CLSPECODE5", "clspecode5"]),
     readFirst(row, ["CLIENTCODE", "clientcode"]),
     readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]),
   ]) {
     const normalized = normalizeString(value)?.toUpperCase() ?? "";
-    const exactMatch = normalized.match(/^F(?:[1-9]|1[0-2])$/);
+    const exactMatch = normalized.match(/^F[1-9][0-9]*$/);
     if (exactMatch) {
       return exactMatch[0];
     }
@@ -2646,6 +2671,102 @@ function isLogoCampaignPriceRow(row) {
   const definition = normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]));
   const condition = normalizeString(readFirst(row, ["CONDITION", "condition"]));
   return Boolean(condition) || /\bKAMPANYA(?:SI)?\b/iu.test(definition ?? "");
+}
+
+function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
+  const sourceReference =
+    normalizeString(readFirst(row, ["LOGICALREF", columns.logicalRefColumn])) ??
+    [
+      normalizeString(readFirst(row, ["CARDREF", "STOCKREF", "ITEMREF", "PRODUCTREF"])),
+      priceGroupCode ?? "ALL",
+      price.list_price,
+      normalizeString(readFirst(row, ["CONDITION", "condition"])) ??
+        normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
+        "campaign",
+    ]
+      .filter(Boolean)
+      .join(":");
+
+  const name =
+    normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
+    `Logo ${priceGroupCode ?? "Genel"} Kampanya Fiyati`;
+  const condition = normalizeString(readFirst(row, ["CONDITION", "condition"]));
+  const minQuantity = resolveLogoCampaignMinQuantity(row, condition);
+  const campaignKey = normalizeLogoCampaignKey(priceGroupCode, sourceReference, name);
+
+  return {
+    source_reference: sourceReference,
+    campaign_key: campaignKey,
+    name,
+    condition,
+    min_quantity: minQuantity,
+    unit_price: price.list_price,
+    currency: price.currency,
+    priority: price.meta?.priority ?? 0,
+    starts_at: normalizeDateOnly(readFirst(row, ["BEGDATE", columns.beginDateColumn])),
+    ends_at: normalizeDateOnly(readFirst(row, ["ENDDATE", columns.endDateColumn])),
+    is_active: true,
+    meta: compactObject({
+      ...price.meta,
+      price_group: priceGroupCode,
+      logo_price_group: priceGroupCode,
+      source: "logo_prclist",
+    }),
+  };
+}
+
+function resolveLogoCampaignMinQuantity(row, condition) {
+  const explicit = normalizeInteger(
+    readFirst(row, ["MIN_QUANTITY", "MINQTY", "MINAMOUNT", "MIN_QUANTITY_", "min_quantity"])
+  );
+
+  if (explicit && explicit > 0) {
+    return explicit;
+  }
+
+  const raw = normalizeString(condition) ?? normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]));
+  const comparison = raw?.match(/(?:p1|quantity|qty|adet|miktar)\s*(>=|>|=)\s*(\d+)/iu);
+  if (comparison) {
+    const value = Number.parseInt(comparison[2], 10);
+    return comparison[1] === ">" ? value + 1 : Math.max(1, value);
+  }
+
+  const adetMatch = raw?.match(/\b(\d+)\s*(?:\+?\s*)?ADET\b/iu);
+  if (adetMatch) {
+    return Math.max(1, Number.parseInt(adetMatch[1], 10));
+  }
+
+  return 1;
+}
+
+function normalizeLogoCampaignKey(priceGroupCode, sourceReference, name) {
+  const group = normalizeString(priceGroupCode)?.toLowerCase() ?? "all";
+  const raw = normalizeString(name)?.toLowerCase() ?? "campaign";
+  const slug = raw
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ı/g, "i")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+  return `logo:price:${group}:${sourceReference}:${slug || "campaign"}`.slice(0, 191);
+}
+
+function normalizeDateOnly(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString().slice(0, 10);
 }
 
 async function fetchProductUnits(pool, productUnitSchema, unitSchema, unitSetSchema, logicalRefs) {
@@ -3848,6 +3969,10 @@ function mapProductRow(
       list_price: entry.list_price,
       currency: normalizeCurrencyCode(entry.currency),
     }));
+  }
+
+  if (Array.isArray(priceSnapshot?.campaign_prices) && priceSnapshot.campaign_prices.length > 0) {
+    record.campaign_prices = priceSnapshot.campaign_prices;
   }
 
   return record;
