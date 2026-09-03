@@ -239,11 +239,11 @@ export function VirtualPosPage() {
 
   return (
     <div className="virtual-pos-workspace space-y-4">
-      <section className="rounded-[18px] border border-[var(--brand-border)] bg-[linear-gradient(135deg,var(--surface)_0%,var(--surface-soft)_100%)] px-5 py-5 shadow-[0_24px_54px_-44px_rgba(18,40,26,0.55)]">
+      <section className="virtual-pos-hero rounded-[18px] border border-[var(--brand-border)] bg-[linear-gradient(135deg,var(--surface)_0%,var(--surface-soft)_100%)] px-5 py-5 shadow-[0_24px_54px_-44px_rgba(18,40,26,0.55)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-[14px] bg-[var(--brand-primary)] text-[var(--primary-foreground)]">
+              <span className="virtual-pos-hero-icon inline-flex h-10 w-10 items-center justify-center rounded-[14px] bg-[var(--brand-primary)] text-[var(--primary-foreground)]">
                 <CreditCard className="h-5 w-5" />
               </span>
               <div>
@@ -252,15 +252,15 @@ export function VirtualPosPage() {
               </div>
             </div>
           </div>
-          <Badge variant="outline" className="w-fit border-amber-300/45 bg-amber-300/10 text-amber-700">
+          <Badge variant="outline" className="virtual-pos-status-badge w-fit border-amber-300/45 bg-amber-300/10 text-amber-700">
             Entegrasyon Bekliyor
           </Badge>
         </div>
       </section>
 
       <div className="virtual-pos-main-grid grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card className="rounded-[18px]">
-          <CardHeader className="border-b border-[var(--brand-border)]">
+        <Card className="virtual-pos-card-panel rounded-[18px]">
+          <CardHeader className="virtual-pos-card-header border-b border-[var(--brand-border)]">
             <CardTitle className="flex items-center gap-2 text-base font-black text-[var(--brand-primary-strong)]">
               <LockKeyhole className="h-4 w-4" /> Kart Bilgileri
             </CardTitle>
@@ -268,7 +268,7 @@ export function VirtualPosPage() {
           <CardContent className="p-5">
             <form className="grid gap-4" onSubmit={handleSubmit}>
               <div className="virtual-pos-form-grid grid gap-5 xl:grid-cols-[minmax(360px,520px)_minmax(0,1fr)] xl:items-start">
-                <div className="relative aspect-[1.62/1] min-h-[210px] w-full overflow-hidden rounded-[24px] border border-white/15 bg-[radial-gradient(circle_at_18%_12%,rgba(255,255,255,0.20)_0%,transparent_32%),radial-gradient(circle_at_85%_18%,rgba(255,89,94,0.34)_0%,transparent_36%),linear-gradient(135deg,#152333_0%,#0b1424_48%,#451018_100%)] p-4 text-white shadow-[0_22px_56px_rgba(0,0,0,0.32)] sm:p-5">
+                <div className="virtual-pos-card-preview relative aspect-[1.62/1] min-h-[210px] w-full overflow-hidden rounded-[24px] border border-white/15 bg-[radial-gradient(circle_at_18%_12%,rgba(255,255,255,0.20)_0%,transparent_32%),radial-gradient(circle_at_85%_18%,rgba(255,89,94,0.34)_0%,transparent_36%),linear-gradient(135deg,#152333_0%,#0b1424_48%,#451018_100%)] p-4 text-white shadow-[0_22px_56px_rgba(0,0,0,0.32)] sm:p-5">
                   <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-400/20 blur-2xl" />
                   <div className="absolute -bottom-14 left-8 h-32 w-32 rounded-full bg-emerald-300/14 blur-2xl" />
                   <div className="absolute inset-x-6 top-1/2 h-px bg-white/10" />
@@ -302,26 +302,27 @@ export function VirtualPosPage() {
                 </div>
 
                 <div className="grid gap-3">
-                  <section className="rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
+                  <section className="virtual-pos-form-section rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
                     <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">1 · Cari</p>
                     <div className="virtual-pos-two-field-grid grid gap-3 md:grid-cols-2">
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Cari</span>
-                        <Input value={selectedCustomer ? `${selectedCustomer.code} - ${selectedCustomer.title}` : ""} disabled />
+                        <Input className="virtual-pos-input" value={selectedCustomer ? `${selectedCustomer.code} - ${selectedCustomer.title}` : ""} disabled />
                       </label>
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Kullanıcı</span>
-                        <Input value={user?.name ?? ""} disabled />
+                        <Input className="virtual-pos-input" value={user?.name ?? ""} disabled />
                       </label>
                     </div>
                   </section>
 
-                  <section className="rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
+                  <section className="virtual-pos-form-section rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
                     <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">2 · Kart Bilgileri</p>
                     <div className="grid gap-3">
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Kart Sahibi</span>
                         <Input
+                          className="virtual-pos-input"
                           value={cardHolder}
                           onChange={(event) => setCardHolder(event.target.value.toLocaleUpperCase("tr-TR"))}
                           placeholder="AD SOYAD"
@@ -332,6 +333,7 @@ export function VirtualPosPage() {
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Kart Numarası</span>
                         <Input
+                          className="virtual-pos-input"
                           value={cardNumber}
                           onChange={(event) => setCardNumber(formatCardNumber(event.target.value))}
                           placeholder="0000 0000 0000 0000"
@@ -344,6 +346,7 @@ export function VirtualPosPage() {
                         <label className="space-y-1.5">
                           <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">SKT</span>
                           <Input
+                            className="virtual-pos-input"
                             value={expiry}
                             onChange={(event) => setExpiry(formatExpiry(event.target.value))}
                             placeholder="AA/YY"
@@ -354,6 +357,7 @@ export function VirtualPosPage() {
                         <label className="space-y-1.5">
                           <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">CVV</span>
                           <Input
+                            className="virtual-pos-input"
                             value={cvv}
                             onChange={(event) => setCvv(onlyDigits(event.target.value).slice(0, 4))}
                             placeholder="000"
@@ -364,7 +368,7 @@ export function VirtualPosPage() {
                         <label className="space-y-1.5">
                           <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Taksit</span>
                           <Select value={installment} onValueChange={(value) => setInstallment(value as typeof installment)}>
-                            <SelectTrigger>
+                            <SelectTrigger className="virtual-pos-input">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -380,12 +384,13 @@ export function VirtualPosPage() {
                     </div>
                   </section>
 
-                  <section className="rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
+                  <section className="virtual-pos-form-section rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
                     <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">3 · Tutar / Açıklama</p>
                     <div className="virtual-pos-two-field-grid grid gap-3 md:grid-cols-2">
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Tutar</span>
                         <Input
+                          className="virtual-pos-input"
                           value={amount}
                           onChange={(event) => setAmount(formatAmountInput(event.target.value))}
                           placeholder="0,00"
@@ -395,6 +400,7 @@ export function VirtualPosPage() {
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Açıklama</span>
                         <Input
+                          className="virtual-pos-input"
                           value={description}
                           onChange={(event) => setDescription(event.target.value)}
                           placeholder="Sipariş / tahsilat notu"
@@ -405,28 +411,31 @@ export function VirtualPosPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-                <p className={cn("text-sm font-bold", validationMessage ? "text-[var(--muted-foreground)]" : "text-emerald-600")}>
+              <div className="virtual-pos-actions-panel flex flex-col gap-3 rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                <p
+                  data-valid={validationMessage ? "false" : "true"}
+                  className={cn("virtual-pos-validation-message text-sm font-bold", validationMessage ? "text-[var(--muted-foreground)]" : "text-emerald-600")}
+                >
                   {validationMessage ?? "Ödeme bilgileri hazır."}
                 </p>
                 <div className="virtual-pos-action-grid grid min-w-0 gap-2 sm:grid-cols-3 lg:min-w-[430px]">
                   <Button
                     type="button"
-                    className="h-11 rounded-[14px] border border-emerald-300/45 bg-[linear-gradient(135deg,#2dd36f_0%,#16a34a_52%,#0f6f35_100%)] px-3 text-sm font-black text-white shadow-[0_14px_30px_rgba(22,163,74,0.24)] hover:brightness-110"
+                    className="virtual-pos-whatsapp-button h-11 rounded-[14px] border border-emerald-300/45 bg-[linear-gradient(135deg,#2dd36f_0%,#16a34a_52%,#0f6f35_100%)] px-3 text-sm font-black text-white shadow-[0_14px_30px_rgba(22,163,74,0.24)] hover:brightness-110"
                     onClick={handleWhatsAppShare}
                   >
                     <MessageCircle className="h-4 w-4" /> WhatsApp
                   </Button>
                   <Button
                     type="button"
-                    className="h-11 rounded-[14px] border border-white/10 bg-[linear-gradient(135deg,#64748b_0%,#334155_55%,#111827_100%)] px-3 text-sm font-black text-white shadow-[0_14px_28px_rgba(15,23,42,0.20)] hover:brightness-110"
+                    className="virtual-pos-print-button h-11 rounded-[14px] border border-white/10 bg-[linear-gradient(135deg,#64748b_0%,#334155_55%,#111827_100%)] px-3 text-sm font-black text-white shadow-[0_14px_28px_rgba(15,23,42,0.20)] hover:brightness-110"
                     onClick={handlePrint}
                   >
                     <Printer className="h-4 w-4" /> Yazdır
                   </Button>
                   <Button
                     type="submit"
-                    className="h-11 gap-2 rounded-[14px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-3 text-sm font-black text-white shadow-[0_14px_34px_rgba(225,29,46,0.28)] hover:brightness-110"
+                    className="virtual-pos-start-button h-11 gap-2 rounded-[14px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-3 text-sm font-black text-white shadow-[0_14px_34px_rgba(225,29,46,0.28)] hover:brightness-110"
                     disabled={!canSubmit}
                   >
                     <CreditCard className="h-4 w-4" /> Ödemeyi Başlat
@@ -438,14 +447,14 @@ export function VirtualPosPage() {
         </Card>
 
         <aside className="space-y-4">
-          <Card className="rounded-[18px]">
+          <Card className="virtual-pos-summary-card rounded-[18px]">
             <CardHeader className="border-b border-[var(--brand-border)]">
               <CardTitle className="flex items-center gap-2 text-base font-black text-[var(--brand-primary-strong)]">
                 <ReceiptText className="h-4 w-4" /> Ödeme Özeti
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 p-5">
-              <div className="rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
+              <div className="virtual-pos-summary-tile rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
                 <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Cari</p>
                 <p className="mt-1 line-clamp-2 text-sm font-black text-[var(--brand-primary-strong)]">
                   {selectedCustomer?.title ?? "Cari seçilmedi"}
@@ -453,11 +462,11 @@ export function VirtualPosPage() {
               </div>
 
               <div className="virtual-pos-summary-grid grid grid-cols-2 gap-3">
-                <div className="rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
+                <div className="virtual-pos-summary-tile rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
                   <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Tutar</p>
                   <p className="mt-1 text-lg font-black text-[var(--brand-primary-strong)]">{formatMoney(numericAmount)}</p>
                 </div>
-                <div className="rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
+                <div className="virtual-pos-summary-tile rounded-[14px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
                   <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Taksit</p>
                   <p className="mt-1 text-lg font-black text-[var(--brand-primary-strong)]">{installment === "1" ? "Peşin" : installment}</p>
                 </div>
@@ -475,10 +484,10 @@ export function VirtualPosPage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-[18px]">
+          <Card className="virtual-pos-info-card rounded-[18px]">
             <CardContent className="space-y-3 p-5">
               <div className="flex items-start gap-3">
-                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
+                <span className="virtual-pos-info-icon inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
                   <ShieldCheck className="h-4 w-4" />
                 </span>
                 <div>
@@ -489,7 +498,7 @@ export function VirtualPosPage() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
+                <span className="virtual-pos-info-icon inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]">
                   <UserRound className="h-4 w-4" />
                 </span>
                 <div>

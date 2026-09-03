@@ -10443,3 +10443,249 @@ html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Virtual POS light theme polish: premium payment surface without touching dark mode logic. */
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace {
+  --virtual-pos-text: #10291d;
+  --virtual-pos-muted: #52665c;
+  --virtual-pos-border: #cadcd2;
+  --virtual-pos-border-strong: #98b9a8;
+  --virtual-pos-surface: #ffffff;
+  --virtual-pos-soft: #f3f8f5;
+  --virtual-pos-green: #0e8758;
+  --virtual-pos-green-dark: #075f40;
+  --virtual-pos-red: #c60e28;
+  --virtual-pos-red-dark: #9e081d;
+  color: var(--virtual-pos-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-hero,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-panel,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-summary-card,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-info-card {
+  border-color: var(--virtual-pos-border) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fcfa 100%) !important;
+  color: var(--virtual-pos-text) !important;
+  box-shadow: 0 18px 46px -34px rgba(16, 41, 29, 0.26) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-hero {
+  padding-block: 1rem !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-hero-icon {
+  border: 1px solid rgba(7, 95, 64, 0.48) !important;
+  background: linear-gradient(180deg, #117d56 0%, #064a34 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 26px -20px rgba(6, 74, 52, 0.7) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-status-badge {
+  border-color: #e0b937 !important;
+  background: #fff6d7 !important;
+  color: #6a4700 !important;
+  box-shadow: 0 10px 20px -18px rgba(151, 103, 0, 0.55) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-header {
+  border-color: var(--virtual-pos-border) !important;
+  background: linear-gradient(180deg, #f5fbf8 0%, #eef7f2 100%) !important;
+  color: var(--virtual-pos-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview {
+  aspect-ratio: 1.586 / 1 !important;
+  min-height: 198px !important;
+  border-color: rgba(127, 35, 57, 0.48) !important;
+  background:
+    radial-gradient(circle at 15% 12%, rgba(255, 255, 255, 0.18) 0%, transparent 30%),
+    radial-gradient(circle at 88% 18%, rgba(226, 62, 83, 0.42) 0%, transparent 34%),
+    radial-gradient(circle at 18% 92%, rgba(36, 151, 113, 0.18) 0%, transparent 32%),
+    linear-gradient(135deg, #14283f 0%, #17233a 48%, #611d31 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 22px 46px -20px rgba(22, 37, 56, 0.42) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview :where(p, span, svg) {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.34) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview p:first-child,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview .text-white\/48,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview .text-white\/62,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview .text-white\/72 {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-form-section,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-summary-tile,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-actions-panel {
+  border-color: var(--virtual-pos-border) !important;
+  background: linear-gradient(180deg, #f8fcfa 0%, var(--virtual-pos-soft) 100%) !important;
+  color: var(--virtual-pos-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-input,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace [data-slot="select-trigger"].virtual-pos-input {
+  min-height: 50px !important;
+  border-color: #b9cfc3 !important;
+  background: #ffffff !important;
+  color: var(--virtual-pos-text) !important;
+  opacity: 1 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-input::placeholder {
+  color: #718178 !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-input:focus,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-input:focus-visible,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace [data-slot="select-trigger"].virtual-pos-input:focus,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace [data-slot="select-trigger"].virtual-pos-input:focus-visible {
+  border-color: #20704a !important;
+  box-shadow:
+    0 0 0 3px rgba(32, 112, 74, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-input:disabled,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-input[disabled],
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace [data-slot="select-trigger"].virtual-pos-input[aria-disabled="true"] {
+  border-color: #cbd8d1 !important;
+  background: #edf3f0 !important;
+  color: #5a6d63 !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-validation-message {
+  display: inline-flex !important;
+  min-height: 42px !important;
+  align-items: center !important;
+  border-radius: 12px !important;
+  border: 1px solid #bdd5c8 !important;
+  background: #ffffff !important;
+  padding: 0.55rem 0.8rem !important;
+  color: #1b5a3d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-validation-message[data-valid="false"] {
+  border-color: #e5a5af !important;
+  background: #fff1f3 !important;
+  color: #852336 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-whatsapp-button:not(:disabled) {
+  border-color: rgba(12, 134, 75, 0.64) !important;
+  background: linear-gradient(135deg, #28c76f 0%, #11975a 56%, #087242 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 28px -18px rgba(12, 134, 75, 0.74) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-print-button:not(:disabled) {
+  border-color: #132438 !important;
+  background: linear-gradient(135deg, #304761 0%, #182b40 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 28px -18px rgba(24, 43, 64, 0.62) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-start-button:not(:disabled) {
+  border-color: #aa0b21 !important;
+  background: linear-gradient(135deg, #f23845 0%, #c60e28 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 34px -20px rgba(198, 14, 40, 0.74) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-whatsapp-button:hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-print-button:hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-start-button:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  color: #ffffff !important;
+  filter: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-whatsapp-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #20b862 0%, #0b804b 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-print-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #263f59 0%, #102236 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-start-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2938 0%, #a80820 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-start-button:disabled {
+  border-color: #d29ca5 !important;
+  background: #e7b9c0 !important;
+  color: #762f3a !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-start-button:disabled :where(svg, span),
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-whatsapp-button :where(svg, span),
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-print-button :where(svg, span),
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-start-button :where(svg, span) {
+  color: currentColor !important;
+  stroke: currentColor !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-summary-card [data-slot="card-header"] {
+  border-color: var(--virtual-pos-border) !important;
+  background: #f8fcfa !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-summary-tile {
+  min-height: 104px !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-summary-tile p,
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-info-card p {
+  color: var(--virtual-pos-text) !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-info-icon {
+  border: 1px solid #b8d7c7 !important;
+  background: #e6f4ec !important;
+  color: #14633f !important;
+}
+
+@media (max-width: 1280px) {
+  html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview {
+    max-width: 560px !important;
+  }
+}
+
+@media (max-width: 860px) {
+  html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-hero {
+    padding: 0.85rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-panel [data-slot="card-content"] {
+    padding: 0.85rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview {
+    min-height: 190px !important;
+    border-radius: 18px !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-actions-panel {
+    padding: 0.75rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace .virtual-pos-action-grid button {
+    min-height: 44px !important;
+    width: 100% !important;
+  }
+}
