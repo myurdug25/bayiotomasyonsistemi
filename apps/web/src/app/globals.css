@@ -12037,3 +12037,65 @@ html[data-ui-theme="light"] .app-shell-root .rack-addresses-page .rack-empty-sta
     min-width: 44px !important;
   }
 }
+
+/* Rack addresses light theme final action guard */
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-save-all-button.rack-save-all-button.rack-save-all-button:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-address-row[data-changed="true"] .rack-row-save-button.rack-row-save-button.rack-row-save-button:not(:disabled) {
+  border-color: #8e5e02 !important;
+  background-color: #a56f05 !important;
+  background-image: linear-gradient(135deg, #d39b16 0%, #a56f05 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 20px -14px rgba(165, 111, 5, 0.72) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-save-all-button.rack-save-all-button.rack-save-all-button:not(:disabled) {
+  border-color: #aa0b21 !important;
+  background-color: #c60e28 !important;
+  background-image: linear-gradient(135deg, #f23845 0%, #c60e28 58%, #990f20 100%) !important;
+  box-shadow: 0 15px 32px -21px rgba(198, 14, 40, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-save-all-button.rack-save-all-button.rack-save-all-button:disabled {
+  border-color: #d29ca5 !important;
+  background-color: #e7b9c0 !important;
+  background-image: none !important;
+  color: #762f3a !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-row-save-button.rack-row-save-button.rack-row-save-button:disabled,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-address-row:not([data-changed="true"]) .rack-row-save-button.rack-row-save-button.rack-row-save-button {
+  border-color: #c6d4cc !important;
+  background-color: #e7eeea !important;
+  background-image: none !important;
+  color: #5f7469 !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-save-all-button.rack-save-all-button.rack-save-all-button:not(:disabled) svg,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-address-row[data-changed="true"] .rack-row-save-button.rack-row-save-button.rack-row-save-button:not(:disabled) svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  fill: none !important;
+  opacity: 1 !important;
+  stroke-width: 2.35 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-save-all-button.rack-save-all-button.rack-save-all-button:disabled svg {
+  color: #762f3a !important;
+  stroke: #762f3a !important;
+  fill: none !important;
+  opacity: 1 !important;
+  stroke-width: 2.35 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-row-save-button.rack-row-save-button.rack-row-save-button:disabled svg,
+html[data-ui-theme="light"] .app-shell-root .rack-addresses-page.rack-addresses-page .rack-address-row:not([data-changed="true"]) .rack-row-save-button.rack-row-save-button.rack-row-save-button svg {
+  color: #5f7469 !important;
+  stroke: #5f7469 !important;
+  fill: none !important;
+  opacity: 1 !important;
+  stroke-width: 2.35 !important;
+}
