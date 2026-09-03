@@ -432,7 +432,7 @@ export function MalKabulWorkspacePage() {
                 type="button"
                 onClick={save}
                 disabled={approveMutation.isPending || acceptedItems.length === 0}
-                className="mal-kabul-save-button h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#ff5f62,#dc2626_52%,#991b1b)] text-base font-black text-white shadow-[0_18px_36px_-20px_rgba(239,68,68,0.9)] hover:brightness-110"
+                className="mal-kabul-save-button h-12 w-full rounded-2xl border border-[#aa0b21] bg-[linear-gradient(135deg,#ff5f62,#dc2626_52%,#991b1b)] text-base font-black text-white shadow-[0_18px_36px_-20px_rgba(239,68,68,0.9)] hover:brightness-110 disabled:!border-[#d29ca5] disabled:!bg-[#e7b9c0] disabled:!text-[#762f3a] disabled:opacity-100"
               >
                 {approveMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
                 Kaydet

@@ -67,3 +67,14 @@ test("mal kabul light polish does not change transfer or Logo submit logic", () 
     assert.match(source, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   });
 });
+
+test("mal kabul save action carries explicit disabled colors against global button rules", () => {
+  [
+    "disabled:!bg-[#e7b9c0]",
+    "disabled:!text-[#762f3a]",
+    "disabled:!border-[#d29ca5]",
+    "disabled:opacity-100",
+  ].forEach((snippet) => {
+    assert.match(source, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  });
+});
