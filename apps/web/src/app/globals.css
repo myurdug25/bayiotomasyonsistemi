@@ -10143,3 +10143,299 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-filter-
     box-shadow: none !important;
   }
 }
+
+/* Collections light theme polish: readable neutral controls, red only for active payment/send actions. */
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page {
+  --collections-light-text: #0b2319;
+  --collections-light-muted: #52685d;
+  --collections-light-border: #cfe0d7;
+  --collections-light-border-strong: #91b8a3;
+  --collections-light-surface: #ffffff;
+  --collections-light-soft: #f4faf7;
+  --collections-light-green: #0f7d55;
+  --collections-light-green-strong: #075f40;
+  --collections-light-red: #d71920;
+  --collections-light-red-strong: #a50c12;
+  color: var(--collections-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-form-card,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-side-card {
+  border-color: var(--collections-light-border) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fcfa 100%) !important;
+  color: var(--collections-light-text) !important;
+  box-shadow: 0 18px 44px -34px rgba(16, 39, 29, 0.26) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-back-button,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-refresh-button,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-edit-button,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-choice-button[data-selected="false"] {
+  border-color: var(--collections-light-border) !important;
+  background: #ffffff !important;
+  color: var(--collections-light-text) !important;
+  box-shadow: 0 10px 22px -18px rgba(16, 39, 29, 0.26) !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-back-button:hover,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-refresh-button:hover,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-edit-button:hover,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-choice-button[data-selected="false"]:hover {
+  border-color: var(--collections-light-border-strong) !important;
+  background: #edf7f1 !important;
+  color: #071d16 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method {
+  min-height: 82px !important;
+  gap: 0.45rem !important;
+  border-radius: 16px !important;
+  opacity: 1 !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-choice-button svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-back-button svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-refresh-button svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-edit-button svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-delete-button svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-whatsapp-button svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-print-button svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-save-button svg,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-send-button svg {
+  color: currentColor !important;
+  stroke: currentColor !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[data-selected="false"] {
+  border-color: var(--collections-light-border) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f0f6f3 100%) !important;
+  color: #30483d !important;
+  box-shadow: 0 14px 26px -22px rgba(16, 39, 29, 0.28) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[data-selected="false"]:hover {
+  border-color: #8eb8a1 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #e7f5ee 100%) !important;
+  color: #0b2319 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[data-selected="true"] {
+  border-color: rgba(179, 18, 24, 0.62) !important;
+  background: linear-gradient(180deg, #ff4b4f 0%, #d71920 58%, #a50c12 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 0 #85070c, 0 18px 34px -20px rgba(215, 25, 32, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[data-selected="true"]:hover {
+  border-color: rgba(160, 11, 18, 0.76) !important;
+  background: linear-gradient(180deg, #f83a41 0%, #c9141c 58%, #92080d 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method:disabled,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-choice-button:disabled,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-save-button:disabled,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-send-button:disabled,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-whatsapp-button:disabled,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-print-button:disabled,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-delete-button:disabled,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-edit-button:disabled {
+  border-color: #d8e3dd !important;
+  background: #e7eeea !important;
+  color: #71847a !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-choice-button[data-selected="true"] {
+  border-color: #0f7d55 !important;
+  background: linear-gradient(180deg, #16a16f 0%, #087a52 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 30px -22px rgba(8, 122, 82, 0.7) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-field-input,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page [data-slot="select-trigger"] {
+  border-color: var(--collections-light-border) !important;
+  background: #ffffff !important;
+  color: var(--collections-light-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-field-input::placeholder {
+  color: #72847a !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-field-input:focus,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-field-input:focus-visible,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page [data-slot="select-trigger"]:focus,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page [data-slot="select-trigger"]:focus-visible {
+  border-color: var(--collections-light-green) !important;
+  box-shadow:
+    0 0 0 3px rgba(15, 125, 85, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-save-button:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-send-button:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-delete-button:not(:disabled) {
+  border-color: rgba(179, 18, 24, 0.62) !important;
+  background: linear-gradient(180deg, #ff4b4f 0%, #d71920 58%, #a50c12 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 32px -22px rgba(215, 25, 32, 0.78) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-save-button:hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-send-button:hover:not(:disabled),
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-delete-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f23840 0%, #c9141c 58%, #92080d 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-whatsapp-button:not(:disabled) {
+  border-color: rgba(12, 134, 75, 0.64) !important;
+  background: linear-gradient(180deg, #24c46d 0%, #109052 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 30px -22px rgba(12, 134, 75, 0.7) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-whatsapp-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #1db760 0%, #087a45 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-print-button:not(:disabled) {
+  border-color: rgba(7, 29, 24, 0.55) !important;
+  background: linear-gradient(180deg, #17392f 0%, #071d18 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 30px -22px rgba(7, 29, 24, 0.62) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-print-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #1e473a 0%, #09251e 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f6faf7 100%) !important;
+  border: 1px solid var(--collections-light-border) !important;
+  color: var(--collections-light-text) !important;
+  box-shadow: 0 16px 34px -28px rgba(16, 39, 29, 0.24) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-icon {
+  background: #e6f4ec !important;
+  border-color: #b8d7c7 !important;
+  color: #14633f !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-empty-state {
+  border-color: #cddfd6 !important;
+  background: #f8fcfa !important;
+  color: var(--collections-light-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-empty-state p {
+  color: var(--collections-light-text) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-row {
+  background: #ffffff !important;
+  border-color: #d1ded6 !important;
+  color: var(--collections-light-text) !important;
+  box-shadow: 0 10px 22px -18px rgba(16, 39, 29, 0.2) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-row:hover {
+  background: #f2faf5 !important;
+  border-color: #83b899 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-status {
+  background: #fff8e2 !important;
+  border-color: #efc84a !important;
+  color: #6f4a00 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-status[data-sync-status="synced"] {
+  background: #e5f7ee !important;
+  border-color: #7bc99e !important;
+  color: #0f6844 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-status[data-sync-status="pending"] {
+  background: #e9f5ff !important;
+  border-color: #88bee8 !important;
+  color: #15577f !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-status[data-sync-status="reviewing"] {
+  background: #fff8e2 !important;
+  border-color: #efc84a !important;
+  color: #6f4a00 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-status[data-sync-status="failed"] {
+  background: #fff0f0 !important;
+  border-color: #f1a3a3 !important;
+  color: #a30f17 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-meta {
+  color: #315f47 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-error {
+  color: #b4232a !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-summary,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-actions-panel {
+  background: #f7faf8 !important;
+  border-color: #d1ded6 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-summary-card {
+  background: #ffffff !important;
+  border-color: #d8e4dd !important;
+  color: var(--collections-light-text) !important;
+  box-shadow: 0 8px 18px -14px rgba(16, 39, 29, 0.18) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-summary-card strong,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-summary-card span {
+  color: var(--collections-light-text) !important;
+  text-shadow: none !important;
+}
+
+@media (max-width: 767px) {
+  html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-form-card,
+  html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-side-card {
+    border-radius: 16px !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method {
+    min-height: 74px !important;
+    font-size: 0.78rem !important;
+    line-height: 1.12 !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-recent-panel {
+    padding: 0.75rem !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-empty-state {
+    min-height: 132px !important;
+  }
+
+  html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-actions-panel {
+    grid-template-columns: 1fr !important;
+  }
+}

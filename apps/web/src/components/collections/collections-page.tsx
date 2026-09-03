@@ -1447,7 +1447,7 @@ export function CollectionsPage() {
   const shellCardClassName =
     "dashboard-panel-card overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(15,29,38,0.78)_0%,rgba(9,19,28,0.86)_100%)] shadow-[0_18px_34px_-28px_rgba(0,0,0,0.48)]";
   const fieldClassName =
-    "h-14 rounded-[14px] border-white/10 bg-white/[0.035] text-base font-bold text-slate-100 placeholder:text-slate-500 focus-visible:border-emerald-300/40";
+    "collection-field-input h-14 rounded-[14px] border-white/10 bg-white/[0.035] text-base font-bold text-slate-100 placeholder:text-slate-500 focus-visible:border-emerald-300/40";
   const fieldShellClassName =
     "min-w-0 space-y-1";
   const fieldLabelClassName =
@@ -2080,7 +2080,7 @@ export function CollectionsPage() {
         <Button
           type="button"
           variant="outline"
-          className="h-10 rounded-[14px] border-white/12 bg-white/[0.045] px-4 text-sm font-black text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-white/[0.08] hover:text-white"
+          className="collection-back-button h-10 rounded-[14px] border-white/12 bg-white/[0.045] px-4 text-sm font-black text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-white/[0.08] hover:text-white"
           onClick={() => window.history.back()}
         >
           <ArrowLeft className="h-4 w-4" />
@@ -2088,7 +2088,7 @@ export function CollectionsPage() {
         </Button>
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(520px,0.92fr)_minmax(520px,1fr)] xl:items-start">
-        <Card className={cn(shellCardClassName, "xl:sticky xl:top-[116px]")}>
+        <Card className={cn(shellCardClassName, "collection-form-card xl:sticky xl:top-[116px]")}>
           <CardContent className="space-y-5 p-5 lg:p-6">
             {editingCollection ? (
               <div className="flex items-center justify-between gap-3 rounded-[14px] border border-amber-300/30 bg-amber-300/10 px-4 py-3">
@@ -2126,9 +2126,11 @@ export function CollectionsPage() {
                     key={value}
                     type="button"
                     disabled={isFormDisabled}
+                    data-selected={method === value ? "true" : "false"}
+                    aria-pressed={method === value}
                     onClick={() => handleMethodChange(value)}
                     className={cn(
-                      "flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-[16px] border px-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
+                      "collection-payment-method flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-[16px] border px-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
                       method === value
                         ? METHOD_STYLES[value].active
                         : METHOD_STYLES[value].idle
@@ -2150,9 +2152,11 @@ export function CollectionsPage() {
                       key={option.value}
                       type="button"
                       disabled={isFormDisabled}
+                      data-selected={posBank === option.value ? "true" : "false"}
+                      aria-pressed={posBank === option.value}
                       onClick={() => setPosBank(option.value)}
                       className={cn(
-                        "flex min-h-[62px] items-center justify-center gap-2 rounded-[16px] border px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
+                        "collection-choice-button flex min-h-[62px] items-center justify-center gap-2 rounded-[16px] border px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
                         posBank === option.value
                           ? "border-sky-300/70 bg-sky-300/14 text-sky-100 shadow-[0_18px_34px_-30px_rgba(56,189,248,0.7)]"
                           : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-sky-300/35 hover:bg-sky-300/8 hover:text-sky-100"
@@ -2187,7 +2191,7 @@ export function CollectionsPage() {
                         }
                       }}
                       placeholder="0,00"
-                      className="h-16 rounded-[14px] border-[var(--brand-border)] bg-[var(--surface-soft)] text-3xl font-black text-[var(--brand-primary-strong)] placeholder:text-[var(--muted-foreground)]"
+                      className="collection-field-input h-16 rounded-[14px] border-[var(--brand-border)] bg-[var(--surface-soft)] text-3xl font-black text-[var(--brand-primary-strong)] placeholder:text-[var(--muted-foreground)]"
                     />
                   </div>
                   <div className="space-y-1">
@@ -2200,7 +2204,7 @@ export function CollectionsPage() {
                       readOnly
                       aria-readonly="true"
                       disabled={isFormDisabled}
-                      className="h-16 cursor-not-allowed rounded-[14px] border-[var(--brand-border)] bg-[var(--surface-soft)] text-base font-black text-[var(--brand-primary-strong)]"
+                      className="collection-field-input h-16 cursor-not-allowed rounded-[14px] border-[var(--brand-border)] bg-[var(--surface-soft)] text-base font-black text-[var(--brand-primary-strong)]"
                     />
                   </div>
                 </div>
@@ -2505,7 +2509,7 @@ export function CollectionsPage() {
             <Button
               className={cn(
                 premiumRedActionClassName,
-                "h-12 w-full rounded-[14px] text-sm font-black",
+                "collection-save-button h-12 w-full rounded-[14px] text-sm font-black",
                 paperInstrumentNeedsApproval && "from-amber-300 to-amber-600"
               )}
               disabled={isFormDisabled}
@@ -2525,7 +2529,7 @@ export function CollectionsPage() {
           </CardContent>
         </Card>
 
-        <Card className={shellCardClassName}>
+        <Card className={cn(shellCardClassName, "collection-side-card")}>
           <CardContent className="space-y-4 p-5 lg:p-6">
             <div
               ref={collectionReceiptCaptureRef}
@@ -2560,7 +2564,7 @@ export function CollectionsPage() {
                   ))}
                 </div>
               ) : !selectedCustomer ? (
-                <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-[18px] border border-dashed border-[var(--brand-border)] bg-[var(--surface-soft)] p-6 text-center">
+                <div className="collection-empty-state flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-[18px] border border-dashed border-[var(--brand-border)] bg-[var(--surface-soft)] p-6 text-center">
                   <UserRound className="h-10 w-10 text-[var(--brand-primary)]" />
                   <p className="text-2xl font-black text-[var(--brand-primary-strong)]">Müşteri seç</p>
                   <Button asChild className="rounded-[12px]">
@@ -2568,7 +2572,7 @@ export function CollectionsPage() {
                   </Button>
                 </div>
               ) : displayRows.length === 0 ? (
-                <div className="flex min-h-[180px] items-center justify-center rounded-[18px] bg-[var(--surface-soft)] p-6 text-center">
+                <div className="collection-empty-state flex min-h-[180px] items-center justify-center rounded-[18px] bg-[var(--surface-soft)] p-6 text-center">
                   <p className="text-2xl font-black text-[var(--brand-primary-strong)]">Kayıt yok</p>
                 </div>
               ) : (
@@ -2618,6 +2622,7 @@ export function CollectionsPage() {
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
                               <p className="shrink-0 text-sm font-black text-[var(--brand-primary-strong)]">{getCollectionMethodLabel(row)}</p>
                               <span
+                                data-sync-status={row.sync_status ?? "unknown"}
                                 className={cn(
                                   "collection-recent-status rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em]",
                                   row.sync_status === "synced"
@@ -2673,7 +2678,7 @@ export function CollectionsPage() {
                             <Button
                               type="button"
                               variant="outline"
-                              className="h-9 rounded-[10px] px-3 text-xs font-black"
+                              className="collection-edit-button h-9 rounded-[10px] px-3 text-xs font-black"
                               disabled={!editable || isListDisabled}
                               onClick={() => startCollectionEdit(row)}
                             >
@@ -2683,7 +2688,7 @@ export function CollectionsPage() {
                             <Button
                               type="button"
                               variant="outline"
-                              className="h-9 rounded-[10px] border-red-300/35 px-3 text-xs font-black text-red-200 hover:bg-red-300/10 hover:text-red-100"
+                              className="collection-delete-button h-9 rounded-[10px] border-red-300/35 px-3 text-xs font-black text-red-200 hover:bg-red-300/10 hover:text-red-100"
                               disabled={!editable || isListDisabled}
                               onClick={() => deleteCollection(row)}
                             >
@@ -2727,7 +2732,7 @@ export function CollectionsPage() {
             {selectedCustomer && displayRows.length > 0 ? (
               <div
                 className={cn(
-                  "grid gap-2 rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface)] p-3",
+                  "collection-actions-panel grid gap-2 rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface)] p-3",
                   "sm:grid-cols-[minmax(0,0.9fr)_minmax(0,0.75fr)_minmax(0,1.05fr)]"
                 )}
               >
@@ -2735,7 +2740,7 @@ export function CollectionsPage() {
                   type="button"
                   disabled={isListDisabled || displayRows.length === 0 || sharingReceiptScreenshot || !canUseReceiptActions}
                   onClick={sendCollectionReceiptWhatsapp}
-                  className="h-11 rounded-[12px] bg-emerald-500 text-sm font-black text-white hover:bg-emerald-400 disabled:border disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
+                  className="collection-whatsapp-button h-11 rounded-[12px] bg-emerald-500 text-sm font-black text-white hover:bg-emerald-400 disabled:border disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
                 >
                   {sharingReceiptScreenshot ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
                   {sharingReceiptScreenshot ? "Görsel Hazırlanıyor..." : "WhatsApp"}
@@ -2745,7 +2750,7 @@ export function CollectionsPage() {
                   variant="outline"
                   disabled={!canPrintReceipt}
                   onClick={printCollections}
-                  className="h-11 rounded-[12px]"
+                  className="collection-print-button h-11 rounded-[12px]"
                 >
                   <Printer className="h-4 w-4" />
                   Yazdır
@@ -2754,7 +2759,7 @@ export function CollectionsPage() {
                   type="button"
                   disabled={isListDisabled || sendableRows.length === 0}
                   onClick={sendCollections}
-                  className={cn(premiumRedActionClassName, "h-11 w-full rounded-[12px] text-sm font-black")}
+                  className={cn(premiumRedActionClassName, "collection-send-button h-11 w-full rounded-[12px] text-sm font-black")}
                 >
                   {sendingCollections ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   {sendActionLabel}
