@@ -388,6 +388,12 @@ function normalizeBranchText(value: string | null | undefined): string {
     .replace(/\s+/g, " ");
 }
 
+function customerCodeLooksLikeBatum(value: string | null | undefined): boolean {
+  const segments = (value ?? "").trim().split(/[^0-9]+/).filter(Boolean);
+
+  return segments[1] === "00";
+}
+
 function branchStockRows(product: ProductSearchItem, columns: readonly BranchStockColumn[]) {
   const locations = productStockLocations(product);
 
@@ -1155,7 +1161,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       user?.username,
     ]
   );
-  const isBatumPriceScope = normalizeBranchText(branchIdentity).includes("batum");
+  const isBatumPriceScope =
+    normalizeBranchText(branchIdentity).includes("batum") ||
+    customerCodeLooksLikeBatum(selectedCustomer?.code);
   const showPriceCardsOnSearch = isPointPanel || isBatumPriceScope;
   const visibleStockColumns = useMemo(
     () => (isCustomerUser && !canViewSearchStock ? [] : visibleBranchStockColumns(featurePermissionSet, roleSlugs, user?.username, branchIdentity)),
