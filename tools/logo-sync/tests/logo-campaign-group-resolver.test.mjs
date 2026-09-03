@@ -24,6 +24,13 @@ test("finds the F group from campaign code or name when Logo group columns are e
   );
 });
 
+test("finds Batum campaign group from campaign code or name when Logo group columns are empty", () => {
+  assert.deepEqual(
+    resolveCampaignCustomerGroup({}, "KMP-BATUM-2026", "Batum filtre kampanyası"),
+    { group: "BATUM", source: "campaign_code" }
+  );
+});
+
 test("keeps a legacy non-F group only when no F1-F12 group exists", () => {
   assert.deepEqual(
     resolveCampaignCustomerGroup({ CARGROUPCODE: "BAYI" }, "KMP-001", "Bayi kampanyası"),

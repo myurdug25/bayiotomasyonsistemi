@@ -64,6 +64,10 @@ test("Logo price type filter still includes customer-group sales price rows", ()
 test("Logo conditional price rows are sent as campaign prices", () => {
   assert.match(productsSource, /buildLogoCampaignPrice/);
   assert.match(productsSource, /campaign_prices/);
+  assert.match(productsSource, /FORMULA/);
+  assert.match(productsSource, /MATHFORMULA/);
+  assert.match(productsSource, /DISCPER/);
+  assert.match(productsSource, /CONDQTY/);
   assert.match(productsSource, /price_group: priceGroupCode/);
   assert.match(productsSource, /logo_price_group: priceGroupCode/);
   assert.match(productsSource, /resolveLogoCampaignMinQuantity/);

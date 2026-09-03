@@ -2710,18 +2710,29 @@ function buildLogoGroupedPricePredicate(columns) {
 
 function isLogoCampaignPriceRow(row) {
   const definition = normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]));
-  const condition = normalizeString(readFirst(row, ["CONDITION", "condition"]));
-  return Boolean(condition) || /\bKAMPANYA(?:SI)?\b/iu.test(definition ?? "");
+  const condition = normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"]));
+  const formula = normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
+  const explicitDiscount = normalizeDecimal(readFirst(row, ["DISCPER", "DISCOUNT", "DISCRATE", "discount_rate"]));
+  const explicitQuantity = normalizeInteger(readFirst(row, ["MIN_QUANTITY", "MINQTY", "CONDQTY", "MINAMOUNT", "MIN_QUANTITY_", "min_quantity"]));
+
+  return Boolean(condition) ||
+    Boolean(formula) ||
+    (explicitDiscount !== null && explicitDiscount > 0) ||
+    (explicitQuantity !== null && explicitQuantity > 1) ||
+    /\b(KAMPANYA(?:SI)?|PROMOSYON|ISKONTO|İSKONTO)\b/iu.test(definition ?? "");
 }
 
 function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
+  const condition =
+    normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"])) ??
+    normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
   const sourceReference =
     normalizeString(readFirst(row, ["LOGICALREF", columns.logicalRefColumn])) ??
     [
       normalizeString(readFirst(row, ["CARDREF", "STOCKREF", "ITEMREF", "PRODUCTREF"])),
       priceGroupCode ?? "ALL",
       price.list_price,
-      normalizeString(readFirst(row, ["CONDITION", "condition"])) ??
+      condition ??
         normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
         "campaign",
     ]
@@ -2731,7 +2742,6 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
   const name =
     normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
     `Logo ${priceGroupCode ?? "Genel"} Kampanya Fiyati`;
-  const condition = normalizeString(readFirst(row, ["CONDITION", "condition"]));
   const minQuantity = resolveLogoCampaignMinQuantity(row, condition);
   const campaignKey = normalizeLogoCampaignKey(priceGroupCode, sourceReference, name);
 

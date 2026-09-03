@@ -32,3 +32,11 @@ test("daemon runs campaigns independently from long product catalog maintenance"
   assert.match(daemonSource, /campaignIntervalMs:\s*parseIntEnv\("SYNC_DAEMON_CAMPAIGN_INTERVAL_MS",\s*60_000/);
   assert.match(daemonSource, /const steps = \["campaigns"\]/);
 });
+
+test("campaign sync discovers Logo campaign line reference column variants", () => {
+  assert.match(campaignSource, /resolveCampaignLineReferenceColumn/);
+  assert.match(campaignSource, /CAMPCARDREF/);
+  assert.match(campaignSource, /CAMPAIGNREF/);
+  assert.match(campaignSource, /CAMPAIGNCARDREF/);
+  assert.doesNotMatch(campaignSource, /WHERE CAMPCARDREF = @campRef/);
+});

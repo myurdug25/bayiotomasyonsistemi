@@ -12,6 +12,17 @@ function fGroup(value) {
   return match?.[1]?.toUpperCase() ?? null;
 }
 
+function namedGroup(value) {
+  const text = normalized(value)?.toLocaleUpperCase("tr-TR") ?? "";
+  if (!text) return null;
+
+  if (/(?:^|[^A-Z0-9])BATUM(?:[^A-Z0-9]|$)/i.test(text) || text.includes("BATUM")) {
+    return "BATUM";
+  }
+
+  return null;
+}
+
 /**
  * Resolve the campaign's customer group without letting Logo's numeric CLTYPE
  * mask a concrete F1-F12 price/customer group stored in another column.
@@ -33,8 +44,16 @@ export function resolveCampaignCustomerGroup(row, code = null, name = null) {
     if (group) return { group, source };
   }
 
+  for (const [source, value] of candidates) {
+    const group = namedGroup(value);
+    if (group) return { group, source };
+  }
+
   const inferred = fGroup(`${normalized(code) ?? ""} ${normalized(name) ?? ""}`);
   if (inferred) return { group: inferred, source: "campaign_code" };
+
+  const inferredNamed = namedGroup(`${normalized(code) ?? ""} ${normalized(name) ?? ""}`);
+  if (inferredNamed) return { group: inferredNamed, source: "campaign_code" };
 
   for (const [source, value] of candidates) {
     const group = normalized(value);

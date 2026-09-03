@@ -59,6 +59,27 @@ class CustomerCampaignGroupResolver
             }
         }
 
+        if ($this->isBatumCustomer($customer)) {
+            $groups['BATUM'] = 'BATUM';
+        }
+
         return array_values($groups);
+    }
+
+    private function isBatumCustomer(Customer $customer): bool
+    {
+        $codeSegments = preg_split('/[^0-9]+/', trim((string) $customer->code), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (($codeSegments[1] ?? null) === '00') {
+            return true;
+        }
+
+        foreach (['branch_code', 'branch_name', 'region_code', 'region_name'] as $field) {
+            $value = mb_strtoupper(trim((string) $customer->{$field}), 'UTF-8');
+            if ($value !== '' && str_contains($value, 'BATUM')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -111,6 +111,7 @@ async function main() {
     const lineColumns = lineTableExists
       ? await getTableColumns(pool, campaignLineTable)
       : [];
+    const lineReferenceColumn = resolveCampaignLineReferenceColumn(lineColumns);
 
     // Her kampanya için ürün kodlarını çek
     const campaigns = [];
@@ -169,7 +170,7 @@ async function main() {
       let discountPercent = null;
       let lineCondition = null;
 
-      if (lineTableExists) {
+      if (lineTableExists && lineReferenceColumn) {
         try {
           const lineRows = await pool
             .request()
@@ -177,7 +178,7 @@ async function main() {
             .query(`
               SELECT *
               FROM ${campaignLineTable} WITH (NOLOCK)
-              WHERE CAMPCARDREF = @campRef
+              WHERE ${lineReferenceColumn} = @campRef
               ORDER BY LOGICALREF
             `);
 
@@ -237,6 +238,10 @@ async function main() {
             `[logo-campaigns-sync] Kampanya ${ref} satırları okunamadı: ${err.message}`
           );
         }
+      } else if (lineTableExists) {
+        console.warn(
+          `[logo-campaigns-sync] Kampanya satır bağlantı kolonu bulunamadı: ${campaignLineTable}`
+        );
       }
 
       // Adet bulma: Başlık isminden veya satır koşulundan çıkar (örn: "KAMPANYASI 10", "5 ADE", "P76*(5/100)")
@@ -445,6 +450,26 @@ function normalizeString(value) {
   if (value === null || value === undefined) return null;
   const s = String(value).trim();
   return s === "" ? null : s;
+}
+
+function resolveCampaignLineReferenceColumn(columns) {
+  const candidates = [
+    "CAMPCARDREF",
+    "CAMPAIGNREF",
+    "CAMPAIGNCARDREF",
+    "CAMPREF",
+    "CARDREF",
+  ];
+  const byUpper = new Map(columns.map((column) => [String(column).toUpperCase(), column]));
+
+  for (const candidate of candidates) {
+    const column = byUpper.get(candidate);
+    if (column) {
+      return column;
+    }
+  }
+
+  return null;
 }
 
 function nullable(value) {
