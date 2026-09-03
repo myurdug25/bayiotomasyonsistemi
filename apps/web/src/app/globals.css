@@ -11653,6 +11653,165 @@ html[data-ui-theme="light"] .app-shell-root .returns-page .returns-pagination bu
   }
 }
 
+/* Returns light theme final contrast guard */
+html[data-ui-theme="light"] .app-shell-root .returns-page {
+  background:
+    linear-gradient(180deg, #f7fbf8 0%, var(--returns-page-bg) 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-panel {
+  border-radius: 24px !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #fbfdfc 62%, #f4f8f6 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-create-panel {
+  border-color: #bfd4c8 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-requests-panel {
+  min-height: auto !important;
+  border-color: #c7d9cf !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card--return {
+  --returns-type-accent: #087a52;
+  --returns-type-strong: #055c3f;
+  --returns-type-soft: #e1f5eb;
+  --returns-type-border: #91c8ac;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card--damaged {
+  --returns-type-accent: #c76613;
+  --returns-type-strong: #8d3f08;
+  --returns-type-soft: #fff0dd;
+  --returns-type-border: #efbe77;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card--faulty {
+  --returns-type-accent: #17617c;
+  --returns-type-strong: #0e455f;
+  --returns-type-soft: #e7f5fb;
+  --returns-type-border: #94c9d9;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card {
+  position: relative !important;
+  min-height: 96px !important;
+  border-color: var(--returns-type-border) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fbfa 100%) !important;
+  color: var(--returns-text) !important;
+  box-shadow:
+    0 18px 38px -34px rgba(8, 37, 27, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card svg {
+  color: var(--returns-type-accent) !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card[data-selected="true"] {
+  border-color: var(--returns-type-accent) !important;
+  background:
+    linear-gradient(135deg, var(--returns-type-soft) 0%, #ffffff 54%, color-mix(in oklab, var(--returns-type-soft) 72%, #ffffff) 100%) !important;
+  color: var(--returns-type-strong) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--returns-type-accent) 22%, transparent),
+    0 18px 36px -28px color-mix(in oklab, var(--returns-type-accent) 38%, transparent) !important;
+  transform: translateY(-1px);
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card[data-selected="true"]::after {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--returns-type-accent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--returns-type-accent) 16%, transparent);
+  content: "";
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card[data-selected="true"] svg,
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card[data-selected="true"] span {
+  color: var(--returns-type-strong) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card[data-selected="false"]:hover,
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-type-card[data-selected="false"]:focus-visible {
+  border-color: var(--returns-type-accent) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--returns-type-soft) 100%) !important;
+  color: var(--returns-type-strong) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-workflow-strip {
+  background:
+    linear-gradient(135deg, #fffdfa 0%, #ffffff 50%, #f1f8f4 100%) !important;
+  border-color: #d9c788 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-workflow-step {
+  min-width: 0 !important;
+  border-radius: 16px !important;
+  padding: 0.25rem !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-info-message {
+  border-color: #e0c978 !important;
+  background: linear-gradient(180deg, #fffdf4 0%, #fff9df 100%) !important;
+  color: #5f4b09 !important;
+  box-shadow: 0 12px 28px -24px rgba(95, 75, 9, 0.35) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-search-input,
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-select-trigger,
+html[data-ui-theme="light"] .app-shell-root .returns-page textarea.returns-field,
+html[data-ui-theme="light"] .app-shell-root .returns-page input.returns-field {
+  border-color: #b4cbbb !important;
+  background: #ffffff !important;
+  color: #10291d !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-product-select-trigger[aria-disabled="true"],
+html[data-ui-theme="light"] .app-shell-root .returns-page input.returns-field:disabled {
+  border-color: #cbd8d0 !important;
+  background: #e7eeea !important;
+  color: #64766c !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-request-list {
+  min-height: 0 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-request-empty {
+  min-height: 180px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-color: #c4d8cd !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f6faf8 100%) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-submit-button,
+html[data-ui-theme="light"] .app-shell-root .returns-page .returns-submit-button svg {
+  color: currentColor !important;
+  opacity: 1 !important;
+  stroke: currentColor !important;
+}
+
+@media (max-width: 1023px) {
+  html[data-ui-theme="light"] .app-shell-root .returns-page .returns-main-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
 /* Rack addresses light theme polish */
 html[data-ui-theme="light"] .app-shell-root .rack-addresses-page {
   --rack-page-bg: #f3f7f4;

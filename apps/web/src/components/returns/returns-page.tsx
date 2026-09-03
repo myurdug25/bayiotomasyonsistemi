@@ -64,6 +64,12 @@ const REQUEST_TYPES: Array<{
   },
 ];
 
+const REQUEST_TYPE_CLASSNAMES: Record<RequestType, string> = {
+  return: "returns-type-card--return",
+  damaged: "returns-type-card--damaged",
+  faulty: "returns-type-card--faulty",
+};
+
 const REASON_OPTIONS: Record<RequestType, Array<{ value: string; label: string }>> = {
   return: [
     { value: "ordered_by_mistake", label: "Yanlış sipariş verdim" },
@@ -595,6 +601,7 @@ export function ReturnsPage() {
               {REQUEST_TYPES.map((type) => {
                 const Icon = type.icon;
                 const active = requestType === type.value;
+                const typeClassName = REQUEST_TYPE_CLASSNAMES[type.value];
 
                 return (
                   <button
@@ -603,7 +610,7 @@ export function ReturnsPage() {
                     aria-pressed={active}
                     data-selected={active}
                     onClick={() => setRequestType(type.value)}
-                    className={`returns-type-card min-h-[112px] rounded-3xl border p-4 text-left transition-all ${
+                    className={`returns-type-card ${typeClassName} min-h-[112px] rounded-3xl border p-4 text-left transition-all ${
                       active
                         ? "border-[var(--brand-primary)] bg-[var(--brand-primary-soft)] text-[var(--brand-primary-strong)] shadow-[0_18px_30px_-24px_rgba(67,131,75,0.55)]"
                         : "border-[var(--brand-border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--brand-primary)]"
@@ -617,7 +624,7 @@ export function ReturnsPage() {
             </div>
 
             <div className="returns-workflow-strip grid gap-3 rounded-2xl border border-[var(--brand-border)] bg-[var(--surface)] p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="returns-workflow-step flex min-w-0 items-center gap-3">
                 <div className="returns-workflow-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
                   <ReceiptText className="h-5 w-5" />
                 </div>
@@ -629,7 +636,7 @@ export function ReturnsPage() {
                 </div>
               </div>
               <ArrowRight className="returns-workflow-arrow hidden h-5 w-5 text-[var(--muted-foreground)] sm:block" />
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="returns-workflow-step flex min-w-0 items-center gap-3">
                 <div
                   className={`returns-workflow-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
                     isScrapRequest(requestType)
@@ -650,7 +657,7 @@ export function ReturnsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-bold text-[var(--brand-primary-strong)]">Sipariş Ara</label>
                 <Input
-                  className={FIELD_CLASSNAME}
+                  className={`${FIELD_CLASSNAME} returns-search-input`}
                   value={orderSearch}
                   onChange={(event) => setOrderSearch(event.target.value)}
                   placeholder="Sipariş no, müşteri, ürün kodu, OEM veya rakip kod"
@@ -834,7 +841,7 @@ export function ReturnsPage() {
               </Select>
             </div>
 
-            <div className="space-y-3">
+            <div className="returns-request-list space-y-3">
             {returnRequestsQuery.isLoading ? (
               Array.from({ length: 4 }).map((_, index) => (
                 <div
