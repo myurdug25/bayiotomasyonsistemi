@@ -1240,7 +1240,7 @@ class ProductSearchController extends Controller
         $brandDiscounts = $this->customerBrandDiscounts($selectedCustomerId);
         $displayCustomer = $selectedCustomerId !== null
             ? Customer::query()
-                ->select(['id', 'code', 'branch_code', 'branch_name', 'region_code', 'region_name'])
+                ->select(['id', 'dealer_id', 'code', 'branch_code', 'branch_name', 'region_code', 'region_name'])
                 ->find($selectedCustomerId)
             : null;
         $campaignsByProduct = app(ProductCampaignPricing::class)->forProducts($productIds, $user, $selectedCustomerId);

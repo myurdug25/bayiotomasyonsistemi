@@ -1215,6 +1215,48 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('data.0.currency', 'GEL');
     }
 
+    public function test_admin_selected_batum_customer_search_uses_custom_exchange_multiplier(): void
+    {
+        $dealer = $this->createDealer('DLR-PRC-BATUM-ADMIN');
+        $dealer->forceFill([
+            'meta' => [
+                'system_settings' => [
+                    'batum_exchange_rate' => '10.0000',
+                    'batum_exchange_multiplier' => '0.1000',
+                ],
+            ],
+        ])->save();
+        $admin = $this->createUserWithRole('admin', null, [
+            'menu_permissions' => ['search'],
+        ]);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer);
+        $customer->forceFill([
+            'code' => '120-00-777',
+            'branch_code' => null,
+            'region_code' => null,
+        ])->save();
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 100.00,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($admin);
+
+        $this->getJson('/api/products/search?q='.$product->sku.'&limit=20&customer_id='.$customer->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $product->id)
+            ->assertJsonPath('data.0.net_price', '10.00')
+            ->assertJsonPath('data.0.list_price', '20.00')
+            ->assertJsonPath('data.0.currency', 'GEL');
+    }
+
     public function test_cart_item_prefers_dealer_override_over_base_price(): void
     {
         $dealer = $this->createDealer('DLR-PRC-003');
