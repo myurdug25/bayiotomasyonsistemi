@@ -36,9 +36,11 @@ test("collections payment cards are styled from real selected state", () => {
   assert.doesNotMatch(paymentMethodRender, /METHOD_STYLES\[value\]/);
   assert.match(paymentMethodRender, /method === value\s*\?\s*"border-red-200\/30 bg-\[linear-gradient\(180deg,#ff4b4f_0%,#d71920_58%,#a50c12_100%\)\]/);
   assert.match(paymentMethodRender, /:\s*"border-white\/10 bg-white\/\[0\.035\] text-slate-300/);
+  assert.doesNotMatch(paymentMethodRender, /:\s*"[^"]*(hover:border-red|hover:bg-red|hover:text-red)/);
   assert.match(css, /\.collection-payment-method\[data-selected="true"\]/);
   assert.match(css, /\.collection-payment-method\[data-selected="false"\]/);
   assert.match(css, /\.collection-payment-method\[aria-pressed="false"\]/);
+  assert.match(css, /button:not\(:disabled\):not\(\.collection-payment-method\[aria-pressed="false"\]\)/);
   assert.match(css, /\.collection-payment-method\[data-selected="true"\] \{\s*border-color:\s*rgba\(179, 18, 24, 0\.64\) !important;[\s\S]*?linear-gradient\(180deg, #ff4b4f 0%, #d71920 58%, #a50c12 100%\)/);
   assert.match(css, /\.collection-payment-method\[data-selected="false"\] \{\s*border-color:\s*var\(--collections-light-border\) !important;[\s\S]*?background:\s*linear-gradient\(180deg, #ffffff 0%, #f0f6f3 100%\) !important;/);
   assert.match(css, /\.collection-payment-method\[aria-pressed="false"\],[\s\S]*?\.collection-payment-method\[data-selected="false"\] \{\s*border-color:\s*var\(--collections-light-border\) !important;[\s\S]*?background:\s*linear-gradient\(180deg, #ffffff 0%, #f0f6f3 100%\) !important;/);

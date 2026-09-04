@@ -9416,7 +9416,7 @@ html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-r
   text-shadow: none !important;
 }
 
-html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled):not(.collection-payment-method[aria-pressed="false"]), a[role="button"]:not([aria-disabled="true"])):is(
   [class*="bg-[var(--brand-primary)]"],
   [class*="from-[var(--brand-primary)]"],
   [class*="#2f9e61"],
@@ -9443,7 +9443,7 @@ html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-r
   box-shadow: 0 18px 38px -24px rgba(8, 122, 82, 0.78) !important;
 }
 
-html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled):not(.collection-payment-method[aria-pressed="false"]), a[role="button"]:not([aria-disabled="true"])):is(
   [class*="#ff4a"],
   [class*="#ff4b"],
   [class*="#ff51"],
@@ -9472,7 +9472,7 @@ html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-r
   box-shadow: 0 18px 38px -24px rgba(219, 31, 39, 0.78) !important;
 }
 
-html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled):not(.collection-payment-method[aria-pressed="false"]), a[role="button"]:not([aria-disabled="true"])):is(
   [class*="#f5cf54"],
   [class*="#f3c332"],
   [class*="#c98d08"],
@@ -9529,7 +9529,7 @@ html[data-ui-theme="light"] .app-shell-root .reports-pro-screen :is(button:not(:
   box-shadow: 0 10px 24px -20px rgba(16, 39, 29, 0.46) !important;
 }
 
-html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled):not(.collection-payment-method[aria-pressed="false"]), a[role="button"]:not([aria-disabled="true"])):is(
   [class*="bg-[var(--brand-primary)]"],
   [class*="from-[var(--brand-primary)]"],
   [class*="#2f9e61"],
@@ -9576,7 +9576,7 @@ html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-r
   text-shadow: none !important;
 }
 
-html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled), a[role="button"]:not([aria-disabled="true"])):is(
+html[data-ui-theme="light"] .app-shell-root :is(.page-shell-main, .app-content-region) :is(button:not(:disabled):not(.collection-payment-method[aria-pressed="false"]), a[role="button"]:not([aria-disabled="true"])):is(
   [class*="#f5cf54"],
   [class*="#f3c332"],
   [class*="#c98d08"],
