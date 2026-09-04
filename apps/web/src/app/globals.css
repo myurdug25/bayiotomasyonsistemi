@@ -9865,28 +9865,29 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-r
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-sku-cell p {
-  font-size: 15px !important;
-  font-weight: 750 !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
   letter-spacing: 0 !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(3) p:first-child {
-  font-size: 11px !important;
-  font-weight: 700 !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(3) p:last-child {
-  font-size: 9.5px !important;
+  font-size: 8px !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(4) p {
-  font-size: 13px !important;
+  font-size: 12px !important;
   font-weight: 650 !important;
-  line-height: 1.18 !important;
+  line-height: 13px !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(5) p {
-  font-size: 10.5px !important;
+  font-size: 10px !important;
+  line-height: 12px !important;
   white-space: normal !important;
 }
 
@@ -9899,8 +9900,8 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-list-pr
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-list-price-cell p {
   width: 100% !important;
   color: #183729 !important;
-  font-size: 12px !important;
-  font-weight: 700 !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
   white-space: nowrap !important;
 }
 
@@ -9927,7 +9928,7 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-b
   border-color: #aad8d4 !important;
   background: #dff5f1 !important;
   color: #22544e !important;
-  font-size: 9.75px !important;
+  font-size: 9px !important;
   font-weight: 650 !important;
   line-height: 1.05 !important;
   text-overflow: clip !important;
@@ -10228,7 +10229,7 @@ html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[data-selected="true"] {
-  border-color: rgba(179, 18, 24, 0.62) !important;
+  border-color: rgba(179, 18, 24, 0.64) !important;
   background: linear-gradient(180deg, #ff4b4f 0%, #d71920 58%, #a50c12 100%) !important;
   color: #ffffff !important;
   box-shadow: 0 2px 0 #85070c, 0 18px 34px -20px rgba(215, 25, 32, 0.78) !important;
