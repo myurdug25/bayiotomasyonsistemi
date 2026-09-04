@@ -574,7 +574,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const [userSearch, setUserSearch] = useState("");
   const [showUserPassword, setShowUserPassword] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
-  const [complaintMailTo, setComplaintMailTo] = useState("");
+  const [complaintMailToDraft, setComplaintMailToDraft] = useState<string | null>(null);
+  const [batumExchangeRateDraft, setBatumExchangeRateDraft] = useState<string | null>(null);
   const trimmedCustomerSearch = customerSearch.trim();
   const overviewParams = useMemo(
     () => ({
@@ -589,6 +590,14 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     queryFn: () => getModeratorOverview(overviewParams),
     staleTime: 30_000,
   });
+  const complaintMailTo = complaintMailToDraft ?? overviewQuery.data?.system_settings.complaint_mail_to ?? "";
+  const batumExchangeRate = batumExchangeRateDraft ?? overviewQuery.data?.system_settings.batum_exchange_rate ?? "17.0000";
+  const normalizedBatumExchangeRate = batumExchangeRate.trim().replace(",", ".");
+  const canSaveSystemSettings =
+    complaintMailTo.trim() !== "" &&
+    normalizedBatumExchangeRate !== "" &&
+    Number(normalizedBatumExchangeRate) > 0 &&
+    Number.isFinite(Number(normalizedBatumExchangeRate));
 
   const dealers = overviewQuery.data?.dealers ?? [];
   const roleOptions = overviewQuery.data?.roles ?? EMPTY_ROLES;
@@ -655,16 +664,16 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (overviewQuery.data?.system_settings.complaint_mail_to) {
-      setComplaintMailTo(overviewQuery.data.system_settings.complaint_mail_to);
-    }
-  }, [overviewQuery.data?.system_settings.complaint_mail_to]);
-
   const systemSettingsMutation = useMutation({
-    mutationFn: () => updateModeratorSystemSettings({ complaint_mail_to: complaintMailTo.trim() }),
+    mutationFn: () =>
+      updateModeratorSystemSettings({
+        complaint_mail_to: complaintMailTo.trim(),
+        batum_exchange_rate: batumExchangeRate.trim(),
+      }),
     onSuccess: async (response) => {
       toast.success(response.message);
+      setComplaintMailToDraft(response.system_settings.complaint_mail_to);
+      setBatumExchangeRateDraft(response.system_settings.batum_exchange_rate);
       await queryClient.invalidateQueries({ queryKey: ["moderator", "overview"] });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Sistem ayarı kaydedilemedi."),
@@ -1451,24 +1460,42 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       </Dialog>
 
       <section className="dashboard-panel-card rounded-[18px] p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <label className="w-full space-y-2 text-sm lg:max-w-xl">
+        <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_auto] lg:items-end">
+          <label className="space-y-2 text-sm">
             <span className="font-extrabold text-[var(--brand-primary-strong)]">Dilek / Şikayet E-posta Adresi</span>
             <Input
               type="email"
               value={complaintMailTo}
-              onChange={(event) => setComplaintMailTo(event.target.value)}
+              onChange={(event) => setComplaintMailToDraft(event.target.value)}
               placeholder="farukcelik@gucsa.com.tr"
             />
+          </label>
+          <label className="space-y-2 text-sm">
+            <span className="font-extrabold text-[var(--brand-primary-strong)]">Batum Kuru</span>
+            <div className="relative">
+              <Input
+                type="number"
+                inputMode="decimal"
+                min="0.0001"
+                step="0.0001"
+                value={batumExchangeRate}
+                onChange={(event) => setBatumExchangeRateDraft(event.target.value.replace(",", "."))}
+                placeholder="17.0000"
+                className="pr-20"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
+                TL / GEL
+              </span>
+            </div>
           </label>
           <Button
             type="button"
             className="h-10 rounded-xl px-5 text-sm font-extrabold"
-            disabled={systemSettingsMutation.isPending || complaintMailTo.trim() === ""}
+            disabled={systemSettingsMutation.isPending || !canSaveSystemSettings}
             onClick={() => systemSettingsMutation.mutate()}
           >
             {systemSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            E-posta Ayarını Kaydet
+            Kur ve E-posta Ayarını Kaydet
           </Button>
         </div>
       </section>

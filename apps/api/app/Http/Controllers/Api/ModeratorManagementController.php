@@ -174,6 +174,7 @@ class ModeratorManagementController extends Controller
             'system_settings' => [
                 'complaint_mail_to' => (string) (data_get($settingsDealer?->meta, 'system_settings.complaint_mail_to')
                     ?: config('integrations.customer_complaints.mail_to', '')),
+                'batum_exchange_rate' => $this->resolveBatumExchangeRate($settingsDealer),
             ],
             'dealers' => $dealers->map(fn (Dealer $dealer) => [
                 'id' => $dealer->id,
@@ -197,28 +198,65 @@ class ModeratorManagementController extends Controller
         $actor = $request->user();
         $this->ensureModeratorRole($actor);
 
+        if ($request->has('batum_exchange_rate') && is_string($request->input('batum_exchange_rate'))) {
+            $request->merge([
+                'batum_exchange_rate' => str_replace(',', '.', $request->input('batum_exchange_rate')),
+            ]);
+        }
+
         $validated = $request->validate([
             'complaint_mail_to' => ['required', 'email:rfc', 'max:255'],
+            'batum_exchange_rate' => ['sometimes', 'required', 'numeric', 'min:0.0001', 'max:999999'],
         ]);
+        $batumExchangeRate = array_key_exists('batum_exchange_rate', $validated)
+            ? $this->formatBatumExchangeRate($validated['batum_exchange_rate'])
+            : null;
 
         $dealers = $actor->dealer_id
             ? Dealer::query()->whereKey($actor->dealer_id)->get()
             : Dealer::query()->get();
 
-        DB::transaction(function () use ($dealers, $validated): void {
+        DB::transaction(function () use ($batumExchangeRate, $dealers, $validated): void {
             foreach ($dealers as $dealer) {
                 $meta = is_array($dealer->meta) ? $dealer->meta : [];
                 data_set($meta, 'system_settings.complaint_mail_to', strtolower(trim($validated['complaint_mail_to'])));
+
+                if ($batumExchangeRate !== null) {
+                    data_set($meta, 'system_settings.batum_exchange_rate', $batumExchangeRate);
+                }
+
                 $dealer->forceFill(['meta' => $meta])->save();
             }
         });
 
+        $settingsDealer = $dealers->first()?->fresh();
+
         return response()->json([
-            'message' => 'Dilek / şikayet e-posta adresi güncellendi.',
+            'message' => 'Sistem ayarları güncellendi.',
             'system_settings' => [
                 'complaint_mail_to' => strtolower(trim($validated['complaint_mail_to'])),
+                'batum_exchange_rate' => $batumExchangeRate ?? $this->resolveBatumExchangeRate($settingsDealer),
             ],
         ]);
+    }
+
+    private function resolveBatumExchangeRate(?Dealer $dealer): string
+    {
+        $rate = data_get($dealer?->meta, 'system_settings.batum_exchange_rate');
+
+        return $this->formatBatumExchangeRate($rate ?: config('integrations.pricing.batum_try_per_lari'));
+    }
+
+    private function formatBatumExchangeRate(mixed $value): string
+    {
+        $normalized = str_replace(',', '.', trim((string) $value));
+        $rate = is_numeric($normalized) ? (float) $normalized : (float) config('integrations.pricing.batum_try_per_lari', 17.0);
+
+        if ($rate <= 0) {
+            $rate = 17.0;
+        }
+
+        return number_format($rate, 4, '.', '');
     }
 
     public function storeUser(Request $request): JsonResponse

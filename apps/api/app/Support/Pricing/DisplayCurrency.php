@@ -3,11 +3,12 @@
 namespace App\Support\Pricing;
 
 use App\Models\Customer;
+use App\Models\Dealer;
 use App\Models\User;
 
 class DisplayCurrency
 {
-    private const TRY_PER_LARI = 17.0;
+    private const DEFAULT_TRY_PER_LARI = 17.0;
 
     public static function normalize(?string $currency, ?User $user = null, ?Customer $customer = null): string
     {
@@ -56,7 +57,15 @@ class DisplayCurrency
             return $amount;
         }
 
-        return $amount / self::TRY_PER_LARI;
+        return $amount / self::tryPerLari($user, $customer);
+    }
+
+    public static function tryPerLari(?User $user = null, ?Customer $customer = null): float
+    {
+        return self::rateFromCustomer($customer)
+            ?? self::rateFromUser($user)
+            ?? self::parseRate(config('integrations.pricing.batum_try_per_lari'))
+            ?? self::DEFAULT_TRY_PER_LARI;
     }
 
     public static function usesLariPricing(?User $user, ?Customer $customer = null): bool
@@ -94,6 +103,56 @@ class DisplayCurrency
     private static function isTryLikeCurrency(string $currency): bool
     {
         return in_array($currency, ['TRY', 'TL', 'TRL', '160'], true);
+    }
+
+    private static function rateFromCustomer(?Customer $customer): ?float
+    {
+        if (! $customer instanceof Customer) {
+            return null;
+        }
+
+        return self::rateFromDealer(
+            $customer->relationLoaded('dealer')
+                ? $customer->dealer
+                : ($customer->dealer_id ? Dealer::query()->find($customer->dealer_id) : null)
+        );
+    }
+
+    private static function rateFromUser(?User $user): ?float
+    {
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        return self::rateFromDealer(
+            $user->relationLoaded('dealer')
+                ? $user->dealer
+                : ($user->dealer_id ? Dealer::query()->find($user->dealer_id) : null)
+        );
+    }
+
+    private static function rateFromDealer(?Dealer $dealer): ?float
+    {
+        if (! $dealer instanceof Dealer) {
+            return null;
+        }
+
+        $meta = is_array($dealer->meta) ? $dealer->meta : [];
+
+        return self::parseRate(data_get($meta, 'system_settings.batum_exchange_rate'));
+    }
+
+    private static function parseRate(mixed $value): ?float
+    {
+        $normalized = str_replace(',', '.', trim((string) $value));
+
+        if ($normalized === '' || ! is_numeric($normalized)) {
+            return null;
+        }
+
+        $rate = (float) $normalized;
+
+        return $rate > 0 ? $rate : null;
     }
 
     private static function normalizeCode(?string $value): ?string

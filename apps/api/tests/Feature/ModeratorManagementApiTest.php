@@ -50,6 +50,39 @@ class ModeratorManagementApiTest extends TestCase
         );
     }
 
+    public function test_global_admin_can_update_batum_exchange_rate_for_all_dealers(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $firstDealer = $this->createDealer('DLR-BATUM-RATE-001');
+        $secondDealer = $this->createDealer('DLR-BATUM-RATE-002');
+        $admin = $this->createUserWithRole('admin', null, [
+            'menu_permissions' => ['moderator'],
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson('/api/moderator/system-settings', [
+                'complaint_mail_to' => 'farukcelik@gucsa.com.tr',
+                'batum_exchange_rate' => 18.75,
+            ])
+            ->assertOk()
+            ->assertJsonPath('system_settings.complaint_mail_to', 'farukcelik@gucsa.com.tr')
+            ->assertJsonPath('system_settings.batum_exchange_rate', '18.7500');
+
+        $this->assertSame(
+            '18.7500',
+            data_get($firstDealer->fresh()->meta, 'system_settings.batum_exchange_rate')
+        );
+        $this->assertSame(
+            '18.7500',
+            data_get($secondDealer->fresh()->meta, 'system_settings.batum_exchange_rate')
+        );
+
+        $this->getJson('/api/moderator/overview')
+            ->assertOk()
+            ->assertJsonPath('system_settings.batum_exchange_rate', '18.7500');
+    }
+
     public function test_moderator_can_read_overview_and_manage_users_and_customers(): void
     {
         $this->seed(RoleSeeder::class);

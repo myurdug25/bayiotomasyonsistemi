@@ -63,6 +63,9 @@ return [
         'company_info' => env('POWERSA_COMPANY_INFO', ''),
         'iban_info' => env('POWERSA_IBAN_INFO', ''),
     ],
+    'pricing' => [
+        'batum_try_per_lari' => (float) env('BATUM_TRY_PER_LARI', 17.0),
+    ],
     'eryaz' => [
         'previous_purchases_cache_seconds' => (int) env('ERYAZ_PREVIOUS_PURCHASES_CACHE_SECONDS', 300),
     ],
