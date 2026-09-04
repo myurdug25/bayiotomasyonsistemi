@@ -2104,9 +2104,9 @@ export function CollectionsPage() {
                     onClick={() => handleMethodChange(value)}
                     className={cn(
                       "collection-payment-method flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-[16px] border px-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
-                      "border-white/10 bg-white/[0.035] text-slate-300 shadow-[0_18px_34px_-30px_rgba(15,23,42,0.45)] hover:border-red-300/35 hover:bg-red-300/8 hover:text-red-100",
-                      "data-[selected=false]:bg-white/[0.035] data-[selected=false]:text-slate-300",
-                      "data-[selected=true]:border-red-200/30 data-[selected=true]:bg-[linear-gradient(180deg,#ff4b4f_0%,#d71920_58%,#a50c12_100%)] data-[selected=true]:text-white data-[selected=true]:shadow-[0_18px_34px_-20px_rgba(255,77,79,0.95)]"
+                      method === value
+                        ? "border-red-200/30 bg-[linear-gradient(180deg,#ff4b4f_0%,#d71920_58%,#a50c12_100%)] text-white shadow-[0_18px_34px_-20px_rgba(255,77,79,0.95)] hover:border-red-200/40 hover:from-[#f83a41] hover:via-[#c9141c] hover:to-[#92080d] hover:text-white"
+                        : "border-white/10 bg-white/[0.035] text-slate-300 shadow-[0_18px_34px_-30px_rgba(15,23,42,0.45)] hover:border-red-300/35 hover:bg-red-300/8 hover:text-red-100"
                     )}
                   >
                     <FormMethodIcon method={value} />

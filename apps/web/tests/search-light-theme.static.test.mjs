@@ -40,6 +40,10 @@ test("search table stays compact without clipping stock shelf labels", () => {
   assert.match(css, /nth-child\(3\) p:first-child \{\s*font-size:\s*10px !important/s);
   assert.match(css, /nth-child\(4\) p \{\s*font-size:\s*12px !important/s);
   assert.match(css, /\.product-list-price-cell p \{\s*width:[\s\S]*?font-size:\s*11px !important/s);
+  assert.match(css, /\.product-stock-branch span:first-child \{\s*color:[\s\S]*?font-size:\s*12px !important;[\s\S]*?font-weight:\s*900 !important/s);
+  assert.match(css, /\.product-shelf-badge \{\s*width:[\s\S]*?font-size:\s*9px !important;[\s\S]*?font-weight:\s*900 !important;[\s\S]*?line-height:\s*10px !important/s);
+  assert.doesNotMatch(css, /product-stock-branch span:first-child \{[\s\S]{0,120}font-size:\s*13\.5px !important/);
+  assert.doesNotMatch(css, /product-shelf-badge \{[\s\S]{0,260}font-weight:\s*650 !important/);
   assert.match(css, /font-size:\s*9px !important/);
   assert.match(css, /white-space:\s*nowrap !important/);
   assert.match(css, /text-overflow:\s*clip !important/);

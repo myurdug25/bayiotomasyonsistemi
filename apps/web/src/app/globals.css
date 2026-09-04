@@ -9918,8 +9918,8 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-b
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-branch span:first-child {
   color: #076342 !important;
-  font-size: 13.5px !important;
-  font-weight: 750 !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-badge {
@@ -9932,8 +9932,8 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-b
   background: #dff5f1 !important;
   color: #22544e !important;
   font-size: 9px !important;
-  font-weight: 650 !important;
-  line-height: 1.05 !important;
+  font-weight: 900 !important;
+  line-height: 10px !important;
   text-overflow: clip !important;
   white-space: nowrap !important;
 }
