@@ -213,14 +213,9 @@ class ModeratorManagementController extends Controller
         $validated = $request->validate([
             'complaint_mail_to' => ['sometimes', 'required', 'email:rfc', 'max:255'],
             'batum_exchange_rate' => ['sometimes', 'required', 'numeric', 'min:0.0001', 'max:999999'],
-            'batum_exchange_multiplier' => ['sometimes', 'required', 'numeric', 'min:0.000001', 'max:1'],
+            'batum_exchange_multiplier' => ['sometimes', 'required', 'numeric', 'min:0.000001', 'max:999999'],
         ]);
-        $batumExchangeRate = array_key_exists('batum_exchange_rate', $validated)
-            ? $this->formatBatumExchangeRate($validated['batum_exchange_rate'])
-            : null;
-        $batumExchangeMultiplier = array_key_exists('batum_exchange_multiplier', $validated)
-            ? $this->formatBatumExchangeMultiplier($validated['batum_exchange_multiplier'])
-            : null;
+        [$batumExchangeRate, $batumExchangeMultiplier] = $this->normalizedBatumExchangeSettings($validated);
 
         $dealers = $actor->dealer_id
             ? Dealer::query()->whereKey($actor->dealer_id)->get()
@@ -305,6 +300,56 @@ class ModeratorManagementController extends Controller
         }
 
         return number_format($multiplier, 4, '.', '');
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array{0:?string,1:?string}
+     */
+    private function normalizedBatumExchangeSettings(array $validated): array
+    {
+        $rate = array_key_exists('batum_exchange_rate', $validated)
+            ? $this->numericValue($validated['batum_exchange_rate'])
+            : null;
+        $multiplier = array_key_exists('batum_exchange_multiplier', $validated)
+            ? $this->numericValue($validated['batum_exchange_multiplier'])
+            : null;
+
+        if ($rate !== null && $rate > 0 && $rate <= 1) {
+            $multiplier = $rate;
+            $rate = 1 / $rate;
+        }
+
+        if ($multiplier !== null && $multiplier > 1) {
+            $rate = $multiplier;
+            $multiplier = 1 / $multiplier;
+        }
+
+        if ($multiplier !== null && $multiplier > 0 && $rate === null) {
+            $rate = 1 / $multiplier;
+        }
+
+        if ($rate !== null && $rate > 0 && $multiplier === null) {
+            $multiplier = 1 / $rate;
+        }
+
+        return [
+            $rate !== null ? $this->formatBatumExchangeRate($rate) : null,
+            $multiplier !== null ? $this->formatBatumExchangeMultiplier($multiplier) : null,
+        ];
+    }
+
+    private function numericValue(mixed $value): ?float
+    {
+        $normalized = str_replace(',', '.', trim((string) $value));
+
+        if ($normalized === '' || ! is_numeric($normalized)) {
+            return null;
+        }
+
+        $number = (float) $normalized;
+
+        return $number > 0 ? $number : null;
     }
 
     public function storeUser(Request $request): JsonResponse

@@ -597,14 +597,30 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const trimmedComplaintMailTo = complaintMailTo.trim();
   const normalizedBatumExchangeRate = batumExchangeRate.trim().replace(",", ".");
   const normalizedBatumExchangeMultiplier = batumExchangeMultiplier.trim().replace(",", ".");
+  const batumExchangeRateNumber = Number(normalizedBatumExchangeRate);
+  const batumExchangeMultiplierNumber = Number(normalizedBatumExchangeMultiplier);
+  const effectiveBatumMultiplier =
+    Number.isFinite(batumExchangeMultiplierNumber) && batumExchangeMultiplierNumber > 0 && batumExchangeMultiplierNumber <= 1
+      ? batumExchangeMultiplierNumber
+      : Number.isFinite(batumExchangeRateNumber) && batumExchangeRateNumber > 0 && batumExchangeRateNumber <= 1
+        ? batumExchangeRateNumber
+        : Number.isFinite(batumExchangeRateNumber) && batumExchangeRateNumber > 1
+          ? 1 / batumExchangeRateNumber
+          : 0;
+  const effectiveBatumRate =
+    Number.isFinite(batumExchangeRateNumber) && batumExchangeRateNumber > 1
+      ? batumExchangeRateNumber
+      : Number.isFinite(batumExchangeMultiplierNumber) && batumExchangeMultiplierNumber > 1
+        ? batumExchangeMultiplierNumber
+        : effectiveBatumMultiplier > 0
+          ? 1 / effectiveBatumMultiplier
+          : 0;
   const canSaveSystemSettings =
-    normalizedBatumExchangeRate !== "" &&
-    Number(normalizedBatumExchangeRate) > 0 &&
-    Number.isFinite(Number(normalizedBatumExchangeRate)) &&
-    normalizedBatumExchangeMultiplier !== "" &&
-    Number(normalizedBatumExchangeMultiplier) > 0 &&
-    Number(normalizedBatumExchangeMultiplier) <= 1 &&
-    Number.isFinite(Number(normalizedBatumExchangeMultiplier));
+    effectiveBatumMultiplier > 0 &&
+    effectiveBatumMultiplier <= 1 &&
+    effectiveBatumRate > 0 &&
+    Number.isFinite(effectiveBatumMultiplier) &&
+    Number.isFinite(effectiveBatumRate);
 
   const dealers = overviewQuery.data?.dealers ?? [];
   const roleOptions = overviewQuery.data?.roles ?? EMPTY_ROLES;
@@ -678,8 +694,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
         batum_exchange_rate: string;
         batum_exchange_multiplier: string;
       } = {
-        batum_exchange_rate: batumExchangeRate.trim(),
-        batum_exchange_multiplier: batumExchangeMultiplier.trim(),
+        batum_exchange_rate: effectiveBatumRate.toFixed(4),
+        batum_exchange_multiplier: effectiveBatumMultiplier.toFixed(4),
       };
 
       if (trimmedComplaintMailTo !== "") {
@@ -1495,15 +1511,16 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
               <Input
                 type="text"
                 inputMode="decimal"
-                min="0.0001"
+                min="0.000001"
+                max="1"
                 step="0.0001"
-                value={batumExchangeRate}
-                onChange={(event) => setBatumExchangeRateDraft(event.target.value.replace(",", "."))}
-                placeholder="17.0000"
-                className="pr-20"
+                value={batumExchangeMultiplier}
+                onChange={(event) => setBatumExchangeMultiplierDraft(event.target.value.replace(",", "."))}
+                placeholder="0.0650"
+                className="pr-24"
               />
               <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
-                TL / GEL
+                TRY x kur
               </span>
             </div>
           </label>
@@ -1513,16 +1530,15 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
               <Input
                 type="text"
                 inputMode="decimal"
-                min="0.000001"
-                max="1"
+                min="0.0001"
                 step="0.0001"
-                value={batumExchangeMultiplier}
-                onChange={(event) => setBatumExchangeMultiplierDraft(event.target.value.replace(",", "."))}
-                placeholder="0.0560"
+                value={batumExchangeRate}
+                onChange={(event) => setBatumExchangeRateDraft(event.target.value.replace(",", "."))}
+                placeholder="15.3846"
                 className="pr-28"
               />
               <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
-                TRY x çarpan
+                TL / GEL oranı
               </span>
             </div>
           </label>

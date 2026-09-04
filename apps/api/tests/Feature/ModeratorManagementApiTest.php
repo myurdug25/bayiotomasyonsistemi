@@ -131,6 +131,34 @@ class ModeratorManagementApiTest extends TestCase
         );
     }
 
+    public function test_global_admin_can_save_batum_exchange_values_when_rate_and_multiplier_are_entered_reversed(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $dealer = $this->createDealer('DLR-BATUM-REVERSED-001');
+        $admin = $this->createUserWithRole('admin', null, [
+            'menu_permissions' => ['moderator'],
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson('/api/moderator/system-settings', [
+                'batum_exchange_rate' => '0,065',
+                'batum_exchange_multiplier' => '15,3846',
+            ])
+            ->assertOk()
+            ->assertJsonPath('system_settings.batum_exchange_rate', '15.3846')
+            ->assertJsonPath('system_settings.batum_exchange_multiplier', '0.0650');
+
+        $this->assertSame(
+            '15.3846',
+            data_get($dealer->fresh()->meta, 'system_settings.batum_exchange_rate')
+        );
+        $this->assertSame(
+            '0.0650',
+            data_get($dealer->fresh()->meta, 'system_settings.batum_exchange_multiplier')
+        );
+    }
+
     public function test_moderator_can_read_overview_and_manage_users_and_customers(): void
     {
         $this->seed(RoleSeeder::class);
