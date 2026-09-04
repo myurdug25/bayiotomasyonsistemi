@@ -695,7 +695,7 @@ class PosQuickProductSearchController extends Controller
                     'branch' => $branch,
                     'warehouse_code' => $warehouseCode,
                     'stock' => max(0, $stock ?? 0),
-                    'shelf_address' => $this->resolveWarehouseShelfAddress($meta, $warehouse, $warehouseCode, $stockScope) ?? $generalShelfAddress,
+                    'shelf_address' => $this->resolveWarehouseShelfAddress($meta, $warehouse, $warehouseCode, $stockScope),
                 ];
             }
         }

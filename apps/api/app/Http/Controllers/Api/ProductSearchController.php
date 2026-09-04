@@ -3072,7 +3072,7 @@ class ProductSearchController extends Controller
                     'branch' => $branch,
                     'warehouse_code' => $warehouseCode,
                     'stock' => max(0, $stock ?? 0),
-                    'shelf_address' => $this->resolveWarehouseShelfAddress($meta, $warehouse, $warehouseCode) ?? $generalShelfAddress,
+                    'shelf_address' => $this->resolveWarehouseShelfAddress($meta, $warehouse, $warehouseCode),
                 ];
             }
         }

@@ -267,7 +267,13 @@ async function main() {
 
     const productRafSchema = config.sync.imagesOnly
       ? null
-      : await inspectTable(pool, config.logo.productRafTable, "product raf", false);
+      : await resolveOptionalTableSchema(
+          pool,
+          config,
+          "productRafTable",
+          "product raf",
+          derivePrimaryProductRafTableNames(config.logo.productTable)
+        );
     if (productRafSchema) {
       console.log(
         `[logo-sync] discovered ${productRafSchema.columns.length} column(s) on ${productRafSchema.qualifiedName}`
@@ -1587,11 +1593,14 @@ async function fetchCatalogPriceRefs(pool, currentConfig, priceSchema, sinceAt) 
 async function fetchCatalogProductRefs(pool, currentConfig, productRafSchema) {
   const referenceColumn = findColumn(productRafSchema.columns, [
     "PARLOGREF",
+    "PARENTREF",
+    "PARENT_LOGICALREF",
     "ITEMREF",
     "CARDREF",
     "STOCKREF",
     "PRODUCTREF",
     "INFOREF",
+    "LOGREF",
     "LOGICALREF",
   ]);
 
@@ -2411,6 +2420,18 @@ function derivePrimaryProductImageTableNames(productTable) {
 
   const branchCandidates = directCandidates.flatMap((candidate) => deriveBranch01TableNames(candidate));
   return uniqueColumns([...logoDocumentCandidates, ...directCandidates, ...branchCandidates]);
+}
+
+function derivePrimaryProductRafTableNames(productTable) {
+  const normalized = normalizeString(productTable);
+  const [schemaName, objectName] = normalized ? splitTableName(normalized) : ["dbo", ""];
+  const firmMatch = objectName.match(/^LG_(\d{3})_ITEMS$/i);
+  const firmNo = firmMatch?.[1] ?? logoFirmCode();
+
+  return uniqueColumns([
+    `${schemaName}.LG_XT1001_${firmNo}`,
+    logoFirmTable("XT1001"),
+  ]);
 }
 
 function derivePrimaryProductSubstituteTableNames(productTable) {
@@ -3495,11 +3516,14 @@ async function fetchProductRafAddresses(pool, schema, logicalRefs) {
 
   const referenceColumn = findColumn(schema.columns, [
     "PARLOGREF",
+    "PARENTREF",
+    "PARENT_LOGICALREF",
     "ITEMREF",
     "CARDREF",
     "STOCKREF",
     "PRODUCTREF",
     "INFOREF",
+    "LOGREF",
     "LOGICALREF",
   ]);
 
@@ -3513,13 +3537,20 @@ async function fetchProductRafAddresses(pool, schema, logicalRefs) {
   const warehouseColumn = findColumn(schema.columns, [
     "INVENNO",
     "WAREHOUSE_NO",
+    "WAREHOUSE_NR",
     "WAREHOUSE",
+    "WHOUSE",
+    "WHOUSE_NR",
     "WHNO",
     "AMBARNO",
     "AMBAR_NO",
+    "AMBAR_NR",
     "DEPO_NO",
+    "DEPO_NR",
     "DEPOKODU",
     "DEPONO",
+    "INVNR",
+    "INVENNR",
   ]);
   const shelfColumn = findColumn(schema.columns, [
     "RAF",
@@ -4074,7 +4105,7 @@ function resolveWarehouseShelfAddress(rawRecord, warehouse) {
     }
   }
 
-  return resolveShelfAddress(rawRecord);
+  return null;
 }
 
 function resolveShelfAddress(rawRecord) {

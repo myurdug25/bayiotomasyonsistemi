@@ -330,6 +330,53 @@ class ProductMetaFiltersApiTest extends TestCase
         $response->assertJsonPath('data.0.stock_locations.0.shelf_address', 'RAF-25-A1');
     }
 
+    public function test_products_search_does_not_copy_general_shelf_to_every_warehouse_location(): void
+    {
+        $context = $this->createSalesContext();
+        $product = $this->createProductWithMeta(
+            dealer: $context['dealer'],
+            brand: $context['brand'],
+            category: $context['category'],
+            sku: 'RAF-GEN-001',
+            name: 'Genel Rafli Urun',
+            stock: 8,
+            listPrice: 10,
+            meta: [
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                            'shelf_address' => 'GENEL-A35',
+                            'logo_stock' => [
+                                'warehouses' => [
+                                    [
+                                        'warehouse_code' => '0',
+                                        'warehouse_name' => 'ERZURUM POINT',
+                                        'available_total' => 3,
+                                    ],
+                                    [
+                                        'warehouse_code' => '1',
+                                        'warehouse_name' => 'ERZURUM DEPO',
+                                        'available_total' => 5,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]
+        );
+
+        $this->actingAs($context['user']);
+
+        $response = $this->getJson('/api/products/search?q=RAF-GEN-001&limit=20');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.0.shelf_address', 'GENEL-A35')
+            ->assertJsonPath('data.0.stock_locations.0.shelf_address', null)
+            ->assertJsonPath('data.0.stock_locations.1.shelf_address', null);
+    }
+
     public function test_products_search_uses_logo_raw_name3_as_description_two_for_existing_payloads(): void
     {
         $context = $this->createSalesContext();

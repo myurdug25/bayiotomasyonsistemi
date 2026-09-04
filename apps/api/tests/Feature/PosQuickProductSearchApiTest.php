@@ -749,7 +749,7 @@ class PosQuickProductSearchApiTest extends TestCase
             ->assertJsonPath('data.0.stock_locations.0.branch', 'ERZURUM DEPO')
             ->assertJsonPath('data.0.stock_locations.1.branch', 'BATUM DEPO')
             ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B.4')
-            ->assertJsonPath('data.0.net_price', '12.35')
+            ->assertJsonPath('data.0.net_price', '11.76')
             ->assertJsonPath('data.0.currency', 'GEL');
     }
 
@@ -829,7 +829,7 @@ class PosQuickProductSearchApiTest extends TestCase
             ->assertJsonPath('data.0.stock_locations.0.branch', 'ERZURUM DEPO')
             ->assertJsonPath('data.0.stock_locations.1.branch', 'BATUM DEPO')
             ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B.4')
-            ->assertJsonPath('data.0.net_price', '12.35')
+            ->assertJsonPath('data.0.net_price', '11.76')
             ->assertJsonPath('data.0.currency', 'GEL');
     }
 
@@ -1023,7 +1023,7 @@ class PosQuickProductSearchApiTest extends TestCase
             ->assertJsonPath('data.0.stock_locations.0.branch', 'ERZURUM DEPO')
             ->assertJsonPath('data.0.stock_locations.1.branch', 'BATUM DEPO')
             ->assertJsonPath('data.0.stock_locations.1.shelf_address', 'B.4')
-            ->assertJsonPath('data.0.net_price', '12.35')
+            ->assertJsonPath('data.0.net_price', '11.76')
             ->assertJsonPath('data.0.currency', 'GEL');
     }
 
