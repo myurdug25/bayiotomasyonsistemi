@@ -9945,13 +9945,13 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-b
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-status-row {
-  min-height: 52px !important;
+  min-height: 44px !important;
   border-color: var(--search-light-border) !important;
   background: #fbfdfb !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-status-row > div {
-  padding-block: 0.55rem !important;
+  padding-block: 0.35rem !important;
   color: #3f554a !important;
 }
 

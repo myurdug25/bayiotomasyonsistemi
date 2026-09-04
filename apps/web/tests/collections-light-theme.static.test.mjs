@@ -29,6 +29,13 @@ test("collections page exposes stable light-theme hooks", () => {
 test("collections payment cards are styled from real selected state", () => {
   assert.match(collectionsSource, /data-selected=\{method === value \? "true" : "false"\}/);
   assert.match(collectionsSource, /aria-pressed=\{method === value\}/);
+  const paymentMethodRender = collectionsSource.slice(
+    collectionsSource.indexOf("{availableMethods.map((value) => ("),
+    collectionsSource.indexOf("{method === \"transfer\" ? (")
+  );
+  assert.doesNotMatch(paymentMethodRender, /METHOD_STYLES\[value\]/);
+  assert.match(paymentMethodRender, /data-\[selected=true\]:bg-\[linear-gradient\(180deg,#ff4b4f_0%,#d71920_58%,#a50c12_100%\)\]/);
+  assert.match(paymentMethodRender, /data-\[selected=false\]:bg-white\/\[0\.035\]/);
   assert.match(css, /\.collection-payment-method\[data-selected="true"\]/);
   assert.match(css, /\.collection-payment-method\[data-selected="false"\]/);
   assert.match(css, /\.collection-payment-method\[data-selected="true"\] \{\s*border-color:\s*rgba\(179, 18, 24, 0\.64\) !important;[\s\S]*?linear-gradient\(180deg, #ff4b4f 0%, #d71920 58%, #a50c12 100%\)/);

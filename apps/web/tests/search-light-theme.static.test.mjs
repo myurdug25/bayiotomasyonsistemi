@@ -33,8 +33,9 @@ test("search table stays compact without clipping stock shelf labels", () => {
   assert.match(productsSource, /stockColumnWidth = Math\.min\(390, Math\.max\(300, normalizedStockColumnCount \* 66\)\)/);
   assert.match(css, /\.admin-product-row-grid \{\s*min-height:\s*34px !important/s);
   assert.match(css, /\.admin-product-row-grid \[role="cell"\] \{\s*border-color:[\s\S]*?min-height:\s*34px !important;[\s\S]*?padding-top:\s*0\.125rem !important;[\s\S]*?padding-bottom:\s*0\.125rem !important/s);
-  assert.match(css, /\.product-results-table-head \[role="columnheader"\] \{\s*min-height:\s*40px !important/s);
+  assert.match(css, /\.product-results-table-head \[role="columnheader"\] \{\s*min-height:\s*34px !important/s);
   assert.match(css, /\.product-results-status-row \{\s*min-height:\s*44px !important/s);
+  assert.doesNotMatch(css, /\.product-results-status-row \{\s*min-height:\s*52px !important/s);
   assert.match(css, /\.product-sku-cell p \{\s*font-size:\s*13px !important/s);
   assert.match(css, /nth-child\(3\) p:first-child \{\s*font-size:\s*10px !important/s);
   assert.match(css, /nth-child\(4\) p \{\s*font-size:\s*12px !important/s);

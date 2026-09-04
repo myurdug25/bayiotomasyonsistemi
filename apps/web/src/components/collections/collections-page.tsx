@@ -118,33 +118,6 @@ const METHOD_LABELS: Record<FormMethodType | MethodType, string> = {
   invoice: "Fatura",
 };
 
-const METHOD_STYLES: Record<FormMethodType, { active: string; idle: string }> = {
-  cash: {
-    active: "border-emerald-300/70 bg-emerald-300/14 text-emerald-100 shadow-[0_18px_34px_-30px_rgba(52,211,153,0.7)]",
-    idle: "border-white/10 bg-white/[0.035] text-slate-300 hover:border-emerald-300/35 hover:bg-emerald-300/8 hover:text-emerald-100",
-  },
-  transfer: {
-    active: "border-sky-300/70 bg-sky-300/14 text-sky-100 shadow-[0_18px_34px_-30px_rgba(56,189,248,0.7)]",
-    idle: "border-white/10 bg-white/[0.035] text-slate-300 hover:border-sky-300/35 hover:bg-sky-300/8 hover:text-sky-100",
-  },
-  check: {
-    active: "border-amber-300/70 bg-amber-300/14 text-amber-100 shadow-[0_18px_34px_-30px_rgba(251,191,36,0.7)]",
-    idle: "border-white/10 bg-white/[0.035] text-slate-300 hover:border-amber-300/35 hover:bg-amber-300/8 hover:text-amber-100",
-  },
-  note: {
-    active: "border-violet-300/70 bg-violet-300/14 text-violet-100 shadow-[0_18px_34px_-30px_rgba(167,139,250,0.7)]",
-    idle: "border-white/10 bg-white/[0.035] text-slate-300 hover:border-violet-300/35 hover:bg-violet-300/8 hover:text-violet-100",
-  },
-  cc: {
-    active: "border-rose-300/70 bg-rose-300/14 text-rose-100 shadow-[0_18px_34px_-30px_rgba(251,113,133,0.7)]",
-    idle: "border-white/10 bg-white/[0.035] text-slate-300 hover:border-rose-300/35 hover:bg-rose-300/8 hover:text-rose-100",
-  },
-  factory_cc: {
-    active: "border-orange-300/70 bg-orange-300/14 text-orange-100 shadow-[0_18px_34px_-30px_rgba(251,146,60,0.7)]",
-    idle: "border-white/10 bg-white/[0.035] text-slate-300 hover:border-orange-300/35 hover:bg-orange-300/8 hover:text-orange-100",
-  },
-};
-
 const COLLECTION_FIELD_LABELS: Record<string, string> = {
   method: "Yöntem",
   amount: "Tutar",
@@ -2131,9 +2104,9 @@ export function CollectionsPage() {
                     onClick={() => handleMethodChange(value)}
                     className={cn(
                       "collection-payment-method flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-[16px] border px-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
-                      method === value
-                        ? METHOD_STYLES[value].active
-                        : METHOD_STYLES[value].idle
+                      "border-white/10 bg-white/[0.035] text-slate-300 shadow-[0_18px_34px_-30px_rgba(15,23,42,0.45)] hover:border-red-300/35 hover:bg-red-300/8 hover:text-red-100",
+                      "data-[selected=false]:bg-white/[0.035] data-[selected=false]:text-slate-300",
+                      "data-[selected=true]:border-red-200/30 data-[selected=true]:bg-[linear-gradient(180deg,#ff4b4f_0%,#d71920_58%,#a50c12_100%)] data-[selected=true]:text-white data-[selected=true]:shadow-[0_18px_34px_-20px_rgba(255,77,79,0.95)]"
                     )}
                   >
                     <FormMethodIcon method={value} />
