@@ -19,17 +19,16 @@ test("moderator system settings exposes editable Batum exchange rate", () => {
     "overviewQuery.data?.system_settings.batum_exchange_rate",
     "overviewQuery.data?.system_settings.batum_exchange_multiplier",
     "Batum Kuru",
-    "TRY x kur",
-    "Kur Çarpanı",
     "TL / GEL oranı",
-    "const effectiveBatumMultiplier",
-    "const effectiveBatumRate",
+    "Kur Çarpanı",
+    "TRY x çarpan",
     "const systemSettingsPayload",
     "systemSettingsPayload.complaint_mail_to = trimmedComplaintMailTo",
-    "batum_exchange_rate: effectiveBatumRate.toFixed(4)",
-    "batum_exchange_multiplier: effectiveBatumMultiplier.toFixed(4)",
+    "batum_exchange_rate: batumExchangeRate.trim()",
+    "batum_exchange_multiplier: batumExchangeMultiplier.trim()",
     "Kur ve E-posta Ayarını Kaydet",
   ].forEach((snippet) => assert.match(component, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
 
+  assert.doesNotMatch(component, /effectiveBatumRate|effectiveBatumMultiplier/);
   assert.doesNotMatch(component, /canSaveSystemSettings\s*=\s*[\s\S]{0,140}complaintMailTo\.trim\(\)\s*!==\s*""/);
 });

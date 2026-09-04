@@ -76,6 +76,37 @@ class DisplayCurrencySettingsTest extends TestCase
         $this->assertSame('5.60', DisplayCurrency::formatPrice(100, 'TRY', $user, $customer));
     }
 
+    public function test_batum_lari_conversion_uses_multiplier_as_fixed_try_factor(): void
+    {
+        $dealer = Dealer::query()->create([
+            'code' => 'DLR-BATUM-FIXED-MULTIPLIER',
+            'name' => 'Dealer Batum Fixed Multiplier',
+            'is_active' => true,
+            'meta' => [
+                'system_settings' => [
+                    'batum_exchange_rate' => '100.0000',
+                    'batum_exchange_multiplier' => '0.6600',
+                ],
+            ],
+        ]);
+
+        $user = $this->createUserWithRole('admin', $dealer);
+        $customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'source_system' => 'logo',
+            'code' => '120-00-001',
+            'name' => 'Batum Cari',
+            'branch_code' => 'BATUM',
+            'branch_name' => 'BATUM',
+            'phone' => '05320000000',
+            'city' => 'BATUM',
+            'is_active' => true,
+        ]);
+
+        $this->assertSame('GEL', DisplayCurrency::normalize('TRY', $user, $customer));
+        $this->assertSame('66.00', DisplayCurrency::formatPrice(100, 'TRY', $user, $customer));
+    }
+
     private function createUserWithRole(string $roleSlug, ?Dealer $dealer = null): User
     {
         $role = Role::query()->firstOrCreate(

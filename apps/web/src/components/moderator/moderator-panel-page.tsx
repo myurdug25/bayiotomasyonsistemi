@@ -599,28 +599,14 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const normalizedBatumExchangeMultiplier = batumExchangeMultiplier.trim().replace(",", ".");
   const batumExchangeRateNumber = Number(normalizedBatumExchangeRate);
   const batumExchangeMultiplierNumber = Number(normalizedBatumExchangeMultiplier);
-  const effectiveBatumMultiplier =
-    Number.isFinite(batumExchangeMultiplierNumber) && batumExchangeMultiplierNumber > 0 && batumExchangeMultiplierNumber <= 1
-      ? batumExchangeMultiplierNumber
-      : Number.isFinite(batumExchangeRateNumber) && batumExchangeRateNumber > 0 && batumExchangeRateNumber <= 1
-        ? batumExchangeRateNumber
-        : Number.isFinite(batumExchangeRateNumber) && batumExchangeRateNumber > 1
-          ? 1 / batumExchangeRateNumber
-          : 0;
-  const effectiveBatumRate =
-    Number.isFinite(batumExchangeRateNumber) && batumExchangeRateNumber > 1
-      ? batumExchangeRateNumber
-      : Number.isFinite(batumExchangeMultiplierNumber) && batumExchangeMultiplierNumber > 1
-        ? batumExchangeMultiplierNumber
-        : effectiveBatumMultiplier > 0
-          ? 1 / effectiveBatumMultiplier
-          : 0;
   const canSaveSystemSettings =
-    effectiveBatumMultiplier > 0 &&
-    effectiveBatumMultiplier <= 1 &&
-    effectiveBatumRate > 0 &&
-    Number.isFinite(effectiveBatumMultiplier) &&
-    Number.isFinite(effectiveBatumRate);
+    normalizedBatumExchangeRate !== "" &&
+    normalizedBatumExchangeMultiplier !== "" &&
+    batumExchangeRateNumber > 0 &&
+    batumExchangeMultiplierNumber > 0 &&
+    batumExchangeMultiplierNumber <= 1 &&
+    Number.isFinite(batumExchangeRateNumber) &&
+    Number.isFinite(batumExchangeMultiplierNumber);
 
   const dealers = overviewQuery.data?.dealers ?? [];
   const roleOptions = overviewQuery.data?.roles ?? EMPTY_ROLES;
@@ -694,8 +680,8 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
         batum_exchange_rate: string;
         batum_exchange_multiplier: string;
       } = {
-        batum_exchange_rate: effectiveBatumRate.toFixed(4),
-        batum_exchange_multiplier: effectiveBatumMultiplier.toFixed(4),
+        batum_exchange_rate: batumExchangeRate.trim(),
+        batum_exchange_multiplier: batumExchangeMultiplier.trim(),
       };
 
       if (trimmedComplaintMailTo !== "") {
@@ -1512,15 +1498,14 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                 type="text"
                 inputMode="decimal"
                 min="0.000001"
-                max="1"
                 step="0.0001"
-                value={batumExchangeMultiplier}
-                onChange={(event) => setBatumExchangeMultiplierDraft(event.target.value.replace(",", "."))}
-                placeholder="0.0650"
-                className="pr-24"
+                value={batumExchangeRate}
+                onChange={(event) => setBatumExchangeRateDraft(event.target.value.replace(",", "."))}
+                placeholder="100.0000"
+                className="pr-28"
               />
               <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
-                TRY x kur
+                TL / GEL oranı
               </span>
             </div>
           </label>
@@ -1531,14 +1516,15 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                 type="text"
                 inputMode="decimal"
                 min="0.0001"
+                max="1"
                 step="0.0001"
-                value={batumExchangeRate}
-                onChange={(event) => setBatumExchangeRateDraft(event.target.value.replace(",", "."))}
-                placeholder="15.3846"
-                className="pr-28"
+                value={batumExchangeMultiplier}
+                onChange={(event) => setBatumExchangeMultiplierDraft(event.target.value.replace(",", "."))}
+                placeholder="0.0650"
+                className="pr-24"
               />
               <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
-                TL / GEL oranı
+                TRY x çarpan
               </span>
             </div>
           </label>
