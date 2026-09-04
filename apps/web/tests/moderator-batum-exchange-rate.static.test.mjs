@@ -9,7 +9,7 @@ test("moderator system settings exposes editable Batum exchange rate", () => {
   [
     "batum_exchange_rate: string",
     "batum_exchange_multiplier: string",
-    "updateModeratorSystemSettings(payload: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string })",
+    "updateModeratorSystemSettings(payload: { complaint_mail_to?: string; batum_exchange_rate: string; batum_exchange_multiplier: string })",
     "system_settings: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string }",
   ].forEach((snippet) => assert.match(api, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
 
@@ -22,8 +22,12 @@ test("moderator system settings exposes editable Batum exchange rate", () => {
     "TL / GEL",
     "Kur Çarpanı",
     "TRY x çarpan",
+    "const systemSettingsPayload",
+    "systemSettingsPayload.complaint_mail_to = trimmedComplaintMailTo",
     "batum_exchange_rate: batumExchangeRate.trim()",
     "batum_exchange_multiplier: batumExchangeMultiplier.trim()",
     "Kur ve E-posta Ayarını Kaydet",
   ].forEach((snippet) => assert.match(component, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+
+  assert.doesNotMatch(component, /canSaveSystemSettings\s*=\s*[\s\S]{0,140}complaintMailTo\.trim\(\)\s*!==\s*""/);
 });

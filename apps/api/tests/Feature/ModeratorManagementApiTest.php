@@ -94,6 +94,43 @@ class ModeratorManagementApiTest extends TestCase
             ->assertJsonPath('system_settings.batum_exchange_multiplier', '0.0560');
     }
 
+    public function test_global_admin_can_update_batum_exchange_settings_without_complaint_recipient(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $firstDealer = $this->createDealer('DLR-BATUM-RATE-ONLY-001');
+        $secondDealer = $this->createDealer('DLR-BATUM-RATE-ONLY-002');
+        $admin = $this->createUserWithRole('admin', null, [
+            'menu_permissions' => ['moderator'],
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson('/api/moderator/system-settings', [
+                'batum_exchange_rate' => '17,8571',
+                'batum_exchange_multiplier' => '0,056',
+            ])
+            ->assertOk()
+            ->assertJsonPath('system_settings.batum_exchange_rate', '17.8571')
+            ->assertJsonPath('system_settings.batum_exchange_multiplier', '0.0560');
+
+        $this->assertSame(
+            '17.8571',
+            data_get($firstDealer->fresh()->meta, 'system_settings.batum_exchange_rate')
+        );
+        $this->assertSame(
+            '0.0560',
+            data_get($firstDealer->fresh()->meta, 'system_settings.batum_exchange_multiplier')
+        );
+        $this->assertSame(
+            '17.8571',
+            data_get($secondDealer->fresh()->meta, 'system_settings.batum_exchange_rate')
+        );
+        $this->assertSame(
+            '0.0560',
+            data_get($secondDealer->fresh()->meta, 'system_settings.batum_exchange_multiplier')
+        );
+    }
+
     public function test_moderator_can_read_overview_and_manage_users_and_customers(): void
     {
         $this->seed(RoleSeeder::class);

@@ -211,7 +211,7 @@ class ModeratorManagementController extends Controller
         }
 
         $validated = $request->validate([
-            'complaint_mail_to' => ['required', 'email:rfc', 'max:255'],
+            'complaint_mail_to' => ['sometimes', 'required', 'email:rfc', 'max:255'],
             'batum_exchange_rate' => ['sometimes', 'required', 'numeric', 'min:0.0001', 'max:999999'],
             'batum_exchange_multiplier' => ['sometimes', 'required', 'numeric', 'min:0.000001', 'max:1'],
         ]);
@@ -229,7 +229,9 @@ class ModeratorManagementController extends Controller
         DB::transaction(function () use ($batumExchangeMultiplier, $batumExchangeRate, $dealers, $validated): void {
             foreach ($dealers as $dealer) {
                 $meta = is_array($dealer->meta) ? $dealer->meta : [];
-                data_set($meta, 'system_settings.complaint_mail_to', strtolower(trim($validated['complaint_mail_to'])));
+                if (array_key_exists('complaint_mail_to', $validated)) {
+                    data_set($meta, 'system_settings.complaint_mail_to', strtolower(trim($validated['complaint_mail_to'])));
+                }
 
                 if ($batumExchangeRate !== null) {
                     data_set($meta, 'system_settings.batum_exchange_rate', $batumExchangeRate);
@@ -247,7 +249,10 @@ class ModeratorManagementController extends Controller
         return response()->json([
             'message' => 'Sistem ayarları güncellendi.',
             'system_settings' => [
-                'complaint_mail_to' => strtolower(trim($validated['complaint_mail_to'])),
+                'complaint_mail_to' => array_key_exists('complaint_mail_to', $validated)
+                    ? strtolower(trim($validated['complaint_mail_to']))
+                    : (string) (data_get($settingsDealer?->meta, 'system_settings.complaint_mail_to')
+                        ?: config('integrations.customer_complaints.mail_to', '')),
                 'batum_exchange_rate' => $batumExchangeRate ?? $this->resolveBatumExchangeRate($settingsDealer),
                 'batum_exchange_multiplier' => $batumExchangeMultiplier ?? $this->resolveBatumExchangeMultiplier($settingsDealer),
             ],

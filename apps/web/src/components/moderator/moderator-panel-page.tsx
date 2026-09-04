@@ -594,10 +594,10 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const complaintMailTo = complaintMailToDraft ?? overviewQuery.data?.system_settings.complaint_mail_to ?? "";
   const batumExchangeRate = batumExchangeRateDraft ?? overviewQuery.data?.system_settings.batum_exchange_rate ?? "17.0000";
   const batumExchangeMultiplier = batumExchangeMultiplierDraft ?? overviewQuery.data?.system_settings.batum_exchange_multiplier ?? "0.0560";
+  const trimmedComplaintMailTo = complaintMailTo.trim();
   const normalizedBatumExchangeRate = batumExchangeRate.trim().replace(",", ".");
   const normalizedBatumExchangeMultiplier = batumExchangeMultiplier.trim().replace(",", ".");
   const canSaveSystemSettings =
-    complaintMailTo.trim() !== "" &&
     normalizedBatumExchangeRate !== "" &&
     Number(normalizedBatumExchangeRate) > 0 &&
     Number.isFinite(Number(normalizedBatumExchangeRate)) &&
@@ -672,12 +672,22 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   }, []);
 
   const systemSettingsMutation = useMutation({
-    mutationFn: () =>
-      updateModeratorSystemSettings({
-        complaint_mail_to: complaintMailTo.trim(),
+    mutationFn: () => {
+      const systemSettingsPayload: {
+        complaint_mail_to?: string;
+        batum_exchange_rate: string;
+        batum_exchange_multiplier: string;
+      } = {
         batum_exchange_rate: batumExchangeRate.trim(),
         batum_exchange_multiplier: batumExchangeMultiplier.trim(),
-      }),
+      };
+
+      if (trimmedComplaintMailTo !== "") {
+        systemSettingsPayload.complaint_mail_to = trimmedComplaintMailTo;
+      }
+
+      return updateModeratorSystemSettings(systemSettingsPayload);
+    },
     onSuccess: async (response) => {
       toast.success(response.message);
       setComplaintMailToDraft(response.system_settings.complaint_mail_to);

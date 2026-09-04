@@ -2908,7 +2908,7 @@ export async function listCustomerCollections(
   );
 }
 
-export async function updateModeratorSystemSettings(payload: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string }) {
+export async function updateModeratorSystemSettings(payload: { complaint_mail_to?: string; batum_exchange_rate: string; batum_exchange_multiplier: string }) {
   return apiFetch<{ message: string; system_settings: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string } }>("/api/moderator/system-settings", {
     method: "PATCH",
     body: JSON.stringify(payload),
