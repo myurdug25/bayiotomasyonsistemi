@@ -91,6 +91,7 @@ const AUTOMATIC_CHECKOUT_NOTE_MARKERS = [
 
 const OPEN_ACCOUNT_RISK_LIMIT_MESSAGE =
   "Müşterinin vadesi geçmiş açık hesabı var ve sipariş açık hesap risk limitini aşıyor.";
+const BATUM_PRICING_UPDATED_EVENT = "powersa:batum-pricing-updated";
 
 function stripAutomaticCheckoutNote(value?: string | null): string {
   return String(value ?? "")
@@ -182,6 +183,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || typeof window === "undefined") {
+      return;
+    }
+
+    const handleBatumPricingUpdated = () => {
+      void refresh();
+    };
+    const handleStorageBatumPricingUpdated = (event: StorageEvent) => {
+      if (event.key === BATUM_PRICING_UPDATED_EVENT) {
+        void refresh();
+      }
+    };
+
+    window.addEventListener(BATUM_PRICING_UPDATED_EVENT, handleBatumPricingUpdated);
+    window.addEventListener("storage", handleStorageBatumPricingUpdated);
+
+    return () => {
+      window.removeEventListener(BATUM_PRICING_UPDATED_EVENT, handleBatumPricingUpdated);
+      window.removeEventListener("storage", handleStorageBatumPricingUpdated);
+    };
+  }, [refresh, status]);
 
   const upsertQuantity = useCallback(
     async (productId: number, quantity: number, campaignKey?: string | null) => {

@@ -163,6 +163,7 @@ const EMPTY_ROLES: ModeratorRoleOption[] = [];
 const EMPTY_MENU_PERMISSIONS: ModeratorMenuPermissionOption[] = [];
 const EMPTY_FEATURE_PERMISSIONS: CustomerUserFeaturePermissionOption[] = [];
 const WAREHOUSE_STOCK_PERMISSION_PREFIX = "search.stock.warehouse.";
+const BATUM_PRICING_UPDATED_EVENT = "powersa:batum-pricing-updated";
 
 type PermissionTemplate = {
   id: string;
@@ -695,7 +696,29 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       setComplaintMailToDraft(response.system_settings.complaint_mail_to);
       setBatumExchangeRateDraft(response.system_settings.batum_exchange_rate);
       setBatumExchangeMultiplierDraft(response.system_settings.batum_exchange_multiplier);
-      await queryClient.invalidateQueries({ queryKey: ["moderator", "overview"] });
+      if (typeof window !== "undefined") {
+        const payload = {
+          updatedAt: new Date().toISOString(),
+          batumExchangeRate: response.system_settings.batum_exchange_rate,
+          batumExchangeMultiplier: response.system_settings.batum_exchange_multiplier,
+        };
+
+        window.dispatchEvent(new CustomEvent(BATUM_PRICING_UPDATED_EVENT, { detail: payload }));
+        try {
+          window.localStorage.setItem(BATUM_PRICING_UPDATED_EVENT, JSON.stringify(payload));
+        } catch {
+          // Other tabs are best-effort; this tab still refreshes through the custom event.
+        }
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["moderator", "overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["products"] }),
+        queryClient.invalidateQueries({ queryKey: ["product-filter-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["cart"] }),
+        queryClient.invalidateQueries({ queryKey: ["campaignProgress"] }),
+        queryClient.invalidateQueries({ queryKey: ["pos"] }),
+      ]);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Sistem ayarı kaydedilemedi."),
   });

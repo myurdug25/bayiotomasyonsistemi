@@ -32,3 +32,27 @@ test("moderator system settings exposes editable Batum exchange rate", () => {
   assert.doesNotMatch(component, /effectiveBatumRate|effectiveBatumMultiplier/);
   assert.doesNotMatch(component, /canSaveSystemSettings\s*=\s*[\s\S]{0,140}complaintMailTo\.trim\(\)\s*!==\s*""/);
 });
+
+test("saving Batum exchange settings refreshes product prices without a hard reload", () => {
+  [
+    'const BATUM_PRICING_UPDATED_EVENT = "powersa:batum-pricing-updated"',
+    'window.dispatchEvent(new CustomEvent(BATUM_PRICING_UPDATED_EVENT',
+    'window.localStorage.setItem(BATUM_PRICING_UPDATED_EVENT',
+    'queryClient.invalidateQueries({ queryKey: ["products"]',
+    'queryClient.invalidateQueries({ queryKey: ["product-filter-options"]',
+    'queryClient.invalidateQueries({ queryKey: ["cart"]',
+    'queryClient.invalidateQueries({ queryKey: ["campaignProgress"]',
+    'queryClient.invalidateQueries({ queryKey: ["pos"]',
+  ].forEach((snippet) => assert.match(component, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+});
+
+test("cart provider refreshes local cart totals when Batum pricing changes", () => {
+  const cartProvider = readFileSync(new URL("../src/components/cart/cart-provider.tsx", import.meta.url), "utf8");
+
+  [
+    'const BATUM_PRICING_UPDATED_EVENT = "powersa:batum-pricing-updated"',
+    'window.addEventListener(BATUM_PRICING_UPDATED_EVENT, handleBatumPricingUpdated)',
+    'window.addEventListener("storage", handleStorageBatumPricingUpdated)',
+    'void refresh()',
+  ].forEach((snippet) => assert.match(cartProvider, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+});
