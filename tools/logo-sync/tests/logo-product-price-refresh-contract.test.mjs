@@ -80,3 +80,35 @@ test("Logo F12 price rows are also sent as Batum special campaign prices", () =>
   assert.match(productsSource, /priceGroupCode === "F12"/);
   assert.match(productsSource, /Batum Size Ozel Fiyat/);
 });
+
+test("Logo price helper exports build Batum and conditional campaign prices from real PRCLIST rows", async () => {
+  const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
+  const f12Row = {
+    LOGICALREF: 105456,
+    CARDREF: 61,
+    PRICE: 164.06,
+    CURRENCY: 0,
+    CLSPECODE5: "F12",
+    CYPHCODE: "F12",
+    BEGDATE: new Date("2026-09-03T00:00:00Z"),
+    ENDDATE: new Date("2030-12-31T00:00:00Z"),
+  };
+  const tierRow = {
+    LOGICALREF: 900016,
+    CARDREF: 61,
+    PRICE: 200,
+    CURRENCY: 0,
+    CLSPECODE5: "F12",
+    CONDQTY: 5,
+    CONDITION: "p1>4",
+  };
+
+  assert.equal(helpers.resolveLogoPriceGroupCode(f12Row), "F12");
+  assert.equal(helpers.logoCampaignPriceReason(f12Row, "F12"), "batum_f12_price");
+  assert.deepEqual(
+    helpers.buildLogoCampaignPrice(f12Row, { list_price: 164.06, currency: "TRY", meta: {} }, "F12").name,
+    "Batum Size Ozel Fiyat"
+  );
+  assert.equal(helpers.logoCampaignPriceReason(tierRow, "F12"), "conditional_price");
+  assert.equal(helpers.resolveLogoCampaignMinQuantity(tierRow, tierRow.CONDITION), 5);
+});

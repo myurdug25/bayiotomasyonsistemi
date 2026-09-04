@@ -29,11 +29,16 @@ if (fs.existsSync(envPath)) {
 
 const config = buildConfig();
 const runStartedAt = Date.now();
+const isDirectRun = process.argv[1]
+  ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  : false;
 
-main().catch((error) => {
-  console.error("[logo-sync] failed:", error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error("[logo-sync] failed:", error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}
 
 async function main() {
   validateConfig(config);
@@ -2684,12 +2689,28 @@ function resolveLogoPriceGroupCode(row) {
     readFirst(row, ["CLSPECODE5", "clspecode5"]),
     readFirst(row, ["GRPCODE", "grpcode", "GROUPCODE", "groupcode"]),
     readFirst(row, ["CLIENTCODE", "clientcode"]),
+    readFirst(row, ["CYPHCODE", "cyphcode"]),
+    readFirst(row, [
+      "PRICEEXP",
+      "PRICE_EXP",
+      "PRICE_DESCRIPTION",
+      "PRICE_DESC",
+      "EXPLANATION",
+      "EXPLAIN",
+      "ACIKLAMA",
+      "aciklama",
+    ]),
     readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]),
   ]) {
     const normalized = normalizeString(value)?.toUpperCase() ?? "";
-    const exactMatch = normalized.match(/^F[1-9][0-9]*$/);
+    const exactMatch = normalized.match(/^F(?:[1-9]|1[0-2])$/);
     if (exactMatch) {
       return exactMatch[0];
+    }
+
+    const embeddedMatch = normalized.match(/\bF(?:[1-9]|1[0-2])\b/);
+    if (embeddedMatch) {
+      return embeddedMatch[0];
     }
 
     if (["PRK", "PERAK", "PERAKENDE"].includes(normalized) || normalized.includes("PERAKENDE")) {
@@ -2710,6 +2731,14 @@ function buildLogoGroupedPricePredicate(columns) {
     "GRPCODE",
     "GROUPCODE",
     "CLIENTCODE",
+    "CYPHCODE",
+    "PRICEEXP",
+    "PRICE_EXP",
+    "PRICE_DESCRIPTION",
+    "PRICE_DESC",
+    "EXPLANATION",
+    "EXPLAIN",
+    "ACIKLAMA",
     "DEFINITION_",
     "DEFINITION",
     "NAME",
@@ -2721,7 +2750,7 @@ function buildLogoGroupedPricePredicate(columns) {
     return null;
   }
 
-  const fCodes = Array.from({ length: 99 }, (_, index) => `'F${index + 1}'`).join(", ");
+  const fCodes = Array.from({ length: 12 }, (_, index) => `'F${index + 1}'`).join(", ");
   const exactCodes = `${fCodes}, 'PRK', 'PERAK', 'PERAKENDE'`;
 
   return candidateColumns
@@ -2803,7 +2832,7 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
 
 function resolveLogoCampaignMinQuantity(row, condition) {
   const explicit = normalizeInteger(
-    readFirst(row, ["MIN_QUANTITY", "MINQTY", "MINAMOUNT", "MIN_QUANTITY_", "min_quantity"])
+    readFirst(row, ["MIN_QUANTITY", "MINQTY", "CONDQTY", "condqty", "MINAMOUNT", "MIN_QUANTITY_", "min_quantity"])
   );
 
   if (explicit && explicit > 0) {
@@ -5888,3 +5917,10 @@ function parseBoolean(value, fallback) {
 
   return fallback;
 }
+
+export {
+  buildLogoCampaignPrice,
+  logoCampaignPriceReason,
+  resolveLogoCampaignMinQuantity,
+  resolveLogoPriceGroupCode,
+};
