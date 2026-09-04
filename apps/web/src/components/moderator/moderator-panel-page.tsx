@@ -576,6 +576,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const [customerSearch, setCustomerSearch] = useState("");
   const [complaintMailToDraft, setComplaintMailToDraft] = useState<string | null>(null);
   const [batumExchangeRateDraft, setBatumExchangeRateDraft] = useState<string | null>(null);
+  const [batumExchangeMultiplierDraft, setBatumExchangeMultiplierDraft] = useState<string | null>(null);
   const trimmedCustomerSearch = customerSearch.trim();
   const overviewParams = useMemo(
     () => ({
@@ -592,12 +593,18 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   });
   const complaintMailTo = complaintMailToDraft ?? overviewQuery.data?.system_settings.complaint_mail_to ?? "";
   const batumExchangeRate = batumExchangeRateDraft ?? overviewQuery.data?.system_settings.batum_exchange_rate ?? "17.0000";
+  const batumExchangeMultiplier = batumExchangeMultiplierDraft ?? overviewQuery.data?.system_settings.batum_exchange_multiplier ?? "0.0560";
   const normalizedBatumExchangeRate = batumExchangeRate.trim().replace(",", ".");
+  const normalizedBatumExchangeMultiplier = batumExchangeMultiplier.trim().replace(",", ".");
   const canSaveSystemSettings =
     complaintMailTo.trim() !== "" &&
     normalizedBatumExchangeRate !== "" &&
     Number(normalizedBatumExchangeRate) > 0 &&
-    Number.isFinite(Number(normalizedBatumExchangeRate));
+    Number.isFinite(Number(normalizedBatumExchangeRate)) &&
+    normalizedBatumExchangeMultiplier !== "" &&
+    Number(normalizedBatumExchangeMultiplier) > 0 &&
+    Number(normalizedBatumExchangeMultiplier) <= 1 &&
+    Number.isFinite(Number(normalizedBatumExchangeMultiplier));
 
   const dealers = overviewQuery.data?.dealers ?? [];
   const roleOptions = overviewQuery.data?.roles ?? EMPTY_ROLES;
@@ -669,11 +676,13 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       updateModeratorSystemSettings({
         complaint_mail_to: complaintMailTo.trim(),
         batum_exchange_rate: batumExchangeRate.trim(),
+        batum_exchange_multiplier: batumExchangeMultiplier.trim(),
       }),
     onSuccess: async (response) => {
       toast.success(response.message);
       setComplaintMailToDraft(response.system_settings.complaint_mail_to);
       setBatumExchangeRateDraft(response.system_settings.batum_exchange_rate);
+      setBatumExchangeMultiplierDraft(response.system_settings.batum_exchange_multiplier);
       await queryClient.invalidateQueries({ queryKey: ["moderator", "overview"] });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Sistem ayarı kaydedilemedi."),
@@ -1460,7 +1469,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       </Dialog>
 
       <section className="dashboard-panel-card rounded-[18px] p-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_auto] lg:items-end">
+        <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_190px_190px_auto] lg:items-end">
           <label className="space-y-2 text-sm">
             <span className="font-extrabold text-[var(--brand-primary-strong)]">Dilek / Şikayet E-posta Adresi</span>
             <Input
@@ -1474,7 +1483,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
             <span className="font-extrabold text-[var(--brand-primary-strong)]">Batum Kuru</span>
             <div className="relative">
               <Input
-                type="number"
+                type="text"
                 inputMode="decimal"
                 min="0.0001"
                 step="0.0001"
@@ -1485,6 +1494,25 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
               />
               <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
                 TL / GEL
+              </span>
+            </div>
+          </label>
+          <label className="space-y-2 text-sm">
+            <span className="font-extrabold text-[var(--brand-primary-strong)]">Kur Çarpanı</span>
+            <div className="relative">
+              <Input
+                type="text"
+                inputMode="decimal"
+                min="0.000001"
+                max="1"
+                step="0.0001"
+                value={batumExchangeMultiplier}
+                onChange={(event) => setBatumExchangeMultiplierDraft(event.target.value.replace(",", "."))}
+                placeholder="0.0560"
+                className="pr-28"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
+                TRY x çarpan
               </span>
             </div>
           </label>

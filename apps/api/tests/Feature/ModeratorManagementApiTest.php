@@ -63,24 +63,35 @@ class ModeratorManagementApiTest extends TestCase
         $this->actingAs($admin)
             ->patchJson('/api/moderator/system-settings', [
                 'complaint_mail_to' => 'farukcelik@gucsa.com.tr',
-                'batum_exchange_rate' => 18.75,
+                'batum_exchange_rate' => '17,8571',
+                'batum_exchange_multiplier' => '0,056',
             ])
             ->assertOk()
             ->assertJsonPath('system_settings.complaint_mail_to', 'farukcelik@gucsa.com.tr')
-            ->assertJsonPath('system_settings.batum_exchange_rate', '18.7500');
+            ->assertJsonPath('system_settings.batum_exchange_rate', '17.8571')
+            ->assertJsonPath('system_settings.batum_exchange_multiplier', '0.0560');
 
         $this->assertSame(
-            '18.7500',
+            '17.8571',
             data_get($firstDealer->fresh()->meta, 'system_settings.batum_exchange_rate')
         );
         $this->assertSame(
-            '18.7500',
+            '0.0560',
+            data_get($firstDealer->fresh()->meta, 'system_settings.batum_exchange_multiplier')
+        );
+        $this->assertSame(
+            '17.8571',
             data_get($secondDealer->fresh()->meta, 'system_settings.batum_exchange_rate')
+        );
+        $this->assertSame(
+            '0.0560',
+            data_get($secondDealer->fresh()->meta, 'system_settings.batum_exchange_multiplier')
         );
 
         $this->getJson('/api/moderator/overview')
             ->assertOk()
-            ->assertJsonPath('system_settings.batum_exchange_rate', '18.7500');
+            ->assertJsonPath('system_settings.batum_exchange_rate', '17.8571')
+            ->assertJsonPath('system_settings.batum_exchange_multiplier', '0.0560');
     }
 
     public function test_moderator_can_read_overview_and_manage_users_and_customers(): void

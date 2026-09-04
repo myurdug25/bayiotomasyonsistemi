@@ -65,6 +65,7 @@ return [
     ],
     'pricing' => [
         'batum_try_per_lari' => (float) env('BATUM_TRY_PER_LARI', 17.0),
+        'batum_try_to_lari_multiplier' => (float) env('BATUM_TRY_TO_LARI_MULTIPLIER', 0.056),
     ],
     'eryaz' => [
         'previous_purchases_cache_seconds' => (int) env('ERYAZ_PREVIOUS_PURCHASES_CACHE_SECONDS', 300),

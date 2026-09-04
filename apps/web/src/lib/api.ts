@@ -359,7 +359,7 @@ export type ModeratorOverviewResponse = {
   roles: ModeratorRoleOption[];
   menu_permissions: ModeratorMenuPermissionOption[];
   feature_permissions: CustomerUserFeaturePermissionOption[];
-  system_settings: { complaint_mail_to: string; batum_exchange_rate: string };
+  system_settings: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string };
   dealers: ModeratorDealerRecord[];
   users: ModeratorUserRecord[];
   customers: ModeratorCustomerRecord[];
@@ -410,6 +410,7 @@ export type CustomerUsersResponse = {
   system_settings: {
     complaint_mail_to: string;
     batum_exchange_rate: string;
+    batum_exchange_multiplier: string;
   };
   default_menu_permissions: string[];
   brands: Array<{ id: number; name: string }>;
@@ -2907,8 +2908,8 @@ export async function listCustomerCollections(
   );
 }
 
-export async function updateModeratorSystemSettings(payload: { complaint_mail_to: string; batum_exchange_rate: string }) {
-  return apiFetch<{ message: string; system_settings: { complaint_mail_to: string; batum_exchange_rate: string } }>("/api/moderator/system-settings", {
+export async function updateModeratorSystemSettings(payload: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string }) {
+  return apiFetch<{ message: string; system_settings: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string } }>("/api/moderator/system-settings", {
     method: "PATCH",
     body: JSON.stringify(payload),
   });

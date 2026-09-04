@@ -175,6 +175,7 @@ class ModeratorManagementController extends Controller
                 'complaint_mail_to' => (string) (data_get($settingsDealer?->meta, 'system_settings.complaint_mail_to')
                     ?: config('integrations.customer_complaints.mail_to', '')),
                 'batum_exchange_rate' => $this->resolveBatumExchangeRate($settingsDealer),
+                'batum_exchange_multiplier' => $this->resolveBatumExchangeMultiplier($settingsDealer),
             ],
             'dealers' => $dealers->map(fn (Dealer $dealer) => [
                 'id' => $dealer->id,
@@ -203,26 +204,38 @@ class ModeratorManagementController extends Controller
                 'batum_exchange_rate' => str_replace(',', '.', $request->input('batum_exchange_rate')),
             ]);
         }
+        if ($request->has('batum_exchange_multiplier') && is_string($request->input('batum_exchange_multiplier'))) {
+            $request->merge([
+                'batum_exchange_multiplier' => str_replace(',', '.', $request->input('batum_exchange_multiplier')),
+            ]);
+        }
 
         $validated = $request->validate([
             'complaint_mail_to' => ['required', 'email:rfc', 'max:255'],
             'batum_exchange_rate' => ['sometimes', 'required', 'numeric', 'min:0.0001', 'max:999999'],
+            'batum_exchange_multiplier' => ['sometimes', 'required', 'numeric', 'min:0.000001', 'max:1'],
         ]);
         $batumExchangeRate = array_key_exists('batum_exchange_rate', $validated)
             ? $this->formatBatumExchangeRate($validated['batum_exchange_rate'])
+            : null;
+        $batumExchangeMultiplier = array_key_exists('batum_exchange_multiplier', $validated)
+            ? $this->formatBatumExchangeMultiplier($validated['batum_exchange_multiplier'])
             : null;
 
         $dealers = $actor->dealer_id
             ? Dealer::query()->whereKey($actor->dealer_id)->get()
             : Dealer::query()->get();
 
-        DB::transaction(function () use ($batumExchangeRate, $dealers, $validated): void {
+        DB::transaction(function () use ($batumExchangeMultiplier, $batumExchangeRate, $dealers, $validated): void {
             foreach ($dealers as $dealer) {
                 $meta = is_array($dealer->meta) ? $dealer->meta : [];
                 data_set($meta, 'system_settings.complaint_mail_to', strtolower(trim($validated['complaint_mail_to'])));
 
                 if ($batumExchangeRate !== null) {
                     data_set($meta, 'system_settings.batum_exchange_rate', $batumExchangeRate);
+                }
+                if ($batumExchangeMultiplier !== null) {
+                    data_set($meta, 'system_settings.batum_exchange_multiplier', $batumExchangeMultiplier);
                 }
 
                 $dealer->forceFill(['meta' => $meta])->save();
@@ -236,6 +249,7 @@ class ModeratorManagementController extends Controller
             'system_settings' => [
                 'complaint_mail_to' => strtolower(trim($validated['complaint_mail_to'])),
                 'batum_exchange_rate' => $batumExchangeRate ?? $this->resolveBatumExchangeRate($settingsDealer),
+                'batum_exchange_multiplier' => $batumExchangeMultiplier ?? $this->resolveBatumExchangeMultiplier($settingsDealer),
             ],
         ]);
     }
@@ -245,6 +259,23 @@ class ModeratorManagementController extends Controller
         $rate = data_get($dealer?->meta, 'system_settings.batum_exchange_rate');
 
         return $this->formatBatumExchangeRate($rate ?: config('integrations.pricing.batum_try_per_lari'));
+    }
+
+    private function resolveBatumExchangeMultiplier(?Dealer $dealer): string
+    {
+        $multiplier = data_get($dealer?->meta, 'system_settings.batum_exchange_multiplier');
+
+        if ($multiplier !== null && $multiplier !== '') {
+            return $this->formatBatumExchangeMultiplier($multiplier);
+        }
+
+        $rate = data_get($dealer?->meta, 'system_settings.batum_exchange_rate');
+        $normalizedRate = str_replace(',', '.', trim((string) $rate));
+        if ($normalizedRate !== '' && is_numeric($normalizedRate) && (float) $normalizedRate > 0) {
+            return $this->formatBatumExchangeMultiplier(1 / (float) $normalizedRate);
+        }
+
+        return $this->formatBatumExchangeMultiplier(config('integrations.pricing.batum_try_to_lari_multiplier'));
     }
 
     private function formatBatumExchangeRate(mixed $value): string
@@ -257,6 +288,18 @@ class ModeratorManagementController extends Controller
         }
 
         return number_format($rate, 4, '.', '');
+    }
+
+    private function formatBatumExchangeMultiplier(mixed $value): string
+    {
+        $normalized = str_replace(',', '.', trim((string) $value));
+        $multiplier = is_numeric($normalized) ? (float) $normalized : (float) config('integrations.pricing.batum_try_to_lari_multiplier', 0.056);
+
+        if ($multiplier <= 0) {
+            $multiplier = 0.056;
+        }
+
+        return number_format($multiplier, 4, '.', '');
     }
 
     public function storeUser(Request $request): JsonResponse
