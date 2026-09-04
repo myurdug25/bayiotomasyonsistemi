@@ -32,6 +32,8 @@ test("collections selects keep selected item readable in light mode", () => {
   assert.match(collectionsSource, /<SelectContent className="collection-select-content">/);
   assert.match(collectionsSource, /<SelectItem key=\{option\.value\} value=\{option\.value\} className="collection-select-item">/);
   assert.match(css, /\.collection-select-content/);
+  assert.match(css, /\.collection-field-input > span/);
+  assert.match(css, /\.collection-field-input > span \{\s*color:\s*var\(--collections-light-text\) !important;[\s\S]*?opacity:\s*1 !important;/);
   assert.match(css, /\.collection-select-item\[data-highlighted\]/);
   assert.match(css, /\.collection-select-item\[data-state="checked"\]/);
   assert.match(css, /\.collection-select-item\[data-state="checked"\] \{\s*background:\s*linear-gradient\(180deg, #fff8cf 0%, #eef8f1 100%\) !important;[\s\S]*?color:\s*#10271d !important;/);

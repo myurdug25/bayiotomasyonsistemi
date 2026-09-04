@@ -10272,6 +10272,17 @@ html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-
   opacity: 1 !important;
 }
 
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-field-input > span {
+  color: var(--collections-light-text) !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-field-input > svg {
+  color: #49665a !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-field-input:focus,
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-field-input:focus-visible,
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page [data-slot="select-trigger"]:focus,
