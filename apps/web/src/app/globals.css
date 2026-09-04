@@ -10222,6 +10222,21 @@ html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-
   color: #ffffff !important;
 }
 
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[aria-pressed="false"],
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[data-selected="false"] {
+  border-color: var(--collections-light-border) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f0f6f3 100%) !important;
+  color: #30483d !important;
+  box-shadow: 0 14px 26px -22px rgba(16, 39, 29, 0.28) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[aria-pressed="false"]:hover,
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method[data-selected="false"]:hover {
+  border-color: #8eb8a1 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #e7f5ee 100%) !important;
+  color: #0b2319 !important;
+}
+
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-payment-method:disabled,
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-choice-button:disabled,
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-save-button:disabled,
