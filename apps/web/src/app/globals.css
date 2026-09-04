@@ -10282,6 +10282,40 @@ html[data-ui-theme="light"] .app-shell-root .admin-collections-page [data-slot="
     inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
 }
 
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-select-content {
+  border-color: var(--collections-light-border) !important;
+  background: #ffffff !important;
+  color: var(--collections-light-text) !important;
+  box-shadow: 0 18px 38px -26px rgba(16, 39, 29, 0.28) !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-select-item {
+  background: transparent !important;
+  color: #233c31 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-select-item[data-highlighted] {
+  background: #edf7f1 !important;
+  color: #071d16 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-select-item[data-state="checked"] {
+  background: linear-gradient(180deg, #fff8cf 0%, #eef8f1 100%) !important;
+  color: #10271d !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-select-item[data-disabled] {
+  color: #83938b !important;
+  opacity: 1 !important;
+}
+
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-select-item[data-state="checked"] :where(svg, span),
+html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-select-item[data-highlighted] :where(svg, span) {
+  color: currentColor !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-save-button:not(:disabled),
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-send-button:not(:disabled),
 html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-delete-button:not(:disabled) {

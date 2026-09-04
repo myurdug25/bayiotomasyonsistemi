@@ -2277,9 +2277,9 @@ export function CollectionsPage() {
                       <SelectTrigger className={fieldClassName}>
                         <SelectValue placeholder={method === "factory_cc" ? "Seçiniz" : "Banka seçin"} />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="collection-select-content">
                         {(method === "factory_cc" ? factoryOptions : bankOptions).map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
+                          <SelectItem key={option.value} value={option.value} className="collection-select-item">
                             {option.label}
                           </SelectItem>
                         ))}

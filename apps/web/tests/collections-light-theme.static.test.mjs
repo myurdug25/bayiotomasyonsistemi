@@ -12,6 +12,8 @@ test("collections page exposes stable light-theme hooks", () => {
     "collection-back-button",
     "collection-payment-method",
     "collection-choice-button",
+    "collection-select-content",
+    "collection-select-item",
     "collection-field-input",
     "collection-save-button",
     "collection-empty-state",
@@ -24,6 +26,16 @@ test("collections page exposes stable light-theme hooks", () => {
   ].forEach((className) => {
     assert.match(collectionsSource, new RegExp(className));
   });
+});
+
+test("collections selects keep selected item readable in light mode", () => {
+  assert.match(collectionsSource, /<SelectContent className="collection-select-content">/);
+  assert.match(collectionsSource, /<SelectItem key=\{option\.value\} value=\{option\.value\} className="collection-select-item">/);
+  assert.match(css, /\.collection-select-content/);
+  assert.match(css, /\.collection-select-item\[data-highlighted\]/);
+  assert.match(css, /\.collection-select-item\[data-state="checked"\]/);
+  assert.match(css, /\.collection-select-item\[data-state="checked"\] \{\s*background:\s*linear-gradient\(180deg, #fff8cf 0%, #eef8f1 100%\) !important;[\s\S]*?color:\s*#10271d !important;/);
+  assert.match(css, /\.collection-select-item\[data-state="checked"\] :where\(svg, span\)/);
 });
 
 test("collections payment cards are styled from real selected state", () => {
