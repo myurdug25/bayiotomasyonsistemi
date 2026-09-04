@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Users\UserPermissionService;
 use App\Support\CustomerFeaturePermissions;
 use App\Support\MenuPermissions;
+use App\Support\Products\ProductSearchCacheRevision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -238,6 +239,9 @@ class ModeratorManagementController extends Controller
                 $dealer->forceFill(['meta' => $meta])->save();
             }
         });
+        if ($batumExchangeRate !== null || $batumExchangeMultiplier !== null) {
+            ProductSearchCacheRevision::bump();
+        }
 
         $settingsDealer = $dealers->first()?->fresh();
 

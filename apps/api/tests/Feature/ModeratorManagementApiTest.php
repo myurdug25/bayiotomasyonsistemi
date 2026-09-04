@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\StockSummary;
 use App\Models\User;
 use App\Support\MenuPermissions;
+use App\Support\Products\ProductSearchCacheRevision;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -92,6 +93,26 @@ class ModeratorManagementApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('system_settings.batum_exchange_rate', '17.8571')
             ->assertJsonPath('system_settings.batum_exchange_multiplier', '0.0560');
+    }
+
+    public function test_updating_batum_exchange_settings_refreshes_product_search_prices(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $this->createDealer('DLR-BATUM-CACHE-001');
+        $admin = $this->createUserWithRole('admin', null, [
+            'menu_permissions' => ['moderator'],
+        ]);
+        $before = ProductSearchCacheRevision::current();
+
+        $this->actingAs($admin)
+            ->patchJson('/api/moderator/system-settings', [
+                'batum_exchange_rate' => '15,3846',
+                'batum_exchange_multiplier' => '0,065',
+            ])
+            ->assertOk();
+
+        $this->assertNotSame($before, ProductSearchCacheRevision::current());
     }
 
     public function test_global_admin_can_update_batum_exchange_settings_without_complaint_recipient(): void

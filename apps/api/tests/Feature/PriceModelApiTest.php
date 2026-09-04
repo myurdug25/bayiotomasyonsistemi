@@ -12,6 +12,7 @@ use App\Models\ProductCampaignPrice;
 use App\Models\Role;
 use App\Models\StockSummary;
 use App\Models\User;
+use App\Support\Products\ProductSearchCacheRevision;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -200,6 +201,75 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('data.0.price_cards.1.code', 'PRK')
             ->assertJsonPath('data.0.price_cards.1.label', 'Perakende Satış')
             ->assertJsonPath('data.0.price_cards.1.price', '193.57');
+    }
+
+    public function test_batum_price_cards_follow_updated_exchange_multiplier_after_cache_refresh(): void
+    {
+        $dealer = $this->createDealer('DLR-PRC-BATUM-CARDS');
+        $dealer->forceFill([
+            'meta' => [
+                'system_settings' => [
+                    'batum_exchange_rate' => '20.0000',
+                    'batum_exchange_multiplier' => '0.0500',
+                ],
+            ],
+        ])->save();
+        $user = $this->createUserWithRole('point', $dealer);
+        $user->forceFill([
+            'branch_code' => 'BATUM',
+            'region_code' => 'BATUM',
+            'menu_permissions' => ['search'],
+        ])->save();
+        [, $product] = $this->createCustomerAndProduct($dealer);
+
+        $aPriceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $f1PriceListId = (int) DB::table('price_lists')->insertGetId([
+            'code' => 'F1',
+            'name' => 'Logo F1 Usta',
+            'discount_rate' => 0,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $dealer->update(['price_list_id' => $aPriceListId]);
+        DB::table('base_prices')->insert([
+            [
+                'price_list_id' => $aPriceListId,
+                'product_id' => $product->id,
+                'list_price' => 100.00,
+                'currency' => 'TRY',
+                'updated_at' => now(),
+            ],
+            [
+                'price_list_id' => $f1PriceListId,
+                'product_id' => $product->id,
+                'list_price' => 100.00,
+                'currency' => 'TRY',
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku)
+            ->assertOk()
+            ->assertJsonPath('data.0.price_cards.0.price', '5.00')
+            ->assertJsonPath('data.0.price_cards.0.currency', 'GEL');
+
+        $dealer->forceFill([
+            'meta' => [
+                'system_settings' => [
+                    'batum_exchange_rate' => '10.0000',
+                    'batum_exchange_multiplier' => '0.1000',
+                ],
+            ],
+        ])->save();
+        ProductSearchCacheRevision::bump();
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku)
+            ->assertOk()
+            ->assertJsonPath('data.0.price_cards.0.price', '10.00')
+            ->assertJsonPath('data.0.price_cards.0.currency', 'GEL');
     }
 
     public function test_customer_login_can_only_checkout_with_one_f_even_when_extra_sale_types_are_assigned(): void
@@ -1092,7 +1162,7 @@ class PriceModelApiTest extends TestCase
             'quantity' => 1,
         ])->assertOk()
             ->assertJsonPath('cart.currency', 'GEL')
-            ->assertJsonPath('items.0.unit_price', '7.26')
+            ->assertJsonPath('items.0.unit_price', '6.91')
             ->assertJsonPath('items.0.currency', 'GEL');
     }
 
@@ -1140,8 +1210,8 @@ class PriceModelApiTest extends TestCase
         $this->getJson('/api/products/search?q=cs0040&limit=20')
             ->assertOk()
             ->assertJsonPath('data.0.id', $product->id)
-            ->assertJsonPath('data.0.net_price', '10.00')
-            ->assertJsonPath('data.0.list_price', '20.00')
+            ->assertJsonPath('data.0.net_price', '9.52')
+            ->assertJsonPath('data.0.list_price', '19.04')
             ->assertJsonPath('data.0.currency', 'GEL');
     }
 

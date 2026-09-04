@@ -1446,6 +1446,7 @@ class ProductSearchController extends Controller
 
         $cacheKey = 'product-price-cards:'.md5(json_encode([
             self::SEARCH_RESPONSE_CACHE_VERSION,
+            ProductSearchCacheRevision::current(),
             $productIds,
             $user->id,
             $displayCustomer?->id,
