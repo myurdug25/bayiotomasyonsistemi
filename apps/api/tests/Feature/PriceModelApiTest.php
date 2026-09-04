@@ -564,6 +564,86 @@ class PriceModelApiTest extends TestCase
             ->assertJsonValidationErrors(['campaign_key']);
     }
 
+    public function test_batum_customer_matches_f12_logo_special_price_campaign(): void
+    {
+        $dealer = $this->createDealer('DLR-BATUM-F12-CAMPAIGN');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $f12PriceListId = (int) DB::table('price_lists')->insertGetId([
+            'code' => 'F12',
+            'name' => 'Logo F12',
+            'discount_rate' => 0,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $dealer->update(['price_list_id' => $f12PriceListId]);
+
+        DB::table('base_prices')->insert([
+            'price_list_id' => $f12PriceListId,
+            'product_id' => $product->id,
+            'list_price' => 164.06,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $batumCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-00-031',
+            'name' => 'Batum F12 Customer',
+            'is_active' => true,
+            'meta' => [],
+        ]);
+
+        $otherCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-61-031',
+            'name' => 'Other Customer',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F1'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-F12-SPECIAL-1',
+            'campaign_key' => 'logo:price:f12:batum-special',
+            'name' => 'Batum Size Özel Fiyat',
+            'condition' => null,
+            'min_quantity' => 1,
+            'unit_price' => 164.06,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12'],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$batumCustomer->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.campaigns.0.name', 'Batum Size Özel Fiyat')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 1)
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.unit_price', '9.19')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.currency', 'GEL');
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$otherCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data.0.campaigns');
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $batumCustomer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'campaign_key' => 'logo:price:f12:batum-special',
+        ])->assertOk()
+            ->assertJsonPath('items.0.unit_price', '9.19')
+            ->assertJsonPath('items.0.campaign_key', 'logo:price:f12:batum-special');
+    }
+
     public function test_logo_campaign_sync_requires_integration_key(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');

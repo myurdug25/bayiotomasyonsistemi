@@ -2606,11 +2606,13 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
       campaign_prices: [],
     };
 
-    if (isLogoCampaignPriceRow(row)) {
+    const campaignPriceReason = logoCampaignPriceReason(row, priceGroupCode);
+    if (campaignPriceReason) {
       const campaignPrice = buildLogoCampaignPrice(row, price, priceGroupCode, {
         logicalRefColumn,
         beginDateColumn,
         endDateColumn,
+        campaignPriceReason,
       });
 
       if (
@@ -2623,7 +2625,9 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
       }
 
       snapshot.set(productRef, productPrices);
-      continue;
+      if (campaignPriceReason !== "batum_f12_price") {
+        continue;
+      }
     }
 
     if (
@@ -2708,18 +2712,26 @@ function buildLogoGroupedPricePredicate(columns) {
     .join(" OR ");
 }
 
-function isLogoCampaignPriceRow(row) {
+function logoCampaignPriceReason(row, priceGroupCode) {
   const definition = normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]));
   const condition = normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"]));
   const formula = normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
   const explicitDiscount = normalizeDecimal(readFirst(row, ["DISCPER", "DISCOUNT", "DISCRATE", "discount_rate"]));
   const explicitQuantity = normalizeInteger(readFirst(row, ["MIN_QUANTITY", "MINQTY", "CONDQTY", "MINAMOUNT", "MIN_QUANTITY_", "min_quantity"]));
 
-  return Boolean(condition) ||
+  if (Boolean(condition) ||
     Boolean(formula) ||
     (explicitDiscount !== null && explicitDiscount > 0) ||
     (explicitQuantity !== null && explicitQuantity > 1) ||
-    /\b(KAMPANYA(?:SI)?|PROMOSYON|ISKONTO|İSKONTO)\b/iu.test(definition ?? "");
+    /\b(KAMPANYA(?:SI)?|PROMOSYON|ISKONTO|İSKONTO)\b/iu.test(definition ?? "")) {
+    return "conditional_price";
+  }
+
+  if (priceGroupCode === "F12") {
+    return "batum_f12_price";
+  }
+
+  return null;
 }
 
 function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
@@ -2740,7 +2752,9 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
       .join(":");
 
   const name =
-    normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
+    priceGroupCode === "F12"
+      ? "Batum Size Ozel Fiyat"
+      : normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
     `Logo ${priceGroupCode ?? "Genel"} Kampanya Fiyati`;
   const minQuantity = resolveLogoCampaignMinQuantity(row, condition);
   const campaignKey = normalizeLogoCampaignKey(priceGroupCode, sourceReference, name);

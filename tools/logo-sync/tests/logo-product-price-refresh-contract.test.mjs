@@ -73,3 +73,10 @@ test("Logo conditional price rows are sent as campaign prices", () => {
   assert.match(productsSource, /resolveLogoCampaignMinQuantity/);
   assert.doesNotMatch(productsSource, /if \(isLogoCampaignPriceRow\(row\)\) \{\s*continue;\s*\}/);
 });
+
+test("Logo F12 price rows are also sent as Batum special campaign prices", () => {
+  assert.match(productsSource, /logoCampaignPriceReason/);
+  assert.match(productsSource, /batum_f12_price/);
+  assert.match(productsSource, /priceGroupCode === "F12"/);
+  assert.match(productsSource, /Batum Size Ozel Fiyat/);
+});

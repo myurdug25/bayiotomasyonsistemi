@@ -28,17 +28,16 @@ class CustomerPriceListResolver
                     return null;
                 }
 
+                if ($this->isBatumCustomer($customer)) {
+                    return $this->priceListIdByCode('F12');
+                }
+
                 $groupCode = $this->resolveGroupCode(is_array($customer->meta) ? $customer->meta : []);
                 if ($groupCode === null) {
                     return null;
                 }
 
-                $id = PriceList::query()
-                    ->whereRaw('UPPER(code) = ?', [$groupCode])
-                    ->where('is_active', true)
-                    ->value('id');
-
-                return $id !== null ? (int) $id : null;
+                return $this->priceListIdByCode($groupCode);
             }
         );
 
@@ -85,5 +84,32 @@ class CustomerPriceListResolver
         }
 
         return null;
+    }
+
+    private function priceListIdByCode(string $code): ?int
+    {
+        $id = PriceList::query()
+            ->whereRaw('UPPER(code) = ?', [mb_strtoupper($code, 'UTF-8')])
+            ->where('is_active', true)
+            ->value('id');
+
+        return $id !== null ? (int) $id : null;
+    }
+
+    private function isBatumCustomer(Customer $customer): bool
+    {
+        $codeSegments = preg_split('/[^0-9]+/', trim((string) $customer->code), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (($codeSegments[1] ?? null) === '00') {
+            return true;
+        }
+
+        foreach (['branch_code', 'branch_name', 'region_code', 'region_name'] as $field) {
+            $value = mb_strtoupper(trim((string) $customer->{$field}), 'UTF-8');
+            if ($value !== '' && str_contains($value, 'BATUM')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

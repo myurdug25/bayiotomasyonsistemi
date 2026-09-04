@@ -61,6 +61,7 @@ class CustomerCampaignGroupResolver
 
         if ($this->isBatumCustomer($customer)) {
             $groups['BATUM'] = 'BATUM';
+            $groups['F12'] = 'F12';
         }
 
         return array_values($groups);

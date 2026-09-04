@@ -21,4 +21,18 @@ class CustomerCampaignGroupResolverTest extends TestCase
         $this->assertContains('F2', $groups);
         $this->assertContains('BATUM', $groups);
     }
+
+    public function test_batum_customer_code_adds_f12_campaign_group(): void
+    {
+        $customer = new Customer([
+            'code' => '120-00-031',
+            'name' => 'Batum F12 Cari',
+            'meta' => [],
+        ]);
+
+        $groups = (new CustomerCampaignGroupResolver)->resolveAll($customer);
+
+        $this->assertContains('BATUM', $groups);
+        $this->assertContains('F12', $groups);
+    }
 }
