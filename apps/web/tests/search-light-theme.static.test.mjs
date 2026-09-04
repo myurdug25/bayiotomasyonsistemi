@@ -40,8 +40,11 @@ test("search table stays compact without clipping stock shelf labels", () => {
   assert.match(css, /nth-child\(3\) p:first-child \{\s*font-size:\s*10px !important/s);
   assert.match(css, /nth-child\(4\) p \{\s*font-size:\s*12px !important/s);
   assert.match(css, /\.product-list-price-cell p \{\s*width:[\s\S]*?font-size:\s*11px !important/s);
-  assert.match(css, /\.product-stock-branch span:first-child \{\s*color:[\s\S]*?font-size:\s*12px !important;[\s\S]*?font-weight:\s*900 !important/s);
-  assert.match(css, /\.product-shelf-badge \{\s*width:[\s\S]*?font-size:\s*9px !important;[\s\S]*?font-weight:\s*900 !important;[\s\S]*?line-height:\s*10px !important/s);
+  assert.match(css, /\.product-stock-branch span:first-child \{\s*color:\s*#076342 !important;\s*\}/);
+  assert.match(css, /\.product-shelf-badge \{\s*border-color:\s*#aad8d4 !important;[\s\S]*?background:\s*#dff5f1 !important;[\s\S]*?color:\s*#22544e !important;\s*\}/);
+  assert.doesNotMatch(css, /product-stock-branch \{[\s\S]{0,220}(gap|height|padding-block):/);
+  assert.doesNotMatch(css, /product-shelf-badge \{[\s\S]{0,360}(width|max-width|overflow|padding|font-size|font-weight|line-height|text-overflow|white-space):/);
+  assert.doesNotMatch(css, /product-shelf-badge > span/);
   assert.doesNotMatch(css, /product-stock-branch span:first-child \{[\s\S]{0,120}font-size:\s*13\.5px !important/);
   assert.doesNotMatch(css, /product-shelf-badge \{[\s\S]{0,260}font-weight:\s*650 !important/);
   assert.match(css, /font-size:\s*9px !important/);

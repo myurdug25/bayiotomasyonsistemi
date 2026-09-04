@@ -9910,38 +9910,16 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-list-pr
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-branch {
   background: #f5fbf7 !important;
   color: var(--search-light-text) !important;
-  gap: 2px !important;
-  min-height: 34px !important;
-  height: 34px !important;
-  padding-block: 0.1rem !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-branch span:first-child {
   color: #076342 !important;
-  font-size: 12px !important;
-  font-weight: 900 !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-badge {
-  width: max-content !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-  overflow: visible !important;
-  padding: 1px 6px !important;
   border-color: #aad8d4 !important;
   background: #dff5f1 !important;
   color: #22544e !important;
-  font-size: 9px !important;
-  font-weight: 900 !important;
-  line-height: 10px !important;
-  text-overflow: clip !important;
-  white-space: nowrap !important;
-}
-
-html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-badge > span {
-  overflow: visible !important;
-  text-overflow: clip !important;
-  white-space: nowrap !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results-status-row {
