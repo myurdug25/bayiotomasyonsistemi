@@ -4,11 +4,14 @@ namespace App\Services\Pricing;
 
 use App\Models\CampaignProduct;
 use App\Models\Customer;
+use App\Models\Product;
 use App\Models\ProductCampaignPrice;
+use App\Models\ProductCodeAlias;
 use App\Models\User;
 use App\Services\Campaign\CampaignWindowSelector;
 use App\Services\Campaign\CustomerCampaignGroupResolver;
 use App\Support\Pricing\DisplayCurrency;
+use App\Support\Products\ProductCodeNormalizer;
 use Illuminate\Support\Collection;
 
 class ProductCampaignPricing
@@ -52,49 +55,56 @@ class ProductCampaignPricing
                 ->values()
                 ->all());
 
+        $campaignProductLookup = $this->campaignProductLookup($productIds);
         $newCampaignProducts = CampaignProduct::with('campaign')
-            ->whereIn('product_id', $productIds)
+            ->where(function ($query) use ($productIds, $campaignProductLookup): void {
+                $query->whereIn('product_id', $productIds);
+
+                if ($campaignProductLookup['raw_codes'] !== []) {
+                    $query->orWhereIn('product_sku', $campaignProductLookup['raw_codes']);
+                }
+            })
             ->whereHas('campaign', function ($query) {
                 $query->active();
             })
             ->get()
             ->filter(function ($cp) use ($customerGroups) {
                 return $cp->campaign && $cp->campaign->matchesAnyGroup($customerGroups);
-            })
-            ->groupBy('product_id');
+            });
 
-        $newCampaignProducts->each(function (Collection $campaignProducts, $productId) use (&$existing) {
-            $selectedCampaigns = $this->windowSelector->select(
-                $campaignProducts->pluck('campaign')->unique('id')->values()
-            );
-            $selectedCampaignIds = $selectedCampaigns->pluck('id')->all();
+        $this->groupCampaignProductsByProduct($newCampaignProducts, $campaignProductLookup)
+            ->each(function (Collection $campaignProducts, $productId) use (&$existing) {
+                $selectedCampaigns = $this->windowSelector->select(
+                    $campaignProducts->pluck('campaign')->unique('id')->values()
+                );
+                $selectedCampaignIds = $selectedCampaigns->pluck('id')->all();
 
-            // Group by campaign code in case a product is in multiple campaigns
-            $formattedCampaigns = $campaignProducts
-                ->filter(fn ($cp): bool => in_array($cp->campaign_id, $selectedCampaignIds, true))
-                ->groupBy(fn ($cp) => $cp->campaign->code)
-                ->map(function (Collection $cps) {
-                    $campaign = $cps->first()->campaign;
+                // Group by campaign code in case a product is in multiple campaigns
+                $formattedCampaigns = $campaignProducts
+                    ->filter(fn ($cp): bool => in_array($cp->campaign_id, $selectedCampaignIds, true))
+                    ->groupBy(fn ($cp) => $cp->campaign->code)
+                    ->map(function (Collection $cps) {
+                        $campaign = $cps->first()->campaign;
 
-                    return [
-                        'key' => $campaign->code,
-                        'name' => $campaign->name,
-                        'tiers' => [
-                            [
-                                'min_quantity' => $campaign->target_quantity ?: 1,
-                                'unit_price' => null,
-                                'currency' => 'TRY',
-                                'discount_percent' => $campaign->discount_percent,
+                        return [
+                            'key' => $campaign->code,
+                            'name' => $campaign->name,
+                            'tiers' => [
+                                [
+                                    'min_quantity' => $campaign->target_quantity ?: 1,
+                                    'unit_price' => null,
+                                    'currency' => 'TRY',
+                                    'discount_percent' => $campaign->discount_percent,
+                                ],
                             ],
-                        ],
-                    ];
-                })
-                ->values()
-                ->all();
+                        ];
+                    })
+                    ->values()
+                    ->all();
 
-            $existingForProduct = $existing->get($productId, []);
-            $existing->put($productId, array_merge($existingForProduct, $formattedCampaigns));
-        });
+                $existingForProduct = $existing->get($productId, []);
+                $existing->put($productId, array_merge($existingForProduct, $formattedCampaigns));
+            });
 
         return $existing;
     }
@@ -142,12 +152,20 @@ class ProductCampaignPricing
             return null;
         }
 
+        $campaignProductLookup = $this->campaignProductLookup([$productId]);
         $campaignProducts = CampaignProduct::query()
             ->with('campaign')
-            ->where('product_id', $productId)
+            ->where(function ($query) use ($productId, $campaignProductLookup): void {
+                $query->where('product_id', $productId);
+
+                if ($campaignProductLookup['raw_codes'] !== []) {
+                    $query->orWhereIn('product_sku', $campaignProductLookup['raw_codes']);
+                }
+            })
             ->whereHas('campaign', fn ($query) => $query->active())
             ->get()
-            ->filter(fn (CampaignProduct $cp): bool => $cp->campaign
+            ->filter(fn (CampaignProduct $cp): bool => $this->campaignProductMatchesProduct($cp, $productId, $campaignProductLookup)
+                && $cp->campaign
                 && $cp->campaign->matchesAnyGroup($this->groupResolver->resolveAll($customer)));
         $selectedCampaignIds = $this->windowSelector
             ->select($campaignProducts->pluck('campaign')->unique('id')->values())
@@ -240,5 +258,100 @@ class ProductCampaignPricing
         $normalized = mb_strtoupper(trim((string) $value), 'UTF-8');
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    /**
+     * @param  list<int>  $productIds
+     * @return array{raw_codes:list<string>, product_ids_by_normalized_code:array<string, list<int>>}
+     */
+    private function campaignProductLookup(array $productIds): array
+    {
+        $rawCodes = [];
+        $productIdsByNormalizedCode = [];
+
+        $remember = static function (int $productId, mixed $code) use (&$rawCodes, &$productIdsByNormalizedCode): void {
+            $raw = trim((string) $code);
+            if ($raw === '') {
+                return;
+            }
+
+            $rawCodes[$raw] = $raw;
+            $normalized = ProductCodeNormalizer::normalize($raw);
+            if ($normalized === null) {
+                return;
+            }
+
+            $rawCodes[$normalized] = $normalized;
+            $productIdsByNormalizedCode[$normalized] ??= [];
+            $productIdsByNormalizedCode[$normalized][$productId] = $productId;
+        };
+
+        Product::query()
+            ->whereIn('id', $productIds)
+            ->get(['id', 'sku'])
+            ->each(fn (Product $product) => $remember((int) $product->id, $product->sku));
+
+        ProductCodeAlias::query()
+            ->whereIn('product_id', $productIds)
+            ->get(['product_id', 'code', 'normalized_code'])
+            ->each(function (ProductCodeAlias $alias) use ($remember): void {
+                $remember((int) $alias->product_id, $alias->code);
+                $remember((int) $alias->product_id, $alias->normalized_code);
+            });
+
+        return [
+            'raw_codes' => array_values($rawCodes),
+            'product_ids_by_normalized_code' => array_map(
+                static fn (array $ids): array => array_values($ids),
+                $productIdsByNormalizedCode
+            ),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, CampaignProduct>  $campaignProducts
+     * @param  array{product_ids_by_normalized_code:array<string, list<int>>}  $lookup
+     * @return Collection<int, Collection<int, CampaignProduct>>
+     */
+    private function groupCampaignProductsByProduct(Collection $campaignProducts, array $lookup): Collection
+    {
+        $grouped = collect();
+
+        foreach ($campaignProducts as $campaignProduct) {
+            foreach ($this->matchingProductIds($campaignProduct, $lookup) as $productId) {
+                $items = $grouped->get($productId, collect());
+                $items->push($campaignProduct);
+                $grouped->put($productId, $items);
+            }
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * @param  array{product_ids_by_normalized_code:array<string, list<int>>}  $lookup
+     * @return list<int>
+     */
+    private function matchingProductIds(CampaignProduct $campaignProduct, array $lookup): array
+    {
+        $productIds = [];
+        if ($campaignProduct->product_id !== null) {
+            $productIds[(int) $campaignProduct->product_id] = (int) $campaignProduct->product_id;
+        }
+
+        $normalizedSku = ProductCodeNormalizer::normalize($campaignProduct->product_sku);
+        foreach ($lookup['product_ids_by_normalized_code'][$normalizedSku] ?? [] as $productId) {
+            $productIds[(int) $productId] = (int) $productId;
+        }
+
+        return array_values($productIds);
+    }
+
+    /**
+     * @param  array{product_ids_by_normalized_code:array<string, list<int>>}  $lookup
+     */
+    private function campaignProductMatchesProduct(CampaignProduct $campaignProduct, int $productId, array $lookup): bool
+    {
+        return in_array($productId, $this->matchingProductIds($campaignProduct, $lookup), true);
     }
 }

@@ -9,6 +9,7 @@ use App\Models\Dealer;
 use App\Models\LedgerEntry;
 use App\Models\Product;
 use App\Models\ProductCampaignPrice;
+use App\Models\ProductCodeAlias;
 use App\Models\Role;
 use App\Models\StockSummary;
 use App\Models\User;
@@ -573,6 +574,61 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('data.0.code', 'F1-NEW-CUSTOMER');
     }
 
+    public function test_logo_group_campaign_matches_product_code_alias_when_campaign_product_id_is_missing(): void
+    {
+        $dealer = $this->createDealer('DLR-CAMPAIGN-ALIAS');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [$customer, $product] = $this->createCustomerAndProduct($dealer, $user);
+        $customer->update(['meta' => ['price_group' => 'F12']]);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 100,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+        ProductCodeAlias::query()->create([
+            'product_id' => $product->id,
+            'code' => 'PWS-OIL-016',
+            'normalized_code' => 'PWSOIL016',
+            'code_type' => 'other',
+            'source' => 'logo',
+        ]);
+        $campaign = Campaign::query()->create([
+            'source_reference' => 'LOGO-CAMPAIGN-F12-ALIAS',
+            'code' => 'F12-ALIAS',
+            'name' => 'F12 Alias Kampanyasi',
+            'customer_group' => 'F12',
+            'target_quantity' => 5,
+            'discount_percent' => 10,
+            'group_field' => 'specode',
+            'is_active' => true,
+        ]);
+        CampaignProduct::query()->create([
+            'campaign_id' => $campaign->id,
+            'product_id' => null,
+            'product_sku' => 'PWS-OIL-016',
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$customer->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.campaigns.0.name', 'F12 Alias Kampanyasi');
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 5,
+            'campaign_key' => 'F12-ALIAS',
+        ])->assertOk()
+            ->assertJsonPath('items.0.discount_rate', '10.00')
+            ->assertJsonPath('items.0.campaign_key', 'F12-ALIAS');
+    }
+
     public function test_logo_campaign_price_tiers_are_limited_to_matching_customer_price_group(): void
     {
         $dealer = $this->createDealer('DLR-CAMPAIGN-PRICE-TIER-GROUP');
@@ -743,6 +799,40 @@ class PriceModelApiTest extends TestCase
             ->postJson('/api/integrations/logo/campaigns/sync', $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['campaigns.0.products']);
+    }
+
+    public function test_logo_campaign_sync_links_products_by_code_alias(): void
+    {
+        config()->set('integrations.logo.product_sync_key', 'campaign-test-key');
+
+        $dealer = $this->createDealer('DLR-CAMPAIGN-SYNC-ALIAS');
+        $user = $this->createUserWithRole('salesperson', $dealer);
+        [, $product] = $this->createCustomerAndProduct($dealer, $user);
+        ProductCodeAlias::query()->create([
+            'product_id' => $product->id,
+            'code' => 'PWS-OIL-016',
+            'normalized_code' => 'PWSOIL016',
+            'code_type' => 'other',
+            'source' => 'logo',
+        ]);
+
+        $this->withHeader('X-Integration-Key', 'campaign-test-key')
+            ->postJson('/api/integrations/logo/campaigns/sync', ['campaigns' => [[
+                'source_reference' => 'SYNC-ALIAS-1',
+                'code' => 'F12-ALIAS',
+                'name' => 'F12 Alias Kampanyasi',
+                'customer_group' => 'F12',
+                'target_quantity' => 5,
+                'discount_percent' => 10,
+                'is_active' => true,
+                'products' => ['PWS-OIL-016'],
+            ]]])
+            ->assertOk();
+
+        $this->assertDatabaseHas('campaign_products', [
+            'product_sku' => 'PWS-OIL-016',
+            'product_id' => $product->id,
+        ]);
     }
 
     public function test_logo_campaign_sync_accepts_passive_snapshot_without_products_and_deactivates_campaign(): void

@@ -8,10 +8,13 @@ use App\Models\Campaign;
 use App\Models\CampaignProduct;
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\ProductCodeAlias;
 use App\Services\Campaign\CampaignProgressService;
+use App\Support\Products\ProductCodeNormalizer;
 use App\Support\Products\ProductSearchCacheRevision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class CampaignController extends Controller
@@ -186,24 +189,26 @@ class CampaignController extends Controller
                 ->whereIn('product_sku', $chunk->all())
                 ->delete());
 
+        $productIdsBySku = $this->productIdsByCampaignSku($incomingSkus->all());
+
+        $timestamp = now();
+        $incomingSkus
+            ->filter(fn (string $sku): bool => $existingLookup->has($sku) && $productIdsBySku->has($sku))
+            ->each(fn (string $sku): int => $campaign->campaignProducts()
+                ->where('product_sku', $sku)
+                ->where(function ($query) use ($productIdsBySku, $sku): void {
+                    $query->whereNull('product_id')
+                        ->orWhere('product_id', '!=', $productIdsBySku->get($sku));
+                })
+                ->update([
+                    'product_id' => $productIdsBySku->get($sku),
+                    'updated_at' => $timestamp,
+                ]));
+
         $toInsert = $incomingSkus
             ->reject(fn (string $sku): bool => $existingLookup->has($sku))
             ->values();
 
-        if ($toInsert->isEmpty()) {
-            return;
-        }
-
-        $productIdsBySku = collect();
-        $toInsert->chunk(1000)->each(function ($chunk) use (&$productIdsBySku): void {
-            $productIdsBySku = $productIdsBySku->merge(
-                Product::query()
-                    ->whereIn('sku', $chunk->all())
-                    ->pluck('id', 'sku')
-            );
-        });
-
-        $timestamp = now();
         $toInsert
             ->map(fn (string $sku): array => [
                 'campaign_id' => $campaign->id,
@@ -214,6 +219,55 @@ class CampaignController extends Controller
             ])
             ->chunk(1000)
             ->each(fn ($chunk) => CampaignProduct::query()->insertOrIgnore($chunk->all()));
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return Collection<string, int>
+     */
+    private function productIdsByCampaignSku(array $skus): Collection
+    {
+        $productIdsBySku = collect();
+
+        collect($skus)->chunk(1000)->each(function ($chunk) use (&$productIdsBySku): void {
+            $productIdsBySku = $productIdsBySku->merge(
+                Product::query()
+                    ->whereIn('sku', $chunk->all())
+                    ->pluck('id', 'sku')
+            );
+        });
+
+        $missingSkus = collect($skus)
+            ->reject(fn (string $sku): bool => $productIdsBySku->has($sku))
+            ->values();
+
+        if ($missingSkus->isEmpty()) {
+            return $productIdsBySku;
+        }
+
+        $normalizedToSku = $missingSkus
+            ->mapWithKeys(function (string $sku): array {
+                $normalized = ProductCodeNormalizer::normalize($sku);
+
+                return $normalized === null ? [] : [$normalized => $sku];
+            });
+
+        if ($normalizedToSku->isEmpty()) {
+            return $productIdsBySku;
+        }
+
+        ProductCodeAlias::query()
+            ->whereIn('normalized_code', $normalizedToSku->keys()->all())
+            ->orderBy('id')
+            ->get(['product_id', 'normalized_code'])
+            ->each(function (ProductCodeAlias $alias) use (&$productIdsBySku, $normalizedToSku): void {
+                $sku = $normalizedToSku->get($alias->normalized_code);
+                if (is_string($sku) && ! $productIdsBySku->has($sku)) {
+                    $productIdsBySku->put($sku, (int) $alias->product_id);
+                }
+            });
+
+        return $productIdsBySku;
     }
 
     private function campaignPayload(Campaign $campaign): array
