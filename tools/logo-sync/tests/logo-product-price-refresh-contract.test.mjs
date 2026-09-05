@@ -79,6 +79,15 @@ test("plain Logo F12 price rows are not sent as Batum campaign prices", () => {
   assert.doesNotMatch(productsSource, /if \(priceGroupCode === "F12"\) \{\s*return "batum_f12_price";\s*\}/);
 });
 
+test("product sync sends empty campaign price snapshots so stale PRCLIST campaigns deactivate", () => {
+  assert.match(productsSource, /Array\.isArray\(priceSnapshot\?\.campaign_prices\)/);
+  assert.doesNotMatch(
+    productsSource,
+    /Array\.isArray\(priceSnapshot\?\.campaign_prices\) && priceSnapshot\.campaign_prices\.length > 0/
+  );
+  assert.match(productsSource, /record\.campaign_prices = priceSnapshot\.campaign_prices/);
+});
+
 test("Logo price helper keeps plain F12 as list price and builds conditional tiers from real PRCLIST rows", async () => {
   const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
   const f12Row = {

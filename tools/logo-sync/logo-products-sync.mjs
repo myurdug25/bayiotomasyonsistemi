@@ -4092,7 +4092,7 @@ function mapProductRow(
     }));
   }
 
-  if (Array.isArray(priceSnapshot?.campaign_prices) && priceSnapshot.campaign_prices.length > 0) {
+  if (Array.isArray(priceSnapshot?.campaign_prices)) {
     record.campaign_prices = priceSnapshot.campaign_prices;
   }
 
