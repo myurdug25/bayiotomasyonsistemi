@@ -97,6 +97,59 @@ class LogoProductSyncApiTest extends TestCase
         );
     }
 
+    public function test_logo_product_sync_accepts_price_list_campaign_tiers_when_campaign_card_sync_is_disabled(): void
+    {
+        config(['integrations.logo.campaign_sync_enabled' => false]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'records' => [[
+                    'external_ref' => '9001',
+                    'sku' => 'PWS-OIL-016',
+                    'name' => 'Batum Kampanya Yağı',
+                    'campaign_prices' => [
+                        [
+                            'source_reference' => 'PRCLIST-F12-9001',
+                            'campaign_key' => 'logo:f12:9001',
+                            'name' => 'Batum Size Ozel Fiyat',
+                            'min_quantity' => 1,
+                            'unit_price' => 225,
+                            'currency' => 'TRY',
+                            'is_active' => true,
+                            'meta' => ['price_group' => 'F12', 'source' => 'logo_prclist'],
+                        ],
+                        [
+                            'source_reference' => 'PRCLIST-F12-9001-5',
+                            'campaign_key' => 'logo:f12:9001-5',
+                            'name' => 'Logo F12 Kampanya Fiyati',
+                            'condition' => 'p1>4',
+                            'min_quantity' => 5,
+                            'unit_price' => 200,
+                            'currency' => 'TRY',
+                            'is_active' => true,
+                            'meta' => ['price_group' => 'F12', 'source' => 'logo_prclist'],
+                        ],
+                    ],
+                ]],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('summary.campaign_prices_synced', 2);
+
+        $product = Product::query()->where('sku', 'PWS-OIL-016')->firstOrFail();
+
+        $this->assertSame(
+            [1, 5],
+            ProductCampaignPrice::query()
+                ->where('product_id', $product->id)
+                ->orderBy('min_quantity')
+                ->pluck('min_quantity')
+                ->all()
+        );
+    }
+
     public function test_logo_product_sync_upserts_catalog_stock_and_base_prices(): void
     {
         $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
