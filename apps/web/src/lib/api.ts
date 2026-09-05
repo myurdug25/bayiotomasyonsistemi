@@ -3654,8 +3654,20 @@ export async function markNotificationRead(notificationId: number | string) {
   });
 }
 
+export async function markAllNotificationsRead() {
+  return apiFetch<{ updated_count: number; unread_count: number }>("/api/notifications/read-all", {
+    method: "PATCH",
+  });
+}
+
 export async function archiveNotification(notificationId: number | string) {
   return apiFetch<{ data: AppNotificationDto }>(`/api/notifications/${notificationId}/archive`, {
     method: "PATCH",
+  });
+}
+
+export async function archiveAllNotifications() {
+  return apiFetch<{ archived_count: number; unread_count: number }>("/api/notifications", {
+    method: "DELETE",
   });
 }

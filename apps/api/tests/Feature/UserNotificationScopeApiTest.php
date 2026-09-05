@@ -95,6 +95,62 @@ class UserNotificationScopeApiTest extends TestCase
             ->assertJsonPath('unread_count', 2);
     }
 
+    public function test_user_can_mark_all_visible_notifications_as_read(): void
+    {
+        $dealer = $this->createDealer('DLR-NOTIFY-READ-ALL');
+        $manager = $this->createUser('dealer_admin', $dealer, [
+            'username' => 'mudur.erzurum.read',
+            'branch_code' => 'ERZURUM',
+            'menu_permissions' => ['warehouse'],
+        ]);
+
+        $this->notification($manager, $dealer, 'Erzurum okunacak', '1');
+        $hidden = $this->notification($manager, $dealer, 'Batum gizli kalacak', '4');
+
+        $this->actingAs($manager)
+            ->patchJson('/api/notifications/read-all')
+            ->assertOk()
+            ->assertJsonPath('updated_count', 1)
+            ->assertJsonPath('unread_count', 0);
+
+        $this->assertDatabaseHas('user_notifications', [
+            'title' => 'Erzurum okunacak',
+            'status' => 'read',
+        ]);
+        $this->assertDatabaseHas('user_notifications', [
+            'id' => $hidden->id,
+            'status' => 'unread',
+        ]);
+    }
+
+    public function test_user_can_archive_all_visible_notifications(): void
+    {
+        $dealer = $this->createDealer('DLR-NOTIFY-ARCHIVE-ALL');
+        $manager = $this->createUser('dealer_admin', $dealer, [
+            'username' => 'mudur.erzurum.archive',
+            'branch_code' => 'ERZURUM',
+            'menu_permissions' => ['warehouse'],
+        ]);
+
+        $visible = $this->notification($manager, $dealer, 'Erzurum silinecek', '1');
+        $hidden = $this->notification($manager, $dealer, 'Batum gizli kalacak', '4');
+
+        $this->actingAs($manager)
+            ->deleteJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('archived_count', 1)
+            ->assertJsonPath('unread_count', 0);
+
+        $this->assertDatabaseHas('user_notifications', [
+            'id' => $visible->id,
+            'status' => 'archived',
+        ]);
+        $this->assertDatabaseHas('user_notifications', [
+            'id' => $hidden->id,
+            'status' => 'unread',
+        ]);
+    }
+
     private function createDealer(string $code): Dealer
     {
         return Dealer::query()->create([
@@ -120,9 +176,9 @@ class UserNotificationScopeApiTest extends TestCase
         return $user;
     }
 
-    private function notification(User $user, Dealer $dealer, string $title, string $warehouseCode): void
+    private function notification(User $user, Dealer $dealer, string $title, string $warehouseCode): UserNotification
     {
-        UserNotification::query()->create([
+        return UserNotification::query()->create([
             'user_id' => $user->id,
             'dealer_id' => $dealer->id,
             'type' => 'order.created',

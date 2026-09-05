@@ -128,6 +128,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/realtime/events', RealtimeEventStreamController::class)
         ->middleware('throttle:realtime-stream');
     Route::get('/notifications', [UserNotificationController::class, 'index']);
+    Route::patch('/notifications/read-all', [UserNotificationController::class, 'readAll']);
+    Route::delete('/notifications', [UserNotificationController::class, 'archiveAll']);
     Route::patch('/notifications/{notification}/read', [UserNotificationController::class, 'read']);
     Route::patch('/notifications/{notification}/archive', [UserNotificationController::class, 'archive']);
     Route::patch('/profile', [ProfileController::class, 'update']);

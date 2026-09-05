@@ -37,6 +37,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Sun,
+  Trash2,
   UserPlus,
   UserRound,
   UserRoundCog,
@@ -58,9 +59,11 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   getTcmbMarketRates,
+  archiveAllNotifications,
   archiveNotification,
   listCustomers,
   listNotifications,
+  markAllNotificationsRead,
   markNotificationRead,
   type AppNotificationDto,
   type ApiUser,
@@ -1924,9 +1927,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       await queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
+  const markAllNotificationsReadMutation = useMutation({
+    mutationFn: markAllNotificationsRead,
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      toast.success(
+        response.updated_count > 0
+          ? `${response.updated_count} bildirim okundu yapıldı`
+          : "Okunmamış bildirim yok"
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Bildirimler güncellenemedi");
+    },
+  });
+  const archiveAllNotificationsMutation = useMutation({
+    mutationFn: archiveAllNotifications,
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      toast.success(
+        response.archived_count > 0
+          ? `${response.archived_count} bildirim silindi`
+          : "Silinecek bildirim yok"
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Bildirimler silinemedi");
+    },
+  });
   const notifications = notificationsQuery.data?.data ?? [];
   const unreadNotificationCount =
     notificationsQuery.data?.unread_count ?? notifications.filter((notification) => notification.status === "unread").length;
+  const notificationBulkActionPending =
+    markAllNotificationsReadMutation.isPending || archiveAllNotificationsMutation.isPending;
   const cartLineCount = cartData?.totals.line_count ?? 0;
   const cartDistinctLineCount = cartData?.items.length ?? 0;
   const cartBadge = cartLineCount > 0 ? String(cartLineCount) : undefined;
@@ -1967,6 +2000,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
     [markNotificationReadMutation, router]
   );
+  const handleArchiveAllNotifications = useCallback(() => {
+    if (notifications.length === 0 || archiveAllNotificationsMutation.isPending) {
+      return;
+    }
+
+    if (!window.confirm("Tüm bildirimler silinsin mi?")) {
+      return;
+    }
+
+    archiveAllNotificationsMutation.mutate();
+  }, [archiveAllNotificationsMutation, notifications.length]);
   const accessibleNavItems = useMemo(
     () => {
       const isSalesperson = roleSlugs.includes("salesperson");
@@ -2978,6 +3022,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             Yenile
                           </button>
                         </div>
+                        <div className="grid grid-cols-2 gap-2 border-b border-emerald-300/10 bg-white/[0.035] px-3 py-2">
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-300/15 px-3 py-2 text-[11px] font-black text-emerald-50/75 transition hover:border-emerald-200/45 hover:bg-emerald-300/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+                            onClick={() => markAllNotificationsReadMutation.mutate()}
+                            disabled={unreadNotificationCount <= 0 || notificationBulkActionPending}
+                            title="Tüm bildirimleri okundu yap"
+                          >
+                            <CheckCheck className="h-3.5 w-3.5" /> Tümünü okundu yap
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-300/25 px-3 py-2 text-[11px] font-black text-red-100/80 transition hover:border-red-200/55 hover:bg-red-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+                            onClick={handleArchiveAllNotifications}
+                            disabled={notifications.length === 0 || notificationBulkActionPending}
+                            title="Tüm bildirimleri sil"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Tümünü sil
+                          </button>
+                        </div>
                         <div className="max-h-[420px] overflow-y-auto p-2">
                           {notifications.length > 0 ? (
                             notifications.map((notification) => (
@@ -3015,6 +3079,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                                       type="button"
                                       className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-black text-emerald-100/70 hover:bg-emerald-300/10 hover:text-emerald-100"
                                       onClick={() => void markNotificationReadMutation.mutateAsync(notification.id)}
+                                      disabled={markNotificationReadMutation.isPending || notificationBulkActionPending}
                                     >
                                       <CheckCheck className="h-3.5 w-3.5" /> Okundu
                                     </button>
@@ -3023,6 +3088,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                                     type="button"
                                     className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-black text-emerald-100/60 hover:bg-emerald-300/10 hover:text-emerald-100"
                                     onClick={() => void archiveNotificationMutation.mutateAsync(notification.id)}
+                                    disabled={archiveNotificationMutation.isPending || notificationBulkActionPending}
                                   >
                                     <Archive className="h-3.5 w-3.5" /> Arşivle
                                   </button>

@@ -106,6 +106,42 @@ function MobileShipmentDatum({ label, value }: { label: string; value: string | 
 const SHIPMENT_INVOICE_ACTION_CLASSNAME =
   "border-rose-200/50 bg-[linear-gradient(135deg,#ff6b6b_0%,#ef4444_48%,#991b1b_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.30),0_22px_46px_-30px_rgba(239,68,68,0.95)] hover:-translate-y-0.5 hover:border-rose-100/80 hover:brightness-110";
 
+function playShipmentDropSound(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const audioContextConstructor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+    if (!audioContextConstructor) {
+      return;
+    }
+
+    const context = new audioContextConstructor();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime;
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(660, now);
+    oscillator.frequency.exponentialRampToValueAtTime(980, now + 0.08);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.18);
+    window.setTimeout(() => void context.close().catch(() => undefined), 240);
+  } catch {
+    // Browser audio can be blocked; shipment flow must continue silently.
+  }
+}
+
 function parseOptionalNumber(value: string | number | null | undefined): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
@@ -444,6 +480,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
     onSuccess: (response) => {
       setWarning(null);
       queryClient.setQueryData(queryKey, response);
+      playShipmentDropSound();
       toast.success("Barkod işlendi");
     },
     onSettled: () => {

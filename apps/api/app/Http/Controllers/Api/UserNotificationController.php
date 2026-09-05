@@ -12,9 +12,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class UserNotificationController extends Controller
 {
-    public function __construct(private readonly UserNotificationService $notificationService)
-    {
-    }
+    public function __construct(private readonly UserNotificationService $notificationService) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -96,11 +94,89 @@ class UserNotificationController extends Controller
         return response()->json(['data' => $this->serialize($notification->fresh())]);
     }
 
+    public function readAll(Request $request): JsonResponse
+    {
+        if (! Schema::hasTable('user_notifications')) {
+            return response()->json([
+                'updated_count' => 0,
+                'unread_count' => 0,
+            ]);
+        }
+
+        $now = now();
+        $notifications = $this->visibleNotifications($request)
+            ->filter(fn (UserNotification $notification): bool => $notification->status === 'unread')
+            ->values();
+
+        UserNotification::query()
+            ->whereIn('id', $notifications->pluck('id')->all())
+            ->update([
+                'status' => 'read',
+                'read_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+        return response()->json([
+            'updated_count' => $notifications->count(),
+            'unread_count' => $this->visibleUnreadCount($request),
+        ]);
+    }
+
+    public function archiveAll(Request $request): JsonResponse
+    {
+        if (! Schema::hasTable('user_notifications')) {
+            return response()->json([
+                'archived_count' => 0,
+                'unread_count' => 0,
+            ]);
+        }
+
+        $now = now();
+        $notifications = $this->visibleNotifications($request)
+            ->filter(fn (UserNotification $notification): bool => $notification->status !== 'archived')
+            ->values();
+
+        UserNotification::query()
+            ->whereIn('id', $notifications->pluck('id')->all())
+            ->update([
+                'status' => 'archived',
+                'read_at' => $now,
+                'archived_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+        return response()->json([
+            'archived_count' => $notifications->count(),
+            'unread_count' => $this->visibleUnreadCount($request),
+        ]);
+    }
+
     private function ensureOwnNotification(Request $request, UserNotification $notification): void
     {
         if ((int) $notification->user_id !== (int) $request->user()->id) {
             abort(Response::HTTP_FORBIDDEN, 'Notification belongs to another user.');
         }
+    }
+
+    private function visibleNotifications(Request $request)
+    {
+        $user = $request->user();
+
+        return UserNotification::query()
+            ->where('user_id', (int) $user->id)
+            ->get()
+            ->filter(fn (UserNotification $notification): bool => $this->notificationService->canUserSeeNotification(
+                $user,
+                $notification->dealer_id !== null ? (int) $notification->dealer_id : null,
+                is_array($notification->meta) ? $notification->meta : [],
+            ));
+    }
+
+    private function visibleUnreadCount(Request $request): int
+    {
+        return $this->visibleNotifications($request)
+            ->filter(fn (UserNotification $notification): bool => $notification->status === 'unread')
+            ->count();
     }
 
     private function serialize(UserNotification $notification): array
