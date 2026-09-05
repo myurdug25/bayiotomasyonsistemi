@@ -2777,10 +2777,6 @@ function logoCampaignPriceReason(row, priceGroupCode) {
     return "conditional_price";
   }
 
-  if (priceGroupCode === "F12") {
-    return "batum_f12_price";
-  }
-
   return null;
 }
 

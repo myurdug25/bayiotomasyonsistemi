@@ -74,14 +74,12 @@ test("Logo conditional price rows are sent as campaign prices", () => {
   assert.doesNotMatch(productsSource, /if \(isLogoCampaignPriceRow\(row\)\) \{\s*continue;\s*\}/);
 });
 
-test("Logo F12 price rows are also sent as Batum special campaign prices", () => {
+test("plain Logo F12 price rows are not sent as Batum campaign prices", () => {
   assert.match(productsSource, /logoCampaignPriceReason/);
-  assert.match(productsSource, /batum_f12_price/);
-  assert.match(productsSource, /priceGroupCode === "F12"/);
-  assert.match(productsSource, /Batum Size Ozel Fiyat/);
+  assert.doesNotMatch(productsSource, /if \(priceGroupCode === "F12"\) \{\s*return "batum_f12_price";\s*\}/);
 });
 
-test("Logo price helper exports build Batum and conditional campaign prices from real PRCLIST rows", async () => {
+test("Logo price helper keeps plain F12 as list price and builds conditional tiers from real PRCLIST rows", async () => {
   const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
   const f12Row = {
     LOGICALREF: 105456,
@@ -104,11 +102,7 @@ test("Logo price helper exports build Batum and conditional campaign prices from
   };
 
   assert.equal(helpers.resolveLogoPriceGroupCode(f12Row), "F12");
-  assert.equal(helpers.logoCampaignPriceReason(f12Row, "F12"), "batum_f12_price");
-  assert.deepEqual(
-    helpers.buildLogoCampaignPrice(f12Row, { list_price: 164.06, currency: "TRY", meta: {} }, "F12").name,
-    "Batum Size Ozel Fiyat"
-  );
+  assert.equal(helpers.logoCampaignPriceReason(f12Row, "F12"), null);
   assert.equal(helpers.logoCampaignPriceReason(tierRow, "F12"), "conditional_price");
   assert.equal(helpers.resolveLogoCampaignMinQuantity(tierRow, tierRow.CONDITION), 5);
 });
