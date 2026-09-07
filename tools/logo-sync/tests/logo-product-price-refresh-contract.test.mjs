@@ -56,7 +56,7 @@ test("Logo price rows read customer special-code fields as F group prices", () =
 test("Logo price type filter still includes customer-group sales price rows", () => {
   assert.match(productsSource, /buildLogoGroupedPricePredicate/);
   assert.match(productsSource, /groupedPricePredicate/);
-  assert.match(productsSource, /OR \$\{groupedPricePredicate\}/);
+  assert.match(productsSource, /alternatePricePredicates/);
   assert.match(productsSource, /LIKE 'F\[0-9\]%'/);
   assert.match(productsSource, /PERAKENDE/);
 });
@@ -64,6 +64,7 @@ test("Logo price type filter still includes customer-group sales price rows", ()
 test("Logo conditional price rows are sent as campaign prices", () => {
   assert.match(productsSource, /buildLogoCampaignPrice/);
   assert.match(productsSource, /campaign_prices/);
+  assert.match(productsSource, /buildLogoGelCurrencyPredicate/);
   assert.match(productsSource, /FORMULA/);
   assert.match(productsSource, /MATHFORMULA/);
   assert.match(productsSource, /DISCPER/);
@@ -92,7 +93,7 @@ test("plain Logo F12 price rows are not sent as Batum campaign prices", async ()
   };
 
   assert.match(productsSource, /logoCampaignPriceReason/);
-  assert.equal(helpers.logoCampaignPriceReason(row, "F12"), null);
+  assert.equal(helpers.logoCampaignPriceReason(row, "F12", price.currency), null);
 });
 
 test("product sync sends empty campaign price snapshots so stale PRCLIST campaigns deactivate", () => {
@@ -127,8 +128,8 @@ test("Logo price helper keeps plain F12 as list price and builds conditional tie
   };
 
   assert.equal(helpers.resolveLogoPriceGroupCode(f12Row), "F12");
-  assert.equal(helpers.logoCampaignPriceReason(f12Row, "F12"), null);
-  assert.equal(helpers.logoCampaignPriceReason(tierRow, "F12"), "conditional_price");
+  assert.equal(helpers.logoCampaignPriceReason(f12Row, "F12", "TRY"), null);
+  assert.equal(helpers.logoCampaignPriceReason(tierRow, "F12", "TRY"), "conditional_price");
   assert.equal(helpers.resolveLogoCampaignMinQuantity(tierRow, tierRow.CONDITION), 5);
 
   const tierPrice = {
@@ -141,4 +142,36 @@ test("Logo price helper keeps plain F12 as list price and builds conditional tie
 
   assert.equal(campaignPrice.unit_price, "200.0000");
   assert.equal(campaignPrice.currency, "GEL");
+});
+
+test("Logo GEL price rows without F group are sent as Batum special prices", async () => {
+  const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
+  const row = {
+    LOGICALREF: 170401,
+    CARDREF: 7574,
+    PRICE: 15,
+    CURRENCY: "GEL",
+    CODE: "WUNDER_105456_001",
+    BEGDATE: new Date("2026-09-03T00:00:00Z"),
+    ENDDATE: new Date("2026-12-31T00:00:00Z"),
+  };
+  const price = {
+    list_price: "15.0000",
+    currency: "GEL",
+    price_list_code: null,
+    meta: { logicalref: "170401", priority: 0 },
+  };
+
+  assert.equal(helpers.resolveLogoPriceGroupCode(row), null);
+  assert.equal(helpers.logoCampaignPriceReason(row, null, price.currency), "batum_gel_price");
+
+  const campaignPrice = helpers.buildLogoCampaignPrice(row, price, null, {
+    campaignPriceReason: "batum_gel_price",
+  });
+
+  assert.equal(campaignPrice.name, "Batum Size Ozel Fiyat");
+  assert.equal(campaignPrice.min_quantity, 1);
+  assert.equal(campaignPrice.unit_price, "15.0000");
+  assert.equal(campaignPrice.currency, "GEL");
+  assert.equal(campaignPrice.meta.price_group, "BATUM");
 });

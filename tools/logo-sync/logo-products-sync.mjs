@@ -2538,6 +2538,7 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
   const endDateColumn = findColumn(schema.columns, ["ENDDATE", "END_DATE", "STOPDATE"]);
   const activeColumn = findColumn(schema.columns, ["ACTIVE", "IS_ACTIVE"]);
   const groupedPricePredicate = buildLogoGroupedPricePredicate(schema.columns);
+  const gelCurrencyPredicate = buildLogoGelCurrencyPredicate(currencyColumn);
 
   if (!referenceColumn || !amountColumn) {
     console.warn(
@@ -2557,8 +2558,9 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
 
   if (priceTypeColumn && currentConfig.logo.priceType !== undefined) {
     request.input("priceType", sql.Int, currentConfig.logo.priceType);
-    query += groupedPricePredicate
-      ? ` AND (${priceTypeColumn} = @priceType OR ${groupedPricePredicate})`
+    const alternatePricePredicates = [groupedPricePredicate, gelCurrencyPredicate].filter(Boolean);
+    query += alternatePricePredicates.length > 0
+      ? ` AND (${priceTypeColumn} = @priceType OR ${alternatePricePredicates.join(" OR ")})`
       : ` AND ${priceTypeColumn} = @priceType`;
   }
 
@@ -2632,7 +2634,7 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
       campaign_prices: [],
     };
 
-    const campaignPriceReason = logoCampaignPriceReason(row, priceGroupCode);
+    const campaignPriceReason = logoCampaignPriceReason(row, priceGroupCode, price.currency);
     if (campaignPriceReason) {
       const campaignPrice = buildLogoCampaignPrice(row, price, priceGroupCode, {
         logicalRefColumn,
@@ -2762,13 +2764,28 @@ function buildLogoGroupedPricePredicate(columns) {
     .join(" OR ");
 }
 
-function logoCampaignPriceReason(row, priceGroupCode) {
+function buildLogoGelCurrencyPredicate(currencyColumn) {
+  if (!currencyColumn) {
+    return null;
+  }
+
+  const normalized = `UPPER(LTRIM(RTRIM(CAST(${currencyColumn} AS NVARCHAR(16)))))`;
+
+  return `${normalized} = 'GEL'`;
+}
+
+function logoCampaignPriceReason(row, priceGroupCode, priceCurrency = null) {
   const normalizedPriceGroupCode = normalizeString(priceGroupCode)?.toUpperCase();
+  const normalizedCurrency = normalizeCurrencyCode(priceCurrency);
   const definition = normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]));
   const condition = normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"]));
   const formula = normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
   const explicitDiscount = normalizeDecimal(readFirst(row, ["DISCPER", "DISCOUNT", "DISCRATE", "discount_rate"]));
   const explicitQuantity = normalizeInteger(readFirst(row, ["MIN_QUANTITY", "MINQTY", "CONDQTY", "MINAMOUNT", "MIN_QUANTITY_", "min_quantity"]));
+
+  if (!normalizedPriceGroupCode && normalizedCurrency === "GEL") {
+    return "batum_gel_price";
+  }
 
   if (Boolean(condition) ||
     Boolean(formula) ||
@@ -2783,6 +2800,8 @@ function logoCampaignPriceReason(row, priceGroupCode) {
 
 function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
   const normalizedPriceGroupCode = normalizeString(priceGroupCode)?.toUpperCase();
+  const isBatumPrice = normalizedPriceGroupCode === "F12" || columns.campaignPriceReason === "batum_gel_price";
+  const campaignPriceGroupCode = isBatumPrice ? "BATUM" : normalizedPriceGroupCode;
   const condition =
     normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"])) ??
     normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
@@ -2800,12 +2819,12 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
       .join(":");
 
   const name =
-    normalizedPriceGroupCode === "F12"
+    isBatumPrice
       ? "Batum Size Ozel Fiyat"
       : normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
-    `Logo ${normalizedPriceGroupCode ?? "Genel"} Kampanya Fiyati`;
+    `Logo ${campaignPriceGroupCode ?? "Genel"} Kampanya Fiyati`;
   const minQuantity = resolveLogoCampaignMinQuantity(row, condition);
-  const campaignKey = normalizeLogoCampaignKey(normalizedPriceGroupCode, sourceReference, name);
+  const campaignKey = normalizeLogoCampaignKey(campaignPriceGroupCode, sourceReference, name);
 
   return {
     source_reference: sourceReference,
@@ -2814,14 +2833,14 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
     condition,
     min_quantity: minQuantity,
     unit_price: price.list_price,
-    currency: normalizedPriceGroupCode === "F12" ? "GEL" : price.currency,
+    currency: isBatumPrice ? "GEL" : price.currency,
     priority: price.meta?.priority ?? 0,
     starts_at: normalizeDateOnly(readFirst(row, ["BEGDATE", columns.beginDateColumn])),
     ends_at: normalizeDateOnly(readFirst(row, ["ENDDATE", columns.endDateColumn])),
     is_active: true,
     meta: compactObject({
       ...price.meta,
-      price_group: priceGroupCode,
+      price_group: campaignPriceGroupCode ?? priceGroupCode,
       logo_price_group: priceGroupCode,
       source: "logo_prclist",
     }),
@@ -5776,6 +5795,7 @@ function normalizeCurrencyCode(value) {
     USD: "USD",
     EUR: "EUR",
     GBP: "GBP",
+    GEL: "GEL",
   };
 
   return aliases[upper] ?? (upper.length === 3 ? upper : "TRY");
