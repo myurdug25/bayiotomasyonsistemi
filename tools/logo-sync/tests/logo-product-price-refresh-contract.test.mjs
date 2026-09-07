@@ -114,4 +114,15 @@ test("Logo price helper keeps plain F12 as list price and builds conditional tie
   assert.equal(helpers.logoCampaignPriceReason(f12Row, "F12"), null);
   assert.equal(helpers.logoCampaignPriceReason(tierRow, "F12"), "conditional_price");
   assert.equal(helpers.resolveLogoCampaignMinQuantity(tierRow, tierRow.CONDITION), 5);
+
+  const tierPrice = {
+    list_price: "200.0000",
+    currency: "TRY",
+    price_list_code: "F12",
+    meta: { priority: 0 },
+  };
+  const campaignPrice = helpers.buildLogoCampaignPrice(tierRow, tierPrice, "F12");
+
+  assert.equal(campaignPrice.unit_price, "200.0000");
+  assert.equal(campaignPrice.currency, "GEL");
 });

@@ -2781,6 +2781,7 @@ function logoCampaignPriceReason(row, priceGroupCode) {
 }
 
 function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
+  const normalizedPriceGroupCode = normalizeString(priceGroupCode)?.toUpperCase();
   const condition =
     normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"])) ??
     normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
@@ -2788,7 +2789,7 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
     normalizeString(readFirst(row, ["LOGICALREF", columns.logicalRefColumn])) ??
     [
       normalizeString(readFirst(row, ["CARDREF", "STOCKREF", "ITEMREF", "PRODUCTREF"])),
-      priceGroupCode ?? "ALL",
+      normalizedPriceGroupCode ?? "ALL",
       price.list_price,
       condition ??
         normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
@@ -2798,12 +2799,12 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
       .join(":");
 
   const name =
-    priceGroupCode === "F12"
+    normalizedPriceGroupCode === "F12"
       ? "Batum Size Ozel Fiyat"
       : normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"])) ??
-    `Logo ${priceGroupCode ?? "Genel"} Kampanya Fiyati`;
+    `Logo ${normalizedPriceGroupCode ?? "Genel"} Kampanya Fiyati`;
   const minQuantity = resolveLogoCampaignMinQuantity(row, condition);
-  const campaignKey = normalizeLogoCampaignKey(priceGroupCode, sourceReference, name);
+  const campaignKey = normalizeLogoCampaignKey(normalizedPriceGroupCode, sourceReference, name);
 
   return {
     source_reference: sourceReference,
@@ -2812,7 +2813,7 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
     condition,
     min_quantity: minQuantity,
     unit_price: price.list_price,
-    currency: price.currency,
+    currency: normalizedPriceGroupCode === "F12" ? "GEL" : price.currency,
     priority: price.meta?.priority ?? 0,
     starts_at: normalizeDateOnly(readFirst(row, ["BEGDATE", columns.beginDateColumn])),
     ends_at: normalizeDateOnly(readFirst(row, ["ENDDATE", columns.endDateColumn])),
