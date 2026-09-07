@@ -2763,6 +2763,7 @@ function buildLogoGroupedPricePredicate(columns) {
 }
 
 function logoCampaignPriceReason(row, priceGroupCode) {
+  const normalizedPriceGroupCode = normalizeString(priceGroupCode)?.toUpperCase();
   const definition = normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]));
   const condition = normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"]));
   const formula = normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
@@ -2775,6 +2776,10 @@ function logoCampaignPriceReason(row, priceGroupCode) {
     (explicitQuantity !== null && explicitQuantity > 1) ||
     /\b(KAMPANYA(?:SI)?|PROMOSYON|ISKONTO|İSKONTO)\b/iu.test(definition ?? "")) {
     return "conditional_price";
+  }
+
+  if (normalizedPriceGroupCode === "F12") {
+    return "batum_f12_price";
   }
 
   return null;

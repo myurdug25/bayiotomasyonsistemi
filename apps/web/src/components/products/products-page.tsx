@@ -2305,7 +2305,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                           )}
                         >
                           <span className="block text-[13px] font-black uppercase tracking-[0.08em] text-slate-800">
-                            {tier.min_quantity > 1 ? `${tier.min_quantity}+ adet` : "Size özel fiyat"}
+                            {tier.min_quantity > 1 ? `${tier.min_quantity} adet` : "Size özel fiyat"}
                           </span>
                           <strong className="mt-1.5 block text-xl font-black leading-none text-slate-950">
                             {stripPriceCurrency(tierPrice.unit)}{isBatumPriceScope ? " GEL" : ""}
