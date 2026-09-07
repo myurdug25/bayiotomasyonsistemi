@@ -34,11 +34,13 @@ test("cart modal keeps Batum campaign prices net and hides VAT mode", () => {
   assert.doesNotMatch(productsSource, /pricesIncludeVat=\{isBatumPriceScope\}/);
 });
 
-test("Batum campaign rows derive list and hint prices from the campaign special price", () => {
+test("Batum campaign rows derive list price but keep real hover price cards", () => {
   assert.match(productsSource, /function batumCampaignListPrice/);
   assert.match(productsSource, /batumCampaignUnitPrice\(product\)/);
   assert.match(productsSource, /return unitPrice === null \? null : unitPrice \* 2/);
   assert.match(productsSource, /const displayListPrice = batumDerivedListPrice/);
-  assert.match(productsSource, /const retailPriceText = batumDerivedListPrice !== null/);
-  assert.match(productsSource, /const masterPriceText = batumDerivedListPrice !== null/);
+  assert.match(productsSource, /const retailPriceText = formatPriceCard\(retailPriceCard\)/);
+  assert.match(productsSource, /const masterPriceText = formatPriceCard\(masterPriceCard\)/);
+  assert.doesNotMatch(productsSource, /const retailPriceText = batumDerivedListPrice !== null/);
+  assert.doesNotMatch(productsSource, /const masterPriceText = batumDerivedListPrice !== null/);
 });

@@ -858,12 +858,6 @@ const ProductRow = memo(function ProductRow({
   onShowPreviousPurchase,
 }: ProductRowProps) {
   const batumDerivedListPrice = batumCampaignListPrice(product);
-  const formattedBatumDerivedListPrice = formatProductModalPrice(
-    product,
-    batumDerivedListPrice === null ? null : String(batumDerivedListPrice),
-    pricesIncludeVat,
-    "GEL"
-  );
   const effectiveNetPrice = product.special_discounted_price ?? product.net_price;
   const displayListPrice = batumDerivedListPrice === null
     ? product.list_price ?? effectiveNetPrice
@@ -887,13 +881,13 @@ const ProductRow = memo(function ProductRow({
       ? formatProductModalPrice(product, card.price, true, card.currency ?? undefined)
       : formatPriceValue(card.price, card.currency ?? product.currency);
   };
-  const retailPriceText = batumDerivedListPrice !== null ? formattedBatumDerivedListPrice : formatPriceCard(retailPriceCard);
-  const masterPriceText = batumDerivedListPrice !== null ? formattedBatumDerivedListPrice : formatPriceCard(masterPriceCard);
+  const retailPriceText = formatPriceCard(retailPriceCard);
+  const masterPriceText = formatPriceCard(masterPriceCard);
   const competitorCodes = product.competitor_codes ?? [];
   const vehicleFitments = product.vehicle_fitments ?? [];
   const previousPurchase = normalizePreviousPurchase(product.previous_purchase);
   const isCampaignRow = Boolean(campaignNames && campaignNames.length > 0);
-  const shouldShowPriceCards = showRetailPriceHint && hasPrice && Boolean(batumDerivedListPrice !== null || masterPriceCard || retailPriceCard);
+  const shouldShowPriceCards = showRetailPriceHint && hasPrice && Boolean(masterPriceCard || retailPriceCard);
 
   return (
     <div
@@ -1473,7 +1467,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
     retry: 0,
-    staleTime: 60_000,
+    staleTime: 0,
     gcTime: 15 * 60_000,
     enabled: shouldFetchProducts,
   });

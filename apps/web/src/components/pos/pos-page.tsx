@@ -374,6 +374,40 @@ function toCents(value: number): number {
   return Math.round(value * 100);
 }
 
+function parseProductPrice(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveCampaignUnitPrice(product: ProductSearchItem, quantity: number): number | null {
+  const normalizedQuantity = Math.max(1, Math.trunc(quantity || 1));
+  const tier = (product.campaigns ?? [])
+    .flatMap((campaign) => campaign.tiers)
+    .map((campaignTier) => ({
+      ...campaignTier,
+      parsedUnitPrice: parseProductPrice(campaignTier.unit_price),
+    }))
+    .filter((campaignTier) => campaignTier.parsedUnitPrice !== null && campaignTier.min_quantity <= normalizedQuantity)
+    .sort((left, right) => {
+      if (right.min_quantity !== left.min_quantity) {
+        return right.min_quantity - left.min_quantity;
+      }
+
+      return (left.parsedUnitPrice ?? Number.MAX_SAFE_INTEGER) - (right.parsedUnitPrice ?? Number.MAX_SAFE_INTEGER);
+    })[0];
+
+  return tier?.parsedUnitPrice ?? null;
+}
+
+function resolvePosProductUnitPrice(product: ProductSearchItem, quantity: number): number {
+  return resolveCampaignUnitPrice(product, quantity) ?? parseProductPrice(product.net_price) ?? 0;
+}
+
 function fromCents(value: number): string {
   return (value / 100).toFixed(2);
 }
@@ -593,8 +627,7 @@ function formatPointProductDisplayPrice(
   includesVat: boolean,
   currencyLabel = BATUM_POINT_DISPLAY_CURRENCY_LABEL
 ): string {
-  const parsedNetPrice = Number(product.net_price ?? 0);
-  const unitNetPriceCents = toCents(Number.isFinite(parsedNetPrice) ? parsedNetPrice : 0);
+  const unitNetPriceCents = toCents(resolvePosProductUnitPrice(product, 1));
   const vatRate = normalizeVatRate(product.vat_rate);
 
   return formatPointAmount(fromCents(displayPriceCents(unitNetPriceCents, vatRate, includesVat)), currencyLabel);
@@ -1496,7 +1529,7 @@ export function PosPage() {
     refetchOnMount: false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
-    staleTime: 5 * 60_000,
+    staleTime: 0,
     gcTime: 15 * 60_000,
   });
 
@@ -1529,7 +1562,7 @@ export function PosPage() {
     refetchOnMount: false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
-    staleTime: 5 * 60_000,
+    staleTime: 0,
     gcTime: 15 * 60_000,
   });
 
@@ -1569,7 +1602,7 @@ export function PosPage() {
           },
           { signal }
         ),
-      staleTime: 5 * 60_000,
+      staleTime: 0,
       gcTime: 15 * 60_000,
     });
   }, [
@@ -1866,8 +1899,8 @@ export function PosPage() {
   const selectedCustomer = selectedCustomerId ? customersById[selectedCustomerId] ?? null : null;
   const selectedCustomerIsAnonymous = isPointRole && isAnonymousPointCustomer(selectedCustomer);
   const isBatumPointCurrencyScope = isBatumPointFlowByUser || isBatumCustomerIdentity(selectedCustomer);
-  const pointSaleAppliesVat = Boolean(selectedCustomer) && (isBatumPointCurrencyScope || !selectedCustomerIsAnonymous);
-  const pointPriceIncludesVat = isBatumPointCurrencyScope || (pointSaleAppliesVat && isVatIncludedPointCustomer(selectedCustomer));
+  const pointSaleAppliesVat = Boolean(selectedCustomer) && !isBatumPointCurrencyScope && !selectedCustomerIsAnonymous;
+  const pointPriceIncludesVat = !isBatumPointCurrencyScope && pointSaleAppliesVat && isVatIncludedPointCustomer(selectedCustomer);
   const pointDisplayCurrencyLabel = isBatumPointCurrencyScope
     ? BATUM_POINT_DISPLAY_CURRENCY_LABEL
     : TURKEY_POINT_DISPLAY_CURRENCY_LABEL;
@@ -2069,14 +2102,14 @@ export function PosPage() {
     setPointCartPriceInputs({});
 
     if (pointDraftProduct) {
-      const parsedNetPrice = Number(pointDraftProduct.net_price ?? 0);
-      const unitNetPriceCents = toCents(Number.isFinite(parsedNetPrice) ? parsedNetPrice : 0);
+      const pointDraftQuantity = Number(pointQtyInput.replace(",", "."));
+      const unitNetPriceCents = toCents(resolvePosProductUnitPrice(pointDraftProduct, pointDraftQuantity));
       const vatRate = normalizeVatRate(pointDraftProduct.vat_rate);
       setPointPriceInput(fromCents(displayPriceCents(unitNetPriceCents, vatRate, pointPriceIncludesVat)).replace(".", ","));
     } else {
       setPointPriceInput("");
     }
-  }, [pointDraftProduct, pointPriceIncludesVat]);
+  }, [pointDraftProduct, pointPriceIncludesVat, pointQtyInput]);
   useEffect(() => {
     if (!isPointRole) {
       return;
@@ -2164,17 +2197,15 @@ export function PosPage() {
         toast.warning("Stok bilgisi sıfır görünüyor; ürün sepete eklendi.");
       }
 
-      const fallbackUnitPrice = Number(product.net_price ?? 0);
       const vatRate = normalizeVatRate(product.vat_rate);
+      const qtyToAdd = Math.max(1, Math.trunc(options?.qty ?? 1));
       const resolvedUnitPriceCents =
-        options?.unitPriceCents ?? (Number.isFinite(fallbackUnitPrice) ? toCents(fallbackUnitPrice) : null);
+        options?.unitPriceCents ?? toCents(resolvePosProductUnitPrice(product, qtyToAdd));
 
       if (resolvedUnitPriceCents === null) {
         toast.error("Ürün fiyatı okunamadı");
         return;
       }
-
-      const qtyToAdd = Math.max(1, Math.trunc(options?.qty ?? 1));
 
       updateActiveCartItems((previous) => {
         const existingIndex = previous.findIndex((item) => item.product_id === product.id);
@@ -2306,7 +2337,7 @@ export function PosPage() {
 
   const addQuickProduct = useCallback(
     (product: ProductSearchItem) => {
-      upsertCartItem(product, { qty: quickQty });
+      upsertCartItem(product, { qty: quickQty, unitPriceCents: toCents(resolvePosProductUnitPrice(product, quickQty)) });
       setQuickQtyInput("1");
     },
     [quickQty, upsertCartItem]
@@ -2315,8 +2346,7 @@ export function PosPage() {
   const selectPointDraftProduct = useCallback(
     (product: ProductSearchItem) => {
       const scopedProduct = productScopedToPointWarehouse(product, ownPointStockColumn);
-      const parsedNetPrice = Number(scopedProduct.net_price ?? 0);
-      const unitNetPriceCents = toCents(Number.isFinite(parsedNetPrice) ? parsedNetPrice : 0);
+      const unitNetPriceCents = toCents(resolvePosProductUnitPrice(scopedProduct, 1));
       const vatRate = normalizeVatRate(scopedProduct.vat_rate);
 
       setPointDraftProduct(scopedProduct);
@@ -4255,7 +4285,7 @@ export function PosPage() {
                                   </span>
                                 </span>
                                 <span className="shrink-0 text-base font-black text-[var(--brand-primary-strong)]">
-                                  {formatCurrency(product.net_price ?? "0")}
+                                  {formatCurrency(resolvePosProductUnitPrice(product, quickQty))}
                                 </span>
                               </button>
                             ))}
@@ -4582,7 +4612,7 @@ export function PosPage() {
                             <span className="block truncate text-sm font-bold text-[var(--muted-foreground)]">{product.name}</span>
                           </span>
                           <span className="shrink-0 text-base font-black text-[var(--brand-primary-strong)]">
-                            {formatCurrency(product.net_price ?? "0")}
+                            {formatCurrency(resolvePosProductUnitPrice(product, quickQty))}
                           </span>
                         </button>
                       ))}
@@ -5613,7 +5643,7 @@ export function PosPage() {
                                     <span className="block truncate text-base font-black text-[var(--brand-primary-strong)]">{product.sku}</span>
                                     <span className="block truncate text-sm font-bold text-[var(--muted-foreground)]">{product.name}</span>
                                   </span>
-                                  <span className="shrink-0 text-base font-black text-[var(--brand-primary-strong)]">{formatCurrency(product.net_price ?? "0")}</span>
+                                  <span className="shrink-0 text-base font-black text-[var(--brand-primary-strong)]">{formatCurrency(resolvePosProductUnitPrice(product, quickQty))}</span>
                                 </button>
                               ))}
                             </div>
