@@ -1330,9 +1330,8 @@ export function CartPage() {
                     {items.map((item) => {
                       const effectiveUnitPrice =
                         item.quantity > 0 ? toAmount(item.line_total) / item.quantity : toAmount(item.unit_net_price);
-                      const batumVatMultiplier = isBatumCurrencyScope ? 1 + toAmount(item.vat_rate) / 100 : 1;
-                      const displayedUnitPrice = effectiveUnitPrice * batumVatMultiplier;
-                      const displayedLineTotal = toAmount(item.line_total) * batumVatMultiplier;
+                      const displayedUnitPrice = effectiveUnitPrice;
+                      const displayedLineTotal = toAmount(item.line_total);
                       const itemVatMode = effectiveVatSummaryModeForProduct(item.product_id);
                       const itemVatLabel = CHECKOUT_SUMMARY_MODES[itemVatMode].code;
 

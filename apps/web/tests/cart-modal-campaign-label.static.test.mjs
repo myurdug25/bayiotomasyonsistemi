@@ -27,3 +27,12 @@ test("cart modal VAT toggle also controls Batum campaign tier prices", () => {
   assert.match(productsSource, /cartPricesIncludeVat \? "KDV Dahil" : "KDV Hariç"/);
   assert.doesNotMatch(productsSource, /isBatumPriceScope \? "Net fiyat"/);
 });
+
+test("Batum campaign rows derive list and hint prices from the campaign special price", () => {
+  assert.match(productsSource, /function batumCampaignListPrice/);
+  assert.match(productsSource, /batumCampaignUnitPrice\(product\)/);
+  assert.match(productsSource, /return unitPrice === null \? null : unitPrice \* 2/);
+  assert.match(productsSource, /const displayListPrice = batumDerivedListPrice/);
+  assert.match(productsSource, /const retailPriceText = batumDerivedListPrice !== null/);
+  assert.match(productsSource, /const masterPriceText = batumDerivedListPrice !== null/);
+});

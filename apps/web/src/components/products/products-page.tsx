@@ -282,6 +282,30 @@ function formatCampaignTierPrice(
   };
 }
 
+function batumCampaignUnitPrice(product: ProductSearchItem): number | null {
+  if (currencyLabel(product.currency) !== "GEL") {
+    return null;
+  }
+
+  const tier = (product.campaigns ?? [])
+    .flatMap((campaign) => campaign.tiers)
+    .filter((campaignTier) => campaignTier.min_quantity <= 1 && currencyLabel(campaignTier.currency) === "GEL")
+    .sort((left, right) => {
+      const leftPrice = parseDecimalValue(left.unit_price) ?? Number.MAX_SAFE_INTEGER;
+      const rightPrice = parseDecimalValue(right.unit_price) ?? Number.MAX_SAFE_INTEGER;
+
+      return leftPrice - rightPrice;
+    })[0];
+
+  return tier ? parseDecimalValue(tier.unit_price) : null;
+}
+
+function batumCampaignListPrice(product: ProductSearchItem): number | null {
+  const unitPrice = batumCampaignUnitPrice(product);
+
+  return unitPrice === null ? null : unitPrice * 2;
+}
+
 function stripPriceCurrency(value: string): string {
   return value.replace(/\s*(TRY|TL|₺|GEL|USD|EUR)\s*$/i, "").trim();
 }
@@ -833,13 +857,23 @@ const ProductRow = memo(function ProductRow({
   onShowVehicleFitments,
   onShowPreviousPurchase,
 }: ProductRowProps) {
+  const batumDerivedListPrice = batumCampaignListPrice(product);
+  const formattedBatumDerivedListPrice = formatProductModalPrice(
+    product,
+    batumDerivedListPrice === null ? null : String(batumDerivedListPrice),
+    pricesIncludeVat,
+    "GEL"
+  );
   const effectiveNetPrice = product.special_discounted_price ?? product.net_price;
-  const hasPrice = canViewPrices && Boolean(product.list_price ?? effectiveNetPrice);
+  const displayListPrice = batumDerivedListPrice === null
+    ? product.list_price ?? effectiveNetPrice
+    : String(batumDerivedListPrice);
+  const hasPrice = canViewPrices && Boolean(displayListPrice);
   const hasCategory = Boolean(product.category?.name);
   const priceText = canViewPrices
     ? pricesIncludeVat
-      ? formatProductModalPrice(product, product.list_price ?? effectiveNetPrice, true, "GEL")
-      : formatPriceValue(product.list_price ?? effectiveNetPrice, product.currency)
+      ? formatProductModalPrice(product, displayListPrice, true, batumDerivedListPrice !== null ? "GEL" : product.currency)
+      : formatPriceValue(displayListPrice, batumDerivedListPrice !== null ? "GEL" : product.currency)
     : "-";
   const priceCards = product.price_cards ?? [];
   const masterPriceCard = priceCards.find((card) => /^F(?:[1-9]|1[0-2])$/.test(card.code));
@@ -853,13 +887,13 @@ const ProductRow = memo(function ProductRow({
       ? formatProductModalPrice(product, card.price, true, card.currency ?? undefined)
       : formatPriceValue(card.price, card.currency ?? product.currency);
   };
-  const retailPriceText = formatPriceCard(retailPriceCard);
-  const masterPriceText = formatPriceCard(masterPriceCard);
+  const retailPriceText = batumDerivedListPrice !== null ? formattedBatumDerivedListPrice : formatPriceCard(retailPriceCard);
+  const masterPriceText = batumDerivedListPrice !== null ? formattedBatumDerivedListPrice : formatPriceCard(masterPriceCard);
   const competitorCodes = product.competitor_codes ?? [];
   const vehicleFitments = product.vehicle_fitments ?? [];
   const previousPurchase = normalizePreviousPurchase(product.previous_purchase);
   const isCampaignRow = Boolean(campaignNames && campaignNames.length > 0);
-  const shouldShowPriceCards = showRetailPriceHint && hasPrice && Boolean(masterPriceCard || retailPriceCard);
+  const shouldShowPriceCards = showRetailPriceHint && hasPrice && Boolean(batumDerivedListPrice !== null || masterPriceCard || retailPriceCard);
 
   return (
     <div
