@@ -1214,7 +1214,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     campaignKey: string | null;
   } | null>(null);
   const [cartCalculatorOpen, setCartCalculatorOpen] = useState(false);
-  const [cartPricesIncludeVat, setCartPricesIncludeVat] = useState(isBatumPriceScope);
+  const [cartPricesIncludeVat, setCartPricesIncludeVat] = useState(false);
   const [calculatorDisplay, setCalculatorDisplay] = useState("0");
   const [calculatorStored, setCalculatorStored] = useState<number | null>(null);
   const [calculatorOperator, setCalculatorOperator] = useState<CalculatorOperator | null>(null);
@@ -2236,11 +2236,6 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                    <Calculator className="h-4 w-4" />
 	                    Hesap Makinesi
 	                  </Button>
-	                  {isBatumPriceScope ? (
-	                    <span className="inline-flex h-10 items-center rounded-xl border border-emerald-300/35 bg-emerald-400/12 px-3 text-xs font-black uppercase tracking-[0.08em] text-emerald-100">
-	                      KDV Dahil
-	                    </span>
-	                  ) : (
 	                  <Button
 	                    type="button"
 	                    variant="outline"
@@ -2254,7 +2249,6 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                  >
 	                    {cartPricesIncludeVat ? "Kdv Hariç Göster" : "Kdv Dahil Göster"}
 	                  </Button>
-	                  )}
 	                </div>
 	              </div>
 	            </div>
@@ -2291,7 +2285,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                   ) : null}
                   {cartModalCampaigns.flatMap((campaign) =>
                     campaign.tiers.map((tier) => {
-                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, isBatumPriceScope ? false : cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined);
+                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined);
                       const active =
                         cartModalApplicableCampaign?.campaign.key === campaign.key &&
                         cartModalApplicableCampaign.tier.min_quantity === tier.min_quantity;
@@ -2311,7 +2305,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                             {stripPriceCurrency(tierPrice.unit)}{isBatumPriceScope ? " GEL" : ""}
                           </strong>
                           <span className="mt-2 block text-[10px] font-black uppercase tracking-[0.08em] text-slate-700">
-                            {isBatumPriceScope ? "Net fiyat" : (cartPricesIncludeVat ? "KDV Dahil" : "KDV Hariç")}
+                            {cartPricesIncludeVat ? "KDV Dahil" : "KDV Hariç"}
                           </span>
                         </div>
                       );

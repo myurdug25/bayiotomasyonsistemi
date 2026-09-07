@@ -14,10 +14,16 @@ test("cart modal hides base sales price for Batum campaign-priced products", () 
   assert.match(productsSource, /cartModalShowBaseSalesPrice \? \(/);
 });
 
-test("cart modal shows Batum campaign tier prices without adding VAT", () => {
+test("cart modal defaults prices to excluding VAT", () => {
+  assert.match(productsSource, /const \[cartPricesIncludeVat, setCartPricesIncludeVat\] = useState\(false\)/);
+  assert.doesNotMatch(productsSource, /useState\(isBatumPriceScope\)/);
+});
+
+test("cart modal VAT toggle also controls Batum campaign tier prices", () => {
   assert.match(
     productsSource,
-    /formatCampaignTierPrice\(cartModalProduct, tier, isBatumPriceScope \? false : cartPricesIncludeVat, isBatumPriceScope \? "GEL" : undefined\)/
+    /formatCampaignTierPrice\(cartModalProduct, tier, cartPricesIncludeVat, isBatumPriceScope \? "GEL" : undefined\)/
   );
-  assert.match(productsSource, /isBatumPriceScope \? "Net fiyat" : \(cartPricesIncludeVat \? "KDV Dahil" : "KDV Hariç"\)/);
+  assert.match(productsSource, /cartPricesIncludeVat \? "KDV Dahil" : "KDV Hariç"/);
+  assert.doesNotMatch(productsSource, /isBatumPriceScope \? "Net fiyat"/);
 });
