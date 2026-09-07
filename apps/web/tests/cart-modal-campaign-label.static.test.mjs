@@ -19,13 +19,19 @@ test("cart modal defaults prices to excluding VAT", () => {
   assert.doesNotMatch(productsSource, /useState\(isBatumPriceScope\)/);
 });
 
-test("cart modal VAT toggle also controls Batum campaign tier prices", () => {
+test("cart modal keeps Batum campaign prices net and hides VAT mode", () => {
   assert.match(
     productsSource,
-    /formatCampaignTierPrice\(cartModalProduct, tier, cartPricesIncludeVat, isBatumPriceScope \? "GEL" : undefined\)/
+    /const cartModalPricesIncludeVat = isBatumPriceScope \? false : cartPricesIncludeVat/
   );
-  assert.match(productsSource, /cartPricesIncludeVat \? "KDV Dahil" : "KDV Hariç"/);
-  assert.doesNotMatch(productsSource, /isBatumPriceScope \? "Net fiyat"/);
+  assert.match(
+    productsSource,
+    /formatCampaignTierPrice\(cartModalProduct, tier, cartModalPricesIncludeVat, isBatumPriceScope \? "GEL" : undefined\)/
+  );
+  assert.match(productsSource, /isBatumPriceScope \? "Net fiyat" : cartModalPricesIncludeVat \? "KDV Dahil" : "KDV Hariç"/);
+  assert.match(productsSource, /setCartPricesIncludeVat\(false\)/);
+  assert.doesNotMatch(productsSource, /setCartPricesIncludeVat\(isBatumPriceScope\)/);
+  assert.doesNotMatch(productsSource, /pricesIncludeVat=\{isBatumPriceScope\}/);
 });
 
 test("Batum campaign rows derive list and hint prices from the campaign special price", () => {

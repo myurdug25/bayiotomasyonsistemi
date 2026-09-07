@@ -1331,11 +1331,11 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       setCartModalProduct(null);
       setCartDuplicateConfirm(null);
       setCartCalculatorOpen(false);
-      setCartPricesIncludeVat(isBatumPriceScope);
+      setCartPricesIncludeVat(false);
     }, 0);
 
     return () => window.clearTimeout(resetTimer);
-  }, [isBatumPriceScope, selectedCustomerContextId]);
+  }, [selectedCustomerContextId]);
 
   const filterOptionsQuery = useQuery({
     queryKey: ["product-filter-options", "search"],
@@ -1599,6 +1599,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     () => canViewCampaigns ? (cartModalProduct?.campaigns ?? []) : [],
     [canViewCampaigns, cartModalProduct?.campaigns]
   );
+  const cartModalPricesIncludeVat = isBatumPriceScope ? false : cartPricesIncludeVat;
   const cartModalShowBaseSalesPrice = !(isBatumPriceScope && cartModalCampaigns.length > 0);
   const cartModalApplicableCampaign = useMemo(() => {
     const quantity = Math.max(1, Number(cartModalQuantity) || 1);
@@ -1677,9 +1678,9 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     setCartModalProduct(product);
     setCartModalQuantity(currentQty || "");
     setCartCalculatorOpen(false);
-    setCartPricesIncludeVat(isBatumPriceScope);
+    setCartPricesIncludeVat(false);
     resetCalculator();
-  }, [isBatumPriceScope, resetCalculator]);
+  }, [resetCalculator]);
 
   const handleCartModalQuantityChange = useCallback(
     (nextQty: number | string) => {
@@ -2149,7 +2150,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         mutating={mutating}
                         canAdd={(Boolean(selectedCustomer) || canUseDepotTransferCart) && canUseSearchCart}
                         canViewPrices={canViewSearchPrices}
-                        pricesIncludeVat={isBatumPriceScope}
+                        pricesIncludeVat={false}
                         canViewStock={canViewSearchStock}
                         visibleStockColumns={visibleStockColumns}
                         showRetailPriceHint={showPriceCardsOnSearch}
@@ -2270,6 +2271,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                    <Calculator className="h-4 w-4" />
 	                    Hesap Makinesi
 	                  </Button>
+	                  {!isBatumPriceScope ? (
 	                  <Button
 	                    type="button"
 	                    variant="outline"
@@ -2283,6 +2285,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                  >
 	                    {cartPricesIncludeVat ? "Kdv Hariç Göster" : "Kdv Dahil Göster"}
 	                  </Button>
+	                  ) : null}
 	                </div>
 	              </div>
 	            </div>
@@ -2302,7 +2305,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                    Satış Fiyatı
 	                  </span>
 	                  <strong className="mt-1 block text-2xl font-black text-[#f8f3a1]">
-	                    {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.net_price, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined))}{isBatumPriceScope ? " GEL" : ""}
+	                    {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.net_price, cartModalPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined))}{isBatumPriceScope ? " GEL" : ""}
 	                  </strong>
 	                </div>
                 ) : null}
@@ -2313,13 +2316,13 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         Özel İskonto
                       </span>
                       <strong className="mt-1 block text-xl font-black text-emerald-100">
-                        {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.special_discounted_price, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined))}{isBatumPriceScope ? " GEL" : ""}
+                        {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.special_discounted_price, cartModalPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined))}{isBatumPriceScope ? " GEL" : ""}
                       </strong>
                     </div>
                   ) : null}
                   {cartModalCampaigns.flatMap((campaign) =>
                     campaign.tiers.map((tier) => {
-                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined);
+                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, cartModalPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined);
                       const active =
                         cartModalApplicableCampaign?.campaign.key === campaign.key &&
                         cartModalApplicableCampaign.tier.min_quantity === tier.min_quantity;
@@ -2339,7 +2342,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                             {stripPriceCurrency(tierPrice.unit)}{isBatumPriceScope ? " GEL" : ""}
                           </strong>
                           <span className="mt-2 block text-[10px] font-black uppercase tracking-[0.08em] text-slate-700">
-                            {cartPricesIncludeVat ? "KDV Dahil" : "KDV Hariç"}
+                            {isBatumPriceScope ? "Net fiyat" : cartModalPricesIncludeVat ? "KDV Dahil" : "KDV Hariç"}
                           </span>
                         </div>
                       );
