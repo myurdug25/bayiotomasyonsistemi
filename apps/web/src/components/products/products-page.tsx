@@ -1565,6 +1565,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     () => canViewCampaigns ? (cartModalProduct?.campaigns ?? []) : [],
     [canViewCampaigns, cartModalProduct?.campaigns]
   );
+  const cartModalShowBaseSalesPrice = !(isBatumPriceScope && cartModalCampaigns.length > 0);
   const cartModalApplicableCampaign = useMemo(() => {
     const quantity = Math.max(1, Number(cartModalQuantity) || 1);
     const applicableCampaigns = cartModalCampaigns
@@ -2261,7 +2262,13 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
           {cartModalProduct ? (
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4">
-              <div className="grid gap-3 lg:grid-cols-[190px_minmax(0,1fr)]">
+              <div
+                className={cn(
+                  "grid gap-3",
+                  cartModalShowBaseSalesPrice && "lg:grid-cols-[190px_minmax(0,1fr)]"
+                )}
+              >
+                {cartModalShowBaseSalesPrice ? (
                 <div className="grid content-center rounded-2xl border border-[#d8cf42]/25 bg-[#d8cf42]/[0.10] p-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
 	                  <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
 	                    Satış Fiyatı
@@ -2270,6 +2277,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                    {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.net_price, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined))}{isBatumPriceScope ? " GEL" : ""}
 	                  </strong>
 	                </div>
+                ) : null}
                 <div className="flex min-h-[116px] flex-wrap gap-2">
                   {cartModalProduct.special_discounted_price ? (
                     <div className="min-w-[180px] flex-1 rounded-2xl border border-emerald-300/25 bg-emerald-400/[0.10] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
