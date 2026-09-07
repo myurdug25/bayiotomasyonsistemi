@@ -74,7 +74,7 @@ test("Logo conditional price rows are sent as campaign prices", () => {
   assert.doesNotMatch(productsSource, /if \(isLogoCampaignPriceRow\(row\)\) \{\s*continue;\s*\}/);
 });
 
-test("plain Logo F12 price rows are sent as Batum special price campaigns", async () => {
+test("plain Logo F12 price rows are not sent as Batum campaign prices", async () => {
   const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
   const row = {
     LOGICALREF: 170407,
@@ -90,14 +90,9 @@ test("plain Logo F12 price rows are sent as Batum special price campaigns", asyn
     price_list_code: "F12",
     meta: { priority: 0 },
   };
-  const campaignPrice = helpers.buildLogoCampaignPrice(row, price, "F12");
 
   assert.match(productsSource, /logoCampaignPriceReason/);
-  assert.equal(helpers.logoCampaignPriceReason(row, "F12"), "batum_f12_price");
-  assert.equal(campaignPrice.name, "Batum Size Ozel Fiyat");
-  assert.equal(campaignPrice.min_quantity, 1);
-  assert.equal(campaignPrice.unit_price, "120.0000");
-  assert.equal(campaignPrice.currency, "GEL");
+  assert.equal(helpers.logoCampaignPriceReason(row, "F12"), null);
 });
 
 test("product sync sends empty campaign price snapshots so stale PRCLIST campaigns deactivate", () => {
@@ -132,7 +127,7 @@ test("Logo price helper keeps plain F12 as list price and builds conditional tie
   };
 
   assert.equal(helpers.resolveLogoPriceGroupCode(f12Row), "F12");
-  assert.equal(helpers.logoCampaignPriceReason(f12Row, "F12"), "batum_f12_price");
+  assert.equal(helpers.logoCampaignPriceReason(f12Row, "F12"), null);
   assert.equal(helpers.logoCampaignPriceReason(tierRow, "F12"), "conditional_price");
   assert.equal(helpers.resolveLogoCampaignMinQuantity(tierRow, tierRow.CONDITION), 5);
 

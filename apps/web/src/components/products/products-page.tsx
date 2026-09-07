@@ -2291,7 +2291,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                   ) : null}
                   {cartModalCampaigns.flatMap((campaign) =>
                     campaign.tiers.map((tier) => {
-                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined);
+                      const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, isBatumPriceScope ? false : cartPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined);
                       const active =
                         cartModalApplicableCampaign?.campaign.key === campaign.key &&
                         cartModalApplicableCampaign.tier.min_quantity === tier.min_quantity;
@@ -2311,7 +2311,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                             {stripPriceCurrency(tierPrice.unit)}{isBatumPriceScope ? " GEL" : ""}
                           </strong>
                           <span className="mt-2 block text-[10px] font-black uppercase tracking-[0.08em] text-slate-700">
-                            {cartPricesIncludeVat ? "KDV Dahil" : "KDV Hariç"}
+                            {isBatumPriceScope ? "Net fiyat" : (cartPricesIncludeVat ? "KDV Dahil" : "KDV Hariç")}
                           </span>
                         </div>
                       );
