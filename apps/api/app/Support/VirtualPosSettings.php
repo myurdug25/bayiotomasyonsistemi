@@ -76,8 +76,8 @@ class VirtualPosSettings
 
         return [
             ...$public,
-            'security_code' => self::decryptValue($settings['security_code_encrypted'] ?? null),
-            'password' => self::decryptValue($settings['password_encrypted'] ?? null),
+            'security_code' => trim(self::decryptValue($settings['security_code_encrypted'] ?? null)),
+            'password' => trim(self::decryptValue($settings['password_encrypted'] ?? null)),
         ];
     }
 

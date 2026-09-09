@@ -130,7 +130,7 @@ class VirtualPosController extends Controller
     private function nestpayHash(array $payload, string $storeKey): string
     {
         $hashFields = $payload;
-        unset($hashFields['hash'], $hashFields['encoding']);
+        unset($hashFields['hash']);
 
         uksort($hashFields, static fn (string $left, string $right): int => strcasecmp($left, $right));
 

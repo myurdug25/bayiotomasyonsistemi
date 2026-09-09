@@ -159,7 +159,7 @@ class VirtualPosApiTest extends TestCase
 
         $payload = $response->json('provider.payload');
         $hashFields = $payload;
-        unset($hashFields['hash'], $hashFields['encoding']);
+        unset($hashFields['hash']);
         uksort($hashFields, static fn (string $left, string $right): int => strcasecmp($left, $right));
 
         $expectedPlainText = collect($hashFields)
