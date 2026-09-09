@@ -86,8 +86,10 @@ class VirtualPosApiTest extends TestCase
             ->assertJsonPath('payment.customer.id', $customer->id)
             ->assertJsonPath('provider.mode', 'live')
             ->assertJsonPath('provider.gateway_url', 'https://pos.example.com/pay')
-            ->assertJsonPath('provider.payload.merchant_no', 'MAGAZA-999')
-            ->assertJsonPath('provider.payload.username', 'merchant_user')
+            ->assertJsonPath('provider.meta.merchant_no', 'MAGAZA-999')
+            ->assertJsonPath('provider.meta.username', 'merchant_user')
+            ->assertJsonMissingPath('provider.payload.merchant_no')
+            ->assertJsonMissingPath('provider.payload.username')
             ->assertJsonMissingPath('provider.payload.security_code')
             ->assertJsonMissingPath('provider.payload.password')
             ->assertJsonMissingPath('provider.payload.card_number')
@@ -147,7 +149,13 @@ class VirtualPosApiTest extends TestCase
             ->assertJsonMissingPath('provider.payload.security_code')
             ->assertJsonMissingPath('provider.payload.password')
             ->assertJsonMissingPath('provider.payload.card_number')
-            ->assertJsonMissingPath('provider.payload.cvv');
+            ->assertJsonMissingPath('provider.payload.cvv')
+            ->assertJsonMissingPath('provider.payload.merchant_no')
+            ->assertJsonMissingPath('provider.payload.username')
+            ->assertJsonMissingPath('provider.payload.reference')
+            ->assertJsonMissingPath('provider.payload.customer_code')
+            ->assertJsonMissingPath('provider.payload.customer_title')
+            ->assertJsonMissingPath('provider.payload.description');
 
         $payload = $response->json('provider.payload');
         $hashFields = $payload;

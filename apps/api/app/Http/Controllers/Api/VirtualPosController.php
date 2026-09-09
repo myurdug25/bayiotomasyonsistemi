@@ -62,14 +62,9 @@ class VirtualPosController extends Controller
 
         $providerPayload = [
             'clientid' => $settings['merchant_no'],
-            'merchant_no' => $settings['merchant_no'],
-            'username' => $settings['username'],
             'oid' => $reference,
-            'reference' => $reference,
             'amount' => $amount,
             'currency' => $currencyCode,
-            'currency_alpha' => $currency,
-            'installment' => $installment,
             'taksit' => $installmentValue,
             'okUrl' => $okUrl,
             'failUrl' => $failUrl,
@@ -79,11 +74,6 @@ class VirtualPosController extends Controller
             'rnd' => $rnd,
             'hashAlgorithm' => 'ver3',
             'encoding' => 'UTF-8',
-            'customer_code' => $customer->code,
-            'customer_title' => $customer->name,
-            'description' => $validated['description'] ?? '',
-            'firmaadi' => 'PowerSA B2B',
-            'refreshtime' => '5',
         ];
 
         $providerPayload['hash'] = $this->nestpayHash($providerPayload, $settings['security_code']);
@@ -108,6 +98,17 @@ class VirtualPosController extends Controller
                 'method' => 'POST',
                 'gateway_url' => $gatewayUrl,
                 'payload' => $providerPayload,
+                'meta' => [
+                    'merchant_no' => $settings['merchant_no'],
+                    'username' => $settings['username'],
+                    'reference' => $reference,
+                    'amount' => $amount,
+                    'currency' => $currency,
+                    'installment' => $installment,
+                    'customer_code' => $customer->code,
+                    'customer_title' => $customer->name,
+                    'description' => $validated['description'] ?? '',
+                ],
             ],
         ]);
     }

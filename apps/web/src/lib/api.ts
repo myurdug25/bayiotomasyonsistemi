@@ -2966,14 +2966,9 @@ export type VirtualPosPaymentResponse = {
     gateway_url: string;
     payload: Record<string, string | number | null> & {
       clientid: string;
-      merchant_no: string;
-      username: string;
       oid: string;
-      reference: string;
       amount: string;
       currency: string;
-      currency_alpha?: string;
-      installment: number;
       taksit: string;
       okUrl: string;
       failUrl: string;
@@ -2984,11 +2979,17 @@ export type VirtualPosPaymentResponse = {
       hashAlgorithm: string;
       encoding: string;
       hash: string;
+    };
+    meta?: {
+      merchant_no: string;
+      username: string;
+      reference: string;
+      amount: string;
+      currency: string;
+      installment: number;
       customer_code: string;
       customer_title: string;
       description: string;
-      firmaadi?: string;
-      refreshtime?: string;
     };
   };
 };
