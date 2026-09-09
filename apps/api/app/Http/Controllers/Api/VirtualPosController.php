@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Response;
 
 class VirtualPosController extends Controller
@@ -28,10 +29,6 @@ class VirtualPosController extends Controller
             'currency' => ['sometimes', 'string', 'size:3'],
             'installment' => ['required', 'integer', 'in:1,2,3'],
             'description' => ['nullable', 'string', 'max:500'],
-            'card_holder' => ['required', 'string', 'max:120'],
-            'card_number' => ['required', 'string', 'max:24'],
-            'expiry' => ['required', 'string', 'max:5'],
-            'cvv' => ['required', 'string', 'max:4'],
         ]);
 
         /** @var User $user */
@@ -49,10 +46,31 @@ class VirtualPosController extends Controller
             ]);
         }
 
-        $settings = VirtualPosSettings::publicConfig($dealer);
+        $settings = VirtualPosSettings::privateConfig($dealer);
         $amount = number_format((float) $validated['amount'], 2, '.', '');
         $currency = strtoupper($validated['currency'] ?? 'TRY');
         $reference = 'VPOS-'.now()->format('YmdHis').'-'.Str::upper(Str::random(6));
+        $gatewayUrl = $this->paymentGatewayUrl($settings['gateway_url']);
+        $installment = (int) $validated['installment'];
+        $installmentValue = $installment <= 1 ? '' : (string) $installment;
+        $apiBaseUrl = rtrim((string) config('app.url'), '/');
+        $okUrl = $apiBaseUrl.'/api/virtual-pos/callback/success';
+        $failUrl = $apiBaseUrl.'/api/virtual-pos/callback/fail';
+        $transactionType = 'Auth';
+        $rnd = (string) Str::uuid();
+        $currencyCode = $this->nestpayCurrencyCode($currency);
+
+        $hash = $this->nestpayHash(
+            clientId: $settings['merchant_no'],
+            orderId: $reference,
+            amount: $amount,
+            okUrl: $okUrl,
+            failUrl: $failUrl,
+            transactionType: $transactionType,
+            installment: $installmentValue,
+            rnd: $rnd,
+            storeKey: $settings['security_code'],
+        );
 
         return response()->json([
             'payment' => [
@@ -70,19 +88,109 @@ class VirtualPosController extends Controller
             ],
             'provider' => [
                 'mode' => $settings['mode'],
-                'gateway_url' => $settings['gateway_url'],
+                'integration' => 'nestpay_3d_pay',
+                'method' => 'POST',
+                'gateway_url' => $gatewayUrl,
                 'payload' => [
+                    'clientid' => $settings['merchant_no'],
                     'merchant_no' => $settings['merchant_no'],
                     'username' => $settings['username'],
+                    'oid' => $reference,
                     'reference' => $reference,
                     'amount' => $amount,
-                    'currency' => $currency,
-                    'installment' => (int) $validated['installment'],
+                    'currency' => $currencyCode,
+                    'currency_alpha' => $currency,
+                    'installment' => $installment,
+                    'taksit' => $installmentValue,
+                    'okUrl' => $okUrl,
+                    'failUrl' => $failUrl,
+                    'islemtipi' => $transactionType,
+                    'storetype' => '3d_pay',
+                    'lang' => 'tr',
+                    'rnd' => $rnd,
+                    'hash' => $hash,
                     'customer_code' => $customer->code,
                     'customer_title' => $customer->name,
                     'description' => $validated['description'] ?? '',
+                    'firmaadi' => 'PowerSA B2B',
+                    'refreshtime' => '5',
                 ],
             ],
         ]);
+    }
+
+    public function callback(Request $request, string $result): RedirectResponse
+    {
+        $status = $result === 'success' ? 'success' : 'fail';
+        $reference = (string) ($request->input('oid') ?: $request->input('ReturnOid') ?: $request->input('reference') ?: '');
+        $frontendUrl = rtrim((string) config('app.frontend_url', env('FRONTEND_URL', config('app.url'))), '/');
+
+        return redirect()->away($frontendUrl.'/virtual-pos?payment='.$status.($reference !== '' ? '&reference='.urlencode($reference) : ''));
+    }
+
+    /**
+     * NestPay 3D hash: clientid + oid + amount + okUrl + failUrl + islemtipi + taksit + rnd + storekey.
+     */
+    private function nestpayHash(
+        string $clientId,
+        string $orderId,
+        string $amount,
+        string $okUrl,
+        string $failUrl,
+        string $transactionType,
+        string $installment,
+        string $rnd,
+        string $storeKey,
+    ): string {
+        return base64_encode(pack('H*', sha1(
+            $clientId.
+            $orderId.
+            $amount.
+            $okUrl.
+            $failUrl.
+            $transactionType.
+            $installment.
+            $rnd.
+            $storeKey
+        )));
+    }
+
+    private function nestpayCurrencyCode(string $currency): string
+    {
+        return match (strtoupper($currency)) {
+            'USD' => '840',
+            'EUR' => '978',
+            default => '949',
+        };
+    }
+
+    private function paymentGatewayUrl(string $configuredUrl): string
+    {
+        $configuredUrl = trim($configuredUrl);
+        $parts = parse_url($configuredUrl);
+
+        if (
+            is_array($parts)
+            && str_contains(Str::lower((string) ($parts['host'] ?? '')), 'ziraatbank.com.tr')
+            && ! str_contains(Str::lower((string) ($parts['path'] ?? '')), 'est3dgate')
+        ) {
+            $scheme = $parts['scheme'] ?? 'https';
+            $host = $parts['host'];
+
+            return $scheme.'://'.$host.'/fim/est3Dgate';
+        }
+
+        if (
+            is_array($parts)
+            && str_contains(Str::lower((string) ($parts['host'] ?? '')), 'ziraatbank.com.tr')
+            && str_contains(Str::lower((string) ($parts['path'] ?? '')), 'est3dgate')
+        ) {
+            $scheme = $parts['scheme'] ?? 'https';
+            $host = $parts['host'];
+
+            return $scheme.'://'.$host.'/fim/est3Dgate';
+        }
+
+        return $configuredUrl;
     }
 }

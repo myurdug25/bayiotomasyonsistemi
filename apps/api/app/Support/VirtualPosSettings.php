@@ -69,6 +69,21 @@ class VirtualPosSettings
     /**
      * @return array<string, mixed>
      */
+    public static function privateConfig(?Dealer $dealer): array
+    {
+        $settings = self::rawConfig($dealer);
+        $public = self::publicConfig($dealer);
+
+        return [
+            ...$public,
+            'security_code' => self::decryptValue($settings['security_code_encrypted'] ?? null),
+            'password' => self::decryptValue($settings['password_encrypted'] ?? null),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     public static function rawConfig(?Dealer $dealer): array
     {
         $settings = data_get($dealer?->meta, 'system_settings.virtual_pos', []);
@@ -86,6 +101,19 @@ class VirtualPosSettings
             return Crypt::decryptString($value) !== '';
         } catch (DecryptException) {
             return false;
+        }
+    }
+
+    private static function decryptValue(mixed $value): string
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return '';
+        }
+
+        try {
+            return Crypt::decryptString($value);
+        } catch (DecryptException) {
+            return '';
         }
     }
 

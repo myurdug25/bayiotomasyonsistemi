@@ -96,6 +96,109 @@ class VirtualPosApiTest extends TestCase
         $this->assertStringStartsWith('VPOS-', $response->json('payment.reference'));
     }
 
+    public function test_virtual_pos_payment_returns_nestpay_3d_pay_form_payload_with_hash(): void
+    {
+        $this->seed(RoleSeeder::class);
+        config()->set('app.url', 'https://bayiotomasyonsistemi.com');
+
+        $dealer = $this->createDealer('DLR-VPOS-PAY-003', [
+            'meta' => [
+                'system_settings' => [
+                    'virtual_pos' => [
+                        'enabled' => true,
+                        'mode' => 'live',
+                        'gateway_url' => 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate',
+                        'merchant_no' => '192046469',
+                        'username' => 'merchant_user',
+                        'security_code_encrypted' => Crypt::encryptString('STOREKEY-123'),
+                        'password_encrypted' => Crypt::encryptString('PASS-999'),
+                    ],
+                ],
+            ],
+        ]);
+        $customer = $this->createCustomer($dealer, 'VPOS-CUST-003', '3D Pay Cari');
+        $user = $this->createUserWithRole('dealer_admin', $dealer, [
+            'menu_permissions' => ['virtual-pos'],
+            'selected_customer_id' => $customer->id,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->postJson('/api/virtual-pos/payments', [
+                'customer_id' => $customer->id,
+                'amount' => 1,
+                'installment' => 1,
+                'description' => '3D test tahsilat',
+            ])
+            ->assertOk()
+            ->assertJsonPath('provider.integration', 'nestpay_3d_pay')
+            ->assertJsonPath('provider.method', 'POST')
+            ->assertJsonPath('provider.gateway_url', 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate')
+            ->assertJsonPath('provider.payload.clientid', '192046469')
+            ->assertJsonPath('provider.payload.storetype', '3d_pay')
+            ->assertJsonPath('provider.payload.islemtipi', 'Auth')
+            ->assertJsonPath('provider.payload.amount', '1.00')
+            ->assertJsonPath('provider.payload.currency', '949')
+            ->assertJsonPath('provider.payload.lang', 'tr')
+            ->assertJsonPath('provider.payload.taksit', '')
+            ->assertJsonPath('provider.payload.okUrl', 'https://bayiotomasyonsistemi.com/api/virtual-pos/callback/success')
+            ->assertJsonPath('provider.payload.failUrl', 'https://bayiotomasyonsistemi.com/api/virtual-pos/callback/fail')
+            ->assertJsonMissingPath('provider.payload.security_code')
+            ->assertJsonMissingPath('provider.payload.password')
+            ->assertJsonMissingPath('provider.payload.card_number')
+            ->assertJsonMissingPath('provider.payload.cvv');
+
+        $payload = $response->json('provider.payload');
+        $expectedHash = base64_encode(pack('H*', sha1(
+            $payload['clientid'].
+            $payload['oid'].
+            $payload['amount'].
+            $payload['okUrl'].
+            $payload['failUrl'].
+            $payload['islemtipi'].
+            $payload['taksit'].
+            $payload['rnd'].
+            'STOREKEY-123'
+        )));
+
+        $this->assertSame($expectedHash, $payload['hash']);
+    }
+
+    public function test_virtual_pos_payment_derives_ziraat_payment_gateway_from_admin_panel_url(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $dealer = $this->createDealer('DLR-VPOS-PAY-004', [
+            'meta' => [
+                'system_settings' => [
+                    'virtual_pos' => [
+                        'enabled' => true,
+                        'mode' => 'live',
+                        'gateway_url' => 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate/common/login',
+                        'merchant_no' => '192046469',
+                        'username' => 'merchant_user',
+                        'security_code_encrypted' => Crypt::encryptString('STOREKEY-123'),
+                        'password_encrypted' => Crypt::encryptString('PASS-999'),
+                    ],
+                ],
+            ],
+        ]);
+        $customer = $this->createCustomer($dealer, 'VPOS-CUST-004', 'Ziraat Panel Cari');
+        $user = $this->createUserWithRole('dealer_admin', $dealer, [
+            'menu_permissions' => ['virtual-pos'],
+            'selected_customer_id' => $customer->id,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson('/api/virtual-pos/payments', [
+                'customer_id' => $customer->id,
+                'amount' => 1,
+                'installment' => 2,
+            ])
+            ->assertOk()
+            ->assertJsonPath('provider.gateway_url', 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate')
+            ->assertJsonPath('provider.payload.taksit', '2');
+    }
+
     private function createDealer(string $code, array $overrides = []): Dealer
     {
         return Dealer::query()->create(array_merge([

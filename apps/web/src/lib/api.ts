@@ -2961,17 +2961,32 @@ export type VirtualPosPaymentResponse = {
   };
   provider: {
     mode: "test" | "live";
+    integration: "nestpay_3d_pay";
+    method: "POST";
     gateway_url: string;
-    payload: {
+    payload: Record<string, string | number | null> & {
+      clientid: string;
       merchant_no: string;
       username: string;
+      oid: string;
       reference: string;
       amount: string;
       currency: string;
+      currency_alpha?: string;
       installment: number;
+      taksit: string;
+      okUrl: string;
+      failUrl: string;
+      islemtipi: string;
+      storetype: string;
+      lang: string;
+      rnd: string;
+      hash: string;
       customer_code: string;
       customer_title: string;
       description: string;
+      firmaadi?: string;
+      refreshtime?: string;
     };
   };
 };
@@ -2982,10 +2997,6 @@ export async function startVirtualPosPayment(payload: {
   currency?: string;
   installment: number;
   description?: string;
-  card_holder: string;
-  card_number: string;
-  expiry: string;
-  cvv: string;
 }) {
   return apiFetch<VirtualPosPaymentResponse>("/api/virtual-pos/payments", {
     method: "POST",

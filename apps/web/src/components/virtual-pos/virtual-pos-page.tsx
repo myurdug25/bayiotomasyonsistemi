@@ -120,6 +120,48 @@ function maskedCard(value: string) {
   return `**** **** **** ${digits.slice(-4)}`;
 }
 
+function submitNestpayPaymentForm(
+  gatewayUrl: string,
+  payload: Record<string, string | number | null>,
+  card: {
+    holder: string;
+    number: string;
+    expiry: string;
+    cvv: string;
+  }
+) {
+  const [month = "", year = ""] = card.expiry.split("/");
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = gatewayUrl;
+  form.acceptCharset = "ISO-8859-9";
+  form.style.display = "none";
+
+  const fields: Record<string, string | number | null> = {
+    ...payload,
+    pan: onlyDigits(card.number),
+    cv2: onlyDigits(card.cvv),
+    Ecom_Payment_Card_ExpDate_Month: month,
+    Ecom_Payment_Card_ExpDate_Year: year.length === 2 ? `20${year}` : year,
+    cardHolderName: card.holder.trim(),
+  };
+
+  Object.entries(fields).forEach(([name, value]) => {
+    if (value === null || value === undefined) {
+      return;
+    }
+
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = String(value);
+    form.appendChild(input);
+  });
+
+  document.body.appendChild(form);
+  form.submit();
+}
+
 export function VirtualPosPage() {
   const { selectedCustomer, user } = useSession();
   const [cardHolder, setCardHolder] = useState("");
@@ -172,10 +214,6 @@ export function VirtualPosPage() {
         currency: "TRY",
         installment: Number(installment),
         description: description.trim() || undefined,
-        card_holder: cardHolder.trim(),
-        card_number: onlyDigits(cardNumber),
-        expiry,
-        cvv: onlyDigits(cvv),
       }),
     onSuccess: (response) => {
       setLastPreview({
@@ -185,14 +223,13 @@ export function VirtualPosPage() {
         reference: response.payment.reference,
       });
 
-      const providerUrl = new URL(response.provider.gateway_url);
-      providerUrl.searchParams.set("reference", response.payment.reference);
-      providerUrl.searchParams.set("amount", response.payment.amount);
-      providerUrl.searchParams.set("currency", response.payment.currency);
-      providerUrl.searchParams.set("installment", String(response.payment.installment));
-      providerUrl.searchParams.set("customer", response.payment.customer.code);
-      window.open(providerUrl.toString(), "_blank", "noopener,noreferrer");
-      toast.success(`Sanal POS işlemi hazırlandı: ${response.payment.reference}`);
+      toast.success(`3D ödeme başlatılıyor: ${response.payment.reference}`);
+      submitNestpayPaymentForm(response.provider.gateway_url, response.provider.payload, {
+        holder: cardHolder,
+        number: cardNumber,
+        expiry,
+        cvv,
+      });
     },
     onError: (error) => {
       if (error instanceof ApiClientError) {
@@ -285,12 +322,12 @@ export function VirtualPosPage() {
               </span>
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-[var(--brand-primary-strong)]">Sanal Pos</h2>
-                <p className="mt-1 text-sm font-semibold text-[var(--muted-foreground)]">Kartlı ödeme provizyon ekranı</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--muted-foreground)]">Ziraat/Payten 3D ödeme ekranı</p>
               </div>
             </div>
           </div>
           <Badge variant="outline" className="virtual-pos-status-badge w-fit border-emerald-300/45 bg-emerald-300/10 text-emerald-700">
-            Entegrasyon Hazır
+            3D Pay Hazır
           </Badge>
         </div>
       </section>
@@ -532,7 +569,7 @@ export function VirtualPosPage() {
                 <div>
                   <p className="text-sm font-black text-[var(--brand-primary-strong)]">Güvenli Akış</p>
                   <p className="mt-1 text-sm font-semibold text-[var(--muted-foreground)]">
-                    Kart verisi kalıcı olarak saklanmaz; backend sadece işlem referansı ve sağlayıcı yönlendirmesini hazırlar.
+                    Kart bilgisi API&apos;ye gönderilmez; tarayıcı bankanın 3D ödeme kapısına güvenli form gönderir.
                   </p>
                 </div>
               </div>

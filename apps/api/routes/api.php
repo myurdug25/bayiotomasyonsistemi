@@ -69,6 +69,9 @@ Route::get('/health', static fn () => response()->json([
     'service' => 'powersa-b2b-api',
 ]));
 
+Route::match(['get', 'post'], '/virtual-pos/callback/{result}', [VirtualPosController::class, 'callback'])
+    ->whereIn('result', ['success', 'fail']);
+
 Route::middleware('throttle:logo-integration')->group(function (): void {
     Route::post('/integrations/logo/customers/sync', [LogoCustomerSyncController::class, 'store']);
     Route::get('/integrations/logo/customers/pending', [LogoCustomerExportController::class, 'index']);
