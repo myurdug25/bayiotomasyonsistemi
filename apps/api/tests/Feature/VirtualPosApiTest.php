@@ -130,11 +130,11 @@ class VirtualPosApiTest extends TestCase
                 'description' => '3D test tahsilat',
             ])
             ->assertOk()
-            ->assertJsonPath('provider.integration', 'nestpay_3d_pay')
+            ->assertJsonPath('provider.integration', 'nestpay_3d_pay_hosting')
             ->assertJsonPath('provider.method', 'POST')
             ->assertJsonPath('provider.gateway_url', 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate')
             ->assertJsonPath('provider.payload.clientid', '192046469')
-            ->assertJsonPath('provider.payload.storetype', '3d_pay')
+            ->assertJsonPath('provider.payload.storetype', '3d_pay_hosting')
             ->assertJsonPath('provider.payload.hashAlgorithm', 'ver3')
             ->assertJsonPath('provider.payload.encoding', 'UTF-8')
             ->assertJsonPath('provider.payload.islemtipi', 'Auth')

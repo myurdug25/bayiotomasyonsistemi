@@ -23,26 +23,6 @@ import { cn } from "@/lib/utils";
 
 const INSTALLMENT_OPTIONS = ["1", "2", "3"] as const;
 
-function onlyDigits(value: string) {
-  return value.replace(/\D/g, "");
-}
-
-function formatCardNumber(value: string) {
-  return onlyDigits(value)
-    .slice(0, 16)
-    .replace(/(\d{4})(?=\d)/g, "$1 ")
-    .trim();
-}
-
-function formatExpiry(value: string) {
-  const digits = onlyDigits(value).slice(0, 4);
-  if (digits.length <= 2) {
-    return digits;
-  }
-
-  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-}
-
 function formatAmountInput(value: string) {
   const normalized = value.replace(/[^\d,.]/g, "");
   const separatorIndex = normalized.indexOf(",");
@@ -71,79 +51,18 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
-function isValidCardNumber(value: string) {
-  const digits = onlyDigits(value);
-  if (digits.length < 13 || digits.length > 16) {
-    return false;
-  }
-
-  let sum = 0;
-  let doubleDigit = false;
-
-  for (let index = digits.length - 1; index >= 0; index -= 1) {
-    let digit = Number(digits[index]);
-    if (doubleDigit) {
-      digit *= 2;
-      if (digit > 9) {
-        digit -= 9;
-      }
-    }
-    sum += digit;
-    doubleDigit = !doubleDigit;
-  }
-
-  return sum % 10 === 0;
-}
-
-function isValidExpiry(value: string) {
-  const [monthValue, yearValue] = value.split("/");
-  const month = Number(monthValue);
-  const year = Number(yearValue);
-
-  if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year) || yearValue.length !== 2) {
-    return false;
-  }
-
-  const now = new Date();
-  const currentYear = now.getFullYear() % 100;
-  const currentMonth = now.getMonth() + 1;
-
-  return year > currentYear || (year === currentYear && month >= currentMonth);
-}
-
-function maskedCard(value: string) {
-  const digits = onlyDigits(value);
-  if (digits.length < 4) {
-    return "**** **** ****";
-  }
-
-  return `**** **** **** ${digits.slice(-4)}`;
-}
-
 function submitNestpayPaymentForm(
   gatewayUrl: string,
-  payload: Record<string, string | number | null>,
-  card: {
-    holder: string;
-    number: string;
-    expiry: string;
-    cvv: string;
-  }
+  payload: Record<string, string | number | null>
 ) {
-  const [month = "", year = ""] = card.expiry.split("/");
   const form = document.createElement("form");
   form.method = "POST";
   form.action = gatewayUrl;
-  form.acceptCharset = "ISO-8859-9";
+  form.acceptCharset = "UTF-8";
   form.style.display = "none";
 
   const fields: Record<string, string | number | null> = {
     ...payload,
-    pan: onlyDigits(card.number),
-    cv2: onlyDigits(card.cvv),
-    Ecom_Payment_Card_ExpDate_Month: month,
-    Ecom_Payment_Card_ExpDate_Year: year.length === 2 ? `20${year}` : year,
-    cardHolderName: card.holder.trim(),
   };
 
   Object.entries(fields).forEach(([name, value]) => {
@@ -164,16 +83,11 @@ function submitNestpayPaymentForm(
 
 export function VirtualPosPage() {
   const { selectedCustomer, user } = useSession();
-  const [cardHolder, setCardHolder] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [expiry, setExpiry] = useState("");
-  const [cvv, setCvv] = useState("");
   const [amount, setAmount] = useState("");
   const [installment, setInstallment] = useState<(typeof INSTALLMENT_OPTIONS)[number]>("1");
   const [description, setDescription] = useState("");
   const [lastPreview, setLastPreview] = useState<{
     amount: number;
-    card: string;
     installment: string;
     reference?: string;
   } | null>(null);
@@ -183,29 +97,13 @@ export function VirtualPosPage() {
     if (!selectedCustomer) {
       return "Cari seçimi zorunlu.";
     }
-    if (!cardHolder.trim()) {
-      return "Kart sahibi zorunlu.";
-    }
-    if (!isValidCardNumber(cardNumber)) {
-      return "Kart numarasını kontrol edin.";
-    }
-    if (!isValidExpiry(expiry)) {
-      return "Son kullanma tarihini kontrol edin.";
-    }
-    if (onlyDigits(cvv).length < 3) {
-      return "CVV zorunlu.";
-    }
     if (numericAmount <= 0) {
       return "Tutar 0'dan büyük olmalı.";
     }
 
     return null;
-  }, [cardHolder, cardNumber, cvv, expiry, numericAmount, selectedCustomer]);
+  }, [numericAmount, selectedCustomer]);
   const canSubmit = validationMessage === null;
-  const displayCardNumber = cardNumber || "0000 0000 0000 0000";
-  const displayExpiry = expiry || "AA/YY";
-  const displayCvv = cvv ? "•".repeat(Math.min(cvv.length, 4)) : "CVV";
-  const displayCardHolder = cardHolder || "AD SOYAD";
   const paymentMutation = useMutation({
     mutationFn: () =>
       startVirtualPosPayment({
@@ -218,18 +116,12 @@ export function VirtualPosPage() {
     onSuccess: (response) => {
       setLastPreview({
         amount: numericAmount,
-        card: maskedCard(cardNumber),
         installment,
         reference: response.payment.reference,
       });
 
       toast.success(`3D ödeme başlatılıyor: ${response.payment.reference}`);
-      submitNestpayPaymentForm(response.provider.gateway_url, response.provider.payload, {
-        holder: cardHolder,
-        number: cardNumber,
-        expiry,
-        cvv,
-      });
+      submitNestpayPaymentForm(response.provider.gateway_url, response.provider.payload);
     },
     onError: (error) => {
       if (error instanceof ApiClientError) {
@@ -270,8 +162,7 @@ export function VirtualPosPage() {
       lines: [
         { label: "Tutar", value: formatMoney(numericAmount), strong: true },
         { label: "Taksit", value: installment === "1" ? "Tek Çekim" : `${installment} Taksit` },
-        { label: "Kart", value: cardNumber ? maskedCard(cardNumber) : "" },
-        { label: "Kart Sahibi", value: cardHolder },
+        { label: "Kart Bilgisi", value: "Banka ekranında girilecek" },
       ],
       totalLabel: "Toplam",
       total: formatMoney(numericAmount),
@@ -336,7 +227,7 @@ export function VirtualPosPage() {
         <Card className="virtual-pos-card-panel rounded-[18px]">
           <CardHeader className="virtual-pos-card-header border-b border-[var(--brand-border)]">
             <CardTitle className="flex items-center gap-2 text-base font-black text-[var(--brand-primary-strong)]">
-              <LockKeyhole className="h-4 w-4" /> Kart Bilgileri
+              <LockKeyhole className="h-4 w-4" /> Ödeme Bilgileri
             </CardTitle>
           </CardHeader>
           <CardContent className="p-5">
@@ -349,8 +240,8 @@ export function VirtualPosPage() {
                   <div className="relative flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/62">PowerSA Sanal POS</p>
-                      <p className="mt-5 truncate font-mono text-[clamp(16px,4.2vw,22px)] font-black tracking-[0.08em] sm:mt-7 sm:tracking-[0.12em]">
-                        {displayCardNumber}
+                      <p className="mt-5 text-[clamp(18px,4.2vw,26px)] font-black tracking-tight sm:mt-7">
+                        Banka Güvenli Ödeme
                       </p>
                     </div>
                     <span className="flex h-9 w-12 items-center justify-center rounded-[8px] border border-white/18 bg-white/10">
@@ -359,17 +250,17 @@ export function VirtualPosPage() {
                   </div>
                   <div className="relative mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:mt-6">
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">Kart Sahibi</p>
-                      <p className="mt-1 max-w-[240px] truncate text-sm font-black tracking-[0.08em]">{displayCardHolder}</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">Kart Bilgisi</p>
+                      <p className="mt-1 max-w-[260px] truncate text-sm font-black tracking-[0.02em]">Ziraat/Payten ekranında girilecek</p>
                     </div>
                     <div className="virtual-pos-card-meta-grid grid grid-cols-2 gap-2 text-right sm:gap-4">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">AA/YY</p>
-                        <p className="mt-1 font-mono text-sm font-black">{displayExpiry}</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">3D</p>
+                        <p className="mt-1 font-mono text-sm font-black">SECURE</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">CVV</p>
-                        <p className="mt-1 font-mono text-sm font-black">{displayCvv}</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">POS</p>
+                        <p className="mt-1 font-mono text-sm font-black">HOSTED</p>
                       </div>
                     </div>
                   </div>
@@ -391,52 +282,17 @@ export function VirtualPosPage() {
                   </section>
 
                   <section className="virtual-pos-form-section rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
-                    <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">2 · Kart Bilgileri</p>
+                    <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">2 · Tutar / Taksit</p>
                     <div className="grid gap-3">
-                      <label className="space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Kart Sahibi</span>
-                        <Input
-                          className="virtual-pos-input"
-                          value={cardHolder}
-                          onChange={(event) => setCardHolder(event.target.value.toLocaleUpperCase("tr-TR"))}
-                          placeholder="AD SOYAD"
-                          autoComplete="cc-name"
-                        />
-                      </label>
-
-                      <label className="space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Kart Numarası</span>
-                        <Input
-                          className="virtual-pos-input"
-                          value={cardNumber}
-                          onChange={(event) => setCardNumber(formatCardNumber(event.target.value))}
-                          placeholder="0000 0000 0000 0000"
-                          inputMode="numeric"
-                          autoComplete="cc-number"
-                        />
-                      </label>
-
                       <div className="virtual-pos-card-detail-grid grid gap-3 md:grid-cols-3">
-                        <label className="space-y-1.5">
-                          <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">SKT</span>
+                        <label className="space-y-1.5 md:col-span-2">
+                          <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Tutar</span>
                           <Input
                             className="virtual-pos-input"
-                            value={expiry}
-                            onChange={(event) => setExpiry(formatExpiry(event.target.value))}
-                            placeholder="AA/YY"
-                            inputMode="numeric"
-                            autoComplete="cc-exp"
-                          />
-                        </label>
-                        <label className="space-y-1.5">
-                          <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">CVV</span>
-                          <Input
-                            className="virtual-pos-input"
-                            value={cvv}
-                            onChange={(event) => setCvv(onlyDigits(event.target.value).slice(0, 4))}
-                            placeholder="000"
-                            inputMode="numeric"
-                            autoComplete="cc-csc"
+                            value={amount}
+                            onChange={(event) => setAmount(formatAmountInput(event.target.value))}
+                            placeholder="0,00"
+                            inputMode="decimal"
                           />
                         </label>
                         <label className="space-y-1.5">
@@ -459,18 +315,8 @@ export function VirtualPosPage() {
                   </section>
 
                   <section className="virtual-pos-form-section rounded-[18px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-3">
-                    <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">3 · Tutar / Açıklama</p>
-                    <div className="virtual-pos-two-field-grid grid gap-3 md:grid-cols-2">
-                      <label className="space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Tutar</span>
-                        <Input
-                          className="virtual-pos-input"
-                          value={amount}
-                          onChange={(event) => setAmount(formatAmountInput(event.target.value))}
-                          placeholder="0,00"
-                          inputMode="decimal"
-                        />
-                      </label>
+                    <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--brand-primary-strong)]">3 · Açıklama</p>
+                    <div className="grid gap-3">
                       <label className="space-y-1.5">
                         <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted-foreground)]">Açıklama</span>
                         <Input
@@ -552,8 +398,7 @@ export function VirtualPosPage() {
                   <div className="flex items-center gap-2 text-sm font-black">
                     <CheckCircle2 className="h-4 w-4" /> Provizyon Ön Kontrolü
                   </div>
-                  <p className="mt-2 text-sm font-bold">{lastPreview.card}</p>
-                  <p className="mt-1 text-sm font-bold">{formatMoney(lastPreview.amount)}</p>
+                  <p className="mt-2 text-sm font-bold">{formatMoney(lastPreview.amount)}</p>
                   {lastPreview.reference ? <p className="mt-1 text-xs font-black">{lastPreview.reference}</p> : null}
                 </div>
               ) : null}

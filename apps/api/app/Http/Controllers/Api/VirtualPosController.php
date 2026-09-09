@@ -74,7 +74,7 @@ class VirtualPosController extends Controller
             'okUrl' => $okUrl,
             'failUrl' => $failUrl,
             'islemtipi' => $transactionType,
-            'storetype' => '3d_pay',
+            'storetype' => '3d_pay_hosting',
             'lang' => 'tr',
             'rnd' => $rnd,
             'hashAlgorithm' => 'ver3',
@@ -104,7 +104,7 @@ class VirtualPosController extends Controller
             ],
             'provider' => [
                 'mode' => $settings['mode'],
-                'integration' => 'nestpay_3d_pay',
+                'integration' => 'nestpay_3d_pay_hosting',
                 'method' => 'POST',
                 'gateway_url' => $gatewayUrl,
                 'payload' => $providerPayload,
