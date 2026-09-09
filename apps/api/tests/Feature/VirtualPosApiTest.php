@@ -135,6 +135,8 @@ class VirtualPosApiTest extends TestCase
             ->assertJsonPath('provider.gateway_url', 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate')
             ->assertJsonPath('provider.payload.clientid', '192046469')
             ->assertJsonPath('provider.payload.storetype', '3d_pay')
+            ->assertJsonPath('provider.payload.hashAlgorithm', 'ver3')
+            ->assertJsonPath('provider.payload.encoding', 'UTF-8')
             ->assertJsonPath('provider.payload.islemtipi', 'Auth')
             ->assertJsonPath('provider.payload.amount', '1.00')
             ->assertJsonPath('provider.payload.currency', '949')
@@ -148,17 +150,15 @@ class VirtualPosApiTest extends TestCase
             ->assertJsonMissingPath('provider.payload.cvv');
 
         $payload = $response->json('provider.payload');
-        $expectedHash = base64_encode(pack('H*', sha1(
-            $payload['clientid'].
-            $payload['oid'].
-            $payload['amount'].
-            $payload['okUrl'].
-            $payload['failUrl'].
-            $payload['islemtipi'].
-            $payload['taksit'].
-            $payload['rnd'].
-            'STOREKEY-123'
-        )));
+        $hashFields = $payload;
+        unset($hashFields['hash'], $hashFields['encoding']);
+        uksort($hashFields, static fn (string $left, string $right): int => strcasecmp($left, $right));
+
+        $expectedPlainText = collect($hashFields)
+            ->map(static fn (mixed $value): string => str_replace(['\\', '|'], ['\\\\', '\\|'], (string) $value).'|')
+            ->implode('')
+            .str_replace(['\\', '|'], ['\\\\', '\\|'], 'STOREKEY-123');
+        $expectedHash = base64_encode(hash('sha512', $expectedPlainText, true));
 
         $this->assertSame($expectedHash, $payload['hash']);
     }

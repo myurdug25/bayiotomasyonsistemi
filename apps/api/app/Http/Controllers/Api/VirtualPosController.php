@@ -60,17 +60,33 @@ class VirtualPosController extends Controller
         $rnd = (string) Str::uuid();
         $currencyCode = $this->nestpayCurrencyCode($currency);
 
-        $hash = $this->nestpayHash(
-            clientId: $settings['merchant_no'],
-            orderId: $reference,
-            amount: $amount,
-            okUrl: $okUrl,
-            failUrl: $failUrl,
-            transactionType: $transactionType,
-            installment: $installmentValue,
-            rnd: $rnd,
-            storeKey: $settings['security_code'],
-        );
+        $providerPayload = [
+            'clientid' => $settings['merchant_no'],
+            'merchant_no' => $settings['merchant_no'],
+            'username' => $settings['username'],
+            'oid' => $reference,
+            'reference' => $reference,
+            'amount' => $amount,
+            'currency' => $currencyCode,
+            'currency_alpha' => $currency,
+            'installment' => $installment,
+            'taksit' => $installmentValue,
+            'okUrl' => $okUrl,
+            'failUrl' => $failUrl,
+            'islemtipi' => $transactionType,
+            'storetype' => '3d_pay',
+            'lang' => 'tr',
+            'rnd' => $rnd,
+            'hashAlgorithm' => 'ver3',
+            'encoding' => 'UTF-8',
+            'customer_code' => $customer->code,
+            'customer_title' => $customer->name,
+            'description' => $validated['description'] ?? '',
+            'firmaadi' => 'PowerSA B2B',
+            'refreshtime' => '5',
+        ];
+
+        $providerPayload['hash'] = $this->nestpayHash($providerPayload, $settings['security_code']);
 
         return response()->json([
             'payment' => [
@@ -91,30 +107,7 @@ class VirtualPosController extends Controller
                 'integration' => 'nestpay_3d_pay',
                 'method' => 'POST',
                 'gateway_url' => $gatewayUrl,
-                'payload' => [
-                    'clientid' => $settings['merchant_no'],
-                    'merchant_no' => $settings['merchant_no'],
-                    'username' => $settings['username'],
-                    'oid' => $reference,
-                    'reference' => $reference,
-                    'amount' => $amount,
-                    'currency' => $currencyCode,
-                    'currency_alpha' => $currency,
-                    'installment' => $installment,
-                    'taksit' => $installmentValue,
-                    'okUrl' => $okUrl,
-                    'failUrl' => $failUrl,
-                    'islemtipi' => $transactionType,
-                    'storetype' => '3d_pay',
-                    'lang' => 'tr',
-                    'rnd' => $rnd,
-                    'hash' => $hash,
-                    'customer_code' => $customer->code,
-                    'customer_title' => $customer->name,
-                    'description' => $validated['description'] ?? '',
-                    'firmaadi' => 'PowerSA B2B',
-                    'refreshtime' => '5',
-                ],
+                'payload' => $providerPayload,
             ],
         ]);
     }
@@ -129,30 +122,29 @@ class VirtualPosController extends Controller
     }
 
     /**
-     * NestPay 3D hash: clientid + oid + amount + okUrl + failUrl + islemtipi + taksit + rnd + storekey.
+     * NestPay hashAlgorithm=ver3: form values sorted alphabetically, separated by pipes, then storekey.
+     *
+     * @param  array<string, mixed>  $payload
      */
-    private function nestpayHash(
-        string $clientId,
-        string $orderId,
-        string $amount,
-        string $okUrl,
-        string $failUrl,
-        string $transactionType,
-        string $installment,
-        string $rnd,
-        string $storeKey,
-    ): string {
-        return base64_encode(pack('H*', sha1(
-            $clientId.
-            $orderId.
-            $amount.
-            $okUrl.
-            $failUrl.
-            $transactionType.
-            $installment.
-            $rnd.
-            $storeKey
-        )));
+    private function nestpayHash(array $payload, string $storeKey): string
+    {
+        $hashFields = $payload;
+        unset($hashFields['hash'], $hashFields['encoding']);
+
+        uksort($hashFields, static fn (string $left, string $right): int => strcasecmp($left, $right));
+
+        $plainText = '';
+        foreach ($hashFields as $value) {
+            $plainText .= $this->escapeHashValue((string) $value).'|';
+        }
+        $plainText .= $this->escapeHashValue($storeKey);
+
+        return base64_encode(hash('sha512', $plainText, true));
+    }
+
+    private function escapeHashValue(string $value): string
+    {
+        return str_replace(['\\', '|'], ['\\\\', '\\|'], $value);
     }
 
     private function nestpayCurrencyCode(string $currency): string

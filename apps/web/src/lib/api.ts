@@ -2981,6 +2981,8 @@ export type VirtualPosPaymentResponse = {
       storetype: string;
       lang: string;
       rnd: string;
+      hashAlgorithm: string;
+      encoding: string;
       hash: string;
       customer_code: string;
       customer_title: string;
