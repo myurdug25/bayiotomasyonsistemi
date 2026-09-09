@@ -2979,6 +2979,9 @@ export type VirtualPosPaymentResponse = {
       hashAlgorithm: string;
       encoding: string;
       hash: string;
+      BillToName?: string;
+      BillToCompany?: string;
+      BillToCustomerId?: string;
     };
     meta?: {
       merchant_no: string;

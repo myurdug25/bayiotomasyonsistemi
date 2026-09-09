@@ -74,6 +74,9 @@ class VirtualPosController extends Controller
             'rnd' => $rnd,
             'hashAlgorithm' => 'ver3',
             'encoding' => 'UTF-8',
+            'BillToName' => $this->truncateNestpayText($customer->name, 100),
+            'BillToCompany' => $this->truncateNestpayText($customer->name, 100),
+            'BillToCustomerId' => $this->truncateNestpayText($customer->code, 64),
         ];
 
         $providerPayload['hash'] = $this->nestpayHash($providerPayload, $settings['security_code']);
@@ -155,6 +158,17 @@ class VirtualPosController extends Controller
             'EUR' => '978',
             default => '949',
         };
+    }
+
+    private function truncateNestpayText(?string $value, int $limit): string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return '';
+        }
+
+        return mb_substr($value, 0, $limit);
     }
 
     private function paymentGatewayUrl(string $configuredUrl): string
