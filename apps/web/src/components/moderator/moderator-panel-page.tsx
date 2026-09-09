@@ -642,9 +642,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     !virtualPos.enabled ||
     (virtualPos.gateway_url.trim() !== "" &&
       virtualPos.merchant_no.trim() !== "" &&
-      virtualPos.username.trim() !== "" &&
-      (virtualPos.security_code.trim() !== "" || Boolean(virtualPosSettings?.has_security_code)) &&
-      (virtualPos.password.trim() !== "" || Boolean(virtualPosSettings?.has_password)));
+      (virtualPos.security_code.trim() !== "" || Boolean(virtualPosSettings?.has_security_code)));
 
   const dealers = overviewQuery.data?.dealers ?? [];
   const roleOptions = overviewQuery.data?.roles ?? EMPTY_ROLES;
@@ -1635,7 +1633,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
                   </span>
                 </div>
                 <p className="mt-1 text-xs font-bold text-[var(--muted-foreground)]">
-                  Arayüz linki ve mağaza bilgileri buradan yönetilir; gizli alanlar kaydedildikten sonra gösterilmez.
+                  Ödeme imzası için 3D Ayarları sayfasındaki İşyeri Güvenlik Anahtarı kullanılır; panel şifresi ödeme formuna gönderilmez.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1688,24 +1686,24 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
               </label>
               <label className="space-y-2 text-sm">
                 <span className="font-extrabold text-[var(--brand-primary-strong)]">
-                  Güvenlik Kodu{virtualPosSettings?.has_security_code ? " kayıtlı" : ""}
+                  İşyeri Güvenlik Anahtarı (StoreKey){virtualPosSettings?.has_security_code ? " kayıtlı" : ""}
                 </span>
                 <Input
                   type="password"
                   value={virtualPos.security_code}
                   onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), security_code: event.target.value }))}
-                  placeholder={virtualPosSettings?.has_security_code ? "Değiştirmeyeceksen boş bırak" : "Güvenlik kodu"}
+                  placeholder={virtualPosSettings?.has_security_code ? "Değiştirmeyeceksen boş bırak" : "3D Ayarları > Güvenlik Anahtarı"}
                 />
               </label>
               <label className="space-y-2 text-sm">
                 <span className="font-extrabold text-[var(--brand-primary-strong)]">
-                  Şifre{virtualPosSettings?.has_password ? " kayıtlı" : ""}
+                  Panel Şifresi{virtualPosSettings?.has_password ? " kayıtlı" : ""}
                 </span>
                 <Input
                   type="password"
                   value={virtualPos.password}
                   onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), password: event.target.value }))}
-                  placeholder={virtualPosSettings?.has_password ? "Değiştirmeyeceksen boş bırak" : "Şifre"}
+                  placeholder={virtualPosSettings?.has_password ? "Değiştirmeyeceksen boş bırak" : "Opsiyonel"}
                 />
               </label>
             </div>

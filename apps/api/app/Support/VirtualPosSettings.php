@@ -61,9 +61,7 @@ class VirtualPosSettings
         return (bool) $settings['enabled']
             && $settings['gateway_url'] !== ''
             && $settings['merchant_no'] !== ''
-            && $settings['username'] !== ''
-            && (bool) $settings['has_security_code']
-            && (bool) $settings['has_password'];
+            && (bool) $settings['has_security_code'];
     }
 
     /**

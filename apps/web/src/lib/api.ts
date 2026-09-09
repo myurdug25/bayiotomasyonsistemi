@@ -2961,7 +2961,7 @@ export type VirtualPosPaymentResponse = {
   };
   provider: {
     mode: "test" | "live";
-    integration: "nestpay_3d_pay";
+    integration: "nestpay_3d_pay_hosting";
     method: "POST";
     gateway_url: string;
     payload: Record<string, string | number | null> & {

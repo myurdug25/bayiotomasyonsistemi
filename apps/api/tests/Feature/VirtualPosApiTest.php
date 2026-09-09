@@ -171,6 +171,43 @@ class VirtualPosApiTest extends TestCase
         $this->assertSame($expectedHash, $payload['hash']);
     }
 
+    public function test_virtual_pos_payment_does_not_require_panel_password_for_3d_hash(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $dealer = $this->createDealer('DLR-VPOS-PAY-004A', [
+            'meta' => [
+                'system_settings' => [
+                    'virtual_pos' => [
+                        'enabled' => true,
+                        'mode' => 'live',
+                        'gateway_url' => 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate',
+                        'merchant_no' => '192046469',
+                        'username' => '',
+                        'security_code_encrypted' => Crypt::encryptString('STOREKEY-123'),
+                        'password_encrypted' => null,
+                    ],
+                ],
+            ],
+        ]);
+        $customer = $this->createCustomer($dealer, 'VPOS-CUST-004A', '3D Storekey Cari');
+        $user = $this->createUserWithRole('dealer_admin', $dealer, [
+            'menu_permissions' => ['virtual-pos'],
+            'selected_customer_id' => $customer->id,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson('/api/virtual-pos/payments', [
+                'customer_id' => $customer->id,
+                'amount' => 1,
+                'installment' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('provider.payload.clientid', '192046469')
+            ->assertJsonMissingPath('provider.payload.password')
+            ->assertJsonMissingPath('provider.payload.username');
+    }
+
     public function test_virtual_pos_payment_derives_ziraat_payment_gateway_from_admin_panel_url(): void
     {
         $this->seed(RoleSeeder::class);
