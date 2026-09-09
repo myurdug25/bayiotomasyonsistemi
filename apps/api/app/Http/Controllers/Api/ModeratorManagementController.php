@@ -12,6 +12,7 @@ use App\Services\Users\UserPermissionService;
 use App\Support\CustomerFeaturePermissions;
 use App\Support\MenuPermissions;
 use App\Support\Products\ProductSearchCacheRevision;
+use App\Support\VirtualPosSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -177,6 +178,7 @@ class ModeratorManagementController extends Controller
                     ?: config('integrations.customer_complaints.mail_to', '')),
                 'batum_exchange_rate' => $this->resolveBatumExchangeRate($settingsDealer),
                 'batum_exchange_multiplier' => $this->resolveBatumExchangeMultiplier($settingsDealer),
+                'virtual_pos' => VirtualPosSettings::publicConfig($settingsDealer),
             ],
             'dealers' => $dealers->map(fn (Dealer $dealer) => [
                 'id' => $dealer->id,
@@ -215,6 +217,14 @@ class ModeratorManagementController extends Controller
             'complaint_mail_to' => ['sometimes', 'required', 'email:rfc', 'max:255'],
             'batum_exchange_rate' => ['sometimes', 'required', 'numeric', 'min:0.0001', 'max:999999'],
             'batum_exchange_multiplier' => ['sometimes', 'required', 'numeric', 'min:0.000001', 'max:999999'],
+            'virtual_pos' => ['sometimes', 'array'],
+            'virtual_pos.enabled' => ['sometimes', 'boolean'],
+            'virtual_pos.mode' => ['sometimes', Rule::in(['test', 'live'])],
+            'virtual_pos.gateway_url' => ['sometimes', 'nullable', 'url', 'max:2048'],
+            'virtual_pos.merchant_no' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'virtual_pos.username' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'virtual_pos.security_code' => ['sometimes', 'nullable', 'string', 'max:512'],
+            'virtual_pos.password' => ['sometimes', 'nullable', 'string', 'max:512'],
         ]);
         [$batumExchangeRate, $batumExchangeMultiplier] = $this->normalizedBatumExchangeSettings($validated);
 
@@ -235,6 +245,17 @@ class ModeratorManagementController extends Controller
                 if ($batumExchangeMultiplier !== null) {
                     data_set($meta, 'system_settings.batum_exchange_multiplier', $batumExchangeMultiplier);
                 }
+                if (array_key_exists('virtual_pos', $validated)) {
+                    $existingVirtualPos = data_get($meta, 'system_settings.virtual_pos', []);
+                    data_set(
+                        $meta,
+                        'system_settings.virtual_pos',
+                        VirtualPosSettings::merge(
+                            is_array($existingVirtualPos) ? $existingVirtualPos : [],
+                            $validated['virtual_pos']
+                        )
+                    );
+                }
 
                 $dealer->forceFill(['meta' => $meta])->save();
             }
@@ -254,6 +275,7 @@ class ModeratorManagementController extends Controller
                         ?: config('integrations.customer_complaints.mail_to', '')),
                 'batum_exchange_rate' => $batumExchangeRate ?? $this->resolveBatumExchangeRate($settingsDealer),
                 'batum_exchange_multiplier' => $batumExchangeMultiplier ?? $this->resolveBatumExchangeMultiplier($settingsDealer),
+                'virtual_pos' => VirtualPosSettings::publicConfig($settingsDealer),
             ],
         ]);
     }

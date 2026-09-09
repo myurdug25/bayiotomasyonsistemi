@@ -16,6 +16,7 @@ use App\Support\MenuPermissions;
 use App\Support\Products\ProductSearchCacheRevision;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -178,6 +179,103 @@ class ModeratorManagementApiTest extends TestCase
             '0.0650',
             data_get($dealer->fresh()->meta, 'system_settings.batum_exchange_multiplier')
         );
+    }
+
+    public function test_global_admin_can_update_virtual_pos_settings_for_all_dealers_without_exposing_secrets(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $firstDealer = $this->createDealer('DLR-VPOS-001');
+        $secondDealer = $this->createDealer('DLR-VPOS-002');
+        $admin = $this->createUserWithRole('admin', null, [
+            'menu_permissions' => ['moderator'],
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson('/api/moderator/system-settings', [
+                'virtual_pos' => [
+                    'enabled' => true,
+                    'mode' => 'test',
+                    'gateway_url' => 'https://pos.example.com/merchant',
+                    'merchant_no' => 'MAGAZA-123',
+                    'username' => 'powersa_user',
+                    'security_code' => 'SEC-CODE-123',
+                    'password' => 'secret-pass',
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('system_settings.virtual_pos.enabled', true)
+            ->assertJsonPath('system_settings.virtual_pos.mode', 'test')
+            ->assertJsonPath('system_settings.virtual_pos.gateway_url', 'https://pos.example.com/merchant')
+            ->assertJsonPath('system_settings.virtual_pos.merchant_no', 'MAGAZA-123')
+            ->assertJsonPath('system_settings.virtual_pos.username', 'powersa_user')
+            ->assertJsonPath('system_settings.virtual_pos.has_security_code', true)
+            ->assertJsonPath('system_settings.virtual_pos.has_password', true)
+            ->assertJsonMissingPath('system_settings.virtual_pos.security_code')
+            ->assertJsonMissingPath('system_settings.virtual_pos.password');
+
+        $storedFirst = data_get($firstDealer->fresh()->meta, 'system_settings.virtual_pos');
+        $storedSecond = data_get($secondDealer->fresh()->meta, 'system_settings.virtual_pos');
+
+        $this->assertNotSame('SEC-CODE-123', $storedFirst['security_code_encrypted'] ?? null);
+        $this->assertNotSame('secret-pass', $storedFirst['password_encrypted'] ?? null);
+        $this->assertSame('SEC-CODE-123', Crypt::decryptString($storedFirst['security_code_encrypted']));
+        $this->assertSame('secret-pass', Crypt::decryptString($storedFirst['password_encrypted']));
+        $this->assertSame($storedFirst['gateway_url'], $storedSecond['gateway_url']);
+        $this->assertArrayNotHasKey('security_code', $storedFirst);
+        $this->assertArrayNotHasKey('password', $storedFirst);
+
+        $this->getJson('/api/moderator/overview')
+            ->assertOk()
+            ->assertJsonPath('system_settings.virtual_pos.has_security_code', true)
+            ->assertJsonPath('system_settings.virtual_pos.has_password', true)
+            ->assertJsonMissingPath('system_settings.virtual_pos.security_code')
+            ->assertJsonMissingPath('system_settings.virtual_pos.password');
+    }
+
+    public function test_virtual_pos_secret_fields_are_preserved_when_left_blank(): void
+    {
+        $this->seed(RoleSeeder::class);
+
+        $dealer = $this->createDealer('DLR-VPOS-PRESERVE-001');
+        $admin = $this->createUserWithRole('admin', null, [
+            'menu_permissions' => ['moderator'],
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson('/api/moderator/system-settings', [
+                'virtual_pos' => [
+                    'enabled' => true,
+                    'mode' => 'live',
+                    'gateway_url' => 'https://pos.example.com/old',
+                    'merchant_no' => 'OLD',
+                    'username' => 'old_user',
+                    'security_code' => 'KEEP-SEC',
+                    'password' => 'KEEP-PASS',
+                ],
+            ])
+            ->assertOk();
+
+        $this->patchJson('/api/moderator/system-settings', [
+            'virtual_pos' => [
+                'enabled' => true,
+                'mode' => 'live',
+                'gateway_url' => 'https://pos.example.com/new',
+                'merchant_no' => 'NEW',
+                'username' => 'new_user',
+                'security_code' => '',
+                'password' => '',
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('system_settings.virtual_pos.gateway_url', 'https://pos.example.com/new')
+            ->assertJsonPath('system_settings.virtual_pos.has_security_code', true)
+            ->assertJsonPath('system_settings.virtual_pos.has_password', true);
+
+        $stored = data_get($dealer->fresh()->meta, 'system_settings.virtual_pos');
+
+        $this->assertSame('KEEP-SEC', Crypt::decryptString($stored['security_code_encrypted']));
+        $this->assertSame('KEEP-PASS', Crypt::decryptString($stored['password_encrypted']));
     }
 
     public function test_moderator_can_read_overview_and_manage_users_and_customers(): void

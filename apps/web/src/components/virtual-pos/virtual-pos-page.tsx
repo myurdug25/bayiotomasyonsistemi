@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { CheckCircle2, CreditCard, LockKeyhole, MessageCircle, Printer, ReceiptText, ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ApiClientError, startVirtualPosPayment } from "@/lib/api";
 import { canUseThermalBrowserPrintFallback, printThermalReceipt, tryThermalReceiptNativeBridge } from "@/lib/thermal-print";
 import { cn } from "@/lib/utils";
 
@@ -131,6 +133,7 @@ export function VirtualPosPage() {
     amount: number;
     card: string;
     installment: string;
+    reference?: string;
   } | null>(null);
 
   const numericAmount = useMemo(() => parseAmount(amount), [amount]);
@@ -161,6 +164,45 @@ export function VirtualPosPage() {
   const displayExpiry = expiry || "AA/YY";
   const displayCvv = cvv ? "•".repeat(Math.min(cvv.length, 4)) : "CVV";
   const displayCardHolder = cardHolder || "AD SOYAD";
+  const paymentMutation = useMutation({
+    mutationFn: () =>
+      startVirtualPosPayment({
+        customer_id: selectedCustomer?.id ?? 0,
+        amount: numericAmount,
+        currency: "TRY",
+        installment: Number(installment),
+        description: description.trim() || undefined,
+        card_holder: cardHolder.trim(),
+        card_number: onlyDigits(cardNumber),
+        expiry,
+        cvv: onlyDigits(cvv),
+      }),
+    onSuccess: (response) => {
+      setLastPreview({
+        amount: numericAmount,
+        card: maskedCard(cardNumber),
+        installment,
+        reference: response.payment.reference,
+      });
+
+      const providerUrl = new URL(response.provider.gateway_url);
+      providerUrl.searchParams.set("reference", response.payment.reference);
+      providerUrl.searchParams.set("amount", response.payment.amount);
+      providerUrl.searchParams.set("currency", response.payment.currency);
+      providerUrl.searchParams.set("installment", String(response.payment.installment));
+      providerUrl.searchParams.set("customer", response.payment.customer.code);
+      window.open(providerUrl.toString(), "_blank", "noopener,noreferrer");
+      toast.success(`Sanal POS işlemi hazırlandı: ${response.payment.reference}`);
+    },
+    onError: (error) => {
+      if (error instanceof ApiClientError) {
+        toast.error(error.payload?.message ?? error.message);
+        return;
+      }
+
+      toast.error(error instanceof Error ? error.message : "Sanal POS işlemi başlatılamadı.");
+    },
+  });
 
   const handleWhatsAppShare = () => {
     const message = [
@@ -229,12 +271,7 @@ export function VirtualPosPage() {
       return;
     }
 
-    setLastPreview({
-      amount: numericAmount,
-      card: maskedCard(cardNumber),
-      installment,
-    });
-    toast.info("Sanal Pos sağlayıcısı bağlanınca provizyon bu ekrandan başlatılacak.");
+    paymentMutation.mutate();
   };
 
   return (
@@ -252,8 +289,8 @@ export function VirtualPosPage() {
               </div>
             </div>
           </div>
-          <Badge variant="outline" className="virtual-pos-status-badge w-fit border-amber-300/45 bg-amber-300/10 text-amber-700">
-            Entegrasyon Bekliyor
+          <Badge variant="outline" className="virtual-pos-status-badge w-fit border-emerald-300/45 bg-emerald-300/10 text-emerald-700">
+            Entegrasyon Hazır
           </Badge>
         </div>
       </section>
@@ -436,9 +473,10 @@ export function VirtualPosPage() {
                   <Button
                     type="submit"
                     className="virtual-pos-start-button h-11 gap-2 rounded-[14px] border border-red-300/45 bg-[linear-gradient(135deg,#ff5a5f_0%,#e11d2e_48%,#8f1118_100%)] px-3 text-sm font-black text-white shadow-[0_14px_34px_rgba(225,29,46,0.28)] hover:brightness-110"
-                    disabled={!canSubmit}
+                    disabled={!canSubmit || paymentMutation.isPending}
                   >
-                    <CreditCard className="h-4 w-4" /> Ödemeyi Başlat
+                    {paymentMutation.isPending ? <LockKeyhole className="h-4 w-4 animate-pulse" /> : <CreditCard className="h-4 w-4" />}
+                    Ödemeyi Başlat
                   </Button>
                 </div>
               </div>
@@ -479,6 +517,7 @@ export function VirtualPosPage() {
                   </div>
                   <p className="mt-2 text-sm font-bold">{lastPreview.card}</p>
                   <p className="mt-1 text-sm font-bold">{formatMoney(lastPreview.amount)}</p>
+                  {lastPreview.reference ? <p className="mt-1 text-xs font-black">{lastPreview.reference}</p> : null}
                 </div>
               ) : null}
             </CardContent>
@@ -493,7 +532,7 @@ export function VirtualPosPage() {
                 <div>
                   <p className="text-sm font-black text-[var(--brand-primary-strong)]">Güvenli Akış</p>
                   <p className="mt-1 text-sm font-semibold text-[var(--muted-foreground)]">
-                    Kart verisi kalıcı olarak saklanmaz; sağlayıcı entegrasyonu token/provizyon akışıyla bağlanmalıdır.
+                    Kart verisi kalıcı olarak saklanmaz; backend sadece işlem referansı ve sağlayıcı yönlendirmesini hazırlar.
                   </p>
                 </div>
               </div>

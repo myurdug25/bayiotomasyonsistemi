@@ -57,6 +57,7 @@ use App\Http\Controllers\Api\SalesReportController;
 use App\Http\Controllers\Api\UserContextController;
 use App\Http\Controllers\Api\UserNoteController;
 use App\Http\Controllers\Api\UserNotificationController;
+use App\Http\Controllers\Api\VirtualPosController;
 use App\Http\Controllers\Api\WarehouseOrderController;
 use App\Http\Controllers\Api\WarehouseShelfController;
 use App\Http\Controllers\Api\WarehouseShipmentController;
@@ -246,6 +247,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/customers/{customer}/collections/{collection}/approve', [CustomerCollectionController::class, 'approve']);
         Route::post('/customers/{customer}/collections/{collection}/reject', [CustomerCollectionController::class, 'reject']);
     });
+
+    Route::post('/virtual-pos/payments', [VirtualPosController::class, 'store'])
+        ->middleware([
+            'role:admin,global,global_user,moderator,accounting,muhasebe,dealer_admin,salesperson,cashier,point',
+            'menu:virtual-pos',
+        ]);
 
     Route::prefix('pos')
         ->middleware(['role:admin,dealer_admin,salesperson,cashier,point,warehouse', 'throttle:pos'])

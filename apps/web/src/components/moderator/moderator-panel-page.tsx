@@ -111,6 +111,16 @@ type CustomerFormState = {
   is_active: boolean;
 };
 
+type VirtualPosSettingsFormState = {
+  enabled: boolean;
+  mode: "test" | "live";
+  gateway_url: string;
+  merchant_no: string;
+  username: string;
+  security_code: string;
+  password: string;
+};
+
 const EMPTY_USER_FORM: UserFormState = {
   dealer_id: "",
   customer_scope: "dealer",
@@ -155,6 +165,16 @@ const EMPTY_CUSTOMER_FORM: CustomerFormState = {
   address: "",
   iban: "",
   is_active: true,
+};
+
+const EMPTY_VIRTUAL_POS_FORM: VirtualPosSettingsFormState = {
+  enabled: false,
+  mode: "test",
+  gateway_url: "",
+  merchant_no: "",
+  username: "",
+  security_code: "",
+  password: "",
 };
 
 const EMPTY_USERS: ModeratorUserRecord[] = [];
@@ -578,6 +598,7 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const [complaintMailToDraft, setComplaintMailToDraft] = useState<string | null>(null);
   const [batumExchangeRateDraft, setBatumExchangeRateDraft] = useState<string | null>(null);
   const [batumExchangeMultiplierDraft, setBatumExchangeMultiplierDraft] = useState<string | null>(null);
+  const [virtualPosDraft, setVirtualPosDraft] = useState<VirtualPosSettingsFormState | null>(null);
   const trimmedCustomerSearch = customerSearch.trim();
   const overviewParams = useMemo(
     () => ({
@@ -595,6 +616,15 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
   const complaintMailTo = complaintMailToDraft ?? overviewQuery.data?.system_settings.complaint_mail_to ?? "";
   const batumExchangeRate = batumExchangeRateDraft ?? overviewQuery.data?.system_settings.batum_exchange_rate ?? "17.0000";
   const batumExchangeMultiplier = batumExchangeMultiplierDraft ?? overviewQuery.data?.system_settings.batum_exchange_multiplier ?? "0.0560";
+  const virtualPosSettings = overviewQuery.data?.system_settings.virtual_pos;
+  const virtualPos = virtualPosDraft ?? {
+    ...EMPTY_VIRTUAL_POS_FORM,
+    enabled: virtualPosSettings?.enabled ?? false,
+    mode: virtualPosSettings?.mode ?? "test",
+    gateway_url: virtualPosSettings?.gateway_url ?? "",
+    merchant_no: virtualPosSettings?.merchant_no ?? "",
+    username: virtualPosSettings?.username ?? "",
+  };
   const trimmedComplaintMailTo = complaintMailTo.trim();
   const normalizedBatumExchangeRate = batumExchangeRate.trim().replace(",", ".");
   const normalizedBatumExchangeMultiplier = batumExchangeMultiplier.trim().replace(",", ".");
@@ -608,6 +638,13 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     batumExchangeMultiplierNumber <= 1 &&
     Number.isFinite(batumExchangeRateNumber) &&
     Number.isFinite(batumExchangeMultiplierNumber);
+  const canSaveVirtualPosSettings =
+    !virtualPos.enabled ||
+    (virtualPos.gateway_url.trim() !== "" &&
+      virtualPos.merchant_no.trim() !== "" &&
+      virtualPos.username.trim() !== "" &&
+      (virtualPos.security_code.trim() !== "" || Boolean(virtualPosSettings?.has_security_code)) &&
+      (virtualPos.password.trim() !== "" || Boolean(virtualPosSettings?.has_password)));
 
   const dealers = overviewQuery.data?.dealers ?? [];
   const roleOptions = overviewQuery.data?.roles ?? EMPTY_ROLES;
@@ -678,11 +715,29 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
     mutationFn: () => {
       const systemSettingsPayload: {
         complaint_mail_to?: string;
-        batum_exchange_rate: string;
-        batum_exchange_multiplier: string;
+        batum_exchange_rate?: string;
+        batum_exchange_multiplier?: string;
+        virtual_pos?: {
+          enabled: boolean;
+          mode: "test" | "live";
+          gateway_url: string;
+          merchant_no: string;
+          username: string;
+          security_code?: string;
+          password?: string;
+        };
       } = {
         batum_exchange_rate: batumExchangeRate.trim(),
         batum_exchange_multiplier: batumExchangeMultiplier.trim(),
+        virtual_pos: {
+          enabled: virtualPos.enabled,
+          mode: virtualPos.mode,
+          gateway_url: virtualPos.gateway_url.trim(),
+          merchant_no: virtualPos.merchant_no.trim(),
+          username: virtualPos.username.trim(),
+          security_code: virtualPos.security_code.trim(),
+          password: virtualPos.password.trim(),
+        },
       };
 
       if (trimmedComplaintMailTo !== "") {
@@ -696,6 +751,15 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       setComplaintMailToDraft(response.system_settings.complaint_mail_to);
       setBatumExchangeRateDraft(response.system_settings.batum_exchange_rate);
       setBatumExchangeMultiplierDraft(response.system_settings.batum_exchange_multiplier);
+      setVirtualPosDraft({
+        enabled: response.system_settings.virtual_pos.enabled,
+        mode: response.system_settings.virtual_pos.mode,
+        gateway_url: response.system_settings.virtual_pos.gateway_url,
+        merchant_no: response.system_settings.virtual_pos.merchant_no,
+        username: response.system_settings.virtual_pos.username,
+        security_code: "",
+        password: "",
+      });
       if (typeof window !== "undefined") {
         const payload = {
           updatedAt: new Date().toISOString(),
@@ -1504,62 +1568,139 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
       </Dialog>
 
       <section className="dashboard-panel-card rounded-[18px] p-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_190px_190px_auto] lg:items-end">
-          <label className="space-y-2 text-sm">
-            <span className="font-extrabold text-[var(--brand-primary-strong)]">Dilek / Şikayet E-posta Adresi</span>
-            <Input
-              type="email"
-              value={complaintMailTo}
-              onChange={(event) => setComplaintMailToDraft(event.target.value)}
-              placeholder="farukcelik@gucsa.com.tr"
-            />
-          </label>
-          <label className="space-y-2 text-sm">
-            <span className="font-extrabold text-[var(--brand-primary-strong)]">Batum Kuru</span>
-            <div className="relative">
+        <div className="grid gap-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_190px_190px] lg:items-end">
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">Dilek / Şikayet E-posta Adresi</span>
               <Input
-                type="text"
-                inputMode="decimal"
-                min="0.000001"
-                step="0.0001"
-                value={batumExchangeRate}
-                onChange={(event) => setBatumExchangeRateDraft(event.target.value.replace(",", "."))}
-                placeholder="100.0000"
-                className="pr-28"
+                type="email"
+                value={complaintMailTo}
+                onChange={(event) => setComplaintMailToDraft(event.target.value)}
+                placeholder="farukcelik@gucsa.com.tr"
               />
-              <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
-                TL / GEL oranı
-              </span>
-            </div>
-          </label>
-          <label className="space-y-2 text-sm">
-            <span className="font-extrabold text-[var(--brand-primary-strong)]">Kur Çarpanı</span>
-            <div className="relative">
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">Batum Kuru</span>
+              <div className="relative">
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  min="0.000001"
+                  step="0.0001"
+                  value={batumExchangeRate}
+                  onChange={(event) => setBatumExchangeRateDraft(event.target.value.replace(",", "."))}
+                  placeholder="100.0000"
+                  className="pr-28"
+                />
+                <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
+                  TL / GEL oranı
+                </span>
+              </div>
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">Kur Çarpanı</span>
+              <div className="relative">
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  min="0.0001"
+                  max="1"
+                  step="0.0001"
+                  value={batumExchangeMultiplier}
+                  onChange={(event) => setBatumExchangeMultiplierDraft(event.target.value.replace(",", "."))}
+                  placeholder="0.0650"
+                  className="pr-24"
+                />
+                <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
+                  TRY x çarpan
+                </span>
+              </div>
+            </label>
+          </div>
+
+          <div className="grid gap-3 border-t border-[var(--brand-border)] pt-4 xl:grid-cols-[140px_130px_minmax(240px,1fr)_160px_170px_170px_170px] xl:items-end">
+            <label className="flex h-10 items-center gap-2 rounded-xl border border-[var(--brand-border)] px-3 text-sm font-extrabold text-[var(--brand-primary-strong)]">
+              <input
+                type="checkbox"
+                checked={virtualPos.enabled}
+                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), enabled: event.target.checked }))}
+              />
+              Sanal POS
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">Mod</span>
+              <select
+                className={cn(selectClassName, "h-10 px-3")}
+                value={virtualPos.mode}
+                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), mode: event.target.value === "live" ? "live" : "test" }))}
+              >
+                <option value="test">Test</option>
+                <option value="live">Canlı</option>
+              </select>
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">Sanal POS Arayüz Linki</span>
               <Input
-                type="text"
-                inputMode="decimal"
-                min="0.0001"
-                max="1"
-                step="0.0001"
-                value={batumExchangeMultiplier}
-                onChange={(event) => setBatumExchangeMultiplierDraft(event.target.value.replace(",", "."))}
-                placeholder="0.0650"
-                className="pr-24"
+                type="url"
+                value={virtualPos.gateway_url}
+                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), gateway_url: event.target.value }))}
+                placeholder="https://..."
               />
-              <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-extrabold text-[var(--muted-foreground)]">
-                TRY x çarpan
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">Mağaza No</span>
+              <Input
+                value={virtualPos.merchant_no}
+                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), merchant_no: event.target.value }))}
+                placeholder="Mağaza"
+              />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">Kullanıcı Adı</span>
+              <Input
+                value={virtualPos.username}
+                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), username: event.target.value }))}
+                placeholder="Kullanıcı"
+              />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">
+                Güvenlik Kodu{virtualPosSettings?.has_security_code ? " kayıtlı" : ""}
               </span>
-            </div>
-          </label>
-          <Button
-            type="button"
-            className="h-10 rounded-xl px-5 text-sm font-extrabold"
-            disabled={systemSettingsMutation.isPending || !canSaveSystemSettings}
-            onClick={() => systemSettingsMutation.mutate()}
-          >
-            {systemSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Kur ve E-posta Ayarını Kaydet
-          </Button>
+              <Input
+                type="password"
+                value={virtualPos.security_code}
+                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), security_code: event.target.value }))}
+                placeholder={virtualPosSettings?.has_security_code ? "Değiştirmeyeceksen boş" : "Güvenlik kodu"}
+              />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-extrabold text-[var(--brand-primary-strong)]">
+                Şifre{virtualPosSettings?.has_password ? " kayıtlı" : ""}
+              </span>
+              <Input
+                type="password"
+                value={virtualPos.password}
+                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), password: event.target.value }))}
+                placeholder={virtualPosSettings?.has_password ? "Değiştirmeyeceksen boş" : "Şifre"}
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <p className="text-xs font-bold text-[var(--muted-foreground)]">
+              Sanal POS gizli alanları cevaplarda gösterilmez; boş bırakırsan kayıtlı değer korunur.
+            </p>
+            <Button
+              type="button"
+              className="h-10 rounded-xl px-5 text-sm font-extrabold"
+              disabled={systemSettingsMutation.isPending || !canSaveSystemSettings || !canSaveVirtualPosSettings}
+              onClick={() => systemSettingsMutation.mutate()}
+            >
+              {systemSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Sistem Ayarlarını Kaydet
+            </Button>
+          </div>
         </div>
       </section>
 

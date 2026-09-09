@@ -346,6 +346,26 @@ export type ModeratorCustomerRecord = {
   };
 };
 
+export type VirtualPosSettingsDto = {
+  enabled: boolean;
+  mode: "test" | "live";
+  gateway_url: string;
+  merchant_no: string;
+  username: string;
+  has_security_code: boolean;
+  has_password: boolean;
+};
+
+export type VirtualPosSettingsPayload = {
+  enabled?: boolean;
+  mode?: "test" | "live";
+  gateway_url?: string;
+  merchant_no?: string;
+  username?: string;
+  security_code?: string;
+  password?: string;
+};
+
 export type ModeratorOverviewResponse = {
   summary: {
     users_total: number;
@@ -359,7 +379,12 @@ export type ModeratorOverviewResponse = {
   roles: ModeratorRoleOption[];
   menu_permissions: ModeratorMenuPermissionOption[];
   feature_permissions: CustomerUserFeaturePermissionOption[];
-  system_settings: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string };
+  system_settings: {
+    complaint_mail_to: string;
+    batum_exchange_rate: string;
+    batum_exchange_multiplier: string;
+    virtual_pos: VirtualPosSettingsDto;
+  };
   dealers: ModeratorDealerRecord[];
   users: ModeratorUserRecord[];
   customers: ModeratorCustomerRecord[];
@@ -2908,9 +2933,62 @@ export async function listCustomerCollections(
   );
 }
 
-export async function updateModeratorSystemSettings(payload: { complaint_mail_to?: string; batum_exchange_rate: string; batum_exchange_multiplier: string }) {
-  return apiFetch<{ message: string; system_settings: { complaint_mail_to: string; batum_exchange_rate: string; batum_exchange_multiplier: string } }>("/api/moderator/system-settings", {
+export async function updateModeratorSystemSettings(payload: {
+  complaint_mail_to?: string;
+  batum_exchange_rate?: string;
+  batum_exchange_multiplier?: string;
+  virtual_pos?: VirtualPosSettingsPayload;
+}) {
+  return apiFetch<{ message: string; system_settings: ModeratorOverviewResponse["system_settings"] }>("/api/moderator/system-settings", {
     method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type VirtualPosPaymentResponse = {
+  payment: {
+    status: "ready";
+    reference: string;
+    amount: string;
+    currency: string;
+    installment: number;
+    description: string | null;
+    customer: {
+      id: number;
+      code: string;
+      title: string;
+    };
+  };
+  provider: {
+    mode: "test" | "live";
+    gateway_url: string;
+    payload: {
+      merchant_no: string;
+      username: string;
+      reference: string;
+      amount: string;
+      currency: string;
+      installment: number;
+      customer_code: string;
+      customer_title: string;
+      description: string;
+    };
+  };
+};
+
+export async function startVirtualPosPayment(payload: {
+  customer_id: number;
+  amount: number;
+  currency?: string;
+  installment: number;
+  description?: string;
+  card_holder: string;
+  card_number: string;
+  expiry: string;
+  cvv: string;
+}) {
+  return apiFetch<VirtualPosPaymentResponse>("/api/virtual-pos/payments", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }
