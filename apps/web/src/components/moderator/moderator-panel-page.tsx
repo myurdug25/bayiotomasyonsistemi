@@ -1567,9 +1567,9 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
         </DialogContent>
       </Dialog>
 
-      <section className="dashboard-panel-card rounded-[18px] p-4">
-        <div className="grid gap-4">
-          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_190px_190px] lg:items-end">
+      <section className="dashboard-panel-card rounded-[18px] p-4 sm:p-5">
+        <div className="grid gap-5">
+          <div className="grid gap-3 xl:grid-cols-[minmax(320px,1fr)_220px_220px] xl:items-end">
             <label className="space-y-2 text-sm">
               <span className="font-extrabold text-[var(--brand-primary-strong)]">Dilek / Şikayet E-posta Adresi</span>
               <Input
@@ -1618,82 +1618,104 @@ export function ModeratorPanelPage({ view }: { view: ModeratorPanelView }) {
             </label>
           </div>
 
-          <div className="grid gap-3 border-t border-[var(--brand-border)] pt-4 xl:grid-cols-[140px_130px_minmax(240px,1fr)_160px_170px_170px_170px] xl:items-end">
-            <label className="flex h-10 items-center gap-2 rounded-xl border border-[var(--brand-border)] px-3 text-sm font-extrabold text-[var(--brand-primary-strong)]">
-              <input
-                type="checkbox"
-                checked={virtualPos.enabled}
-                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), enabled: event.target.checked }))}
-              />
-              Sanal POS
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="font-extrabold text-[var(--brand-primary-strong)]">Mod</span>
-              <select
-                className={cn(selectClassName, "h-10 px-3")}
-                value={virtualPos.mode}
-                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), mode: event.target.value === "live" ? "live" : "test" }))}
-              >
-                <option value="test">Test</option>
-                <option value="live">Canlı</option>
-              </select>
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="font-extrabold text-[var(--brand-primary-strong)]">Sanal POS Arayüz Linki</span>
-              <Input
-                type="url"
-                value={virtualPos.gateway_url}
-                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), gateway_url: event.target.value }))}
-                placeholder="https://..."
-              />
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="font-extrabold text-[var(--brand-primary-strong)]">Mağaza No</span>
-              <Input
-                value={virtualPos.merchant_no}
-                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), merchant_no: event.target.value }))}
-                placeholder="Mağaza"
-              />
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="font-extrabold text-[var(--brand-primary-strong)]">Kullanıcı Adı</span>
-              <Input
-                value={virtualPos.username}
-                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), username: event.target.value }))}
-                placeholder="Kullanıcı"
-              />
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="font-extrabold text-[var(--brand-primary-strong)]">
-                Güvenlik Kodu{virtualPosSettings?.has_security_code ? " kayıtlı" : ""}
-              </span>
-              <Input
-                type="password"
-                value={virtualPos.security_code}
-                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), security_code: event.target.value }))}
-                placeholder={virtualPosSettings?.has_security_code ? "Değiştirmeyeceksen boş" : "Güvenlik kodu"}
-              />
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="font-extrabold text-[var(--brand-primary-strong)]">
-                Şifre{virtualPosSettings?.has_password ? " kayıtlı" : ""}
-              </span>
-              <Input
-                type="password"
-                value={virtualPos.password}
-                onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), password: event.target.value }))}
-                placeholder={virtualPosSettings?.has_password ? "Değiştirmeyeceksen boş" : "Şifre"}
-              />
-            </label>
+          <div className="rounded-[16px] border border-[var(--brand-border)] bg-[var(--surface-soft)] p-4">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-base font-black text-[var(--brand-primary-strong)]">Sanal POS</span>
+                  <span
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-[11px] font-black uppercase",
+                      virtualPos.enabled
+                        ? "border-emerald-400/45 bg-emerald-400/10 text-emerald-500"
+                        : "border-[var(--brand-border)] bg-[var(--surface)] text-[var(--muted-foreground)]"
+                    )}
+                  >
+                    {virtualPos.enabled ? "Aktif" : "Pasif"}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs font-bold text-[var(--muted-foreground)]">
+                  Arayüz linki ve mağaza bilgileri buradan yönetilir; gizli alanlar kaydedildikten sonra gösterilmez.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <label className="flex h-10 items-center gap-2 rounded-xl border border-[var(--brand-border)] bg-[var(--surface)] px-3 text-sm font-extrabold text-[var(--brand-primary-strong)]">
+                  <input
+                    className={isDarkMode ? "accent-[#7fac8b]" : "accent-[var(--brand-primary)]"}
+                    type="checkbox"
+                    checked={virtualPos.enabled}
+                    onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), enabled: event.target.checked }))}
+                  />
+                  Aktif
+                </label>
+                <select
+                  className={cn(selectClassName, "h-10 min-w-[128px] px-3")}
+                  value={virtualPos.mode}
+                  onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), mode: event.target.value === "live" ? "live" : "test" }))}
+                  aria-label="Sanal POS modu"
+                >
+                  <option value="test">Test</option>
+                  <option value="live">Canlı</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(280px,1.25fr)_minmax(160px,0.8fr)_minmax(170px,0.9fr)]">
+              <label className="space-y-2 text-sm">
+                <span className="font-extrabold text-[var(--brand-primary-strong)]">Sanal POS Arayüz Linki</span>
+                <Input
+                  type="url"
+                  value={virtualPos.gateway_url}
+                  onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), gateway_url: event.target.value }))}
+                  placeholder="https://..."
+                />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="font-extrabold text-[var(--brand-primary-strong)]">Mağaza No</span>
+                <Input
+                  value={virtualPos.merchant_no}
+                  onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), merchant_no: event.target.value }))}
+                  placeholder="Mağaza numarası"
+                />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="font-extrabold text-[var(--brand-primary-strong)]">Kullanıcı Adı</span>
+                <Input
+                  value={virtualPos.username}
+                  onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), username: event.target.value }))}
+                  placeholder="Kullanıcı adı"
+                />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="font-extrabold text-[var(--brand-primary-strong)]">
+                  Güvenlik Kodu{virtualPosSettings?.has_security_code ? " kayıtlı" : ""}
+                </span>
+                <Input
+                  type="password"
+                  value={virtualPos.security_code}
+                  onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), security_code: event.target.value }))}
+                  placeholder={virtualPosSettings?.has_security_code ? "Değiştirmeyeceksen boş bırak" : "Güvenlik kodu"}
+                />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="font-extrabold text-[var(--brand-primary-strong)]">
+                  Şifre{virtualPosSettings?.has_password ? " kayıtlı" : ""}
+                </span>
+                <Input
+                  type="password"
+                  value={virtualPos.password}
+                  onChange={(event) => setVirtualPosDraft((prev) => ({ ...(prev ?? virtualPos), password: event.target.value }))}
+                  placeholder={virtualPosSettings?.has_password ? "Değiştirmeyeceksen boş bırak" : "Şifre"}
+                />
+              </label>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <p className="text-xs font-bold text-[var(--muted-foreground)]">
-              Sanal POS gizli alanları cevaplarda gösterilmez; boş bırakırsan kayıtlı değer korunur.
-            </p>
+            <p className="text-xs font-bold text-[var(--muted-foreground)]">Kur, e-posta ve sanal POS ayarları aynı kayıtla güncellenir.</p>
             <Button
               type="button"
-              className="h-10 rounded-xl px-5 text-sm font-extrabold"
+              className="h-10 shrink-0 rounded-xl px-5 text-sm font-extrabold"
               disabled={systemSettingsMutation.isPending || !canSaveSystemSettings || !canSaveVirtualPosSettings}
               onClick={() => systemSettingsMutation.mutate()}
             >
