@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\Dealer;
+use App\Models\IntegrationSyncEvent;
+use App\Models\LedgerEntry;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
@@ -245,6 +248,155 @@ class VirtualPosApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('provider.gateway_url', 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate')
             ->assertJsonPath('provider.payload.taksit', '2');
+    }
+
+    public function test_successful_virtual_pos_callback_records_customer_ledger_and_queues_logo_credit_card_collection(): void
+    {
+        $this->seed(RoleSeeder::class);
+        config()->set('app.url', 'https://bayiotomasyonsistemi.com');
+        config()->set('app.frontend_url', 'https://bayiotomasyonsistemi.com');
+
+        $dealer = $this->createDealer('DLR-VPOS-PAY-005', [
+            'meta' => [
+                'system_settings' => [
+                    'virtual_pos' => [
+                        'enabled' => true,
+                        'mode' => 'live',
+                        'gateway_url' => 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate',
+                        'merchant_no' => '192046469',
+                        'username' => '',
+                        'security_code_encrypted' => Crypt::encryptString('STOREKEY-123'),
+                        'password_encrypted' => null,
+                    ],
+                ],
+            ],
+        ]);
+        $customer = $this->createCustomer($dealer, 'VPOS-CUST-005', 'Cari Pos Tahsilat');
+        $user = $this->createUserWithRole('dealer_admin', $dealer, [
+            'menu_permissions' => ['virtual-pos'],
+            'selected_customer_id' => $customer->id,
+        ]);
+
+        $paymentResponse = $this->actingAs($user)
+            ->postJson('/api/virtual-pos/payments', [
+                'customer_id' => $customer->id,
+                'amount' => 1250.50,
+                'installment' => 1,
+                'description' => 'Cari kart ödemesi',
+            ])
+            ->assertOk();
+
+        $reference = $paymentResponse->json('payment.reference');
+
+        $this->post('/api/virtual-pos/callback/success', [
+            'oid' => $reference,
+            'Response' => 'Approved',
+            'ProcReturnCode' => '00',
+            'mdStatus' => '1',
+            'AuthCode' => 'AUTH123',
+            'TransId' => 'TRX123',
+            'HostRefNum' => 'HOST123',
+        ])->assertRedirect('https://bayiotomasyonsistemi.com/virtual-pos?payment=success&reference='.urlencode($reference));
+
+        $collection = Collection::query()->where('source_reference', $reference)->first();
+        $this->assertNotNull($collection);
+        $this->assertSame($customer->id, $collection->customer_id);
+        $this->assertSame('b2b', $collection->source_system);
+        $this->assertSame('pending', $collection->sync_status);
+        $this->assertSame('cc', $collection->method);
+        $this->assertSame('1250.50', $collection->amount);
+        $this->assertSame('TRY', $collection->currency);
+        $this->assertSame('virtual_pos', $collection->reference_fields['collection_channel']);
+        $this->assertSame('AUTH123', $collection->reference_fields['auth_code']);
+
+        $ledgerEntry = LedgerEntry::query()->where('collection_id', $collection->id)->first();
+        $this->assertNotNull($ledgerEntry);
+        $this->assertSame('payment', $ledgerEntry->type);
+        $this->assertSame('0.00', $ledgerEntry->debit);
+        $this->assertSame('1250.50', $ledgerEntry->credit);
+        $this->assertSame($reference, $ledgerEntry->reference_no);
+        $this->assertSame('virtual_pos', $ledgerEntry->meta['reference_fields']['collection_channel']);
+
+        $this->assertDatabaseHas('integration_sync_events', [
+            'domain' => 'collections-write',
+            'entity_type' => Collection::class,
+            'entity_id' => $collection->id,
+            'customer_id' => $customer->id,
+            'status' => 'queued',
+        ]);
+    }
+
+    public function test_virtual_pos_callback_is_idempotent_and_does_not_record_declined_payments(): void
+    {
+        $this->seed(RoleSeeder::class);
+        config()->set('app.url', 'https://bayiotomasyonsistemi.com');
+        config()->set('app.frontend_url', 'https://bayiotomasyonsistemi.com');
+
+        $dealer = $this->createDealer('DLR-VPOS-PAY-006', [
+            'meta' => [
+                'system_settings' => [
+                    'virtual_pos' => [
+                        'enabled' => true,
+                        'mode' => 'live',
+                        'gateway_url' => 'https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate',
+                        'merchant_no' => '192046469',
+                        'username' => '',
+                        'security_code_encrypted' => Crypt::encryptString('STOREKEY-123'),
+                        'password_encrypted' => null,
+                    ],
+                ],
+            ],
+        ]);
+        $customer = $this->createCustomer($dealer, 'VPOS-CUST-006', 'Tekrar Pos Cari');
+        $user = $this->createUserWithRole('dealer_admin', $dealer, [
+            'menu_permissions' => ['virtual-pos'],
+            'selected_customer_id' => $customer->id,
+        ]);
+
+        $approvedReference = $this->actingAs($user)
+            ->postJson('/api/virtual-pos/payments', [
+                'customer_id' => $customer->id,
+                'amount' => 100,
+                'installment' => 1,
+            ])
+            ->json('payment.reference');
+
+        $approvedPayload = [
+            'oid' => $approvedReference,
+            'Response' => 'Approved',
+            'ProcReturnCode' => '00',
+            'mdStatus' => '1',
+        ];
+
+        $this->post('/api/virtual-pos/callback/success', $approvedPayload)->assertRedirect();
+        $this->post('/api/virtual-pos/callback/success', $approvedPayload)->assertRedirect();
+
+        $this->assertSame(1, Collection::query()->where('source_reference', $approvedReference)->count());
+        $collection = Collection::query()->where('source_reference', $approvedReference)->firstOrFail();
+        $this->assertSame(1, LedgerEntry::query()->where('collection_id', $collection->id)->count());
+        $this->assertSame(1, IntegrationSyncEvent::query()
+            ->where('domain', 'collections-write')
+            ->where('entity_type', Collection::class)
+            ->where('entity_id', $collection->id)
+            ->count());
+
+        $declinedReference = $this->actingAs($user)
+            ->postJson('/api/virtual-pos/payments', [
+                'customer_id' => $customer->id,
+                'amount' => 200,
+                'installment' => 1,
+            ])
+            ->json('payment.reference');
+
+        $this->post('/api/virtual-pos/callback/success', [
+            'oid' => $declinedReference,
+            'Response' => 'Declined',
+            'ProcReturnCode' => '99',
+            'mdStatus' => '1',
+        ])->assertRedirect('https://bayiotomasyonsistemi.com/virtual-pos?payment=fail&reference='.urlencode($declinedReference));
+
+        $this->assertDatabaseMissing('collections', ['source_reference' => $declinedReference]);
+        $this->assertDatabaseMissing('ledger_entries', ['source_reference' => $declinedReference]);
     }
 
     private function createDealer(string $code, array $overrides = []): Dealer
