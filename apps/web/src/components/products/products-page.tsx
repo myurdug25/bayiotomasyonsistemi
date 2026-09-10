@@ -1593,6 +1593,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     () => canViewCampaigns ? (cartModalProduct?.campaigns ?? []) : [],
     [canViewCampaigns, cartModalProduct?.campaigns]
   );
+  const cartModalHasCampaignOffers = Boolean(cartModalProduct?.special_discounted_price) || cartModalCampaigns.length > 0;
   const cartModalPricesIncludeVat = isBatumPriceScope ? false : cartPricesIncludeVat;
   const cartModalShowBaseSalesPrice = !(isBatumPriceScope && cartModalCampaigns.length > 0);
   const cartModalApplicableCampaign = useMemo(() => {
@@ -2290,20 +2291,27 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
               <div
                 className={cn(
                   "grid gap-3",
-                  cartModalShowBaseSalesPrice && "lg:grid-cols-[190px_minmax(0,1fr)]"
+                  cartModalShowBaseSalesPrice && cartModalHasCampaignOffers && "lg:grid-cols-[190px_minmax(0,1fr)]",
+                  cartModalShowBaseSalesPrice && !cartModalHasCampaignOffers && "place-items-center"
                 )}
               >
                 {cartModalShowBaseSalesPrice ? (
-                <div className="grid content-center rounded-2xl border border-[#d8cf42]/25 bg-[#d8cf42]/[0.10] p-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                <div
+                  className={cn(
+                    "grid content-center rounded-2xl border border-[#d8cf42]/25 bg-[#d8cf42]/[0.10] p-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+                    !cartModalHasCampaignOffers && "min-h-[132px] w-full p-5 sm:p-6"
+                  )}
+                >
 	                  <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
 	                    Satış Fiyatı
 	                  </span>
-	                  <strong className="mt-1 block text-2xl font-black text-[#f8f3a1]">
+	                  <strong className={cn("mt-1 block font-black text-[#f8f3a1]", cartModalHasCampaignOffers ? "text-2xl" : "text-3xl sm:text-4xl")}>
 	                    {stripPriceCurrency(formatProductModalPrice(cartModalProduct, cartModalProduct.net_price, cartModalPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined))}{isBatumPriceScope ? " GEL" : ""}
 	                  </strong>
 	                </div>
                 ) : null}
-                <div className="flex min-h-[116px] flex-wrap gap-2">
+                {cartModalHasCampaignOffers ? (
+                <div className="flex flex-wrap gap-2">
                   {cartModalProduct.special_discounted_price ? (
                     <div className="min-w-[180px] flex-1 rounded-2xl border border-emerald-300/25 bg-emerald-400/[0.10] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                       <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/70">
@@ -2342,12 +2350,8 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                       );
                     })
                   )}
-                  {!cartModalProduct.special_discounted_price && cartModalCampaigns.length === 0 ? (
-                    <div className="min-w-[180px] flex-1 rounded-2xl border border-white/10 bg-white/[0.045] p-3 text-sm font-black text-slate-300">
-                      Kampanya yok
-                    </div>
-                  ) : null}
                 </div>
+                ) : null}
 	              </div>
 	              {!cartModalHasPrice ? (
 	                <p className="mt-3 rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-black text-red-100">

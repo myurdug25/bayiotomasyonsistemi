@@ -14,6 +14,14 @@ test("cart modal hides base sales price for Batum campaign-priced products", () 
   assert.match(productsSource, /cartModalShowBaseSalesPrice \? \(/);
 });
 
+test("cart modal removes the campaign area when no campaign price exists", () => {
+  assert.match(productsSource, /const cartModalHasCampaignOffers = Boolean\(cartModalProduct\?\.special_discounted_price\) \|\| cartModalCampaigns\.length > 0/);
+  assert.match(productsSource, /cartModalShowBaseSalesPrice && cartModalHasCampaignOffers/);
+  assert.match(productsSource, /cartModalShowBaseSalesPrice && !cartModalHasCampaignOffers/);
+  assert.doesNotMatch(productsSource, /Kampanya yok/);
+  assert.doesNotMatch(productsSource, /flex min-h-\[116px\] flex-wrap gap-2/);
+});
+
 test("cart modal defaults prices to excluding VAT", () => {
   assert.match(productsSource, /const \[cartPricesIncludeVat, setCartPricesIncludeVat\] = useState\(false\)/);
   assert.doesNotMatch(productsSource, /useState\(isBatumPriceScope\)/);
