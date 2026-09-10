@@ -73,11 +73,11 @@ type ProductSearchPageParam = {
 function productTableGridStyle(stockColumnCount: number): CSSProperties {
   const normalizedStockColumnCount = Math.max(stockColumnCount, 1);
   const stockColumnWidth = Math.min(390, Math.max(300, normalizedStockColumnCount * 66));
-  const minWidth = Math.max(1200, 842 + stockColumnWidth);
+  const minWidth = Math.max(1220, 868 + stockColumnWidth);
 
   return {
     minWidth,
-    gridTemplateColumns: `42px minmax(118px,0.68fr) minmax(86px,0.46fr) minmax(330px,1.85fr) minmax(100px,0.52fr) 54px 96px minmax(${stockColumnWidth}px,0.98fr) 54px 56px`,
+    gridTemplateColumns: `42px minmax(118px,0.68fr) minmax(86px,0.46fr) minmax(330px,1.85fr) minmax(100px,0.52fr) 54px 96px minmax(${stockColumnWidth}px,0.98fr) 58px 64px`,
   };
 }
 
@@ -966,11 +966,11 @@ const ProductRow = memo(function ProductRow({
           </p>
         </div>
 
-        <div role="cell" className="flex min-w-0 items-stretch border-l border-[var(--brand-border)] px-0 py-0">
+        <div role="cell" className="product-stock-cell flex min-w-0 items-stretch border-l border-[var(--brand-border)] px-0 py-0">
           <ProductStockCell product={product} canViewStock={canViewStock} columns={visibleStockColumns} />
         </div>
 
-        <div role="cell" className="relative flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5">
+        <div role="cell" className="product-info-action-cell relative flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5">
           <details data-product-info className="group/details relative">
             <summary
               className="product-info-button flex h-7 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#faee56]/55 bg-[#6b611f] text-[#fff4a3] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_18px_-18px_rgba(250,238,86,0.9)] transition-colors hover:bg-[#7d7228] [&::-webkit-details-marker]:hidden"
@@ -1051,6 +1051,7 @@ const ProductRow = memo(function ProductRow({
           role="cell"
           className={cn(
             "admin-product-actions right-0 z-20 flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5 shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] lg:sticky",
+            "product-cart-action-cell",
             isCampaignRow
               ? "bg-[#ffff00] group-hover:bg-[#ffff00]"
               : "bg-[var(--surface)] group-hover:bg-[#1d3024]"

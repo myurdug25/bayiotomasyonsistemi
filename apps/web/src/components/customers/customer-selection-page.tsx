@@ -654,7 +654,7 @@ export function CustomerSelectionPage() {
                               }
                             }}
                             className={cn(
-                              "cursor-pointer border-b border-l-4 border-l-transparent transition-[background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]/30",
+                              "customer-mobile-card cursor-pointer border-b border-l-4 border-l-transparent transition-[background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]/30",
                               isDarkMode
                                 ? "border-[var(--brand-border)] hover:border-l-[#8bd19f] hover:bg-[#1d3024] hover:shadow-[inset_0_0_0_9999px_rgba(139,209,159,0.06)]"
                                 : "border-[#e7eee8] hover:border-l-[#2f7f56] hover:bg-[#e7f6eb] hover:shadow-[inset_0_0_0_9999px_rgba(47,127,86,0.055)]",
@@ -667,7 +667,7 @@ export function CustomerSelectionPage() {
                                   : "bg-white"
                             )}
                           >
-                            <TableCell className="px-2 py-1.5 text-center align-middle">
+                            <TableCell className="customer-card-code px-2 py-1.5 text-center align-middle">
                               <div className="flex justify-center">
                                 <p
                                   title={customer.code}
@@ -677,7 +677,7 @@ export function CustomerSelectionPage() {
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5 align-middle">
+                            <TableCell className="customer-card-primary py-1.5 align-middle">
                               <div className="min-w-0 pr-3">
                                 <p
                                   title={customer.title}
@@ -690,7 +690,7 @@ export function CustomerSelectionPage() {
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5 text-center align-middle">
+                            <TableCell className="customer-card-location py-1.5 text-center align-middle">
                               <div className="flex min-w-0 justify-center pr-1">
                                 <p
                                   title={formatCustomerLocation(customer)}
@@ -703,7 +703,7 @@ export function CustomerSelectionPage() {
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5 text-center align-middle">
+                            <TableCell className="customer-card-phone py-1.5 text-center align-middle">
                               <div className="flex justify-center pr-1">
                                 <p
                                   title={phoneLabel}
@@ -716,7 +716,7 @@ export function CustomerSelectionPage() {
                                 </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5 text-center align-middle">
+                            <TableCell className="customer-card-balance py-1.5 text-center align-middle">
                               <div
                                 className={cn(
                                   "mx-auto inline-flex min-w-[92px] justify-center rounded-lg border px-2 py-1.5 text-center",
@@ -731,7 +731,7 @@ export function CustomerSelectionPage() {
                                 </span>
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5 text-center align-middle">
+                            <TableCell className="customer-card-cart py-1.5 text-center align-middle">
                               <span
                                 className={cn(
                                   "inline-flex min-w-[66px] items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.06em]",
@@ -747,7 +747,7 @@ export function CustomerSelectionPage() {
                                 {customer.has_cart ? "Var" : "Yok"}
                               </span>
                             </TableCell>
-                            <TableCell className="py-1.5 text-center align-middle">
+                            <TableCell className="customer-card-order-balance py-1.5 text-center align-middle">
                               <div
                                 className={cn(
                                   "mx-auto inline-flex min-w-[98px] justify-center rounded-lg border px-2 py-1.5 text-center",
@@ -762,7 +762,7 @@ export function CustomerSelectionPage() {
                                 </span>
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5 text-center align-middle">
+                            <TableCell className="customer-card-price-group py-1.5 text-center align-middle">
                               <span
                                 className={cn(
                                   "inline-flex min-w-[54px] items-center justify-center rounded-lg border px-2 py-1.5 text-[11px] font-black",
@@ -778,7 +778,7 @@ export function CustomerSelectionPage() {
                                 {customer.price_group ?? "-"}
                               </span>
                             </TableCell>
-                            <TableCell className="px-2 py-1.5 text-center align-middle">
+                            <TableCell className="customer-card-action px-2 py-1.5 text-center align-middle">
                               <Button
                                 size="default"
                                 variant={isSelected ? "secondary" : "default"}
