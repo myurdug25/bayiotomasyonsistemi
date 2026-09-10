@@ -12966,3 +12966,354 @@ html[data-ui-theme="light"] .app-shell-root .new-customer-card-page .new-custome
     box-shadow: none !important;
   }
 }
+
+/* Site-wide responsive stabilization v2: keep app pages sane on phone/tablet widths. */
+@media (max-width: 1279px) {
+  .app-shell-root,
+  .app-layout-frame,
+  .app-content-region,
+  .page-shell-main {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .page-shell-main > *,
+  .app-shell-root :where(
+    .admin-cart-page,
+    .admin-catalog-page,
+    .admin-collections-page,
+    .admin-customers-page,
+    .catalogs-page,
+    .customer-complaint-page,
+    .customer-users-page,
+    .ledger-page,
+    .moderator-panel-page,
+    .new-customer-card-page,
+    .reports-pro-screen,
+    .returns-page,
+    .virtual-pos-workspace,
+    .warehouse-page,
+    .warehouse-shipment-clean,
+    .pos-day-end-page,
+    .point-sale-screen
+  ) {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .app-shell-root :where(
+    [data-slot="card"],
+    .dashboard-panel-card,
+    .dashboard-panel-soft,
+    .orders-card,
+    .returns-panel,
+    .warehouse-filter-card,
+    .product-search-panel,
+    .ledger-filter-card,
+    .virtual-pos-card-panel,
+    .virtual-pos-summary-card,
+    .virtual-pos-info-card,
+    .customer-users-list
+  ) {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .app-shell-root :where(.overflow-x-auto, .ledger-table-scroll) {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .app-shell-root :where([role="dialog"], [data-radix-dialog-content]) {
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  .app-shell-root :where(input, select, textarea, button, [role="button"]) {
+    max-width: 100%;
+  }
+
+  .app-shell-root :where(p, span, strong, small, h1, h2, h3, h4, td, th) {
+    overflow-wrap: anywhere;
+  }
+
+  .moderator-panel-page > section,
+  .virtual-pos-main-grid,
+  .virtual-pos-form-grid,
+  .returns-main-grid,
+  .reports-pro-screen > .grid,
+  .admin-cart-page > .grid,
+  .point-sale-screen > .grid,
+  .warehouse-shipment-clean > .grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .virtual-pos-actions-panel,
+  .ledger-filter-actions,
+  .warehouse-filter-actions,
+  .returns-form-actions {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-wrap: wrap !important;
+  }
+
+  .virtual-pos-action-grid {
+    width: 100% !important;
+    min-width: 0 !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .day-end-session-select {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 899px) {
+  .page-shell-main {
+    padding-inline: 0.5rem !important;
+  }
+
+  .page-shell-header {
+    padding-inline: 0.5rem !important;
+  }
+
+  .dashboard-header-actions,
+  .dashboard-header-center,
+  .header-market-rates {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .customer-users-list-head {
+    display: none !important;
+  }
+
+  .customer-user-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 0.55rem !important;
+    align-items: start !important;
+    margin: 0.55rem !important;
+    min-height: 0 !important;
+    border: 1px solid var(--brand-border) !important;
+    border-radius: 14px !important;
+    background: var(--surface-soft) !important;
+    padding: 0.75rem !important;
+  }
+
+  .customer-user-row > span,
+  .customer-user-row > div {
+    min-width: 0 !important;
+  }
+
+  .customer-user-row > span:nth-child(1) {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  .customer-user-row > span:nth-child(2) {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+  }
+
+  .customer-user-row > span:nth-child(3),
+  .customer-user-row > span:nth-child(4) {
+    grid-column: auto !important;
+    grid-row: 3 !important;
+    justify-self: start !important;
+  }
+
+  .customer-user-row > div:last-child {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .customer-user-row > div:last-child button {
+    min-width: 2.6rem !important;
+    white-space: normal !important;
+  }
+
+  .admin-cart-page table {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .admin-cart-page table thead {
+    display: none !important;
+  }
+
+  .admin-cart-page table,
+  .admin-cart-page table tbody,
+  .admin-cart-page table tr,
+  .admin-cart-page table td {
+    display: block !important;
+  }
+
+  .admin-cart-page table tr {
+    margin: 0.6rem !important;
+    overflow: hidden !important;
+    border: 1px solid var(--brand-border) !important;
+    border-radius: 16px !important;
+    background: var(--surface-soft) !important;
+  }
+
+  .admin-cart-page table td {
+    border-right: 0 !important;
+    padding: 0.55rem 0.75rem !important;
+    text-align: left !important;
+  }
+
+  .admin-cart-page table td:nth-child(1) {
+    float: right;
+    padding: 0.7rem !important;
+  }
+
+  .admin-cart-page table td:nth-child(2)::before { content: "Stok"; }
+  .admin-cart-page table td:nth-child(3)::before { content: "Stok Kodu"; }
+  .admin-cart-page table td:nth-child(4)::before { content: "Ürün"; }
+  .admin-cart-page table td:nth-child(5)::before { content: "Marka"; }
+  .admin-cart-page table td:nth-child(6)::before { content: "Birim Fiyat"; }
+  .admin-cart-page table td:nth-child(7)::before { content: "Miktar"; }
+  .admin-cart-page table td:nth-child(8)::before { content: "Toplam"; }
+
+  .admin-cart-page table td:not(:nth-child(1)):not(:nth-child(9))::before {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: var(--muted-foreground);
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .admin-cart-page table td:nth-child(7) > div {
+    margin-inline: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .admin-cart-page table td:nth-child(9) {
+    padding-top: 0 !important;
+    text-align: right !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-shell-root :where(.rounded-\[28px\], .rounded-\[30px\], .rounded-3xl) {
+    border-radius: 18px !important;
+  }
+
+  .virtual-pos-card-preview {
+    min-height: 178px !important;
+    border-color: rgba(72, 99, 84, 0.62) !important;
+    background:
+      radial-gradient(circle at 14% 86%, rgba(20, 184, 166, 0.28) 0%, transparent 34%),
+      radial-gradient(circle at 92% 10%, rgba(225, 29, 72, 0.28) 0%, transparent 32%),
+      linear-gradient(135deg, #102033 0%, #162034 46%, #461322 100%) !important;
+    color: #ffffff !important;
+    text-shadow: none !important;
+  }
+
+  .virtual-pos-card-brand,
+  .virtual-pos-card-label {
+    color: rgba(255, 255, 255, 0.76) !important;
+    text-shadow: none !important;
+  }
+
+  .virtual-pos-card-title,
+  .virtual-pos-card-value {
+    color: #ffffff !important;
+    text-shadow: none !important;
+  }
+
+  .virtual-pos-card-title {
+    font-size: 1.32rem !important;
+    line-height: 1.12 !important;
+  }
+
+  .virtual-pos-card-meta-grid {
+    gap: 0.45rem !important;
+  }
+
+  .virtual-pos-action-grid,
+  .warehouse-filter-actions,
+  .returns-form-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .virtual-pos-action-grid > button,
+  .warehouse-filter-actions > button,
+  .returns-form-actions > button,
+  .returns-form-actions > a {
+    width: 100% !important;
+    min-height: 2.65rem !important;
+  }
+
+  .pos-day-end-page {
+    padding: 0.5rem !important;
+  }
+
+  .pos-day-end-controls {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+  }
+
+  .pos-day-end-controls > *,
+  .pos-day-end-controls > button,
+  .pos-day-end-controls > a {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .day-end-date-control {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  .day-end-date-input {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
+  .moderator-panel-page {
+    padding-inline: 0 !important;
+  }
+
+  .moderator-panel-page table,
+  .reports-pro-screen table,
+  .ledger-table-scroll table {
+    width: max-content !important;
+  }
+
+  .app-shell-root :where(.DialogContent, [data-radix-dialog-content]) {
+    border-radius: 18px !important;
+  }
+}
+
+@media (max-width: 379px) {
+  .admin-catalog-page .admin-product-row-grid {
+    grid-template-columns: 2.2rem minmax(0, 1fr) 2.35rem 2.5rem !important;
+    padding: 0.5rem !important;
+  }
+
+  .product-info-button {
+    width: 2.1rem !important;
+    min-width: 2.1rem !important;
+  }
+
+  .product-cart-button {
+    width: 2.28rem !important;
+    min-width: 2.28rem !important;
+  }
+
+  .pos-day-end-controls {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

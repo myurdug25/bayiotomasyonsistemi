@@ -414,7 +414,7 @@ export function LedgerPage() {
   }, [selectedCustomer?.id]);
 
   return (
-    <div className="space-y-3">
+    <div className="ledger-page space-y-3">
       <Card className="dashboard-panel-card ledger-filter-card md:sticky md:top-24 md:z-20">
         <CardContent className="ledger-filter-content p-3">
           <div className="ledger-filter-grid grid min-w-0 gap-2 xl:grid-cols-[130px_130px_minmax(340px,0.9fr)_minmax(430px,1.1fr)_minmax(108px,auto)] xl:items-end">

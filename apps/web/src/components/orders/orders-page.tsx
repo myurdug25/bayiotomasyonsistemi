@@ -364,7 +364,7 @@ export function OrdersPage() {
   };
 
   return (
-    <div className="space-y-3 text-slate-100">
+    <div className="orders-page space-y-3 text-slate-100">
       <div className="grid gap-2 rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,29,38,0.76)_0%,rgba(9,19,28,0.84)_100%)] p-2 shadow-[0_16px_30px_-30px_rgba(0,0,0,0.48)] sm:grid-cols-3">
         <div className="px-3 py-1.5">
           <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Açık Sipariş</p>
