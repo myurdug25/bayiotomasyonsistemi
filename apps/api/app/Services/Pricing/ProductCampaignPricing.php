@@ -6,7 +6,6 @@ use App\Models\CampaignProduct;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\ProductCampaignPrice;
-use App\Models\ProductCodeAlias;
 use App\Models\User;
 use App\Services\Campaign\CampaignWindowSelector;
 use App\Services\Campaign\CustomerCampaignGroupResolver;
@@ -262,14 +261,15 @@ class ProductCampaignPricing
 
     /**
      * @param  list<int>  $productIds
-     * @return array{raw_codes:list<string>, product_ids_by_normalized_code:array<string, list<int>>}
+     * @return array{raw_codes:list<string>, product_ids_by_normalized_code:array<string, list<int>>, normalized_codes_by_product_id:array<int, string>}
      */
     private function campaignProductLookup(array $productIds): array
     {
         $rawCodes = [];
         $productIdsByNormalizedCode = [];
+        $normalizedCodesByProductId = [];
 
-        $remember = static function (int $productId, mixed $code) use (&$rawCodes, &$productIdsByNormalizedCode): void {
+        $remember = static function (int $productId, mixed $code) use (&$rawCodes, &$productIdsByNormalizedCode, &$normalizedCodesByProductId): void {
             $raw = trim((string) $code);
             if ($raw === '') {
                 return;
@@ -284,6 +284,7 @@ class ProductCampaignPricing
             $rawCodes[$normalized] = $normalized;
             $productIdsByNormalizedCode[$normalized] ??= [];
             $productIdsByNormalizedCode[$normalized][$productId] = $productId;
+            $normalizedCodesByProductId[$productId] = $normalized;
         };
 
         Product::query()
@@ -291,26 +292,19 @@ class ProductCampaignPricing
             ->get(['id', 'sku'])
             ->each(fn (Product $product) => $remember((int) $product->id, $product->sku));
 
-        ProductCodeAlias::query()
-            ->whereIn('product_id', $productIds)
-            ->get(['product_id', 'code', 'normalized_code'])
-            ->each(function (ProductCodeAlias $alias) use ($remember): void {
-                $remember((int) $alias->product_id, $alias->code);
-                $remember((int) $alias->product_id, $alias->normalized_code);
-            });
-
         return [
             'raw_codes' => array_values($rawCodes),
             'product_ids_by_normalized_code' => array_map(
                 static fn (array $ids): array => array_values($ids),
                 $productIdsByNormalizedCode
             ),
+            'normalized_codes_by_product_id' => $normalizedCodesByProductId,
         ];
     }
 
     /**
      * @param  Collection<int, CampaignProduct>  $campaignProducts
-     * @param  array{product_ids_by_normalized_code:array<string, list<int>>}  $lookup
+     * @param  array{product_ids_by_normalized_code:array<string, list<int>>, normalized_codes_by_product_id:array<int, string>}  $lookup
      * @return Collection<int, Collection<int, CampaignProduct>>
      */
     private function groupCampaignProductsByProduct(Collection $campaignProducts, array $lookup): Collection
@@ -329,17 +323,21 @@ class ProductCampaignPricing
     }
 
     /**
-     * @param  array{product_ids_by_normalized_code:array<string, list<int>>}  $lookup
+     * @param  array{product_ids_by_normalized_code:array<string, list<int>>, normalized_codes_by_product_id:array<int, string>}  $lookup
      * @return list<int>
      */
     private function matchingProductIds(CampaignProduct $campaignProduct, array $lookup): array
     {
         $productIds = [];
+        $normalizedSku = ProductCodeNormalizer::normalize($campaignProduct->product_sku);
+
         if ($campaignProduct->product_id !== null) {
-            $productIds[(int) $campaignProduct->product_id] = (int) $campaignProduct->product_id;
+            $productId = (int) $campaignProduct->product_id;
+            if (($lookup['normalized_codes_by_product_id'][$productId] ?? null) === $normalizedSku) {
+                $productIds[$productId] = $productId;
+            }
         }
 
-        $normalizedSku = ProductCodeNormalizer::normalize($campaignProduct->product_sku);
         foreach ($lookup['product_ids_by_normalized_code'][$normalizedSku] ?? [] as $productId) {
             $productIds[(int) $productId] = (int) $productId;
         }
@@ -348,7 +346,7 @@ class ProductCampaignPricing
     }
 
     /**
-     * @param  array{product_ids_by_normalized_code:array<string, list<int>>}  $lookup
+     * @param  array{product_ids_by_normalized_code:array<string, list<int>>, normalized_codes_by_product_id:array<int, string>}  $lookup
      */
     private function campaignProductMatchesProduct(CampaignProduct $campaignProduct, int $productId, array $lookup): bool
     {

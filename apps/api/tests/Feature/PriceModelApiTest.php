@@ -574,7 +574,7 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('data.0.code', 'F1-NEW-CUSTOMER');
     }
 
-    public function test_logo_group_campaign_matches_product_code_alias_when_campaign_product_id_is_missing(): void
+    public function test_logo_group_campaign_does_not_match_stale_product_id_linked_from_code_alias(): void
     {
         $dealer = $this->createDealer('DLR-CAMPAIGN-ALIAS');
         $user = $this->createUserWithRole('salesperson', $dealer);
@@ -609,7 +609,7 @@ class PriceModelApiTest extends TestCase
         ]);
         CampaignProduct::query()->create([
             'campaign_id' => $campaign->id,
-            'product_id' => null,
+            'product_id' => $product->id,
             'product_sku' => 'PWS-OIL-016',
         ]);
 
@@ -617,16 +617,16 @@ class PriceModelApiTest extends TestCase
 
         $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$customer->id)
             ->assertOk()
-            ->assertJsonPath('data.0.campaigns.0.name', 'F12 Alias Kampanyasi');
+            ->assertJsonPath('data.0.id', $product->id)
+            ->assertJsonCount(0, 'data.0.campaigns');
 
         $this->postJson('/api/cart/items', [
             'customer_id' => $customer->id,
             'product_id' => $product->id,
             'quantity' => 5,
             'campaign_key' => 'F12-ALIAS',
-        ])->assertOk()
-            ->assertJsonPath('items.0.discount_rate', '10.00')
-            ->assertJsonPath('items.0.campaign_key', 'F12-ALIAS');
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['campaign_key']);
     }
 
     public function test_logo_campaign_price_tiers_are_limited_to_matching_customer_price_group(): void
@@ -801,7 +801,7 @@ class PriceModelApiTest extends TestCase
             ->assertJsonValidationErrors(['campaigns.0.products']);
     }
 
-    public function test_logo_campaign_sync_links_products_by_code_alias(): void
+    public function test_logo_campaign_sync_does_not_link_products_by_code_alias(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');
 
@@ -831,7 +831,7 @@ class PriceModelApiTest extends TestCase
 
         $this->assertDatabaseHas('campaign_products', [
             'product_sku' => 'PWS-OIL-016',
-            'product_id' => $product->id,
+            'product_id' => null,
         ]);
     }
 

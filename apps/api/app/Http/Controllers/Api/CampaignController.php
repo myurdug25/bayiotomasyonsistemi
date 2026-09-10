@@ -8,9 +8,7 @@ use App\Models\Campaign;
 use App\Models\CampaignProduct;
 use App\Models\Customer;
 use App\Models\Product;
-use App\Models\ProductCodeAlias;
 use App\Services\Campaign\CampaignProgressService;
-use App\Support\Products\ProductCodeNormalizer;
 use App\Support\Products\ProductSearchCacheRevision;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -193,12 +191,20 @@ class CampaignController extends Controller
 
         $timestamp = now();
         $incomingSkus
-            ->filter(fn (string $sku): bool => $existingLookup->has($sku) && $productIdsBySku->has($sku))
+            ->filter(fn (string $sku): bool => $existingLookup->has($sku))
             ->each(fn (string $sku): int => $campaign->campaignProducts()
                 ->where('product_sku', $sku)
                 ->where(function ($query) use ($productIdsBySku, $sku): void {
+                    $productId = $productIdsBySku->get($sku);
+
+                    if ($productId === null) {
+                        $query->whereNotNull('product_id');
+
+                        return;
+                    }
+
                     $query->whereNull('product_id')
-                        ->orWhere('product_id', '!=', $productIdsBySku->get($sku));
+                        ->orWhere('product_id', '!=', $productId);
                 })
                 ->update([
                     'product_id' => $productIdsBySku->get($sku),
@@ -236,36 +242,6 @@ class CampaignController extends Controller
                     ->pluck('id', 'sku')
             );
         });
-
-        $missingSkus = collect($skus)
-            ->reject(fn (string $sku): bool => $productIdsBySku->has($sku))
-            ->values();
-
-        if ($missingSkus->isEmpty()) {
-            return $productIdsBySku;
-        }
-
-        $normalizedToSku = $missingSkus
-            ->mapWithKeys(function (string $sku): array {
-                $normalized = ProductCodeNormalizer::normalize($sku);
-
-                return $normalized === null ? [] : [$normalized => $sku];
-            });
-
-        if ($normalizedToSku->isEmpty()) {
-            return $productIdsBySku;
-        }
-
-        ProductCodeAlias::query()
-            ->whereIn('normalized_code', $normalizedToSku->keys()->all())
-            ->orderBy('id')
-            ->get(['product_id', 'normalized_code'])
-            ->each(function (ProductCodeAlias $alias) use (&$productIdsBySku, $normalizedToSku): void {
-                $sku = $normalizedToSku->get($alias->normalized_code);
-                if (is_string($sku) && ! $productIdsBySku->has($sku)) {
-                    $productIdsBySku->put($sku, (int) $alias->product_id);
-                }
-            });
 
         return $productIdsBySku;
     }
