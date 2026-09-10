@@ -233,7 +233,7 @@ export function VirtualPosPage() {
           <CardContent className="p-5">
             <form className="grid gap-4" onSubmit={handleSubmit}>
               <div className="virtual-pos-form-grid grid gap-5 xl:grid-cols-[minmax(360px,520px)_minmax(0,1fr)] xl:items-start">
-                <div className="virtual-pos-card-preview relative aspect-[1.62/1] min-h-[210px] w-full overflow-hidden rounded-[24px] border border-white/15 bg-[radial-gradient(circle_at_18%_12%,rgba(255,255,255,0.20)_0%,transparent_32%),radial-gradient(circle_at_85%_18%,rgba(255,89,94,0.34)_0%,transparent_36%),linear-gradient(135deg,#152333_0%,#0b1424_48%,#451018_100%)] p-4 text-white shadow-[0_22px_56px_rgba(0,0,0,0.32)] sm:p-5">
+                <div className="virtual-pos-card-preview relative aspect-[1.62/1] min-h-[210px] w-full overflow-hidden rounded-[24px] border border-white/15 p-4 text-white shadow-[0_22px_56px_rgba(0,0,0,0.32)] sm:p-5">
                   <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-400/20 blur-2xl" />
                   <div className="absolute -bottom-14 left-8 h-32 w-32 rounded-full bg-emerald-300/14 blur-2xl" />
                   <div className="absolute inset-x-6 top-1/2 h-px bg-white/10" />

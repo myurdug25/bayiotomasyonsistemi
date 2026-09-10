@@ -10486,6 +10486,14 @@ html[data-ui-theme="light"] .app-shell-root .admin-collections-page .collection-
   }
 }
 
+html .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.2) 0%, transparent 32%),
+    radial-gradient(circle at 85% 18%, rgba(255, 89, 94, 0.34) 0%, transparent 36%),
+    radial-gradient(circle at 18% 92%, rgba(45, 211, 111, 0.14) 0%, transparent 34%),
+    linear-gradient(135deg, #152333 0%, #0b1424 48%, #451018 100%) !important;
+}
+
 /* Virtual POS light theme polish: premium payment surface without touching dark mode logic. */
 html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace {
   --virtual-pos-text: #10291d;

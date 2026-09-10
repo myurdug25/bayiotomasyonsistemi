@@ -44,6 +44,7 @@ test("virtual pos light theme overrides are scoped and semantic", () => {
   assert.match(css, /\.virtual-pos-card-value/);
   assert.match(css, /\.virtual-pos-card-chip/);
   assert.doesNotMatch(css, /\.virtual-pos-card-preview\s*\{[^}]*#ffffff 0%, #f8fcfa/s);
+  assert.doesNotMatch(source, /virtual-pos-card-preview[^"]*bg-\[radial-gradient/);
   assert.match(css, /\.virtual-pos-start-button:not\(:disabled\)/);
   assert.match(css, /\.virtual-pos-start-button:disabled/);
   assert.match(css, /\.virtual-pos-whatsapp-button:not\(:disabled\)/);
