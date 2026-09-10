@@ -237,7 +237,7 @@ export function VirtualPosPage() {
                   <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-400/20 blur-2xl" />
                   <div className="absolute -bottom-14 left-8 h-32 w-32 rounded-full bg-emerald-300/14 blur-2xl" />
                   <div className="absolute inset-x-6 top-1/2 h-px bg-white/10" />
-                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_34%,rgba(0,0,0,0.22)_100%)]" />
+                  <div className="virtual-pos-card-sheen pointer-events-none absolute inset-0" />
                   <div className="relative flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="virtual-pos-card-brand text-[10px] font-black uppercase tracking-[0.22em] text-white/62">PowerSA Sanal POS</p>

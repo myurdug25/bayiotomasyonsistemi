@@ -17,6 +17,7 @@ test("virtual pos exposes stable hooks for light theme polish", () => {
     "virtual-pos-card-label",
     "virtual-pos-card-value",
     "virtual-pos-card-chip",
+    "virtual-pos-card-sheen",
     "virtual-pos-form-section",
     "virtual-pos-input",
     "virtual-pos-validation-message",
@@ -34,6 +35,9 @@ test("virtual pos exposes stable hooks for light theme polish", () => {
 });
 
 test("virtual pos light theme overrides are scoped and semantic", () => {
+  const cardPreviewClass = source.match(/className="([^"]*virtual-pos-card-preview[^"]*)"/)?.[1] ?? "";
+  const cardSheenClass = source.match(/className="([^"]*virtual-pos-card-sheen[^"]*)"/)?.[1] ?? "";
+
   assert.match(css, /\/\* Virtual POS light theme polish/);
   assert.match(css, /html\[data-ui-theme="light"\] \.app-shell-root \.virtual-pos-workspace/);
   assert.match(css, /\.virtual-pos-card-preview/);
@@ -44,7 +48,8 @@ test("virtual pos light theme overrides are scoped and semantic", () => {
   assert.match(css, /\.virtual-pos-card-value/);
   assert.match(css, /\.virtual-pos-card-chip/);
   assert.doesNotMatch(css, /\.virtual-pos-card-preview\s*\{[^}]*#ffffff 0%, #f8fcfa/s);
-  assert.doesNotMatch(source, /virtual-pos-card-preview[^"]*bg-\[radial-gradient/);
+  assert.doesNotMatch(cardPreviewClass, /bg-\[(?:radial|linear)-gradient/);
+  assert.doesNotMatch(cardSheenClass, /bg-\[(?:radial|linear)-gradient/);
   assert.match(css, /\.virtual-pos-start-button:not\(:disabled\)/);
   assert.match(css, /\.virtual-pos-start-button:disabled/);
   assert.match(css, /\.virtual-pos-whatsapp-button:not\(:disabled\)/);

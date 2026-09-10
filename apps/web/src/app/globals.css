@@ -10494,6 +10494,10 @@ html .app-shell-root .virtual-pos-workspace .virtual-pos-card-preview {
     linear-gradient(135deg, #152333 0%, #0b1424 48%, #451018 100%) !important;
 }
 
+html .app-shell-root .virtual-pos-workspace .virtual-pos-card-sheen {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 34%, rgba(0, 0, 0, 0.22) 100%) !important;
+}
+
 /* Virtual POS light theme polish: premium payment surface without touching dark mode logic. */
 html[data-ui-theme="light"] .app-shell-root .virtual-pos-workspace {
   --virtual-pos-text: #10291d;
