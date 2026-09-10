@@ -237,30 +237,31 @@ export function VirtualPosPage() {
                   <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-400/20 blur-2xl" />
                   <div className="absolute -bottom-14 left-8 h-32 w-32 rounded-full bg-emerald-300/14 blur-2xl" />
                   <div className="absolute inset-x-6 top-1/2 h-px bg-white/10" />
+                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_34%,rgba(0,0,0,0.22)_100%)]" />
                   <div className="relative flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/62">PowerSA Sanal POS</p>
-                      <p className="mt-5 text-[clamp(18px,4.2vw,26px)] font-black tracking-tight sm:mt-7">
+                      <p className="virtual-pos-card-brand text-[10px] font-black uppercase tracking-[0.22em] text-white/62">PowerSA Sanal POS</p>
+                      <p className="virtual-pos-card-title mt-5 text-[clamp(18px,4.2vw,26px)] font-black tracking-tight sm:mt-7">
                         Banka Güvenli Ödeme
                       </p>
                     </div>
-                    <span className="flex h-9 w-12 items-center justify-center rounded-[8px] border border-white/18 bg-white/10">
+                    <span className="virtual-pos-card-chip flex h-9 w-12 items-center justify-center rounded-[8px] border border-white/18 bg-white/10">
                       <CreditCard className="h-6 w-6 text-white/72" />
                     </span>
                   </div>
                   <div className="relative mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:mt-6">
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">Kart Bilgisi</p>
-                      <p className="mt-1 max-w-[260px] truncate text-sm font-black tracking-[0.02em]">Ziraat/Payten ekranında girilecek</p>
+                      <p className="virtual-pos-card-label text-[10px] font-black uppercase tracking-[0.16em] text-white/48">Kart Bilgisi</p>
+                      <p className="virtual-pos-card-value mt-1 max-w-[260px] truncate text-sm font-black tracking-[0.02em]">Ziraat/Payten ekranında girilecek</p>
                     </div>
                     <div className="virtual-pos-card-meta-grid grid grid-cols-2 gap-2 text-right sm:gap-4">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">3D</p>
-                        <p className="mt-1 font-mono text-sm font-black">SECURE</p>
+                        <p className="virtual-pos-card-label text-[10px] font-black uppercase tracking-[0.16em] text-white/48">3D</p>
+                        <p className="virtual-pos-card-value mt-1 font-mono text-sm font-black">SECURE</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/48">POS</p>
-                        <p className="mt-1 font-mono text-sm font-black">HOSTED</p>
+                        <p className="virtual-pos-card-label text-[10px] font-black uppercase tracking-[0.16em] text-white/48">POS</p>
+                        <p className="virtual-pos-card-value mt-1 font-mono text-sm font-black">HOSTED</p>
                       </div>
                     </div>
                   </div>

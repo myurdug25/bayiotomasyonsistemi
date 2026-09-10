@@ -12,6 +12,11 @@ test("virtual pos exposes stable hooks for light theme polish", () => {
     "virtual-pos-card-panel",
     "virtual-pos-card-header",
     "virtual-pos-card-preview",
+    "virtual-pos-card-brand",
+    "virtual-pos-card-title",
+    "virtual-pos-card-label",
+    "virtual-pos-card-value",
+    "virtual-pos-card-chip",
     "virtual-pos-form-section",
     "virtual-pos-input",
     "virtual-pos-validation-message",
@@ -32,7 +37,13 @@ test("virtual pos light theme overrides are scoped and semantic", () => {
   assert.match(css, /\/\* Virtual POS light theme polish/);
   assert.match(css, /html\[data-ui-theme="light"\] \.app-shell-root \.virtual-pos-workspace/);
   assert.match(css, /\.virtual-pos-card-preview/);
-  assert.match(css, /linear-gradient\(135deg, #14283f 0%, #17233a 48%, #611d31 100%\)/);
+  assert.match(css, /linear-gradient\(135deg, #14283f 0%, #17233a 50%, #5b172b 100%\)/);
+  assert.match(css, /\.virtual-pos-card-brand/);
+  assert.match(css, /\.virtual-pos-card-title/);
+  assert.match(css, /\.virtual-pos-card-label/);
+  assert.match(css, /\.virtual-pos-card-value/);
+  assert.match(css, /\.virtual-pos-card-chip/);
+  assert.doesNotMatch(css, /\.virtual-pos-card-preview\s*\{[^}]*#ffffff 0%, #f8fcfa/s);
   assert.match(css, /\.virtual-pos-start-button:not\(:disabled\)/);
   assert.match(css, /\.virtual-pos-start-button:disabled/);
   assert.match(css, /\.virtual-pos-whatsapp-button:not\(:disabled\)/);
