@@ -1055,6 +1055,82 @@ class PriceModelApiTest extends TestCase
             ->assertJsonCount(0, 'data.0.campaigns');
     }
 
+    public function test_logo_prclist_prices_suppress_legacy_percent_campaigns_for_matching_scope(): void
+    {
+        $dealer = $this->createDealer('DLR-LOGO-PRCLIST-SUPPRESS');
+        $user = $this->createUserWithRole('admin', $dealer);
+        [, $product] = $this->createCustomerAndProduct($dealer, $user);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 114.18,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $samsunCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-55-129',
+            'name' => 'Samsun Customer',
+            'branch_code' => 'SAMSUN',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F1'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-PRCLIST-SAMSUN-60',
+            'campaign_key' => 'logo:price:all:logo-prclist-samsun-60',
+            'name' => 'Logo Genel Kampanya Fiyati',
+            'condition' => 'P1=60',
+            'min_quantity' => 60,
+            'unit_price' => 75.22,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'branch' => 2,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['source' => 'logo_prclist', 'branch_code' => '2'],
+        ]);
+
+        $campaign = Campaign::query()->create([
+            'source_reference' => 'LEGACY-F1-5',
+            'code' => 'F1 ŞAMPİYON 5 ADET',
+            'name' => 'ŞAMPİYON',
+            'customer_group' => 'F1',
+            'target_quantity' => 5,
+            'discount_percent' => 5,
+            'group_field' => 'specode',
+            'is_active' => true,
+        ]);
+        CampaignProduct::query()->create([
+            'campaign_id' => $campaign->id,
+            'product_id' => $product->id,
+            'product_sku' => $product->sku,
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$samsunCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.0.campaigns')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 60)
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.unit_price', '75.22');
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $samsunCustomer->id,
+            'product_id' => $product->id,
+            'quantity' => 5,
+            'campaign_key' => 'F1 ŞAMPİYON 5 ADET',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['campaign_key']);
+    }
+
     public function test_logo_campaign_sync_requires_integration_key(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');

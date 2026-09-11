@@ -39,7 +39,7 @@ class ProductCampaignPricing
         // Logo campaign price tiers are product campaigns, not customer-specific
         // campaign assignments. Selecting a customer must not make those tiers
         // disappear; customer-group campaigns are merged below after scope checks.
-        $existing = $this->activeQuery()
+        $applicableLogoPriceTiers = $this->activeQuery()
             ->whereIn('product_id', $productIds)
             ->orderBy('campaign_key')
             ->orderBy('min_quantity')
@@ -53,7 +53,10 @@ class ProductCampaignPricing
                 $price,
                 $user,
                 $customer
-            ))
+            ));
+        $logoPrclistProductIds = $this->logoPrclistProductIds($applicableLogoPriceTiers);
+
+        $existing = $applicableLogoPriceTiers
             ->groupBy('product_id')
             ->map(fn (Collection $prices): array => $this->windowSelector->select($prices)
                 ->groupBy('campaign_key')
@@ -79,6 +82,7 @@ class ProductCampaignPricing
             });
 
         $this->groupCampaignProductsByProduct($newCampaignProducts, $campaignProductLookup)
+            ->reject(fn (Collection $campaignProducts, int $productId): bool => isset($logoPrclistProductIds[$productId]))
             ->each(function (Collection $campaignProducts, $productId) use (&$existing) {
                 $selectedCampaigns = $this->windowSelector->select(
                     $campaignProducts->pluck('campaign')->unique('id')->values()
@@ -130,7 +134,7 @@ class ProductCampaignPricing
             ->get();
         $customer = $customerId ? Customer::find($customerId) : null;
         $customerGroups = $customer instanceof Customer ? $this->groupResolver->resolveAll($customer) : [];
-        $tier = $this->windowSelector->select($tiers)
+        $applicableTiers = $this->windowSelector->select($tiers)
             ->filter(fn (ProductCampaignPrice $price): bool => $this->tierMatchesCustomerGroups(
                 $price,
                 $customerGroups,
@@ -139,7 +143,8 @@ class ProductCampaignPricing
                 $price,
                 $user,
                 $customer
-            ))
+            ));
+        $tier = $applicableTiers
             ->where('campaign_key', $campaignKey)
             ->where('min_quantity', '<=', max(1, $quantity))
             ->sortByDesc(fn (ProductCampaignPrice $price): string => sprintf('%010d|%010d', $price->min_quantity, $price->priority))
@@ -159,6 +164,10 @@ class ProductCampaignPricing
         }
 
         if (! $customer instanceof Customer) {
+            return null;
+        }
+
+        if ($this->hasLogoPrclistTier($applicableTiers, $productId)) {
             return null;
         }
 
@@ -208,6 +217,30 @@ class ProductCampaignPricing
     {
         return ProductCampaignPrice::query()
             ->where('is_active', true);
+    }
+
+    /**
+     * @param  Collection<int, ProductCampaignPrice>  $tiers
+     * @return array<int, true>
+     */
+    private function logoPrclistProductIds(Collection $tiers): array
+    {
+        return $tiers
+            ->filter(fn (ProductCampaignPrice $tier): bool => data_get($tier->meta, 'source') === 'logo_prclist')
+            ->pluck('product_id')
+            ->mapWithKeys(fn (int $productId): array => [$productId => true])
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, ProductCampaignPrice>  $tiers
+     */
+    private function hasLogoPrclistTier(Collection $tiers, int $productId): bool
+    {
+        return $tiers->contains(
+            fn (ProductCampaignPrice $tier): bool => (int) $tier->product_id === $productId
+                && data_get($tier->meta, 'source') === 'logo_prclist'
+        );
     }
 
     /**
