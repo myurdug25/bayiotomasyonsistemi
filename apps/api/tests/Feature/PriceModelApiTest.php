@@ -989,6 +989,72 @@ class PriceModelApiTest extends TestCase
             ->assertJsonCount(0, 'data.0.campaigns');
     }
 
+    public function test_logo_prclist_branch_number_without_meta_is_treated_as_logo_workplace(): void
+    {
+        $dealer = $this->createDealer('DLR-LOGO-PRCLIST-BRANCH');
+        $user = $this->createUserWithRole('admin', $dealer);
+        [, $product] = $this->createCustomerAndProduct($dealer, $user);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 160,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $samsunCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-55-129',
+            'name' => 'Samsun Customer',
+            'branch_code' => 'SAMSUN',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F1'],
+        ]);
+
+        $trabzonCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-61-129',
+            'name' => 'Trabzon Customer',
+            'branch_code' => 'TRABZON',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F1'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-PRCLIST-SAMSUN-002',
+            'campaign_key' => 'logo:price:all:logo-prclist-samsun-002',
+            'name' => 'Logo Genel Kampanya Fiyati',
+            'condition' => 'P1=60',
+            'min_quantity' => 60,
+            'unit_price' => 75.22,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'branch' => 2,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['source' => 'logo_prclist'],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$samsunCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.0.campaigns')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 60)
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.unit_price', '75.22');
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$trabzonCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data.0.campaigns');
+    }
+
     public function test_logo_campaign_sync_requires_integration_key(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');

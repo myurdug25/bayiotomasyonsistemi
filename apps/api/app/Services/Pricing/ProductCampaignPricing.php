@@ -322,6 +322,13 @@ class ProductCampaignPricing
             }
         }
 
+        if (data_get($tier->meta, 'source') === 'logo_prclist') {
+            $branch = $this->normalizeLogoWorkplaceCode($tier->branch);
+            if ($branch !== null) {
+                return $branch;
+            }
+        }
+
         return $this->normalizeBranchCode($tier->branch);
     }
 
