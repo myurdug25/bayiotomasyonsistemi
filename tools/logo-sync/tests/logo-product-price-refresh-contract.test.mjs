@@ -22,6 +22,17 @@ test("catalog sync follows recently modified Logo price rows", () => {
   assert.match(productsSource, /catalog incremental added .* price refresh/);
 });
 
+test("catalog price refresh includes modified F-group and GEL price rows", () => {
+  const fetchCatalogPriceRefsSource = productsSource.match(
+    /async function fetchCatalogPriceRefs[\s\S]*?\n}\n\nasync function /
+  )?.[0] ?? "";
+
+  assert.match(fetchCatalogPriceRefsSource, /buildLogoGroupedPricePredicate\(priceSchema\.columns\)/);
+  assert.match(fetchCatalogPriceRefsSource, /buildLogoGelCurrencyPredicate\(currencyColumn\)/);
+  assert.match(fetchCatalogPriceRefsSource, /alternatePricePredicates/);
+  assert.match(fetchCatalogPriceRefsSource, /OR \$\{alternatePricePredicates\.join\(" OR "\)\}/);
+});
+
 test("maintenance sync defaults to one minute", () => {
   assert.match(
     daemonSource,

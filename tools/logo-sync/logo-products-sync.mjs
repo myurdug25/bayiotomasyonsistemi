@@ -1563,7 +1563,10 @@ async function fetchCatalogPriceRefs(pool, currentConfig, priceSchema, sinceAt) 
     "UPDATEDAT",
   ]);
   const priceTypeColumn = findColumn(priceSchema.columns, ["PTYPE", "PRICE_TYPE"]);
+  const currencyColumn = findColumn(priceSchema.columns, ["CURRENCY", "CURCODE", "CURRENCY_CODE"]);
   const activeColumn = findColumn(priceSchema.columns, ["ACTIVE", "IS_ACTIVE"]);
+  const groupedPricePredicate = buildLogoGroupedPricePredicate(priceSchema.columns);
+  const gelCurrencyPredicate = buildLogoGelCurrencyPredicate(currencyColumn);
 
   if (!referenceColumn || !modifiedDateColumn) {
     return [];
@@ -1579,7 +1582,10 @@ async function fetchCatalogPriceRefs(pool, currentConfig, priceSchema, sinceAt) 
 
   if (priceTypeColumn && currentConfig.logo.priceType !== undefined) {
     request.input("priceCatalogType", sql.Int, currentConfig.logo.priceType);
-    query += ` AND ${priceTypeColumn} = @priceCatalogType`;
+    const alternatePricePredicates = [groupedPricePredicate, gelCurrencyPredicate].filter(Boolean);
+    query += alternatePricePredicates.length > 0
+      ? ` AND (${priceTypeColumn} = @priceCatalogType OR ${alternatePricePredicates.join(" OR ")})`
+      : ` AND ${priceTypeColumn} = @priceCatalogType`;
   }
   if (activeColumn) {
     query += ` AND ISNULL(${activeColumn}, 0) = 0`;
