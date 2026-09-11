@@ -311,19 +311,30 @@ class ProductCampaignPricing
             }
         }
 
+        if (data_get($tier->meta, 'source') === 'logo_prclist') {
+            foreach ([
+                'branch_code',
+                'warehouse_code',
+                'invenno',
+            ] as $path) {
+                $branch = $this->normalizeLogoWorkplaceCode(data_get($tier->meta, $path));
+                if ($branch !== null) {
+                    return $branch;
+                }
+            }
+
+            $branch = $this->normalizeLogoWorkplaceCode($tier->branch);
+            if ($branch !== null) {
+                return $branch;
+            }
+        }
+
         foreach ([
             'branch_code',
             'warehouse_code',
             'invenno',
         ] as $path) {
             $branch = $this->normalizeBranchCode(data_get($tier->meta, $path));
-            if ($branch !== null) {
-                return $branch;
-            }
-        }
-
-        if (data_get($tier->meta, 'source') === 'logo_prclist') {
-            $branch = $this->normalizeLogoWorkplaceCode($tier->branch);
             if ($branch !== null) {
                 return $branch;
             }

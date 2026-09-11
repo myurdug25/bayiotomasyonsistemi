@@ -989,7 +989,7 @@ class PriceModelApiTest extends TestCase
             ->assertJsonCount(0, 'data.0.campaigns');
     }
 
-    public function test_logo_prclist_branch_number_without_meta_is_treated_as_logo_workplace(): void
+    public function test_logo_prclist_branch_number_is_treated_as_logo_workplace(): void
     {
         $dealer = $this->createDealer('DLR-LOGO-PRCLIST-BRANCH');
         $user = $this->createUserWithRole('admin', $dealer);
@@ -1039,7 +1039,7 @@ class PriceModelApiTest extends TestCase
             'starts_at' => today()->subDay(),
             'ends_at' => today()->addMonth(),
             'is_active' => true,
-            'meta' => ['source' => 'logo_prclist'],
+            'meta' => ['source' => 'logo_prclist', 'branch_code' => '2'],
         ]);
 
         $this->actingAs($user);

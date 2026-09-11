@@ -180,6 +180,12 @@ test("Logo conditional price helper treats P1 equals conditions as quantity thre
   assert.equal(helpers.resolveLogoCampaignMinQuantity(row, row.CONDITION), 60);
 });
 
+test("Logo price sync preserves PRCLIST row identity metadata for branch debugging", () => {
+  assert.match(productsSource, /price_code: normalizeString\(readFirst\(row, \["CODE", "code"\]\)\)/);
+  assert.match(productsSource, /price_definition: normalizeString\(readFirst\(row, \["DEFINITION_", "DEFINITION", "NAME"\]\)\)/);
+  assert.match(productsSource, /price_explanation: normalizeString\(readFirst\(row, \[/);
+});
+
 test("Logo GEL price rows without F group are sent as Batum special prices", async () => {
   const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
   const row = {
