@@ -186,3 +186,38 @@ test("Logo GEL price rows without F group are sent as Batum special prices", asy
   assert.equal(campaignPrice.currency, "GEL");
   assert.equal(campaignPrice.meta.price_group, "BATUM");
 });
+
+test("Logo F12 GEL price rows are sent as Batum special prices", async () => {
+  const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
+  const row = {
+    LOGICALREF: 131624000,
+    CARDREF: 7574,
+    PRICE: 15,
+    CURRENCY: "GEL",
+    CODE: "WUNDER_131624_000",
+    CLSPECODE5: "F12",
+    CYPHCODE: "F12",
+    BEGDATE: new Date("2026-09-03T00:00:00Z"),
+    ENDDATE: new Date("2026-12-31T00:00:00Z"),
+  };
+  const price = {
+    list_price: "15.0000",
+    currency: "GEL",
+    price_list_code: "F12",
+    meta: { logicalref: "131624000", priority: 0 },
+  };
+
+  assert.equal(helpers.resolveLogoPriceGroupCode(row), "F12");
+  assert.equal(helpers.logoCampaignPriceReason(row, "F12", price.currency), "batum_gel_price");
+
+  const campaignPrice = helpers.buildLogoCampaignPrice(row, price, "F12", {
+    campaignPriceReason: "batum_gel_price",
+  });
+
+  assert.equal(campaignPrice.name, "Batum Size Ozel Fiyat");
+  assert.equal(campaignPrice.min_quantity, 1);
+  assert.equal(campaignPrice.unit_price, "15.0000");
+  assert.equal(campaignPrice.currency, "GEL");
+  assert.equal(campaignPrice.meta.price_group, "BATUM");
+  assert.equal(campaignPrice.meta.logo_price_group, "F12");
+});

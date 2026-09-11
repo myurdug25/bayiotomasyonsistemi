@@ -2789,7 +2789,7 @@ function logoCampaignPriceReason(row, priceGroupCode, priceCurrency = null) {
   const explicitDiscount = normalizeDecimal(readFirst(row, ["DISCPER", "DISCOUNT", "DISCRATE", "discount_rate"]));
   const explicitQuantity = normalizeInteger(readFirst(row, ["MIN_QUANTITY", "MINQTY", "CONDQTY", "MINAMOUNT", "MIN_QUANTITY_", "min_quantity"]));
 
-  if (!normalizedPriceGroupCode && normalizedCurrency === "GEL") {
+  if ((normalizedPriceGroupCode === "F12" || !normalizedPriceGroupCode) && normalizedCurrency === "GEL") {
     return "batum_gel_price";
   }
 
