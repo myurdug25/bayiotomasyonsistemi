@@ -287,22 +287,33 @@ class ProductCampaignPricing
             return 'BATUM';
         }
 
-        $branch = $this->normalizeBranchCode($tier->branch);
-        if ($branch !== null) {
-            return $branch;
+        foreach ([
+            'workplace_name',
+            'office_name',
+            'division_name',
+            'warehouse_name',
+            'branch_name',
+        ] as $path) {
+            $branch = $this->normalizeBranchCode(data_get($tier->meta, $path));
+            if ($branch !== null) {
+                return $branch;
+            }
+        }
+
+        foreach ([
+            'workplace_code',
+            'office_code',
+            'division_code',
+        ] as $path) {
+            $branch = $this->normalizeLogoWorkplaceCode(data_get($tier->meta, $path));
+            if ($branch !== null) {
+                return $branch;
+            }
         }
 
         foreach ([
             'branch_code',
-            'branch_name',
-            'workplace_code',
-            'workplace_name',
-            'office_code',
-            'office_name',
-            'division_code',
-            'division_name',
             'warehouse_code',
-            'warehouse_name',
             'invenno',
         ] as $path) {
             $branch = $this->normalizeBranchCode(data_get($tier->meta, $path));
@@ -311,7 +322,36 @@ class ProductCampaignPricing
             }
         }
 
-        return null;
+        return $this->normalizeBranchCode($tier->branch);
+    }
+
+    private function normalizeLogoWorkplaceCode(mixed $value): ?string
+    {
+        $raw = Str::upper(Str::ascii(trim((string) $value)));
+
+        if ($raw === '' || in_array($raw, ['-1', '0', '000', 'HEPSI', 'ALL', 'GENEL'], true)) {
+            return null;
+        }
+
+        $normalized = preg_replace('/[^A-Z0-9]+/', '', $raw) ?? '';
+
+        if (in_array($normalized, ['1', '001'], true)) {
+            return 'ERZURUM';
+        }
+
+        if (in_array($normalized, ['2', '002'], true)) {
+            return 'SAMSUN';
+        }
+
+        if (in_array($normalized, ['3', '003'], true)) {
+            return 'TRABZON';
+        }
+
+        if (in_array($normalized, ['4', '004'], true)) {
+            return 'BATUM';
+        }
+
+        return $this->normalizeBranchCode($value);
     }
 
     private function normalizeBranchCode(mixed $value): ?string

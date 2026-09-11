@@ -924,6 +924,71 @@ class PriceModelApiTest extends TestCase
             ->assertJsonCount(0, 'data.0.campaigns');
     }
 
+    public function test_logo_workplace_scope_is_used_before_ambiguous_branch_numbers(): void
+    {
+        $dealer = $this->createDealer('DLR-LOGO-WORKPLACE-CAMPAIGN');
+        $user = $this->createUserWithRole('admin', $dealer);
+        [, $product] = $this->createCustomerAndProduct($dealer, $user);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 160,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $samsunCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-55-129',
+            'name' => 'Samsun F12 Customer',
+            'branch_code' => 'SAMSUN',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12'],
+        ]);
+
+        $trabzonCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-61-129',
+            'name' => 'Trabzon F12 Customer',
+            'branch_code' => 'TRABZON',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-WUNDER-SAMSUN-60',
+            'campaign_key' => 'logo:price:f12:wunder-samsun-60',
+            'name' => 'Wunder Samsun Ozel Fiyat',
+            'condition' => 'P1=60',
+            'min_quantity' => 60,
+            'unit_price' => 75.22,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'branch' => 2,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12', 'office_code' => '002', 'office_name' => 'SAMSUN'],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$samsunCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.0.campaigns')
+            ->assertJsonPath('data.0.campaigns.0.name', 'Wunder Samsun Ozel Fiyat');
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$trabzonCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data.0.campaigns');
+    }
+
     public function test_logo_campaign_sync_requires_integration_key(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');
