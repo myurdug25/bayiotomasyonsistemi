@@ -859,6 +859,71 @@ class PriceModelApiTest extends TestCase
             ->assertJsonValidationErrors(['campaign_key']);
     }
 
+    public function test_batum_logo_special_price_group_overrides_ambiguous_logo_branch(): void
+    {
+        $dealer = $this->createDealer('DLR-BATUM-SPECIAL-BRANCH');
+        $user = $this->createUserWithRole('admin', $dealer);
+        [, $product] = $this->createCustomerAndProduct($dealer, $user);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 100,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $batumCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-00-005',
+            'name' => 'LTD NOVA',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12'],
+        ]);
+
+        $samsunCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-55-005',
+            'name' => 'Samsun F12 Customer',
+            'branch_code' => 'SAMSUN',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-F12-GEL-BATUM-AMBIGUOUS-BRANCH',
+            'campaign_key' => 'logo:price:batum:gel-special',
+            'name' => 'Batum Size Ozel Fiyat',
+            'min_quantity' => 1,
+            'unit_price' => 15,
+            'currency' => 'GEL',
+            'priority' => 1,
+            'branch' => 3,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['price_group' => 'BATUM', 'logo_price_group' => 'F12', 'branch_code' => '3'],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$batumCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.0.campaigns')
+            ->assertJsonPath('data.0.campaigns.0.name', 'Batum Size Ozel Fiyat')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.unit_price', '15.00')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.currency', 'GEL');
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$samsunCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data.0.campaigns');
+    }
+
     public function test_logo_campaign_sync_requires_integration_key(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');

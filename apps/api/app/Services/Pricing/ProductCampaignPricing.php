@@ -282,6 +282,11 @@ class ProductCampaignPricing
 
     private function resolveTierBranch(ProductCampaignPrice $tier): ?string
     {
+        $priceGroup = $this->normalizeTierPriceGroup(data_get($tier->meta, 'price_group'));
+        if ($priceGroup === 'BATUM') {
+            return 'BATUM';
+        }
+
         $branch = $this->normalizeBranchCode($tier->branch);
         if ($branch !== null) {
             return $branch;
