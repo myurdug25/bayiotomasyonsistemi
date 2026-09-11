@@ -72,12 +72,12 @@ type ProductSearchPageParam = {
 
 function productTableGridStyle(stockColumnCount: number): CSSProperties {
   const normalizedStockColumnCount = Math.max(stockColumnCount, 1);
-  const stockColumnWidth = Math.min(390, Math.max(300, normalizedStockColumnCount * 66));
-  const minWidth = Math.max(1220, 868 + stockColumnWidth);
+  const stockColumnWidth = Math.min(252, Math.max(86, normalizedStockColumnCount * 72));
+  const minWidth = Math.max(1080, 842 + stockColumnWidth);
 
   return {
     minWidth,
-    gridTemplateColumns: `42px minmax(118px,0.68fr) minmax(86px,0.46fr) minmax(330px,1.85fr) minmax(100px,0.52fr) 54px 96px minmax(${stockColumnWidth}px,0.98fr) 58px 64px`,
+    gridTemplateColumns: `42px minmax(112px,0.66fr) minmax(82px,0.42fr) minmax(300px,1.8fr) minmax(92px,0.48fr) 52px 90px minmax(${stockColumnWidth}px,0.72fr) 54px 64px`,
   };
 }
 
@@ -970,7 +970,15 @@ const ProductRow = memo(function ProductRow({
           <ProductStockCell product={product} canViewStock={canViewStock} columns={visibleStockColumns} />
         </div>
 
-        <div role="cell" className="product-info-action-cell relative flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5">
+        <div
+          role="cell"
+          className={cn(
+            "product-info-action-cell relative z-20 flex min-w-0 items-center justify-center border-l border-[var(--brand-border)] px-1 py-0.5 shadow-[-10px_0_18px_-20px_rgba(0,0,0,0.95)] lg:sticky lg:right-16",
+            isCampaignRow
+              ? "bg-[#ffff00] group-hover:bg-[#ffff00]"
+              : "bg-[var(--surface)] group-hover:bg-[#1d3024]"
+          )}
+        >
           <details data-product-info className="group/details relative">
             <summary
               className="product-info-button flex h-7 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#faee56]/55 bg-[#6b611f] text-[#fff4a3] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_18px_-18px_rgba(250,238,86,0.9)] transition-colors hover:bg-[#7d7228] [&::-webkit-details-marker]:hidden"
@@ -2126,7 +2134,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                         </span>
                       )}
                     </span>
-	                    <span role="columnheader" className="product-info-header-cell flex items-center justify-center border-l border-white/10 px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)]">Bilgi</span>
+	                    <span role="columnheader" className="product-info-header-cell right-16 z-30 flex items-center justify-center border-l border-white/10 bg-[linear-gradient(135deg,rgba(10,96,54,0.98)_0%,rgba(3,48,31,1)_100%)] px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)] shadow-[-10px_0_18px_-20px_rgba(0,0,0,0.95)] lg:sticky">Bilgi</span>
 		                    <span role="columnheader" className="product-cart-header-cell right-0 z-30 flex items-center justify-center border-l border-white/10 bg-[linear-gradient(135deg,rgba(10,96,54,0.98)_0%,rgba(3,48,31,1)_100%)] px-1.5 py-2 text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.44)] shadow-[-14px_0_22px_-22px_rgba(0,0,0,0.95)] lg:sticky">Sepet</span>
                   </div>
                 </div>
