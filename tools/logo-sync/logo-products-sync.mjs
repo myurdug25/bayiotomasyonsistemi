@@ -2545,6 +2545,7 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
   const activeColumn = findColumn(schema.columns, ["ACTIVE", "IS_ACTIVE"]);
   const groupedPricePredicate = buildLogoGroupedPricePredicate(schema.columns);
   const gelCurrencyPredicate = buildLogoGelCurrencyPredicate(currencyColumn);
+  const conditionalPricePredicate = buildLogoConditionalPricePredicate(schema.columns);
 
   if (!referenceColumn || !amountColumn) {
     console.warn(
@@ -2564,7 +2565,7 @@ async function fetchPriceSnapshot(pool, currentConfig, schema, logicalRefs) {
 
   if (priceTypeColumn && currentConfig.logo.priceType !== undefined) {
     request.input("priceType", sql.Int, currentConfig.logo.priceType);
-    const alternatePricePredicates = [groupedPricePredicate, gelCurrencyPredicate].filter(Boolean);
+    const alternatePricePredicates = [groupedPricePredicate, gelCurrencyPredicate, conditionalPricePredicate].filter(Boolean);
     query += alternatePricePredicates.length > 0
       ? ` AND (${priceTypeColumn} = @priceType OR ${alternatePricePredicates.join(" OR ")})`
       : ` AND ${priceTypeColumn} = @priceType`;
@@ -2778,6 +2779,38 @@ function buildLogoGelCurrencyPredicate(currencyColumn) {
   const normalized = `UPPER(LTRIM(RTRIM(CAST(${currencyColumn} AS NVARCHAR(16)))))`;
 
   return `${normalized} = 'GEL'`;
+}
+
+function buildLogoConditionalPricePredicate(columns) {
+  const predicates = [];
+  const conditionColumn = findColumn(columns, ["CONDITION", "COND"]);
+  const formulaColumn = findColumn(columns, ["FORMULA", "MATHFORMULA"]);
+  const discountColumn = findColumn(columns, ["DISCPER", "DISCOUNT", "DISCRATE"]);
+  const quantityColumn = findColumn(columns, [
+    "MIN_QUANTITY",
+    "MINQTY",
+    "CONDQTY",
+    "MINAMOUNT",
+    "MIN_QUANTITY_",
+  ]);
+
+  if (conditionColumn) {
+    predicates.push(`NULLIF(LTRIM(RTRIM(CAST(${conditionColumn} AS NVARCHAR(240)))), '') IS NOT NULL`);
+  }
+
+  if (formulaColumn) {
+    predicates.push(`NULLIF(LTRIM(RTRIM(CAST(${formulaColumn} AS NVARCHAR(240)))), '') IS NOT NULL`);
+  }
+
+  if (discountColumn) {
+    predicates.push(`TRY_CONVERT(decimal(18, 4), ${discountColumn}) > 0`);
+  }
+
+  if (quantityColumn) {
+    predicates.push(`TRY_CONVERT(decimal(18, 4), ${quantityColumn}) > 1`);
+  }
+
+  return predicates.length > 0 ? `(${predicates.join(" OR ")})` : null;
 }
 
 function logoCampaignPriceReason(row, priceGroupCode, priceCurrency = null) {

@@ -155,6 +155,31 @@ test("Logo price helper keeps plain F12 as list price and builds conditional tie
   assert.equal(campaignPrice.currency, "GEL");
 });
 
+test("Logo price sync fetches workplace conditional PRCLIST rows even without price group codes", () => {
+  assert.match(productsSource, /function buildLogoConditionalPricePredicate/);
+  assert.match(productsSource, /conditionalPricePredicate/);
+  assert.match(
+    productsSource,
+    /alternatePricePredicates = \[groupedPricePredicate, gelCurrencyPredicate, conditionalPricePredicate\]/
+  );
+});
+
+test("Logo conditional price helper treats P1 equals conditions as quantity thresholds", async () => {
+  const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
+  const row = {
+    LOGICALREF: 131625160,
+    CARDREF: 417,
+    PRICE: 75.22,
+    CURRENCY: 0,
+    CODE: "WUNDER_131625^160",
+    OFFICE: "002",
+    CONDITION: "P1=60",
+  };
+
+  assert.equal(helpers.logoCampaignPriceReason(row, null, "TRY"), "conditional_price");
+  assert.equal(helpers.resolveLogoCampaignMinQuantity(row, row.CONDITION), 60);
+});
+
 test("Logo GEL price rows without F group are sent as Batum special prices", async () => {
   const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
   const row = {
