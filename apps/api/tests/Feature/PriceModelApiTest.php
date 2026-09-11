@@ -1025,6 +1025,33 @@ class PriceModelApiTest extends TestCase
             'meta' => ['price_group' => 'F1'],
         ]);
 
+        $erzurumCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-25-129',
+            'name' => 'Erzurum Customer',
+            'branch_code' => 'ERZURUM',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F1'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-PRCLIST-TRABZON-001',
+            'campaign_key' => 'logo:price:all:logo-prclist-trabzon-001',
+            'name' => 'Logo Genel Kampanya Fiyati',
+            'condition' => 'P1=60',
+            'min_quantity' => 60,
+            'unit_price' => 75.22,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'branch' => 1,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['source' => 'logo_prclist', 'branch_code' => '1'],
+        ]);
+
         ProductCampaignPrice::query()->create([
             'product_id' => $product->id,
             'source_reference' => 'LOGO-PRCLIST-SAMSUN-002',
@@ -1051,6 +1078,12 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('data.0.campaigns.0.tiers.0.unit_price', '75.22');
 
         $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$trabzonCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.0.campaigns')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 60)
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.unit_price', '75.22');
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$erzurumCustomer->id)
             ->assertOk()
             ->assertJsonCount(0, 'data.0.campaigns');
     }
