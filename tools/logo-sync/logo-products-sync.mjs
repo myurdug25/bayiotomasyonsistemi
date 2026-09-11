@@ -2808,7 +2808,10 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
   const normalizedPriceGroupCode = normalizeString(priceGroupCode)?.toUpperCase();
   const isBatumPrice = normalizedPriceGroupCode === "F12" || columns.campaignPriceReason === "batum_gel_price";
   const campaignPriceGroupCode = isBatumPrice ? "BATUM" : normalizedPriceGroupCode;
-  const branchScope = resolveLogoPriceBranchScope(row);
+  const branchScope =
+    columns.campaignPriceReason === "batum_gel_price"
+      ? resolveBatumLogoPriceBranchScope(row)
+      : resolveLogoPriceBranchScope(row);
   const condition =
     normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"])) ??
     normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
@@ -2863,6 +2866,17 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
       logo_price_group: priceGroupCode,
       source: "logo_prclist",
     }),
+  };
+}
+
+function resolveBatumLogoPriceBranchScope(row) {
+  const branchScope = resolveLogoPriceBranchScope(row);
+
+  return {
+    ...branchScope,
+    branch: 4,
+    branchCode: "BATUM",
+    branchName: branchScope.branchName ?? "BATUM",
   };
 }
 

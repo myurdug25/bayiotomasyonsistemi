@@ -194,6 +194,7 @@ test("Logo F12 GEL price rows are sent as Batum special prices", async () => {
     CARDREF: 7574,
     PRICE: 15,
     CURRENCY: "GEL",
+    BRANCH: 3,
     CODE: "WUNDER_131624_000",
     CLSPECODE5: "F12",
     CYPHCODE: "F12",
@@ -218,6 +219,8 @@ test("Logo F12 GEL price rows are sent as Batum special prices", async () => {
   assert.equal(campaignPrice.min_quantity, 1);
   assert.equal(campaignPrice.unit_price, "15.0000");
   assert.equal(campaignPrice.currency, "GEL");
+  assert.equal(campaignPrice.branch, 4);
+  assert.equal(campaignPrice.meta.branch_code, "BATUM");
   assert.equal(campaignPrice.meta.price_group, "BATUM");
   assert.equal(campaignPrice.meta.logo_price_group, "F12");
 });
