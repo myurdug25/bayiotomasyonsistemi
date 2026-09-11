@@ -11,13 +11,16 @@ use App\Services\Campaign\CampaignWindowSelector;
 use App\Services\Campaign\CustomerCampaignGroupResolver;
 use App\Support\Pricing\DisplayCurrency;
 use App\Support\Products\ProductCodeNormalizer;
+use App\Support\Warehouse\WarehouseBranchResolver;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class ProductCampaignPricing
 {
     public function __construct(
         private readonly CustomerCampaignGroupResolver $groupResolver,
-        private readonly CampaignWindowSelector $windowSelector
+        private readonly CampaignWindowSelector $windowSelector,
+        private readonly WarehouseBranchResolver $branchResolver
     ) {}
 
     /**
@@ -46,6 +49,10 @@ class ProductCampaignPricing
                 $price,
                 $customerGroups,
                 $customer instanceof Customer
+            ) && $this->tierMatchesCustomerBranch(
+                $price,
+                $user,
+                $customer
             ))
             ->groupBy('product_id')
             ->map(fn (Collection $prices): array => $this->windowSelector->select($prices)
@@ -128,6 +135,10 @@ class ProductCampaignPricing
                 $price,
                 $customerGroups,
                 $customer instanceof Customer
+            ) && $this->tierMatchesCustomerBranch(
+                $price,
+                $user,
+                $customer
             ))
             ->where('campaign_key', $campaignKey)
             ->where('min_quantity', '<=', max(1, $quantity))
@@ -250,6 +261,81 @@ class ProductCampaignPricing
         }
 
         return in_array($priceGroup, $customerGroups, true);
+    }
+
+    private function tierMatchesCustomerBranch(ProductCampaignPrice $tier, User $user, ?Customer $customer): bool
+    {
+        $tierBranch = $this->resolveTierBranch($tier);
+
+        if ($tierBranch === null) {
+            return true;
+        }
+
+        if (! $customer instanceof Customer) {
+            return true;
+        }
+
+        $customerBranch = $this->normalizeBranchCode($this->branchResolver->resolveBranchCode($user, $customer));
+
+        return $customerBranch !== null && $tierBranch === $customerBranch;
+    }
+
+    private function resolveTierBranch(ProductCampaignPrice $tier): ?string
+    {
+        $branch = $this->normalizeBranchCode($tier->branch);
+        if ($branch !== null) {
+            return $branch;
+        }
+
+        foreach ([
+            'branch_code',
+            'branch_name',
+            'workplace_code',
+            'workplace_name',
+            'office_code',
+            'office_name',
+            'division_code',
+            'division_name',
+            'warehouse_code',
+            'warehouse_name',
+            'invenno',
+        ] as $path) {
+            $branch = $this->normalizeBranchCode(data_get($tier->meta, $path));
+            if ($branch !== null) {
+                return $branch;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeBranchCode(mixed $value): ?string
+    {
+        $raw = Str::upper(Str::ascii(trim((string) $value)));
+
+        if ($raw === '' || in_array($raw, ['-1', '0', 'HEPSI', 'ALL', 'GENEL'], true)) {
+            return null;
+        }
+
+        $normalized = preg_replace('/[^A-Z0-9]+/', '', $raw) ?? '';
+
+        if (in_array($normalized, ['2', '61', 'RAF61', 'TRABZON', 'TRABZONDEPO', 'TRABZONPOINT'], true) || str_contains($normalized, 'TRABZON')) {
+            return 'TRABZON';
+        }
+
+        if (in_array($normalized, ['3', '55', 'RAF55', 'SAMSUN', 'SAMSUNDEPO', 'SAMSUNPOINT'], true) || str_contains($normalized, 'SAMSUN')) {
+            return 'SAMSUN';
+        }
+
+        if (in_array($normalized, ['4', '995', 'RAF995', 'BATUM', 'BATUMDEPO', 'BATUMPOINT'], true) || str_contains($normalized, 'BATUM')) {
+            return 'BATUM';
+        }
+
+        if (in_array($normalized, ['1', '25', '250', 'RAF25', 'RAF250', 'ERZURUM', 'ERZURUMDEPO', 'ERZURUMPOINT'], true) || str_contains($normalized, 'ERZURUM') || str_starts_with($normalized, 'ERZ')) {
+            return 'ERZURUM';
+        }
+
+        return null;
     }
 
     private function normalizeTierPriceGroup(mixed $value): ?string

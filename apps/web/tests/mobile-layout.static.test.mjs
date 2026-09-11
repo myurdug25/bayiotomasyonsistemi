@@ -80,10 +80,11 @@ test("collections recent panel uses theme surfaces instead of dark-only paint", 
   assert.match(recentPanelBlock, /max-h-\[min\(.*dvh/);
 });
 
-test("product results keep the wide grid inside a scroll container", () => {
+test("product results become cards on tablet and phone widths", () => {
   assert.match(productsSource, /admin-catalog-page min-w-0/);
-  assert.match(productsSource, /product-results-scroll[^"]*max-w-full[^"]*overflow-x-auto/);
-  assert.match(productsSource, /const minWidth = 820 \+ stockColumnWidth/);
+  assert.match(globalsSource, /\/\* Search results responsive card layout/);
+  assert.match(globalsSource, /@media \(max-width: 1023px\)[\s\S]*\.admin-catalog-page \.product-results-scroll \{[\s\S]*overflow:\s*visible !important;/);
+  assert.match(globalsSource, /@media \(max-width: 1023px\)[\s\S]*\.admin-catalog-page \.admin-product-row-grid \{[\s\S]*width:\s*100% !important;[\s\S]*min-width:\s*0 !important;/);
 });
 
 test("search page does not promote depot transfer before customer selection", () => {

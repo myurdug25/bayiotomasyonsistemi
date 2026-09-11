@@ -2808,6 +2808,7 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
   const normalizedPriceGroupCode = normalizeString(priceGroupCode)?.toUpperCase();
   const isBatumPrice = normalizedPriceGroupCode === "F12" || columns.campaignPriceReason === "batum_gel_price";
   const campaignPriceGroupCode = isBatumPrice ? "BATUM" : normalizedPriceGroupCode;
+  const branchScope = resolveLogoPriceBranchScope(row);
   const condition =
     normalizeString(readFirst(row, ["CONDITION", "condition", "COND", "cond"])) ??
     normalizeString(readFirst(row, ["FORMULA", "MATHFORMULA", "formula", "mathformula"]));
@@ -2841,15 +2842,59 @@ function buildLogoCampaignPrice(row, price, priceGroupCode, columns = {}) {
     unit_price: price.list_price,
     currency: isBatumPrice ? "GEL" : price.currency,
     priority: price.meta?.priority ?? 0,
+    branch: branchScope.branch,
     starts_at: normalizeDateOnly(readFirst(row, ["BEGDATE", columns.beginDateColumn])),
     ends_at: normalizeDateOnly(readFirst(row, ["ENDDATE", columns.endDateColumn])),
     is_active: true,
     meta: compactObject({
       ...price.meta,
+      branch_code: branchScope.branchCode,
+      branch_name: branchScope.branchName,
+      workplace_code: branchScope.workplaceCode,
+      workplace_name: branchScope.workplaceName,
+      office_code: branchScope.officeCode,
+      office_name: branchScope.officeName,
+      division_code: branchScope.divisionCode,
+      division_name: branchScope.divisionName,
+      warehouse_code: branchScope.warehouseCode,
+      warehouse_name: branchScope.warehouseName,
+      invenno: branchScope.invenno,
       price_group: campaignPriceGroupCode ?? priceGroupCode,
       logo_price_group: priceGroupCode,
       source: "logo_prclist",
     }),
+  };
+}
+
+function resolveLogoPriceBranchScope(row) {
+  const branch =
+    normalizeInteger(readFirst(row, ["BRANCH", "BRANCHNO", "BRANCHNR", "BRANCH_CODE", "DIVISION", "DIVNR", "OFFICE", "OFFICENO"])) ??
+    null;
+  const branchCode = normalizeString(readFirst(row, ["BRANCH_CODE", "BRANCHCODE", "BRANCH", "BRANCHNO", "BRANCHNR"]));
+  const branchName = normalizeString(readFirst(row, ["BRANCH_NAME", "BRANCHNAME", "BRANCHDESC", "BRANCH_DESCRIPTION"]));
+  const workplaceCode = normalizeString(readFirst(row, ["WORKPLACE_CODE", "WORKPLACECODE", "WORKPLACE", "WORKPLACENO", "WORKPLACENR"]));
+  const workplaceName = normalizeString(readFirst(row, ["WORKPLACE_NAME", "WORKPLACENAME", "WORKPLACEDESC"]));
+  const officeCode = normalizeString(readFirst(row, ["OFFICE_CODE", "OFFICECODE", "OFFICE", "OFFICENO", "OFFICENR"]));
+  const officeName = normalizeString(readFirst(row, ["OFFICE_NAME", "OFFICENAME", "OFFICEDESC"]));
+  const divisionCode = normalizeString(readFirst(row, ["DIVISION_CODE", "DIVISIONCODE", "DIVISION", "DIVNR"]));
+  const divisionName = normalizeString(readFirst(row, ["DIVISION_NAME", "DIVISIONNAME", "DIVISIONDESC"]));
+  const warehouseCode = normalizeString(readFirst(row, ["WAREHOUSE_CODE", "WAREHOUSECODE", "INVENNO", "INVENNR"]));
+  const warehouseName = normalizeString(readFirst(row, ["WAREHOUSE_NAME", "WAREHOUSENAME", "INVENDESC"]));
+  const invenno = normalizeInteger(readFirst(row, ["INVENNO", "INVENNR"]));
+
+  return {
+    branch: branch === null || branch <= 0 ? null : branch,
+    branchCode,
+    branchName,
+    workplaceCode,
+    workplaceName,
+    officeCode,
+    officeName,
+    divisionCode,
+    divisionName,
+    warehouseCode,
+    warehouseName,
+    invenno,
   };
 }
 

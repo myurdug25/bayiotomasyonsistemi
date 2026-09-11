@@ -41,7 +41,7 @@ class ProductSearchController extends Controller
 
     private const SEARCH_RELATED_CACHE_TTL_SECONDS = 300;
 
-    private const SEARCH_RESPONSE_CACHE_VERSION = 21;
+    private const SEARCH_RESPONSE_CACHE_VERSION = 22;
 
     public function __invoke(
         SearchProductsRequest $request,

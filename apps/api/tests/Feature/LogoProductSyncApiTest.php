@@ -116,8 +116,9 @@ class LogoProductSyncApiTest extends TestCase
                             'min_quantity' => 1,
                             'unit_price' => 225,
                             'currency' => 'TRY',
+                            'branch' => 4,
                             'is_active' => true,
-                            'meta' => ['price_group' => 'F12', 'source' => 'logo_prclist'],
+                            'meta' => ['price_group' => 'F12', 'source' => 'logo_prclist', 'branch_code' => 'BATUM'],
                         ],
                         [
                             'source_reference' => 'PRCLIST-F12-9001-5',
@@ -148,6 +149,12 @@ class LogoProductSyncApiTest extends TestCase
                 ->pluck('min_quantity')
                 ->all()
         );
+        $campaignPrice = ProductCampaignPrice::query()
+            ->where('product_id', $product->id)
+            ->where('source_reference', 'PRCLIST-F12-9001')
+            ->firstOrFail();
+        $this->assertSame(4, $campaignPrice->branch);
+        $this->assertSame('BATUM', data_get($campaignPrice->meta, 'branch_code'));
     }
 
     public function test_logo_product_sync_upserts_catalog_stock_and_base_prices(): void

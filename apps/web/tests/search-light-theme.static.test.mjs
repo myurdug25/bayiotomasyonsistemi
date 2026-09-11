@@ -29,7 +29,7 @@ test("search page exposes stable hooks for light table polish", () => {
 
 test("search table stays compact without clipping stock shelf labels", () => {
   assert.match(productsSource, /function productBranchStockHeaderLabel/);
-  assert.match(productsSource, /minWidth = Math\.max\(1200, 842 \+ stockColumnWidth\)/);
+  assert.match(productsSource, /minWidth = Math\.max\(1220, 868 \+ stockColumnWidth\)/);
   assert.match(productsSource, /stockColumnWidth = Math\.min\(390, Math\.max\(300, normalizedStockColumnCount \* 66\)\)/);
   assert.match(css, /\.admin-product-row-grid \{\s*min-height:\s*34px !important/s);
   assert.match(css, /\.admin-product-row-grid \[role="cell"\] \{\s*border-color:[\s\S]*?min-height:\s*34px !important;[\s\S]*?padding-top:\s*0\.125rem !important;[\s\S]*?padding-bottom:\s*0\.125rem !important/s);

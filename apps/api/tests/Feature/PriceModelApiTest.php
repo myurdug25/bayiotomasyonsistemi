@@ -770,6 +770,95 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('items.0.campaign_key', 'logo:price:f12:batum-special');
     }
 
+    public function test_logo_campaign_price_tiers_are_limited_to_matching_customer_branch_scope(): void
+    {
+        $dealer = $this->createDealer('DLR-BRANCH-CAMPAIGN-TIERS');
+        $user = $this->createUserWithRole('admin', $dealer);
+        [, $product] = $this->createCustomerAndProduct($dealer, $user);
+
+        $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
+        $dealer->update(['price_list_id' => $priceListId]);
+        DB::table('base_prices')->insert([
+            'price_list_id' => $priceListId,
+            'product_id' => $product->id,
+            'list_price' => 100,
+            'currency' => 'TRY',
+            'updated_at' => now(),
+        ]);
+
+        $batumCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-00-031',
+            'name' => 'Batum F12 Customer',
+            'branch_code' => 'BATUM',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12'],
+        ]);
+
+        $trabzonCustomer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => '120-61-031',
+            'name' => 'Trabzon F12 Customer',
+            'branch_code' => 'TRABZON',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-F12-TRABZON-5',
+            'campaign_key' => 'logo:price:f12:trabzon-tier',
+            'name' => 'Trabzon Size Ozel Fiyat',
+            'min_quantity' => 5,
+            'unit_price' => 80,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'branch' => 2,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12', 'branch_code' => 'TRABZON'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-F12-BATUM-5',
+            'campaign_key' => 'logo:price:f12:batum-tier',
+            'name' => 'Batum Size Ozel Fiyat',
+            'min_quantity' => 5,
+            'unit_price' => 75,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'branch' => 4,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['price_group' => 'F12', 'branch_code' => 'BATUM'],
+        ]);
+
+        $this->actingAs($user);
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$batumCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.0.campaigns')
+            ->assertJsonPath('data.0.campaigns.0.name', 'Batum Size Ozel Fiyat');
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$trabzonCustomer->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.0.campaigns')
+            ->assertJsonPath('data.0.campaigns.0.name', 'Trabzon Size Ozel Fiyat');
+
+        $this->postJson('/api/cart/items', [
+            'customer_id' => $batumCustomer->id,
+            'product_id' => $product->id,
+            'quantity' => 5,
+            'campaign_key' => 'logo:price:f12:trabzon-tier',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['campaign_key']);
+    }
+
     public function test_logo_campaign_sync_requires_integration_key(): void
     {
         config()->set('integrations.logo.product_sync_key', 'campaign-test-key');
