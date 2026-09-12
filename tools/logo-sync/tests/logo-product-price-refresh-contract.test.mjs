@@ -181,6 +181,22 @@ test("Logo conditional price helper treats P1 equals conditions as quantity thre
   assert.equal(helpers.resolveLogoCampaignMinQuantity(row, row.CONDITION), 60);
 });
 
+test("Logo conditional price helper treats bare P comparisons as quantity thresholds", async () => {
+  const helpers = await import("../logo-products-sync.mjs?test=campaign-price-helpers");
+  const row = {
+    LOGICALREF: 155612,
+    CARDREF: 1556,
+    PRICE: 463.65,
+    CURRENCY: 0,
+    CODE: "SAMPIYON_1556_12",
+    CONDITION: "P>=12",
+  };
+
+  assert.equal(helpers.logoCampaignPriceReason(row, null, "TRY"), "conditional_price");
+  assert.equal(helpers.resolveLogoCampaignMinQuantity(row, row.CONDITION), 12);
+  assert.equal(helpers.resolveLogoCampaignMinQuantity({ ...row, CONDITION: "P>11" }, "P>11"), 12);
+});
+
 test("Logo price sync preserves PRCLIST row identity metadata for branch debugging", () => {
   assert.match(productsSource, /price_code: normalizeString\(readFirst\(row, \["CODE", "code"\]\)\)/);
   assert.match(productsSource, /price_definition: normalizeString\(readFirst\(row, \["DEFINITION_", "DEFINITION", "NAME"\]\)\)/);

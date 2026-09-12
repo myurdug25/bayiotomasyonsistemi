@@ -2968,7 +2968,7 @@ function resolveLogoCampaignMinQuantity(row, condition) {
   }
 
   const raw = normalizeString(condition) ?? normalizeString(readFirst(row, ["DEFINITION_", "DEFINITION", "NAME"]));
-  const comparison = raw?.match(/(?:p1|quantity|qty|adet|miktar)\s*(>=|>|=)\s*(\d+)/iu);
+  const comparison = raw?.match(/(?:p(?:1)?|quantity|qty|adet|miktar)\s*(>=|>|=)\s*(\d+)/iu);
   if (comparison) {
     const value = Number.parseInt(comparison[2], 10);
     return comparison[1] === ">" ? value + 1 : Math.max(1, value);
