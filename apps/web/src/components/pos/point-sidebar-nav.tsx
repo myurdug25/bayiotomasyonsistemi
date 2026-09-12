@@ -53,8 +53,8 @@ export function PointSidebarNav({ iconVariant = "default" }: PointSidebarNavProp
       window.localStorage.getItem(POINT_SIDEBAR_COLLAPSED_STORAGE_KEY) === "1"
   );
   const handleLogout = useCallback(async () => {
-    router.replace("/login?v=20260605-login-fast");
     await logout();
+    router.replace("/login?v=20260605-login-fast");
   }, [logout, router]);
 
   useEffect(() => {

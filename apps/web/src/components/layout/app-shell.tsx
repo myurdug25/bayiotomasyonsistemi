@@ -2406,9 +2406,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return `/login?v=20260605-login-fast${next}`;
   }, [pathname]);
   const handleLogout = useCallback(async () => {
-    router.replace("/login?v=20260605-login-fast");
     await logout();
     queryClient.clear();
+    router.replace("/login?v=20260605-login-fast");
   }, [logout, queryClient, router]);
 
   useEffect(() => {
