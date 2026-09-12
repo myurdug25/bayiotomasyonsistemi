@@ -1567,6 +1567,7 @@ async function fetchCatalogPriceRefs(pool, currentConfig, priceSchema, sinceAt) 
   const activeColumn = findColumn(priceSchema.columns, ["ACTIVE", "IS_ACTIVE"]);
   const groupedPricePredicate = buildLogoGroupedPricePredicate(priceSchema.columns);
   const gelCurrencyPredicate = buildLogoGelCurrencyPredicate(currencyColumn);
+  const conditionalPricePredicate = buildLogoConditionalPricePredicate(priceSchema.columns);
 
   if (!referenceColumn || !modifiedDateColumn) {
     return [];
@@ -1582,7 +1583,7 @@ async function fetchCatalogPriceRefs(pool, currentConfig, priceSchema, sinceAt) 
 
   if (priceTypeColumn && currentConfig.logo.priceType !== undefined) {
     request.input("priceCatalogType", sql.Int, currentConfig.logo.priceType);
-    const alternatePricePredicates = [groupedPricePredicate, gelCurrencyPredicate].filter(Boolean);
+    const alternatePricePredicates = [groupedPricePredicate, gelCurrencyPredicate, conditionalPricePredicate].filter(Boolean);
     query += alternatePricePredicates.length > 0
       ? ` AND (${priceTypeColumn} = @priceCatalogType OR ${alternatePricePredicates.join(" OR ")})`
       : ` AND ${priceTypeColumn} = @priceCatalogType`;

@@ -29,6 +29,7 @@ test("catalog price refresh includes modified F-group and GEL price rows", () =>
 
   assert.match(fetchCatalogPriceRefsSource, /buildLogoGroupedPricePredicate\(priceSchema\.columns\)/);
   assert.match(fetchCatalogPriceRefsSource, /buildLogoGelCurrencyPredicate\(currencyColumn\)/);
+  assert.match(fetchCatalogPriceRefsSource, /buildLogoConditionalPricePredicate\(priceSchema\.columns\)/);
   assert.match(fetchCatalogPriceRefsSource, /alternatePricePredicates/);
   assert.match(fetchCatalogPriceRefsSource, /OR \$\{alternatePricePredicates\.join\(" OR "\)\}/);
 });
