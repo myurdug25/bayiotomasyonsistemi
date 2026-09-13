@@ -37,6 +37,7 @@ async function sendBatchWithRetry(records, options) {
   for (let attempt = 0; ; attempt += 1) {
     try {
       await postBatch(records, options);
+      options.onBatchSent?.(records.length);
       return;
     } catch (error) {
       if (!isRetryableError(error) || attempt >= retryMax) {

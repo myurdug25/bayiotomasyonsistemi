@@ -9832,8 +9832,10 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-results
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid {
-  min-height: 34px !important;
-  height: 34px !important;
+  position: relative !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  overflow: visible !important;
   border-color: var(--search-light-border) !important;
   background: #ffffff !important;
   color: var(--search-light-text) !important;
@@ -9853,8 +9855,9 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-r
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"] {
   border-color: var(--search-light-border) !important;
-  min-height: 34px !important;
-  height: 34px !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  overflow: visible !important;
   padding-top: 0.125rem !important;
   padding-bottom: 0.125rem !important;
 }
@@ -9910,13 +9913,18 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-list-pr
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-branch {
   background: #f5fbf7 !important;
   color: var(--search-light-text) !important;
+  gap: 0.15rem !important;
+  line-height: 1 !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-stock-branch span:first-child {
   color: #076342 !important;
+  line-height: 1.05 !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-shelf-badge {
+  min-height: 16px !important;
+  line-height: 10px !important;
   border-color: #aad8d4 !important;
   background: #dff5f1 !important;
   color: #22544e !important;
@@ -9946,6 +9954,27 @@ html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-info-bu
   color: #ffffff !important;
   transform: none !important;
   box-shadow: 0 10px 20px -16px rgba(143, 120, 17, 0.72) !important;
+}
+
+.admin-catalog-page .admin-product-row-grid:has(details[open]) {
+  position: relative !important;
+  z-index: 90 !important;
+  overflow: visible !important;
+}
+
+.admin-catalog-page .product-info-action-cell:has(details[open]) {
+  z-index: 120 !important;
+  overflow: visible !important;
+}
+
+.admin-catalog-page .product-info-action-cell:has(details[open]) + .product-cart-action-cell,
+.admin-catalog-page .admin-product-row-grid:has(details[open]) .product-cart-action-cell {
+  z-index: 40 !important;
+}
+
+.admin-catalog-page .product-info-popover {
+  z-index: 140 !important;
+  isolation: isolate !important;
 }
 
 html[data-ui-theme="light"] .app-shell-root .admin-catalog-page .product-info-button:hover:not(:disabled) {

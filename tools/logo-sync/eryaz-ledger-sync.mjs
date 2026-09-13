@@ -80,6 +80,8 @@ async function main() {
         );
 
         if (!config.sync.dryRun) {
+          let databaseSent = 0;
+          let lastProgressLogAt = 0;
           sentCount += await sendLedgerRecords(records, {
             url: config.sync.url,
             key: config.sync.key,
@@ -89,6 +91,16 @@ async function main() {
             minBatchSize: config.sync.minBatchSize,
             retryMax: config.sync.retryMax,
             retryBaseDelayMs: config.sync.retryBaseDelayMs,
+            onBatchSent: (size) => {
+              databaseSent += size;
+              if (
+                databaseSent === records.length
+                || databaseSent - lastProgressLogAt >= config.sync.progressEvery
+              ) {
+                lastProgressLogAt = databaseSent;
+                console.log(`[eryaz-ledger-sync] ${database} sent_progress=${databaseSent}/${records.length}`);
+              }
+            },
             log: (message) => console.warn(message),
           });
         } else {
@@ -314,6 +326,7 @@ function buildConfig() {
       minBatchSize: parseInteger(process.env.ERYAZ_LEDGER_MIN_BATCH_SIZE, 1),
       retryMax: parseInteger(process.env.ERYAZ_LEDGER_RETRY_MAX, 2),
       retryBaseDelayMs: parseInteger(process.env.ERYAZ_LEDGER_RETRY_BASE_DELAY_MS, 2000),
+      progressEvery: parseInteger(process.env.ERYAZ_LEDGER_PROGRESS_EVERY, 500),
       startDate,
       startYear: Number(startDate.slice(0, 4)) || 2016,
       incrementalDays: parseInteger(process.env.ERYAZ_LEDGER_INCREMENTAL_DAYS, 45),
