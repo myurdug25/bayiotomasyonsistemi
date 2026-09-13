@@ -72,6 +72,10 @@ Route::get('/health', static fn () => response()->json([
 Route::match(['get', 'post'], '/virtual-pos/callback/{result}', [VirtualPosController::class, 'callback'])
     ->whereIn('result', ['success', 'fail']);
 
+Route::get('/public/warehouse/shipments/{shipment}/print/invoice', [WarehouseShipmentPrintController::class, 'sharedInvoice'])
+    ->middleware('signed')
+    ->name('warehouse.shipments.print.invoice.shared');
+
 Route::middleware('throttle:logo-integration')->group(function (): void {
     Route::post('/integrations/logo/customers/sync', [LogoCustomerSyncController::class, 'store']);
     Route::get('/integrations/logo/customers/pending', [LogoCustomerExportController::class, 'index']);
@@ -314,6 +318,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/shipments/{shipment}/print/packing-slip', [WarehouseShipmentPrintController::class, 'packingSlip']);
             Route::get('/shipments/{shipment}/print/label', [WarehouseShipmentPrintController::class, 'label']);
             Route::get('/shipments/{shipment}/print/invoice', [WarehouseShipmentPrintController::class, 'invoice']);
+            Route::post('/shipments/{shipment}/print/invoice/share-link', [WarehouseShipmentPrintController::class, 'invoiceShareLink']);
             Route::post('/shipments/{shipment}/scan', [WarehouseShipmentController::class, 'scan']);
             Route::post('/shipments/{shipment}/return-item', [WarehouseShipmentController::class, 'returnItem']);
             Route::post('/shipments/{shipment}/return-all', [WarehouseShipmentController::class, 'returnAllItems']);

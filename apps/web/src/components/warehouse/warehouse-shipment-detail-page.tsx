@@ -10,6 +10,7 @@ import {
   Edit3,
   FileText,
   Loader2,
+  MessageCircle,
   PackagePlus,
   PackageCheck,
   Printer,
@@ -20,6 +21,7 @@ import { toast } from "sonner";
 
 import {
   addWarehouseShipmentItem,
+  createWarehouseShipmentInvoiceShareLink,
   deleteWarehouseShipmentItem,
   finalizeWarehouseShipment,
   getWarehouseShipment,
@@ -32,6 +34,7 @@ import {
   type WarehouseShipmentState,
 } from "@/lib/api";
 import { printPageInPlace } from "@/lib/print-page";
+import { buildWhatsAppTextUrl } from "@/lib/whatsapp";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -638,8 +641,60 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
     },
   });
 
+  const invoiceShareMutation = useMutation({
+    mutationFn: () => createWarehouseShipmentInvoiceShareLink(shipmentId),
+    onError: (error) => {
+      const message = maybeApiMessage(error);
+      setWarning(message);
+      toast.error(message);
+    },
+  });
+
   const handleFinalizeInvoice = () => {
     setFinalizeConfirmOpen(true);
+  };
+
+  const shareInvoiceOnWhatsApp = () => {
+    if (!shipmentState || isDepotTransfer) {
+      toast.warning("Depo transferi için fatura WhatsApp paylaşımı kullanılmaz.");
+      return;
+    }
+
+    const popup = window.open("", "_blank");
+
+    invoiceShareMutation.mutate(undefined, {
+      onSuccess: (response) => {
+        const currentShipment = shipmentState.shipment;
+        const currentCustomer = currentShipment.order.customer;
+        const message = [
+          "Merhaba,",
+          `${displayText(currentCustomer.title)} cari hesabına ait fatura çıktısı hazır.`,
+          `Sipariş No: ${displayText(currentShipment.order.order_no)}`,
+          `Sevkiyat No: ${displayText(currentShipment.shipment_no)}`,
+          `Fatura Linki: ${response.url}`,
+          "",
+          "Linki açıp telefondan PDF olarak kaydedebilir veya yazdırabilirsiniz.",
+        ].join("\n");
+        const whatsappUrl = buildWhatsAppTextUrl(message, currentCustomer.phone);
+
+        if (popup) {
+          popup.location.href = whatsappUrl;
+          popup.opener = null;
+        } else {
+          const fallbackPopup = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+          if (!fallbackPopup) {
+            toast.error("WhatsApp penceresi açılamadı. Tarayıcı popup iznini kontrol edin.");
+            return;
+          }
+          fallbackPopup.opener = null;
+        }
+
+        toast.success("WhatsApp fatura mesajı hazırlandı.");
+      },
+      onError: () => {
+        popup?.close();
+      },
+    });
   };
 
   const handleScanSubmit = (event?: FormEvent) => {
@@ -975,7 +1030,7 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
               </label>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-[0.62fr_1fr_1fr_1fr]">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-[0.62fr_1fr_1fr_1fr_1fr]">
               <div className="flex h-14 w-full flex-col items-center justify-center gap-1 rounded-[14px] border border-[#faee56]/35 bg-[#4d4310]/45 px-2 text-center text-[9px] font-black text-[#fff8a8]">
                 <span className="uppercase leading-tight tracking-[0.08em]">Sipariş Tutarı</span>
                 <span className="text-sm leading-none text-white">{toPlainMoney(orderTotal)}</span>
@@ -1009,6 +1064,16 @@ export function WarehouseShipmentDetailPage({ shipmentId }: { shipmentId: string
                 onClick={() => printPageInPlace(printUrls.label)}
               >
                 <Printer className="h-4 w-4" /> Kargo Etiketi
+              </Button>
+              <Button
+                type="button"
+                className="h-14 w-full flex-col gap-1 rounded-[14px] border border-emerald-200/45 bg-[linear-gradient(135deg,#34d399_0%,#16a34a_52%,#047857_100%)] text-center text-[10px] font-black text-white shadow-[0_18px_38px_-28px_rgba(16,185,129,0.9)] hover:brightness-110"
+                onClick={shareInvoiceOnWhatsApp}
+                disabled={isDepotTransfer || invoiceShareMutation.isPending || shipmentState.totals.shipped_qty_total <= 0}
+                title={isDepotTransfer ? "Depo transferinde fatura paylaşımı yok" : "Müşteriye WhatsApp ile fatura linki gönder"}
+              >
+                {invoiceShareMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageCircle className="h-5 w-5" />}
+                WhatsApp Fatura
               </Button>
               <Button
                 type="button"

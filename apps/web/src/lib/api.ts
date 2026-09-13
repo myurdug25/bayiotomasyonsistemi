@@ -3618,6 +3618,15 @@ export async function getWarehouseShipmentInvoicePrintHtml(shipmentId: number | 
   return response.text();
 }
 
+export async function createWarehouseShipmentInvoiceShareLink(shipmentId: number | string) {
+  return apiFetch<{ url: string; expires_at: string }>(
+    `/api/warehouse/shipments/${shipmentId}/print/invoice/share-link`,
+    {
+      method: "POST",
+    }
+  );
+}
+
 export async function scanWarehouseShipment(
   shipmentId: number | string,
   payload: { barcode: string; qty?: number }

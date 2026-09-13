@@ -105,5 +105,6 @@ tools/windows-installer/**/obj/
 
 # Codex local diagnostics and one-off deploy scratch files
 .codex-deploy/
+.codex-tmp/
 tmp-light-qa/
 sidebar/

@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import defaultSql from "mssql";
 
+import { sendLedgerRecords } from "./eryaz-ledger-http.mjs";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(scriptDir, ".env");
 
@@ -73,12 +75,27 @@ async function main() {
           }
         }
 
-        for (const chunk of chunks(records, config.sync.batchSize)) {
-          if (!config.sync.dryRun) {
-            await sendChunk(chunk);
-          }
-          sentCount += chunk.length;
+        console.log(
+          `[eryaz-ledger-sync] ${database} read=${rows.length} normalized=${records.length} skipped=${rows.length - records.length}`
+        );
+
+        if (!config.sync.dryRun) {
+          sentCount += await sendLedgerRecords(records, {
+            url: config.sync.url,
+            key: config.sync.key,
+            dealerId: config.sync.dealerId,
+            dealerCode: config.sync.dealerCode,
+            batchSize: config.sync.batchSize,
+            minBatchSize: config.sync.minBatchSize,
+            retryMax: config.sync.retryMax,
+            retryBaseDelayMs: config.sync.retryBaseDelayMs,
+            log: (message) => console.warn(message),
+          });
+        } else {
+          sentCount += records.length;
         }
+
+        console.log(`[eryaz-ledger-sync] ${database} sent=${records.length}`);
       } catch (error) {
         errorCount += 1;
         const message = error instanceof Error ? error.message : String(error);
@@ -246,28 +263,6 @@ function normalizeRecord(database, row) {
   };
 }
 
-async function sendChunk(records) {
-  if (records.length === 0) return;
-
-  const response = await fetch(config.sync.url, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "x-integration-key": config.sync.key,
-    },
-    body: JSON.stringify({
-      dealer_id: config.sync.dealerId,
-      dealer_code: config.sync.dealerCode,
-      records,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`endpoint returned ${response.status}: ${await response.text()}`);
-  }
-}
-
 function buildConfig() {
   const timeoutMs = parseInteger(process.env.ERYAZ_SQL_REQUEST_TIMEOUT_MS ?? process.env.LOGO_SQL_REQUEST_TIMEOUT_MS, 120000);
   const port = parseInteger(process.env.ERYAZ_SQL_PORT ?? process.env.LOGO_SQL_PORT, undefined);
@@ -316,6 +311,9 @@ function buildConfig() {
       dealerId: parseInteger(process.env.POWERSA_DEALER_ID, undefined),
       dealerCode: nullable(process.env.POWERSA_DEALER_CODE),
       batchSize: parseInteger(process.env.ERYAZ_LEDGER_BATCH_SIZE, 1000),
+      minBatchSize: parseInteger(process.env.ERYAZ_LEDGER_MIN_BATCH_SIZE, 1),
+      retryMax: parseInteger(process.env.ERYAZ_LEDGER_RETRY_MAX, 2),
+      retryBaseDelayMs: parseInteger(process.env.ERYAZ_LEDGER_RETRY_BASE_DELAY_MS, 2000),
       startDate,
       startYear: Number(startDate.slice(0, 4)) || 2016,
       incrementalDays: parseInteger(process.env.ERYAZ_LEDGER_INCREMENTAL_DAYS, 45),

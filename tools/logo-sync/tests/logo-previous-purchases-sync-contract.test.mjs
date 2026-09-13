@@ -28,3 +28,12 @@ test("daemon can run previous purchases as a maintenance sync step", () => {
   assert.match(daemonSource, /logo-previous-purchases-sync\.mjs/);
   assert.match(daemonSource, /POWERSA_PREVIOUS_PURCHASES_SYNC_URL/);
 });
+
+test("daemon runs Eryaz ledger history during automatic maintenance syncs", () => {
+  assert.match(daemonSource, /"eryaz-ledger":\s*{/);
+  assert.match(daemonSource, /eryaz-ledger-sync\.mjs/);
+  const defaultMaintenanceSteps = daemonSource.match(/const\s+defaultMaintenanceSteps\s*=\s*\[([\s\S]*?)\];/);
+  assert.ok(defaultMaintenanceSteps, "defaultMaintenanceSteps should be declared");
+  assert.match(defaultMaintenanceSteps[1], /"previous-purchases"/);
+  assert.match(defaultMaintenanceSteps[1], /"eryaz-ledger"/);
+});

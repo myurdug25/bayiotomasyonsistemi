@@ -51,6 +51,7 @@ const defaultMaintenanceSteps = [
   "finance-definitions",
   "campaigns",
   "previous-purchases",
+  "eryaz-ledger",
 ];
 
 if (fs.existsSync(envPath)) {

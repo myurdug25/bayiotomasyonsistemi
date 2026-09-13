@@ -12,6 +12,7 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\PurchaseReceipt;
 use App\Models\Role;
 use App\Models\Shipment;
 use App\Models\ShipmentItem;
@@ -1008,6 +1009,55 @@ class WarehouseShipmentApiTest extends TestCase
             ->assertSee('SHP-PRN-001');
     }
 
+    public function test_invoice_print_share_link_opens_without_login_when_signed(): void
+    {
+        $dealer = $this->createDealer('DLR-INV-SHARE');
+        $warehouseUser = $this->createUserWithRole('warehouse', $dealer);
+        $this->actingAs($warehouseUser);
+
+        $ctx = $this->createApprovedOrderContext($dealer, $warehouseUser, [
+            'order_no' => 'ORD-INV-SHARE',
+            'customer_name' => 'WhatsApp Fatura Cari',
+        ]);
+
+        $shipment = Shipment::query()->create([
+            'order_id' => $ctx['order']->id,
+            'warehouse_id' => $ctx['warehouse']->id,
+            'shipment_no' => 'SHP-INV-SHARE',
+            'status' => 'shipped',
+            'created_by' => $warehouseUser->id,
+        ]);
+
+        ShipmentItem::query()->create([
+            'shipment_id' => $shipment->id,
+            'order_item_id' => $ctx['orderItem']->id,
+            'product_id' => $ctx['product']->id,
+            'ordered_qty' => 2,
+            'shipped_qty' => 2,
+            'unit_price' => 100,
+            'vat_rate' => 20,
+            'line_total_shipped' => 200,
+        ]);
+
+        $shareResponse = $this->postJson('/api/warehouse/shipments/'.$shipment->id.'/print/invoice/share-link');
+
+        $shareUrl = $shareResponse
+            ->assertOk()
+            ->assertJsonStructure(['url', 'expires_at'])
+            ->json('url');
+
+        $this->assertIsString($shareUrl);
+        $this->assertStringContainsString('/api/public/warehouse/shipments/'.$shipment->id.'/print/invoice', $shareUrl);
+
+        auth()->forgetGuards();
+
+        $this->get($shareUrl)
+            ->assertOk()
+            ->assertHeader('content-type', 'text/html; charset=UTF-8')
+            ->assertSee('WhatsApp Fatura Cari')
+            ->assertSee('SHP-INV-SHARE');
+    }
+
     public function test_label_print_returns_large_shipping_label(): void
     {
         $dealer = $this->createDealer('DLR-LBL-001');
@@ -1685,7 +1735,7 @@ class WarehouseShipmentApiTest extends TestCase
         $this->assertSame('5', data_get($shipmentStage, 'records.0.stock_target_warehouse_code'));
         $this->assertSame(2, data_get($shipmentStage, 'records.0.items.0.shipped_qty'));
 
-        $receipt = \App\Models\PurchaseReceipt::query()
+        $receipt = PurchaseReceipt::query()
             ->with('items')
             ->where('document_no', Shipment::query()->findOrFail($shipmentId)->shipment_no)
             ->where('status', 'draft')
@@ -1727,7 +1777,7 @@ class WarehouseShipmentApiTest extends TestCase
             'document_no' => $receipt->document_no,
             'status' => 'draft',
         ]);
-        $remainingReceipt = \App\Models\PurchaseReceipt::query()
+        $remainingReceipt = PurchaseReceipt::query()
             ->with('items')
             ->where('document_no', $receipt->document_no)
             ->where('status', 'draft')

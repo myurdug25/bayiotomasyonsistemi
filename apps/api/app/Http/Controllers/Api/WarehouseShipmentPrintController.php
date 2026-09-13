@@ -7,8 +7,10 @@ use App\Models\IntegrationSyncState;
 use App\Models\Order;
 use App\Models\Shipment;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class WarehouseShipmentPrintController extends Controller
@@ -65,6 +67,35 @@ class WarehouseShipmentPrintController extends Controller
         $shipment = $this->loadShipment($shipment);
         $this->ensureShipmentScope($request->user(), $shipment);
 
+        return $this->renderInvoice($shipment);
+    }
+
+    public function invoiceShareLink(Request $request, Shipment $shipment): JsonResponse
+    {
+        $shipment = $this->loadShipment($shipment);
+        $this->ensureShipmentScope($request->user(), $shipment);
+
+        $expiresAt = now()->addDays(2);
+
+        return response()->json([
+            'url' => URL::temporarySignedRoute(
+                'warehouse.shipments.print.invoice.shared',
+                $expiresAt,
+                ['shipment' => $shipment->id]
+            ),
+            'expires_at' => $expiresAt->toIso8601String(),
+        ]);
+    }
+
+    public function sharedInvoice(Request $request, Shipment $shipment): Response
+    {
+        $shipment = $this->loadShipment($shipment);
+
+        return $this->renderInvoice($shipment);
+    }
+
+    private function renderInvoice(Shipment $shipment): Response
+    {
         $order = $shipment->order;
         $syncMeta = $order instanceof Order ? $this->orderSyncMeta($order) : [];
         $checkoutSummary = $this->checkoutSummaryFromMode(data_get($syncMeta, 'checkout_summary_mode'));
