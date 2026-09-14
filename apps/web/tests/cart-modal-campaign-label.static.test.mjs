@@ -42,6 +42,12 @@ test("cart modal keeps Batum campaign prices net and hides VAT mode", () => {
   assert.doesNotMatch(productsSource, /pricesIncludeVat=\{isBatumPriceScope\}/);
 });
 
+test("cart modal orders all campaign tiers from the smallest quantity to the largest", () => {
+  assert.match(productsSource, /const cartModalCampaignTiers = useMemo\(/);
+  assert.match(productsSource, /\.sort\(\(left, right\) => left\.tier\.min_quantity - right\.tier\.min_quantity\)/);
+  assert.match(productsSource, /cartModalCampaignTiers\.map\(\(\{ campaign, tier \}\)/);
+});
+
 test("Batum campaign rows derive list price but keep real hover price cards", () => {
   assert.match(productsSource, /function batumCampaignListPrice/);
   assert.match(productsSource, /batumCampaignUnitPrice\(product\)/);

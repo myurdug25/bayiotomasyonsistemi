@@ -1602,6 +1602,12 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
     () => canViewCampaigns ? (cartModalProduct?.campaigns ?? []) : [],
     [canViewCampaigns, cartModalProduct?.campaigns]
   );
+  const cartModalCampaignTiers = useMemo(
+    () => cartModalCampaigns
+      .flatMap((campaign) => campaign.tiers.map((tier) => ({ campaign, tier })))
+      .sort((left, right) => left.tier.min_quantity - right.tier.min_quantity),
+    [cartModalCampaigns]
+  );
   const cartModalHasCampaignOffers = Boolean(cartModalProduct?.special_discounted_price) || cartModalCampaigns.length > 0;
   const cartModalPricesIncludeVat = isBatumPriceScope ? false : cartPricesIncludeVat;
   const cartModalShowBaseSalesPrice = !(isBatumPriceScope && cartModalCampaigns.length > 0);
@@ -2331,8 +2337,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                       </strong>
                     </div>
                   ) : null}
-                  {cartModalCampaigns.flatMap((campaign) =>
-                    campaign.tiers.map((tier) => {
+                  {cartModalCampaignTiers.map(({ campaign, tier }) => {
                       const tierPrice = formatCampaignTierPrice(cartModalProduct, tier, cartModalPricesIncludeVat, isBatumPriceScope ? "GEL" : undefined);
                       const active =
                         cartModalApplicableCampaign?.campaign.key === campaign.key &&
@@ -2357,8 +2362,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                           </span>
                         </div>
                       );
-                    })
-                  )}
+                    })}
                 </div>
                 ) : null}
 	              </div>
