@@ -310,6 +310,17 @@ function stripPriceCurrency(value: string): string {
   return value.replace(/\s*(TRY|TL|₺|GEL|USD|EUR)\s*$/i, "").trim();
 }
 
+function campaignTierLabel(tier: { min_quantity: number; condition?: string | null }): string {
+  const condition = tier.condition?.trim() ?? "";
+  const greaterThan = condition.match(/\bP1\s*>\s*(\d+)/i);
+
+  if (greaterThan) {
+    return `${greaterThan[1]}+ adet`;
+  }
+
+  return tier.min_quantity > 1 ? `${tier.min_quantity} adet` : "Size özel fiyat";
+}
+
 function formatPackageQuantity(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") {
     return "-";
@@ -2352,7 +2363,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
                           )}
                         >
                           <span className="block text-[13px] font-black uppercase tracking-[0.08em] text-slate-800">
-                            {tier.min_quantity > 1 ? `${tier.min_quantity} adet` : "Size özel fiyat"}
+                            {campaignTierLabel(tier)}
                           </span>
                           <strong className="mt-1.5 block text-xl font-black leading-none text-slate-950">
                             {stripPriceCurrency(tierPrice.unit)}{isBatumPriceScope ? " GEL" : ""}
