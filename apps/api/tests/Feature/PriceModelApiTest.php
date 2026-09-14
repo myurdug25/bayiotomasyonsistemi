@@ -645,6 +645,15 @@ class PriceModelApiTest extends TestCase
             'meta' => ['price_group' => 'F2'],
         ]);
 
+        $f3Customer = Customer::query()->create([
+            'dealer_id' => $dealer->id,
+            'salesperson_user_id' => $user->id,
+            'code' => 'CR-CAMPAIGN-TIER-F3',
+            'name' => 'F3 Campaign Tier Customer',
+            'is_active' => true,
+            'meta' => ['price_group' => 'F3'],
+        ]);
+
         $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
         $dealer->update(['price_list_id' => $priceListId]);
         DB::table('base_prices')->insert([
@@ -668,7 +677,7 @@ class PriceModelApiTest extends TestCase
             'starts_at' => today()->subDay(),
             'ends_at' => today()->addMonth(),
             'is_active' => true,
-            'meta' => ['price_group' => 'F1'],
+            'meta' => ['price_group' => 'F1', 'logo_price_group' => 'F3'],
         ]);
 
         $this->actingAs($user);
@@ -680,6 +689,10 @@ class PriceModelApiTest extends TestCase
         $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$f2Customer->id)
             ->assertOk()
             ->assertJsonCount(0, 'data.0.campaigns');
+
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$f3Customer->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.campaigns.0.name', 'F1 Logo Fiyat Kampanyasi');
 
         $this->postJson('/api/cart/items', [
             'customer_id' => $f2Customer->id,

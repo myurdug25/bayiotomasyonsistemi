@@ -272,13 +272,19 @@ class ProductCampaignPricing
         array $customerGroups,
         bool $hasSelectedCustomer
     ): bool {
-        $priceGroup = $this->normalizeTierPriceGroup(
-            data_get($tier->meta, 'price_group')
-                ?? data_get($tier->meta, 'logo_price_group')
-                ?? data_get($tier->meta, 'price_list_code')
-        );
+        $priceGroups = collect([
+            'price_group',
+            'logo_price_group',
+            'price_list_code',
+            'customer_group',
+            'group_code',
+        ])
+            ->map(fn (string $path): ?string => $this->normalizeTierPriceGroup(data_get($tier->meta, $path)))
+            ->filter()
+            ->unique()
+            ->values();
 
-        if ($priceGroup === null) {
+        if ($priceGroups->isEmpty()) {
             return true;
         }
 
@@ -286,7 +292,7 @@ class ProductCampaignPricing
             return true;
         }
 
-        return in_array($priceGroup, $customerGroups, true);
+        return $priceGroups->intersect($customerGroups)->isNotEmpty();
     }
 
     private function tierMatchesCustomerBranch(ProductCampaignPrice $tier, User $user, ?Customer $customer): bool
