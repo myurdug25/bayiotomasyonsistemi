@@ -22,11 +22,13 @@ class WarehouseBranchResolver
         return $this->branchCodeFromUserIdentity($salesperson)
             ?? $this->normalizeBranchCode($salesperson?->branch_code)
             ?? $this->normalizeBranchCode($salesperson?->branch_name)
+            ?? $this->normalizeBranchCode($customer?->branch_code)
+            ?? $this->normalizeBranchCode($customer?->branch_name)
+            ?? $this->normalizeBranchCode($customer?->region_code)
+            ?? $this->normalizeBranchCode($customer?->region_name)
             ?? $this->branchCodeFromUserIdentity($user)
             ?? $this->normalizeBranchCode($user?->branch_code)
             ?? $this->normalizeBranchCode($user?->branch_name)
-            ?? $this->normalizeBranchCode($customer?->branch_code)
-            ?? $this->normalizeBranchCode($customer?->branch_name)
             // Eski carilerde şube alanları boş olabilir. Cari kodunun orta
             // segmenti yalnızca son çaredir; 120-00-* Batum varsayımı gerçek
             // bağlı plasiyer/oturum şubesini asla ezmemelidir.

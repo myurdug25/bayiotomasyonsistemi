@@ -1583,6 +1583,10 @@ class PriceModelApiTest extends TestCase
     {
         $dealer = $this->createDealer('DLR-ADMIN-WAREHOUSE');
         $admin = $this->createUserWithRole('admin', $dealer);
+        $admin->forceFill([
+            'branch_code' => 'ERZURUM',
+            'branch_name' => 'Erzurum',
+        ])->save();
         $salesperson = $this->createUserWithRole('salesperson', $dealer);
         $salesperson->forceFill([
             'username' => 'trabzon.salesperson',
@@ -1591,8 +1595,10 @@ class PriceModelApiTest extends TestCase
         ])->save();
         [$customer, $product] = $this->createCustomerAndProduct($dealer, $salesperson);
         $customer->forceFill([
+            'salesperson_user_id' => null,
             'branch_code' => 'TRABZON',
             'branch_name' => 'Trabzon',
+            'meta' => ['price_group' => 'F3'],
         ])->save();
 
         $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');
@@ -1605,7 +1611,28 @@ class PriceModelApiTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-F3-TRABZON-ADMIN-5',
+            'campaign_key' => 'logo:f3-trabzon-admin-5',
+            'name' => 'F3 Trabzon Net Fiyat',
+            'condition' => 'P1>=5',
+            'min_quantity' => 5,
+            'unit_price' => 80.00,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'branch' => 3,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['price_group' => 'F3', 'branch_code' => 'TRABZON'],
+        ]);
+
         $this->actingAs($admin);
+        $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$customer->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.campaigns.0.name', 'F3 Trabzon Net Fiyat');
+
         $cart = $this->postJson('/api/cart/items', [
             'customer_id' => $customer->id,
             'product_id' => $product->id,
