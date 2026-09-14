@@ -1669,7 +1669,7 @@ class PriceModelApiTest extends TestCase
                 'integrations' => [
                     'logo' => [
                         'payload' => [
-                        'raw' => ['AUTHCODE' => '120-TRB'],
+                        'raw' => ['CYPHCODE' => '120-TRB'],
                         ],
                     ],
                 ],
