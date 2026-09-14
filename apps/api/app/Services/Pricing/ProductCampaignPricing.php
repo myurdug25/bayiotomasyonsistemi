@@ -415,7 +415,7 @@ class ProductCampaignPricing
         $normalized = preg_replace('/[^A-Z0-9]+/', '', $raw) ?? '';
 
         if (in_array($normalized, ['1', '001'], true)) {
-            return 'ERZURUM';
+            return 'TRABZON';
         }
 
         if (in_array($normalized, ['2', '002'], true)) {
@@ -423,7 +423,7 @@ class ProductCampaignPricing
         }
 
         if (in_array($normalized, ['3', '003'], true)) {
-            return 'TRABZON';
+            return 'ERZURUM';
         }
 
         if (in_array($normalized, ['4', '004'], true)) {

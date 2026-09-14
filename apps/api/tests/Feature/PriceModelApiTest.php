@@ -1669,7 +1669,7 @@ class PriceModelApiTest extends TestCase
                 'integrations' => [
                     'logo' => [
                         'payload' => [
-                        'raw' => ['AUTHCODE' => '120-SAM'],
+                        'raw' => ['AUTHCODE' => '120-TRB'],
                         ],
                     ],
                 ],
@@ -1678,29 +1678,29 @@ class PriceModelApiTest extends TestCase
 
         ProductCampaignPrice::query()->create([
             'product_id' => $product->id,
-            'source_reference' => 'LOGO-F3-SAM-AUTHORITY-12',
-            'campaign_key' => 'logo:f3-sam-authority-12',
-            'name' => 'F3 Samsun P1 12',
+            'source_reference' => 'LOGO-F3-TRB-AUTHORITY-12',
+            'campaign_key' => 'logo:f3-trb-authority-12',
+            'name' => 'F3 Trabzon P1 12',
             'condition' => 'P1=12',
             'min_quantity' => 12,
             'unit_price' => 303.47,
             'currency' => 'TRY',
             'priority' => 1,
-            'branch' => 3,
+            'branch' => 2,
             'starts_at' => today()->subDay(),
             'ends_at' => today()->addMonth(),
             'is_active' => true,
-            'meta' => ['price_group' => 'F3', 'office_code' => '002'],
+            'meta' => ['price_group' => 'F3', 'office_code' => '001'],
         ]);
 
         $this->assertSame(
-            'SAMSUN',
+            'TRABZON',
             app(\App\Support\Warehouse\WarehouseBranchResolver::class)->resolveBranchCode($admin, $customer),
         );
         $this->actingAs($admin)
             ->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$customer->id)
             ->assertOk()
-            ->assertJsonPath('data.0.campaigns.0.name', 'F3 Samsun P1 12')
+            ->assertJsonPath('data.0.campaigns.0.name', 'F3 Trabzon P1 12')
             ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 12);
     }
 
