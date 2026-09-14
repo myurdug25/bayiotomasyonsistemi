@@ -65,6 +65,7 @@ async function main() {
       syncMode
     );
     const resumedAuthoritativeRunId = normalizeString(syncState.sync_run_id);
+    const authoritativeReconciliation = maybePromoteCatalogReconciliation(config);
     if (config.sync.stockFast) {
       syncState.last_run_started_at = new Date().toISOString();
       syncState.lookback_minutes = config.sync.stockLookbackMinutes;
@@ -641,6 +642,9 @@ async function main() {
       syncState.last_success_offset = lastChunkIndex * config.sync.batchSize;
       syncState.last_success_count = chunks[lastChunkIndex].length;
     }
+    if (authoritativeReconciliation && syncState.failed_count === 0) {
+      saveCatalogAuthoritativeState(config);
+    }
     saveSyncState(stateFile, syncState);
     stateSaved = true;
   } finally {
@@ -762,6 +766,37 @@ function shouldSendAuthoritativeCatalogSnapshot(currentConfig) {
     && !currentConfig.sync.imagesOnly
     && !currentConfig.sync.catalogIncremental
     && !hasProductTargetSelection(currentConfig.sync);
+}
+
+function maybePromoteCatalogReconciliation(currentConfig) {
+  if (!currentConfig.sync.catalogIncremental || hasProductTargetSelection(currentConfig.sync)) {
+    return false;
+  }
+
+  const statePath = currentConfig.sync.catalogAuthoritativeStateFile;
+  const state = loadSyncState(statePath);
+  const lastSuccess = state?.last_success_at ? Date.parse(state.last_success_at) : NaN;
+  const due = !Number.isFinite(lastSuccess)
+    || Date.now() - lastSuccess >= currentConfig.sync.catalogAuthoritativeIntervalMs;
+
+  if (!due) {
+    return false;
+  }
+
+  currentConfig.sync.catalogIncremental = false;
+  currentConfig.sync.resume = false;
+  console.log(
+    `[logo-sync] authoritative catalog reconciliation due; switching this run to full product/price snapshot`
+  );
+
+  return true;
+}
+
+function saveCatalogAuthoritativeState(currentConfig) {
+  saveSyncState(currentConfig.sync.catalogAuthoritativeStateFile, {
+    last_success_at: new Date().toISOString(),
+    interval_ms: currentConfig.sync.catalogAuthoritativeIntervalMs,
+  });
 }
 
 function buildProductSyncRunId(currentConfig) {
@@ -1122,6 +1157,14 @@ function buildConfig() {
       catalogRecentLimit: parseInteger(process.env.SYNC_PRODUCTS_CATALOG_RECENT_LIMIT, 500),
       catalogRollingLimit: parseInteger(process.env.SYNC_PRODUCTS_CATALOG_ROLLING_LIMIT, 0),
       catalogStateFile,
+      catalogAuthoritativeIntervalMs: parseInteger(
+        process.env.SYNC_PRODUCTS_CATALOG_AUTHORITATIVE_INTERVAL_MINUTES,
+        360,
+      ) * 60_000,
+      catalogAuthoritativeStateFile: resolveSyncPath(
+        process.env.SYNC_PRODUCTS_CATALOG_AUTHORITATIVE_STATE_FILE,
+        ".sync-state/products-catalog-authoritative-state.json",
+      ),
       targetRefs: parseProductTargetRefs(process.env.SYNC_PRODUCTS_TARGET_REFS),
       targetCodes: parseProductTargetCodes(process.env.SYNC_PRODUCTS_TARGET_CODES),
       stockOnly:
