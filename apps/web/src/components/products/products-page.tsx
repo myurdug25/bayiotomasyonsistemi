@@ -1472,7 +1472,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 
       return lastPage.next_cursor ? { cursor: null, page: allPages.length + 1 } : undefined;
     },
-    refetchOnMount: false,
+    refetchOnMount: true,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
     retry: 0,
