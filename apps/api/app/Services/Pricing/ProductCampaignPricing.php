@@ -54,8 +54,6 @@ class ProductCampaignPricing
                 $user,
                 $customer
             ));
-        $logoPrclistProductIds = $this->logoPrclistProductIds($applicableLogoPriceTiers);
-
         $existing = $applicableLogoPriceTiers
             ->groupBy('product_id')
             ->map(fn (Collection $prices): array => $this->windowSelector->select($prices)
@@ -82,7 +80,6 @@ class ProductCampaignPricing
             });
 
         $this->groupCampaignProductsByProduct($newCampaignProducts, $campaignProductLookup)
-            ->reject(fn (Collection $campaignProducts, int $productId): bool => isset($logoPrclistProductIds[$productId]))
             ->each(function (Collection $campaignProducts, $productId) use (&$existing) {
                 $selectedCampaigns = $this->windowSelector->select(
                     $campaignProducts->pluck('campaign')->unique('id')->values()
@@ -164,10 +161,6 @@ class ProductCampaignPricing
         }
 
         if (! $customer instanceof Customer) {
-            return null;
-        }
-
-        if ($this->hasLogoPrclistTier($applicableTiers, $productId)) {
             return null;
         }
 

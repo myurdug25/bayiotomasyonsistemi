@@ -1088,7 +1088,7 @@ class PriceModelApiTest extends TestCase
             ->assertJsonCount(0, 'data.0.campaigns');
     }
 
-    public function test_logo_prclist_prices_suppress_legacy_percent_campaigns_for_matching_scope(): void
+    public function test_logo_prclist_prices_merge_legacy_campaigns_for_matching_scope(): void
     {
         $dealer = $this->createDealer('DLR-LOGO-PRCLIST-SUPPRESS');
         $user = $this->createUserWithRole('admin', $dealer);
@@ -1151,17 +1151,19 @@ class PriceModelApiTest extends TestCase
 
         $this->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$samsunCustomer->id)
             ->assertOk()
-            ->assertJsonCount(1, 'data.0.campaigns')
+            ->assertJsonCount(2, 'data.0.campaigns')
             ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 60)
-            ->assertJsonPath('data.0.campaigns.0.tiers.0.unit_price', '75.22');
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.unit_price', '75.22')
+            ->assertJsonPath('data.0.campaigns.1.name', 'ŞAMPİYON')
+            ->assertJsonPath('data.0.campaigns.1.tiers.0.min_quantity', 5);
 
         $this->postJson('/api/cart/items', [
             'customer_id' => $samsunCustomer->id,
             'product_id' => $product->id,
             'quantity' => 5,
             'campaign_key' => 'F1 ŞAMPİYON 5 ADET',
-        ])->assertUnprocessable()
-            ->assertJsonValidationErrors(['campaign_key']);
+        ])->assertOk()
+            ->assertJsonPath('items.0.campaign_key', 'F1 ŞAMPİYON 5 ADET');
     }
 
     public function test_logo_campaign_sync_requires_integration_key(): void
