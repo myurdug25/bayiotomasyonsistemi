@@ -1159,7 +1159,7 @@ function buildConfig() {
       catalogStateFile,
       catalogAuthoritativeIntervalMs: parseInteger(
         process.env.SYNC_PRODUCTS_CATALOG_AUTHORITATIVE_INTERVAL_MINUTES,
-        360,
+        60,
       ) * 60_000,
       catalogAuthoritativeStateFile: resolveSyncPath(
         process.env.SYNC_PRODUCTS_CATALOG_AUTHORITATIVE_STATE_FILE,
