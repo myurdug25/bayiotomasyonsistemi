@@ -4,6 +4,7 @@ namespace App\Support\Warehouse;
 
 use App\Models\Customer;
 use App\Models\User;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
 class WarehouseBranchResolver
@@ -26,6 +27,7 @@ class WarehouseBranchResolver
             ?? $this->normalizeBranchCode($customer?->branch_name)
             ?? $this->normalizeBranchCode($customer?->region_code)
             ?? $this->normalizeBranchCode($customer?->region_name)
+            ?? $this->branchCodeFromCustomerMetadata($customer)
             ?? $this->branchCodeFromUserIdentity($user)
             ?? $this->normalizeBranchCode($user?->branch_code)
             ?? $this->normalizeBranchCode($user?->branch_name)
@@ -51,6 +53,36 @@ class WarehouseBranchResolver
             '61' => 'TRABZON',
             default => null,
         };
+    }
+
+    private function branchCodeFromCustomerMetadata(?Customer $customer): ?string
+    {
+        $meta = is_array($customer?->meta) ? $customer->meta : [];
+        $paths = [
+            'branch_code',
+            'branch_name',
+            'region_code',
+            'region_name',
+            'authority_code',
+            'yetki_kodu',
+            'logo_authority_code',
+            'integrations.logo.payload.authority_code',
+            'integrations.logo.payload.yetki_kodu',
+            'integrations.logo.payload.raw.AUTHCODE',
+            'integrations.logo.payload.raw.AUTHORITY_CODE',
+            'integrations.logo.payload.raw.YETKI_KODU',
+            'integrations.logo.payload.raw.DEFINITION2',
+            'integrations.logo.payload.raw.DEFINITION_2',
+        ];
+
+        foreach ($paths as $path) {
+            $branch = $this->normalizeBranchCode(Arr::get($meta, $path));
+            if ($branch !== null) {
+                return $branch;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -110,7 +142,15 @@ class WarehouseBranchResolver
             return 'TRABZON';
         }
 
+        if (str_contains($normalized, 'TRB')) {
+            return 'TRABZON';
+        }
+
         if (str_contains($normalized, 'SAMSUN')) {
+            return 'SAMSUN';
+        }
+
+        if (str_contains($normalized, 'SAM')) {
             return 'SAMSUN';
         }
 
@@ -119,6 +159,10 @@ class WarehouseBranchResolver
         }
 
         if (str_contains($normalized, 'BATUM')) {
+            return 'BATUM';
+        }
+
+        if (str_contains($normalized, 'BAT')) {
             return 'BATUM';
         }
 

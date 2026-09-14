@@ -1654,6 +1654,56 @@ class PriceModelApiTest extends TestCase
             ->assertJsonPath('data.0.origin.target_warehouse_name', 'TRABZON DEPO');
     }
 
+    public function test_selected_customer_logo_authority_metadata_resolves_branch_for_campaigns(): void
+    {
+        $dealer = $this->createDealer('DLR-LOGO-AUTHORITY-BRANCH');
+        $admin = $this->createUserWithRole('admin', $dealer);
+        $admin->forceFill(['branch_code' => 'ERZURUM'])->save();
+        [$customer, $product] = $this->createCustomerAndProduct($dealer);
+        $customer->forceFill([
+            'salesperson_user_id' => null,
+            'branch_code' => null,
+            'branch_name' => null,
+            'meta' => [
+                'price_group' => 'F3',
+                'integrations' => [
+                    'logo' => [
+                        'payload' => [
+                        'raw' => ['AUTHCODE' => '120-SAM'],
+                        ],
+                    ],
+                ],
+            ],
+        ])->save();
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'LOGO-F3-SAM-AUTHORITY-12',
+            'campaign_key' => 'logo:f3-sam-authority-12',
+            'name' => 'F3 Samsun P1 12',
+            'condition' => 'P1=12',
+            'min_quantity' => 12,
+            'unit_price' => 303.47,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'branch' => 3,
+            'starts_at' => today()->subDay(),
+            'ends_at' => today()->addMonth(),
+            'is_active' => true,
+            'meta' => ['price_group' => 'F3', 'office_code' => '002'],
+        ]);
+
+        $this->assertSame(
+            'SAMSUN',
+            app(\App\Support\Warehouse\WarehouseBranchResolver::class)->resolveBranchCode($admin, $customer),
+        );
+        $this->actingAs($admin)
+            ->getJson('/api/products/search?limit=20&q='.$product->sku.'&customer_id='.$customer->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.campaigns.0.name', 'F3 Samsun P1 12')
+            ->assertJsonPath('data.0.campaigns.0.tiers.0.min_quantity', 12);
+    }
+
     public function test_batum_cart_item_converts_try_price_to_lari(): void
     {
         $dealer = $this->createDealer('DLR-PRC-BATUM');
