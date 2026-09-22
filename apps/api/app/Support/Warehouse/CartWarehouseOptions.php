@@ -23,6 +23,12 @@ class CartWarehouseOptions
         '4' => 'BATUM DEPO',
     ];
 
+    /** @var Collection<string, Warehouse>|null */
+    private ?Collection $localWarehousesByCode = null;
+
+    /** @var list<array<string, mixed>>|null */
+    private ?array $localWarehouseOptions = null;
+
     /**
      * @param  Collection<int, mixed>  $items
      * @return list<array<string, mixed>>
@@ -46,9 +52,7 @@ class CartWarehouseOptions
             return $this->localWarehouseOptions();
         }
 
-        $localWarehouses = Warehouse::query()
-            ->get(['id', 'code', 'name', 'is_active'])
-            ->keyBy('code');
+        $localWarehouses = $this->localWarehousesByCode();
 
         $shipmentWarehouses = collect($logoWarehouses)
             ->filter(fn (array $warehouse): bool => $this->isTransferWarehouseOption(
@@ -159,16 +163,20 @@ class CartWarehouseOptions
      */
     private function localWarehouseOptions(): array
     {
-        $warehouses = Warehouse::query()
-            ->where('is_active', true)
-            ->orderBy('code')
-            ->get(['id', 'code', 'name', 'is_active']);
-
-        if ($this->shouldUseDefaultWarehouses($warehouses)) {
-            return $this->defaultWarehouseOptions();
+        if ($this->localWarehouseOptions !== null) {
+            return $this->localWarehouseOptions;
         }
 
-        return $warehouses
+        $warehouses = $this->localWarehousesByCode()
+            ->filter(fn (Warehouse $warehouse): bool => (bool) $warehouse->is_active)
+            ->sortBy('code')
+            ->values();
+
+        if ($this->shouldUseDefaultWarehouses($warehouses)) {
+            return $this->localWarehouseOptions = $this->defaultWarehouseOptions();
+        }
+
+        return $this->localWarehouseOptions = $warehouses
             ->filter(fn (Warehouse $warehouse): bool => $this->isTransferWarehouseOption($warehouse->code, $warehouse->name))
             ->map(fn (Warehouse $warehouse): array => [
                 'warehouse_id' => (int) $warehouse->id,
@@ -183,6 +191,20 @@ class CartWarehouseOptions
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * @return Collection<string, Warehouse>
+     */
+    private function localWarehousesByCode(): Collection
+    {
+        if ($this->localWarehousesByCode !== null) {
+            return $this->localWarehousesByCode;
+        }
+
+        return $this->localWarehousesByCode = Warehouse::query()
+            ->get(['id', 'code', 'name', 'is_active'])
+            ->keyBy('code');
     }
 
     private function isTransferWarehouseOption(?string $code, ?string $name): bool

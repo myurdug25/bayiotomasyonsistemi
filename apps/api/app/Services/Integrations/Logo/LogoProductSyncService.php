@@ -925,6 +925,7 @@ class LogoProductSyncService
         }
 
         $sourceReferences = [];
+        $incomingScopes = [];
         $synced = 0;
 
         foreach ($record['campaign_prices'] as $campaign) {
@@ -962,18 +963,91 @@ class LogoProductSyncService
             );
 
             $sourceReferences[] = $sourceReference;
+            $incomingScopes[$this->campaignPriceScopeKey($campaign)] = true;
             $synced++;
         }
 
-        ProductCampaignPrice::query()
-            ->where('product_id', $product->id)
-            ->when(
-                $sourceReferences !== [],
-                fn ($query) => $query->whereNotIn('source_reference', $sourceReferences)
-            )
-            ->update(['is_active' => false]);
+        $this->inactivateStaleCampaignPrices($product, $sourceReferences, array_keys($incomingScopes));
 
         return $synced;
+    }
+
+    /**
+     * @param  list<string>  $sourceReferences
+     * @param  list<string>  $incomingScopes
+     */
+    private function inactivateStaleCampaignPrices(Product $product, array $sourceReferences, array $incomingScopes): void
+    {
+        $query = ProductCampaignPrice::query()->where('product_id', $product->id);
+
+        if ($sourceReferences === []) {
+            $query->update(['is_active' => false]);
+
+            return;
+        }
+
+        $query
+            ->whereNotIn('source_reference', $sourceReferences)
+            ->get()
+            ->each(function (ProductCampaignPrice $price) use ($incomingScopes): void {
+                if (! $this->isLogoPriceListCampaign($price)) {
+                    return;
+                }
+
+                if (! in_array($this->campaignPriceScopeKey($price), $incomingScopes, true)) {
+                    return;
+                }
+
+                $price->forceFill(['is_active' => false])->save();
+            });
+    }
+
+    private function isLogoPriceListCampaign(ProductCampaignPrice $price): bool
+    {
+        $source = $this->normalizeScopeValue(data_get($price->meta, 'source'));
+
+        return $source === null || $source === 'LOGOPRCLIST';
+    }
+
+    /**
+     * @param  array<string, mixed>|ProductCampaignPrice  $campaign
+     */
+    private function campaignPriceScopeKey(array|ProductCampaignPrice $campaign): string
+    {
+        $meta = $campaign instanceof ProductCampaignPrice
+            ? (is_array($campaign->meta) ? $campaign->meta : [])
+            : (is_array($campaign['meta'] ?? null) ? $campaign['meta'] : []);
+
+        $group = $this->normalizeScopeValue(
+            data_get($meta, 'price_group')
+                ?? data_get($meta, 'logo_price_group')
+                ?? data_get($meta, 'price_list_code')
+                ?? data_get($meta, 'customer_group')
+                ?? data_get($meta, 'group_code')
+        );
+
+        $branch = $this->normalizeScopeValue(
+            data_get($meta, 'branch_code')
+                ?? data_get($meta, 'workplace_code')
+                ?? data_get($meta, 'office_code')
+                ?? data_get($meta, 'division_code')
+                ?? data_get($meta, 'warehouse_code')
+                ?? data_get($meta, 'invenno')
+                ?? ($campaign instanceof ProductCampaignPrice ? $campaign->branch : ($campaign['branch'] ?? null))
+        );
+
+        return ($group ?? '*').'|'.($branch ?? '*');
+    }
+
+    private function normalizeScopeValue(mixed $value): ?string
+    {
+        $normalized = Str::upper(Str::ascii(trim((string) $value)));
+
+        if ($normalized === '' || in_array($normalized, ['-1', '0', '000', 'HEPSI', 'ALL', 'GENEL'], true)) {
+            return null;
+        }
+
+        return preg_replace('/[^A-Z0-9]+/', '', $normalized) ?: null;
     }
 
     /**

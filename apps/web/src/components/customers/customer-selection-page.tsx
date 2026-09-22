@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import {
   Activity,
   Check,
@@ -37,7 +37,7 @@ import {
 import { Toggle } from "@/components/ui/toggle";
 
 const PAGE_LIMIT = 25;
-const SEARCH_DEBOUNCE_MS = 500;
+const SEARCH_DEBOUNCE_MS = 150;
 const ALL_PRICE_GROUPS = "__all_price_groups__";
 
 function toAmount(value: string): number {
@@ -189,35 +189,6 @@ export function CustomerSelectionPage() {
     staleTime: 15_000,
   });
 
-  const customerCountQuery = useQuery({
-    queryKey: [
-      "customers",
-      "count",
-      {
-        userId: user?.id ?? null,
-        selectionMode: isSalespersonSelectionMode,
-        q: submittedQuery,
-        hasCart,
-        hasOrderBalance,
-        priceGroup: selectedPriceGroup,
-      },
-    ],
-    enabled: typeof user?.id === "number",
-    queryFn: () =>
-      listCustomers({
-        q: submittedQuery || undefined,
-        has_cart: hasCart ? true : undefined,
-        has_order_balance: hasOrderBalance ? true : undefined,
-        price_group: selectedPriceGroup || undefined,
-        selection_mode: isSalesperson ? true : undefined,
-        summary: "count",
-        limit: 1,
-      }),
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    staleTime: 30_000,
-  });
-
   const customers = useMemo(() => {
     const seenCustomerIds = new Set<number>();
 
@@ -244,7 +215,7 @@ export function CustomerSelectionPage() {
   const hasActiveFilters = Boolean(submittedQuery) || hasCart || hasOrderBalance || Boolean(selectedPriceGroup);
   const displayCustomers = customers;
   const loadedCustomerCount = displayCustomers.length;
-  const totalCustomerCount = customerCountQuery.data?.total_count ?? customersQuery.data?.pages[0]?.total_count ?? null;
+  const totalCustomerCount = customersQuery.data?.pages[0]?.total_count ?? null;
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = customersQuery;
   const activeFilterCount =
     Number(Boolean(submittedQuery)) +

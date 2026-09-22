@@ -62,6 +62,8 @@ class LogoProductShelfExportService
                     'warehouse_name' => $meta['warehouse_name'] ?? null,
                     'shelf_address' => $meta['shelf_address'] ?? null,
                     'oem_code' => $meta['oem_code'] ?? $product->oem_code,
+                    'oem_codes' => array_values(array_filter((array) ($meta['oem_codes'] ?? []), fn ($code): bool => $this->nullableString($code) !== null)),
+                    'competitor_codes' => array_values(array_filter((array) ($meta['competitor_codes'] ?? []), fn ($code): bool => $this->nullableString($code) !== null)),
                     'requested_at' => $meta['requested_at'] ?? $state->updated_at?->toIso8601String(),
                 ];
             })

@@ -29,6 +29,7 @@ import {
   NotebookPen,
   Palette,
   PackageCheck,
+  Percent,
   PhoneCall,
   RefreshCcw,
   ReceiptText,
@@ -307,6 +308,15 @@ const SIDEBAR_ITEMS: NavItem[] = [
     allowedRoles: ["admin", "dealer_admin", "salesperson", "customer"],
   },
   {
+    href: "/campaigns",
+    label: "Kampanyalar",
+    permissionKey: "campaigns",
+    icon: Percent,
+    emojiAsset: "/sidebar/kampanyalar.png",
+    tileGradient: "from-[#34d399] via-[#10b981] to-[#064e3b]",
+    allowedRoles: ["admin", "dealer_admin", "salesperson", "customer"],
+  },
+  {
     href: "/catalogs",
     label: "Kataloglar",
     permissionKey: "catalogs",
@@ -425,11 +435,11 @@ const SIDEBAR_ITEMS: NavItem[] = [
   },
   {
     href: "/warehouse/rack-addresses",
-    label: "Raf Adresi Güncelle",
+    label: "Ürünler",
     permissionKey: "rack-addresses",
-    icon: Archive,
-    emojiAsset: "/sidebar/raf-adresi-guncelle-altin.svg",
-    tileGradient: "from-[#ffff00] via-[#ffff00] to-[#fff95a]",
+    icon: PackageCheck,
+    emojiAsset: "/dashboard-icons/fixed/depo.webp",
+    tileGradient: "from-[#72bf82] via-[#35a875] to-[#0f5c44]",
     allowedRoles: ["admin", "dealer_admin", "warehouse", "point", "cashier"],
   },
   {
@@ -2402,9 +2412,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   ]);
 
   const loginRedirectHref = useMemo(() => {
-    const next = pathname ? `&next=${encodeURIComponent(pathname)}` : "";
-    return `/login?v=20260605-login-fast${next}`;
-  }, [pathname]);
+    return "/login?v=20260605-login-fast";
+  }, []);
   const handleLogout = useCallback(async () => {
     await logout();
     queryClient.clear();

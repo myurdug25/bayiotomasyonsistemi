@@ -103,6 +103,10 @@ class WarehouseShelfController extends Controller
         $validated = $request->validate([
             'warehouse_code' => ['required', 'string', Rule::in(array_keys(self::WAREHOUSES))],
             'shelf_address' => ['nullable', 'string', 'max:80'],
+            'oem_codes' => ['nullable', 'array', 'max:24'],
+            'oem_codes.*' => ['nullable', 'string', 'max:80'],
+            'competitor_codes' => ['nullable', 'array', 'max:48'],
+            'competitor_codes.*' => ['nullable', 'string', 'max:80'],
         ]);
 
         $user = $request->user();
@@ -113,16 +117,37 @@ class WarehouseShelfController extends Controller
 
         $shelfAddress = trim((string) ($validated['shelf_address'] ?? ''));
         $shelfAddress = $shelfAddress === '' ? null : $shelfAddress;
+        $oemCodes = array_key_exists('oem_codes', $validated)
+            ? $this->normalizeCodeList($validated['oem_codes'])
+            : null;
+        $competitorCodes = array_key_exists('competitor_codes', $validated)
+            ? $this->normalizeCodeList($validated['competitor_codes'])
+            : null;
 
-        DB::transaction(function () use ($product, $user, $warehouseCode, $shelfAddress): void {
+        DB::transaction(function () use ($product, $user, $warehouseCode, $shelfAddress, $oemCodes, $competitorCodes): void {
             $meta = $this->withShelfAddress($product->meta ?? [], $warehouseCode, $shelfAddress);
 
             Arr::set($meta, 'integrations.logo.shelf_update_pending_at', now()->toIso8601String());
             Arr::set($meta, 'integrations.logo.shelf_update_user_id', $user?->id);
             Arr::set($meta, 'integrations.logo.shelf_update_user_name', $user?->name);
             Arr::set($meta, 'integrations.logo.shelf_update_username', $user?->username);
+            Arr::set($meta, 'integrations.logo.product_identity_update_pending_at', now()->toIso8601String());
+            Arr::set($meta, 'integrations.logo.product_identity_update_user_id', $user?->id);
 
-            $product->forceFill(['meta' => $meta])->save();
+            $fill = ['meta' => $meta];
+            if (is_array($oemCodes)) {
+                $fill['oem_code'] = $oemCodes[0] ?? null;
+            }
+
+            $product->forceFill($fill)->save();
+
+            if (is_array($oemCodes)) {
+                $this->replaceProductAliases($product, 'oem', $oemCodes, $user);
+            }
+
+            if (is_array($competitorCodes)) {
+                $this->replaceProductAliases($product, 'competitor', $competitorCodes, $user);
+            }
 
             $payload = [
                 'export_key' => "B2B-PRODUCT-SHELF-{$product->id}-{$warehouseCode}",
@@ -132,8 +157,11 @@ class WarehouseShelfController extends Controller
                 'warehouse_code' => $warehouseCode,
                 'warehouse_name' => self::WAREHOUSES[$warehouseCode] ?? null,
                 'shelf_address' => $shelfAddress,
-                'oem_code' => $this->stringOrNull($product->oem_code),
+                'oem_code' => $oemCodes[0] ?? $this->stringOrNull($product->oem_code),
+                'oem_codes' => $oemCodes,
+                'competitor_codes' => $competitorCodes,
                 'requested_by_user_id' => $user?->id,
+                'requested_by_user_name' => $user?->name,
                 'requested_at' => now()->toIso8601String(),
             ];
 
@@ -621,8 +649,19 @@ class WarehouseShelfController extends Controller
             ? $product->codeAliases
             : collect();
 
+        $oemCodes = collect([$this->stringOrNull($product->oem_code)])
+            ->merge(
+                $aliases
+                    ->filter(fn (ProductCodeAlias $alias): bool => (string) $alias->code_type === 'oem')
+                    ->pluck('code')
+            )
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
         $competitorCodes = $aliases
-            ->filter(fn (ProductCodeAlias $alias): bool => in_array((string) $alias->code_type, ['competitor', 'rakip', 'muadil', 'substitute', 'oem'], true))
+            ->filter(fn (ProductCodeAlias $alias): bool => in_array((string) $alias->code_type, ['competitor', 'rakip', 'muadil', 'substitute', 'equivalent'], true))
             ->pluck('code')
             ->filter()
             ->unique()
@@ -638,6 +677,7 @@ class WarehouseShelfController extends Controller
             'brand' => $product->brand?->name,
             'oem' => $this->stringOrNull($product->oem_code)
                 ?? $this->firstString($meta, ['oem', 'oem_code', 'integrations.logo.payload.oem', 'integrations.logo.payload.oem_code']),
+            'oem_codes' => $oemCodes,
             'competitor_codes' => $competitorCodes,
             'warehouse_code' => $warehouseCode,
             'warehouse_name' => self::WAREHOUSES[$warehouseCode] ?? 'DEPO',
@@ -648,6 +688,94 @@ class WarehouseShelfController extends Controller
                 ?? $this->shelfUpdateUserFallback($meta),
             'editable' => true,
             'logo_ref' => $this->stringOrNull(Arr::get($meta, 'integrations.logo.external_ref')),
+            'logo_status' => $this->latestProductSyncStatus($product),
+        ];
+    }
+
+    /**
+     * @param  mixed  $values
+     * @return list<string>
+     */
+    private function normalizeCodeList(mixed $values): array
+    {
+        $seen = [];
+        $result = [];
+
+        foreach ((array) $values as $value) {
+            $code = $this->stringOrNull($value);
+            if ($code === null) {
+                continue;
+            }
+
+            $key = Str::upper(Str::ascii(preg_replace('/\s+/', '', $code) ?? $code));
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $result[] = $code;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  list<string>  $codes
+     */
+    private function replaceProductAliases(Product $product, string $type, array $codes, ?User $user): void
+    {
+        ProductCodeAlias::query()
+            ->where('product_id', $product->id)
+            ->where('source', 'bos')
+            ->where('code_type', $type)
+            ->delete();
+
+        foreach ($codes as $code) {
+            $normalizedCode = preg_replace('/[^A-Z0-9]+/', '', Str::upper(Str::ascii($code))) ?? '';
+            if ($normalizedCode === '') {
+                continue;
+            }
+
+            ProductCodeAlias::query()->updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'normalized_code' => $normalizedCode,
+                    'code_type' => $type,
+                    'source' => 'bos',
+                ],
+                [
+                    'code' => $code,
+                    'brand_name' => null,
+                    'meta' => [
+                        'updated_from' => 'warehouse_product_management',
+                        'updated_by_user_id' => $user?->id,
+                        'updated_by_user_name' => $user?->name,
+                        'updated_at' => now()->toIso8601String(),
+                    ],
+                ]
+            );
+        }
+    }
+
+    private function latestProductSyncStatus(Product $product): ?array
+    {
+        $state = IntegrationSyncState::query()
+            ->where('system', 'logo')
+            ->where('domain', 'product-shelves')
+            ->where('direction', 'outbound')
+            ->where('entity_type', Product::class)
+            ->where('entity_id', $product->id)
+            ->latest('updated_at')
+            ->first();
+
+        if (! $state instanceof IntegrationSyncState) {
+            return null;
+        }
+
+        return [
+            'status' => $state->status,
+            'error' => $state->last_error,
+            'updated_at' => $state->updated_at?->toIso8601String(),
         ];
     }
 

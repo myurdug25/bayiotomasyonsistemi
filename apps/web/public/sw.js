@@ -1,4 +1,4 @@
-const CACHE_NAME = "bos-pwa-cache-v20260825-mobile";
+const CACHE_NAME = "bos-pwa-cache-v20260918-runtime";
 const CORE_ASSETS = [
   "/manifest.json",
   "/manifest.webmanifest",

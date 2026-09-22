@@ -1673,6 +1673,82 @@ html[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
   --sidebar-ring: color-mix(in oklab, var(--ui-accent-base) 40%, white);
 }
 
+html.legacy-webkit[data-ui-theme="dark"] .app-shell-root,
+html.legacy-webkit[data-ui-theme="dark"] .app-shell-root.dashboard-shell {
+  --brand-primary: #8bd19f;
+  --brand-primary-strong: #d9f6df;
+  --brand-primary-soft: #123322;
+  --brand-accent: #faee56;
+  --brand-accent-foreground: #162418;
+  --brand-accent-soft: #22290f;
+  --brand-border: #244636;
+  --surface: #0b1511;
+  --surface-soft: #101f18;
+  --background: #06100c;
+  --foreground: #f3fff5;
+  --card: #0b1511;
+  --card-foreground: #f3fff5;
+  --popover: #0b1511;
+  --popover-foreground: #f3fff5;
+  --primary: #8bd19f;
+  --primary-foreground: #06100c;
+  --secondary: #101f18;
+  --secondary-foreground: #f3fff5;
+  --muted: #101f18;
+  --muted-foreground: #a9b8ad;
+  --accent: #11271c;
+  --accent-foreground: #f3fff5;
+  --border: #244636;
+  --input: #122018;
+  --ring: #8bd19f;
+  --sidebar: #04100b;
+  --sidebar-foreground: #edf8ef;
+  --sidebar-primary: #8bd19f;
+  --sidebar-primary-foreground: #06100c;
+  --sidebar-accent: #0d2218;
+  --sidebar-accent-foreground: #edf8ef;
+  --sidebar-border: #183426;
+  --sidebar-ring: #8bd19f;
+}
+
+html.legacy-webkit[data-ui-theme="light"] .app-shell-root,
+html.legacy-webkit[data-ui-theme="light"] .app-shell-root.dashboard-shell {
+  --brand-primary: #1f6b45;
+  --brand-primary-strong: #165236;
+  --brand-primary-soft: #eaf4ed;
+  --brand-accent: #faee56;
+  --brand-accent-foreground: #193126;
+  --brand-accent-soft: #f9f3c9;
+  --brand-border: #d5e3d7;
+  --surface: #ffffff;
+  --surface-soft: #f2f7f3;
+  --background: #edf4ee;
+  --foreground: #193126;
+  --card: #ffffff;
+  --card-foreground: #193126;
+  --popover: #ffffff;
+  --popover-foreground: #193126;
+  --primary: #1f6b45;
+  --primary-foreground: #f6fbf7;
+  --secondary: #edf4ee;
+  --secondary-foreground: #193126;
+  --muted: #edf4ee;
+  --muted-foreground: #63766a;
+  --accent: #edf6ef;
+  --accent-foreground: #193126;
+  --border: #d5e3d7;
+  --input: #d4e1d5;
+  --ring: #faee56;
+  --sidebar: #193126;
+  --sidebar-foreground: #f3fff5;
+  --sidebar-primary: #1f6b45;
+  --sidebar-primary-foreground: #f6fbf7;
+  --sidebar-accent: #214332;
+  --sidebar-accent-foreground: #f3fff5;
+  --sidebar-border: #305b43;
+  --sidebar-ring: #faee56;
+}
+
 /* Light theme semantic action guard: keep action meaning while surfaces stay light. */
 html[data-ui-theme="light"] .app-shell-root :where(.admin-primary-action, .cart-primary-button, .point-primary-button, button[class*="bg-[linear-gradient"][class*="#e62d2d"], button[class*="from-[#ff"], button[class*="via-[#d71920"]) {
   background: linear-gradient(135deg, #ef3340 0%, #c92e32 56%, #a92327 100%) !important;
@@ -13464,5 +13540,363 @@ html[data-ui-theme="light"] .app-shell-root .new-customer-card-page .new-custome
 
   .pos-day-end-controls {
     grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* Final responsive overrides: this block intentionally comes last. */
+@media (max-width: 1023px) {
+  .app-shell-root .page-shell-header {
+    padding: 0.45rem 0.55rem 0 !important;
+  }
+
+  .app-shell-root .dashboard-top-header-card {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.5rem !important;
+    padding: 0.5rem !important;
+    border-radius: 15px !important;
+    overflow: visible !important;
+  }
+
+  .app-shell-root .dashboard-header-center {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.4rem !important;
+    overflow: visible !important;
+  }
+
+  .app-shell-root .header-selected-customer {
+    width: 100% !important;
+    min-height: 2.45rem !important;
+    justify-content: center !important;
+    padding: 0.34rem 0.6rem !important;
+    text-align: center !important;
+  }
+
+  .app-shell-root .header-selected-customer-name {
+    font-size: clamp(0.84rem, 3.4vw, 1rem) !important;
+    line-height: 1.05 !important;
+  }
+
+  .app-shell-root .dashboard-header-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 3rem 3rem !important;
+    grid-auto-rows: minmax(2.45rem, auto) !important;
+    gap: 0.38rem !important;
+    align-items: stretch !important;
+    justify-items: stretch !important;
+    overflow: visible !important;
+  }
+
+  .app-shell-root .header-customer-action-group {
+    display: contents !important;
+  }
+
+  .app-shell-root .header-customer-select-button {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    height: 2.45rem !important;
+    min-height: 2.45rem !important;
+  }
+
+  .app-shell-root .header-cart-shortcut-button {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    height: 2.45rem !important;
+    min-width: 0 !important;
+    min-height: 2.45rem !important;
+  }
+
+  .app-shell-root .mobile-header-logout {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    height: 2.45rem !important;
+    min-width: 0 !important;
+    min-height: 2.45rem !important;
+    border-radius: 12px !important;
+  }
+
+  .app-shell-root .header-market-rates {
+    grid-column: 1 / -1 !important;
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    justify-content: center !important;
+    gap: 0.45rem !important;
+    padding: 0.35rem 0.55rem !important;
+    order: 8 !important;
+  }
+
+  .app-shell-root .header-rate-stack {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    gap: 0.35rem !important;
+  }
+
+  .app-shell-root .header-rate-chip {
+    display: flex !important;
+    min-width: 0 !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.35rem !important;
+  }
+
+  .app-shell-root .dashboard-header-profile {
+    grid-column: 1 / -1 !important;
+    order: 7 !important;
+    width: 100% !important;
+    min-height: 2.45rem !important;
+    justify-content: center !important;
+    padding: 0.3rem 0.55rem !important;
+  }
+
+  .app-shell-root .dashboard-header-profile > span:last-child {
+    display: block !important;
+    min-width: 0 !important;
+  }
+
+  .app-shell-root .dashboard-header-profile-name {
+    display: block !important;
+    max-width: 100% !important;
+    font-size: 0.78rem !important;
+    line-height: 1.05 !important;
+  }
+
+  .app-shell-root .header-theme-switch {
+    grid-column: 1 !important;
+    height: 2.45rem !important;
+    min-height: 2.45rem !important;
+  }
+
+  .app-shell-root .header-color-picker .header-icon-button,
+  .app-shell-root .header-notification-action > button {
+    width: 100% !important;
+    height: 2.45rem !important;
+    border-radius: 12px !important;
+  }
+
+  .app-shell-root .admin-customers-page .admin-customer-filter {
+    padding: 0.55rem !important;
+    border-radius: 15px !important;
+  }
+
+  .app-shell-root .admin-customers-page .admin-customer-filter > .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.42rem !important;
+  }
+
+  .app-shell-root .admin-customers-page .admin-customer-filter > .grid > div:first-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  .app-shell-root .admin-customers-page .admin-customer-filter :where(input, button, [role="combobox"]) {
+    min-height: 2.45rem !important;
+    height: 2.45rem !important;
+    border-radius: 12px !important;
+    font-size: 0.76rem !important;
+  }
+
+  .app-shell-root .admin-customers-page .customer-filter-actions {
+    grid-column: 1 / -1 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.42rem !important;
+  }
+
+  .customers-f-group-content {
+    z-index: 130 !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-results-scroll {
+    overflow: visible !important;
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-results-table-head {
+    display: none !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-results-body {
+    display: grid !important;
+    gap: 0.55rem !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .app-shell-root .admin-catalog-page .admin-product-row-grid {
+    display: grid !important;
+    grid-template-columns: 2.35rem minmax(0, 1fr) 2.45rem 2.65rem !important;
+    grid-auto-rows: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    gap: 0.35rem 0.5rem !important;
+    overflow: visible !important;
+    padding: 0.55rem !important;
+    border-radius: 13px !important;
+  }
+
+  .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"] {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    border-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-info-popover {
+    right: 0 !important;
+    left: auto !important;
+    top: 2.15rem !important;
+    z-index: 140 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-shell-root .header-market-rates > svg {
+    display: none !important;
+  }
+
+  .app-shell-root .header-rate-chip {
+    font-size: 0.66rem !important;
+  }
+
+  .app-shell-root .dashboard-header-profile {
+    min-height: 2.25rem !important;
+  }
+
+  .app-shell-root .dashboard-header-profile > span:first-child {
+    width: 1.65rem !important;
+    height: 1.65rem !important;
+  }
+
+  .app-shell-root .dashboard-header-profile > span:last-child > span:first-child,
+  .app-shell-root .dashboard-header-profile > span:last-child > span:last-child {
+    display: none !important;
+  }
+
+  .app-shell-root .admin-customer-list .customer-mobile-card {
+    gap: 0.32rem !important;
+    padding: 0.62rem !important;
+    border-radius: 13px !important;
+  }
+
+  .app-shell-root .admin-customer-list .customer-mobile-card > [data-slot="table-cell"] {
+    grid-template-columns: 5.05rem minmax(0, 1fr) !important;
+    column-gap: 0.55rem !important;
+    min-height: 1.45rem !important;
+    align-items: center !important;
+  }
+
+  .app-shell-root .admin-customer-list .customer-mobile-card > [data-slot="table-cell"]:not([colspan])::before {
+    font-size: 0.58rem !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .app-shell-root .admin-customer-list .customer-card-primary {
+    display: grid !important;
+    grid-template-columns: 5.05rem minmax(0, 1fr) !important;
+    column-gap: 0.55rem !important;
+  }
+
+  .app-shell-root .admin-customer-list .customer-card-primary::before {
+    display: block !important;
+    content: "Cari" !important;
+    align-self: start !important;
+    color: var(--muted-foreground) !important;
+    font-size: 0.58rem !important;
+    font-weight: 900 !important;
+    text-transform: uppercase !important;
+  }
+
+  .app-shell-root .admin-customer-list .customer-card-primary p {
+    font-size: 0.82rem !important;
+    line-height: 1.12 !important;
+  }
+
+  .app-shell-root .admin-customer-list .customer-card-balance > div,
+  .app-shell-root .admin-customer-list .customer-card-order-balance > div,
+  .app-shell-root .admin-customer-list .customer-card-cart > span,
+  .app-shell-root .admin-customer-list .customer-card-price-group > span {
+    justify-self: stretch !important;
+    display: inline-flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 1.78rem !important;
+    min-height: 1.78rem !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 0.55rem !important;
+    padding: 0 0.55rem !important;
+    text-align: center !important;
+  }
+
+  .app-shell-root .admin-customer-list .customer-card-action .customer-select-button {
+    min-height: 2.35rem !important;
+  }
+
+  .app-shell-root .admin-catalog-page .admin-product-row-grid {
+    grid-template-columns: 2.25rem minmax(0, 1fr) 2.35rem 2.55rem !important;
+    gap: 0.3rem 0.45rem !important;
+    padding: 0.52rem !important;
+  }
+
+  .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(1) {
+    grid-column: 1 !important;
+    grid-row: 1 / span 2 !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-sku-cell {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(3) {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+  }
+
+  .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(4) {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+  }
+
+  .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(5) {
+    display: none !important;
+  }
+
+  .app-shell-root .admin-catalog-page .admin-product-row-grid [role="cell"]:nth-child(6) {
+    grid-column: 4 !important;
+    grid-row: 2 !important;
+    justify-self: end !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-list-price-cell {
+    grid-column: 1 / 3 !important;
+    grid-row: 4 !important;
+    justify-content: flex-start !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-stock-cell {
+    grid-column: 3 / -1 !important;
+    grid-row: 4 !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-info-action-cell {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+  }
+
+  .app-shell-root .admin-catalog-page .product-cart-action-cell {
+    grid-column: 4 !important;
+    grid-row: 1 !important;
   }
 }

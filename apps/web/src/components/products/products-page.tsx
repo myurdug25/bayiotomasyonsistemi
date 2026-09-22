@@ -73,11 +73,13 @@ type ProductSearchPageParam = {
 function productTableGridStyle(stockColumnCount: number): CSSProperties {
   const normalizedStockColumnCount = Math.max(stockColumnCount, 1);
   const stockColumnWidth = Math.min(252, Math.max(86, normalizedStockColumnCount * 72));
-  const minWidth = Math.max(1080, 842 + stockColumnWidth);
+  const minWidth = Math.max(980, 806 + stockColumnWidth);
+  const stockColumnTemplate =
+    normalizedStockColumnCount === 1 ? `${stockColumnWidth}px` : `minmax(${stockColumnWidth}px,0.72fr)`;
 
   return {
     minWidth,
-    gridTemplateColumns: `42px minmax(112px,0.66fr) minmax(82px,0.42fr) minmax(300px,1.8fr) minmax(92px,0.48fr) 52px 90px minmax(${stockColumnWidth}px,0.72fr) 54px 64px`,
+    gridTemplateColumns: `42px minmax(112px,0.62fr) minmax(82px,0.4fr) minmax(260px,2fr) minmax(88px,0.42fr) 52px 88px ${stockColumnTemplate} 54px 62px`,
   };
 }
 
@@ -315,7 +317,9 @@ function campaignTierLabel(tier: { min_quantity: number; condition?: string | nu
   const greaterThan = condition.match(/\bP1\s*>\s*(\d+)/i);
 
   if (greaterThan) {
-    return `${greaterThan[1]}+ adet`;
+    const threshold = Number.parseInt(greaterThan[1], 10);
+
+    return threshold > 0 ? `${threshold}+ adet` : "Size özel fiyat";
   }
 
   return tier.min_quantity > 1 ? `${tier.min_quantity} adet` : "Size özel fiyat";
@@ -877,8 +881,8 @@ const ProductRow = memo(function ProductRow({
   const hasCategory = Boolean(product.category?.name);
   const priceText = canViewPrices
     ? pricesIncludeVat
-      ? formatProductModalPrice(product, displayListPrice, true, batumDerivedListPrice !== null ? "GEL" : product.currency)
-      : formatPriceValue(displayListPrice, batumDerivedListPrice !== null ? "GEL" : product.currency)
+      ? formatProductModalPrice(product, displayListPrice, true, batumDerivedListPrice !== null ? "GEL" : product.currency ?? undefined)
+      : formatPriceValue(displayListPrice, batumDerivedListPrice !== null ? "GEL" : product.currency ?? undefined)
     : "-";
   const priceCards = product.price_cards ?? [];
   const masterPriceCard = priceCards.find((card) => /^F(?:[1-9]|1[0-2])$/.test(card.code));
@@ -936,7 +940,7 @@ const ProductRow = memo(function ProductRow({
         </div>
 
         <div role="cell" className="flex min-w-0 items-start border-l border-[var(--brand-border)] px-2 py-0.5 flex-col justify-center gap-0.5">
-          <p className="line-clamp-1 text-[12px] font-semibold leading-[13px] text-[var(--foreground)]">
+          <p className="line-clamp-2 whitespace-normal break-words text-[12px] font-semibold leading-[15px] text-[var(--foreground)]">
             {product.name}
           </p>
         </div>

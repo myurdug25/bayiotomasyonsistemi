@@ -16,6 +16,7 @@ use App\Services\Customers\CustomerAccessScopeService;
 use App\Services\Integrations\Logo\LogoWritePublisher;
 use App\Support\Pricing\CustomerPriceListResolver;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -63,12 +64,8 @@ class CustomerController extends Controller
             });
         }
 
-        $priceGroupOptions = $this->priceGroupOptions(clone $baseQuery, $priceListResolver);
+        $priceGroupOptionsQuery = clone $baseQuery;
         $priceGroup = $this->normalizePriceGroup($validated['price_group'] ?? null);
-
-        if ($priceGroup !== null) {
-            $this->applyPriceGroupFilter($baseQuery, $priceGroup);
-        }
 
         if ($search !== '') {
             $normalizedSearch = $this->normalizeLooseCustomerSearch($search);
@@ -114,6 +111,10 @@ class CustomerController extends Controller
         }
 
         if (($validated['summary'] ?? null) === 'count') {
+            if ($priceGroup !== null) {
+                $this->applyPriceGroupFilter($baseQuery, $priceGroup);
+            }
+
             return response()->json([
                 'data' => [],
                 'next_cursor' => null,
@@ -121,9 +122,18 @@ class CustomerController extends Controller
                 'limit' => $limit,
                 'total_count' => (clone $baseQuery)->count('customers.id'),
                 'meta' => [
-                    'price_groups' => $priceGroupOptions,
+                    'price_groups' => [],
                 ],
             ]);
+        }
+
+        $page = $this->decodeCustomerPageCursor($validated['cursor'] ?? null);
+        $priceGroupOptions = $page === 1
+            ? $this->cachedPriceGroupOptions($priceGroupOptionsQuery, $priceListResolver, $user, $validated, $selectionMode)
+            : [];
+
+        if ($priceGroup !== null) {
+            $this->applyPriceGroupFilter($baseQuery, $priceGroup);
         }
 
         $totalCount = $fastMode ? null : (clone $baseQuery)->count('customers.id');
@@ -169,7 +179,6 @@ class CustomerController extends Controller
                 ]);
         }
 
-        $page = $this->decodeCustomerPageCursor($validated['cursor'] ?? null);
         $customers = $query
             ->orderByRaw("CASE WHEN customers.source_system = 'b2b' AND customers.sync_status IS NOT NULL THEN 0 WHEN customers.source_system = 'logo' THEN 1 ELSE 2 END ASC")
             ->orderBy('customers.code')
@@ -197,6 +206,32 @@ class CustomerController extends Controller
                 'price_groups' => $priceGroupOptions,
             ],
         ]);
+    }
+
+    /**
+     * @return list<array{code: string, label: string}>
+     */
+    private function cachedPriceGroupOptions($query, CustomerPriceListResolver $priceListResolver, User $user, array $validated, bool $selectionMode): array
+    {
+        $cacheKey = 'customers:price-groups:v3:'.sha1(json_encode([
+            'user_id' => $user->id,
+            'user_updated_at' => $user->updated_at?->timestamp,
+            'dealer_id' => $user->dealer_id,
+            'selected_customer_id' => $user->selected_customer_id,
+            'customer_scope' => $user->customer_scope,
+            'region_code' => $user->region_code,
+            'branch_code' => $user->branch_code,
+            'logo_customer_specode4' => $user->logo_customer_specode4,
+            'selection_mode' => $selectionMode,
+            'source_system' => $validated['source_system'] ?? null,
+            'specode4' => $validated['specode4'] ?? null,
+        ]));
+
+        return Cache::remember(
+            $cacheKey,
+            now()->addMinutes(2),
+            fn (): array => $this->priceGroupOptions($query, $priceListResolver)
+        );
     }
 
     /**

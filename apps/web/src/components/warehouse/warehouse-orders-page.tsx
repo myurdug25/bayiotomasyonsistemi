@@ -1127,7 +1127,7 @@ export function WarehouseOrdersPage() {
                   onClick={() => router.push("/warehouse/rack-addresses")}
                 >
                   <Save className="h-4 w-4" />
-                  <span className="whitespace-nowrap">Raf Adreslerini Güncelle</span>
+                  <span className="whitespace-nowrap">Ürünler</span>
                 </Button>
               ) : null}
             </div>
@@ -1608,7 +1608,7 @@ export function WarehouseOrdersPage() {
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <DialogTitle className="text-xl font-black text-white">
-                  Raf Adreslerini Güncelle
+                  Ürünler
                 </DialogTitle>
                 <DialogDescription className="mt-0.5 text-xs font-semibold text-[#aebdaf]">
                   Logo ürün kartından gelen OEM, rakip kod ve raf bilgilerini depoya göre yönetin.

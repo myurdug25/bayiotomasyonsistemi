@@ -20,6 +20,7 @@ import {
   setContextCustomer,
   clearContextCustomer,
 } from "@/lib/api";
+import { clearUserContextStorage } from "@/lib/post-login-route";
 
 type SessionStatus = "loading" | "authenticated" | "guest";
 const SELECTED_CUSTOMER_STORAGE_KEY = "powersa:selected_customer";
@@ -94,6 +95,20 @@ function persistSelectedCustomer(customer: CustomerSummary | null) {
   window.localStorage.setItem(SELECTED_CUSTOMER_STORAGE_KEY, JSON.stringify(customer));
 }
 
+function persistUserSelectedCustomer(userId: number | string | null | undefined, customer: CustomerSummary | null) {
+  if (typeof window === "undefined" || userId === null || userId === undefined) {
+    return;
+  }
+
+  const key = `${SELECTED_CUSTOMER_STORAGE_KEY}:${userId}`;
+  if (!customer) {
+    window.localStorage.removeItem(key);
+    return;
+  }
+
+  window.localStorage.setItem(key, JSON.stringify(customer));
+}
+
 function selectedCustomerFromUser(user: ApiUserPayload | null | undefined): CustomerSummary | null {
   if (!user) {
     return null;
@@ -129,9 +144,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const setSelectedCustomerPersisted = useCallback((customer: CustomerSummary | null) => {
+  const setSelectedCustomerForUser = useCallback((nextUser: ApiUser | null, customer: CustomerSummary | null) => {
     setSelectedCustomer(customer);
-    persistSelectedCustomer(customer);
+    persistSelectedCustomer(null);
+    persistUserSelectedCustomer(nextUser?.id, customer);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -152,14 +168,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
 
       setUser(normalizedUser);
-      setSelectedCustomerPersisted(nextCustomer);
+      setSelectedCustomerForUser(normalizedUser, nextCustomer);
       setStatus("authenticated");
     } catch {
       setUser(null);
-      setSelectedCustomerPersisted(null);
+      setSelectedCustomerForUser(null, null);
       setStatus("guest");
     }
-  }, [setSelectedCustomerPersisted]);
+  }, [setSelectedCustomerForUser]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -197,25 +213,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (payload: { username: string; password: string; remember?: boolean }) => {
       setError(null);
-      setSelectedCustomerPersisted(null);
+      clearUserContextStorage();
+      setSelectedCustomerForUser(null, null);
       await ensureCsrfCookie();
 
       const response = await loginRequest(payload);
       const normalizedUser = normalizeApiUser(response.user as ApiUserPayload);
       setUser(normalizedUser);
-      setSelectedCustomerPersisted(selectedCustomerFromUser(normalizedUser));
+      setSelectedCustomerForUser(normalizedUser, selectedCustomerFromUser(normalizedUser));
       setStatus("authenticated");
 
       try {
         const context = await getContext();
-        setSelectedCustomerPersisted(normalizeCustomerSummary(context.context.customer ?? {}) ?? null);
+        setSelectedCustomerForUser(normalizedUser, normalizeCustomerSummary(context.context.customer ?? {}) ?? null);
       } catch {
         // context endpoint is optional after login
       }
 
       return response.user;
     },
-    [setSelectedCustomerPersisted]
+    [setSelectedCustomerForUser]
   );
 
   const logout = useCallback(async () => {
@@ -228,16 +245,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
 
     setUser(null);
-    setSelectedCustomerPersisted(null);
+    clearUserContextStorage();
+    setSelectedCustomerForUser(null, null);
     setStatus("guest");
-  }, [setSelectedCustomerPersisted]);
+  }, [setSelectedCustomerForUser]);
 
   const selectCustomer = useCallback(async (customerId: number) => {
     setError(null);
 
     try {
       const response = await setContextCustomer(customerId);
-      setSelectedCustomerPersisted(normalizeCustomerSummary(response.context.customer ?? {}) ?? null);
+      const nextCustomer = normalizeCustomerSummary(response.context.customer ?? {}) ?? null;
+      setSelectedCustomerForUser(user, nextCustomer);
       setUser((prev) => {
         if (!prev) {
           return prev;
@@ -254,14 +273,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setError(message);
       throw err;
     }
-  }, [setSelectedCustomerPersisted]);
+  }, [setSelectedCustomerForUser, user]);
 
   const clearCustomer = useCallback(async () => {
     setError(null);
 
     try {
       await clearContextCustomer();
-      setSelectedCustomerPersisted(null);
+      setSelectedCustomerForUser(user, null);
       setUser((prev) => {
         if (!prev) {
           return prev;
@@ -278,7 +297,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setError(message);
       throw err;
     }
-  }, [setSelectedCustomerPersisted]);
+  }, [setSelectedCustomerForUser, user]);
 
   const value = useMemo<SessionContextType>(
     () => ({

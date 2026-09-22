@@ -157,6 +157,144 @@ class LogoProductSyncApiTest extends TestCase
         $this->assertSame('BATUM', data_get($campaignPrice->meta, 'branch_code'));
     }
 
+    public function test_logo_product_sync_does_not_inactivate_batum_tiers_when_another_price_group_syncs(): void
+    {
+        $product = Product::query()->create([
+            'sku' => 'BATUM-F12-KEEP',
+            'name' => 'Batum F12 Koruma',
+            'unit' => 'adet',
+            'vat_rate' => 20,
+            'is_active' => true,
+            'meta' => ['integrations' => ['logo' => ['external_ref' => '9301']]],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'F12-OLD-5',
+            'campaign_key' => 'logo:batum:f12-old-5',
+            'name' => 'Batum Size Ozel Fiyat',
+            'condition' => 'P1=5',
+            'min_quantity' => 5,
+            'unit_price' => 100,
+            'currency' => 'GEL',
+            'priority' => 1,
+            'branch' => 4,
+            'is_active' => true,
+            'meta' => ['source' => 'logo_prclist', 'price_group' => 'BATUM', 'logo_price_group' => 'F12', 'branch_code' => 'BATUM'],
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'records' => [[
+                    'external_ref' => '9301',
+                    'sku' => 'BATUM-F12-KEEP',
+                    'name' => 'Batum F12 Koruma',
+                    'campaign_prices' => [
+                        [
+                            'source_reference' => 'F2-NEW-5',
+                            'campaign_key' => 'logo:f2:new-5',
+                            'name' => 'Logo F2 Kampanya Fiyati',
+                            'condition' => 'P1=5',
+                            'min_quantity' => 5,
+                            'unit_price' => 90,
+                            'currency' => 'TRY',
+                            'is_active' => true,
+                            'meta' => ['source' => 'logo_prclist', 'price_group' => 'F2', 'logo_price_group' => 'F2'],
+                        ],
+                    ],
+                ]],
+            ]);
+
+        $response->assertOk();
+
+        $this->assertTrue(
+            ProductCampaignPrice::query()
+                ->where('product_id', $product->id)
+                ->where('source_reference', 'F12-OLD-5')
+                ->value('is_active')
+        );
+    }
+
+    public function test_logo_product_sync_inactivates_stale_tiers_only_inside_the_same_price_group_scope(): void
+    {
+        $product = Product::query()->create([
+            'sku' => 'F2-STALE-SCOPE',
+            'name' => 'F2 Eski Kampanya',
+            'unit' => 'adet',
+            'vat_rate' => 20,
+            'is_active' => true,
+            'meta' => ['integrations' => ['logo' => ['external_ref' => '9302']]],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'F2-OLD-6',
+            'campaign_key' => 'logo:f2:old-6',
+            'name' => 'Logo F2 Kampanya Fiyati',
+            'condition' => 'P1>5',
+            'min_quantity' => 6,
+            'unit_price' => 88,
+            'currency' => 'TRY',
+            'priority' => 1,
+            'is_active' => true,
+            'meta' => ['source' => 'logo_prclist', 'price_group' => 'F2', 'logo_price_group' => 'F2'],
+        ]);
+
+        ProductCampaignPrice::query()->create([
+            'product_id' => $product->id,
+            'source_reference' => 'F12-KEEP-5',
+            'campaign_key' => 'logo:batum:keep-5',
+            'name' => 'Batum Size Ozel Fiyat',
+            'condition' => 'P1=5',
+            'min_quantity' => 5,
+            'unit_price' => 100,
+            'currency' => 'GEL',
+            'priority' => 1,
+            'branch' => 4,
+            'is_active' => true,
+            'meta' => ['source' => 'logo_prclist', 'price_group' => 'BATUM', 'logo_price_group' => 'F12', 'branch_code' => 'BATUM'],
+        ]);
+
+        $response = $this
+            ->withHeader('X-Integration-Key', 'test-sync-key')
+            ->postJson('/api/integrations/logo/products/sync', [
+                'records' => [[
+                    'external_ref' => '9302',
+                    'sku' => 'F2-STALE-SCOPE',
+                    'name' => 'F2 Eski Kampanya',
+                    'campaign_prices' => [
+                        [
+                            'source_reference' => 'F2-NEW-5',
+                            'campaign_key' => 'logo:f2:new-5',
+                            'name' => 'Logo F2 Kampanya Fiyati',
+                            'condition' => 'P1=5',
+                            'min_quantity' => 5,
+                            'unit_price' => 90,
+                            'currency' => 'TRY',
+                            'is_active' => true,
+                            'meta' => ['source' => 'logo_prclist', 'price_group' => 'F2', 'logo_price_group' => 'F2'],
+                        ],
+                    ],
+                ]],
+            ]);
+
+        $response->assertOk();
+
+        $this->assertFalse(
+            ProductCampaignPrice::query()
+                ->where('product_id', $product->id)
+                ->where('source_reference', 'F2-OLD-6')
+                ->value('is_active')
+        );
+        $this->assertTrue(
+            ProductCampaignPrice::query()
+                ->where('product_id', $product->id)
+                ->where('source_reference', 'F12-KEEP-5')
+                ->value('is_active')
+        );
+    }
+
     public function test_logo_product_sync_upserts_catalog_stock_and_base_prices(): void
     {
         $priceListId = (int) DB::table('price_lists')->where('code', 'A')->value('id');

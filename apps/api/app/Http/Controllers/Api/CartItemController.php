@@ -144,9 +144,9 @@ class CartItemController extends Controller
             customerId: $customerId
         );
         if ($dealerId === null) {
-            return response()->json([
-                'message' => 'dealer_id is required for admin users without dealer assignment.',
-            ], HttpStatus::HTTP_UNPROCESSABLE_ENTITY);
+            throw ValidationException::withMessages([
+                'dealer_id' => ['dealer_id is required for admin users without dealer assignment.'],
+            ]);
         }
 
         $forceWarehouseTransfer = $user->hasRole('salesperson');

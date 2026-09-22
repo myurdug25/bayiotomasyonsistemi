@@ -8,6 +8,18 @@ export function PwaServiceWorker() {
       return;
     }
 
+    const userAgent = window.navigator.userAgent || "";
+    const isAppleWebKit = /AppleWebKit/i.test(userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(userAgent);
+    const isAppleDevice = /Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(userAgent);
+
+    if (isAppleWebKit && isAppleDevice) {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .catch(() => undefined);
+      return;
+    }
+
     const isSupportedOrigin =
       window.location.protocol === "https:" ||
       window.location.hostname === "localhost" ||

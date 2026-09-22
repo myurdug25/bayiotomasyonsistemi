@@ -52,6 +52,61 @@ const uiThemeScript = `
 })();
 `;
 
+const macWebKitRecoveryScript = `
+(() => {
+  try {
+    const ua = window.navigator.userAgent || "";
+    const isAppleWebKit = /AppleWebKit/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+    const isAppleDevice = /Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(ua);
+
+    if (!isAppleWebKit || !isAppleDevice) {
+      return;
+    }
+
+    if (!CSS.supports("color", "color-mix(in oklab, black, white)")) {
+      document.documentElement.classList.add("legacy-webkit");
+    }
+
+    const resetKey = "bos:mac-webkit-runtime-reset";
+    const resetVersion = "20260918-next-runtime";
+
+    if (window.localStorage.getItem(resetKey) === resetVersion) {
+      return;
+    }
+
+    window.localStorage.setItem(resetKey, resetVersion);
+
+    const cleanups = [];
+
+    if ("serviceWorker" in navigator) {
+      cleanups.push(
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+          .catch(() => undefined)
+      );
+    }
+
+    if ("caches" in window) {
+      cleanups.push(
+        caches
+          .keys()
+          .then((keys) => Promise.all(keys.filter((key) => key.startsWith("bos-") || key.includes("pwa")).map((key) => caches.delete(key))))
+          .catch(() => undefined)
+      );
+    }
+
+    Promise.allSettled(cleanups).then(() => {
+      if (navigator.serviceWorker?.controller) {
+        window.location.reload();
+      }
+    });
+  } catch {
+    document.documentElement.classList.add("legacy-webkit");
+  }
+})();
+`;
+
 const publicSans = Public_Sans({
   variable: "--font-public-sans",
   subsets: ["latin", "latin-ext"],
@@ -112,6 +167,7 @@ export default function RootLayout({
       <head>
         <link rel="manifest" href="/manifest.json?v=20260825-mobile-pwa" />
         <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png" />
+        <script dangerouslySetInnerHTML={{ __html: macWebKitRecoveryScript }} />
         <script dangerouslySetInnerHTML={{ __html: uiThemeScript }} />
       </head>
       <body

@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CheckCircle2, Loader2, PackageSearch, Save, Search, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Loader2, Package, PackageSearch, Save, Search, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSession } from "@/components/auth/session-provider";
@@ -15,25 +15,6 @@ import {
   type WarehouseShelfProduct,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-
-function formatDateTime(value?: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("tr-TR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
 
 function normalizeIdentity(value: unknown): string {
   return String(value ?? "")
@@ -68,6 +49,122 @@ function resolveUserWarehouseCode(user: unknown): string {
   return "";
 }
 
+type ProductDraft = {
+  shelfAddress: string;
+  oemCodes: string[];
+  competitorCodes: string[];
+};
+
+function productOemCodes(product: WarehouseShelfProduct): string[] {
+  const codes = product.oem_codes && product.oem_codes.length > 0 ? product.oem_codes : product.oem ? [product.oem] : [];
+
+  return Array.from(new Set(codes.map((code) => code.trim()).filter(Boolean)));
+}
+
+function normalizeCodeDrafts(value: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const raw of value) {
+    const code = raw.trim();
+    const key = code.toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
+    if (!code || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(code);
+  }
+
+  return result;
+}
+
+function baseDraft(product: WarehouseShelfProduct): ProductDraft {
+  return {
+    shelfAddress: product.shelf_address ?? "",
+    oemCodes: productOemCodes(product),
+    competitorCodes: normalizeCodeDrafts(product.competitor_codes ?? []),
+  };
+}
+
+function sameCodes(left: string[], right: string[]): boolean {
+  return JSON.stringify(normalizeCodeDrafts(left)) === JSON.stringify(normalizeCodeDrafts(right));
+}
+
+function draftChanged(product: WarehouseShelfProduct, draft: ProductDraft): boolean {
+  const base = baseDraft(product);
+
+  return (
+    draft.shelfAddress.trim() !== base.shelfAddress.trim() ||
+    !sameCodes(draft.oemCodes, base.oemCodes) ||
+    !sameCodes(draft.competitorCodes, base.competitorCodes)
+  );
+}
+
+function CodeChipEditor({
+  label,
+  values,
+  disabled,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  values: string[];
+  disabled: boolean;
+  placeholder: string;
+  onChange: (values: string[]) => void;
+}) {
+  const [input, setInput] = useState("");
+
+  const addCode = () => {
+    const next = normalizeCodeDrafts([...values, input]);
+    setInput("");
+    onChange(next);
+  };
+
+  return (
+    <div className="rack-chip-editor min-w-0 rounded-xl border border-emerald-300/15 bg-black/16 p-2">
+      <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/52">{label}</div>
+      <div className="flex min-w-0 flex-wrap gap-1.5">
+        {values.length > 0 ? values.map((code, index) => (
+          <span key={`${code}-${index}`} className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200/28 bg-emerald-300/12 px-2 py-1 text-xs font-black text-emerald-50">
+            <span className="max-w-[10rem] truncate">{code}</span>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(values.filter((_, valueIndex) => valueIndex !== index))}
+              className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-emerald-50/75 disabled:opacity-40"
+              aria-label={`${code} kodunu kaldır`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        )) : (
+          <span className="text-xs font-bold text-emerald-100/36">-</span>
+        )}
+      </div>
+      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-1.5">
+        <Input
+          value={input}
+          disabled={disabled}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              addCode();
+            }
+          }}
+          placeholder={placeholder}
+          className="h-9 min-w-0 rounded-lg border-emerald-300/20 bg-black/24 px-2 text-xs font-black text-white"
+        />
+        <Button type="button" disabled={disabled || input.trim() === ""} onClick={addCode} className="h-9 rounded-lg px-2 text-xs font-black">
+          Ekle
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function RackAddressesPage() {
   const queryClient = useQueryClient();
   const { user } = useSession();
@@ -78,7 +175,7 @@ export function RackAddressesPage() {
   const deferredQuery = useDeferredValue(query);
   const [warehouseCode, setWarehouseCode] = useState("");
   const [includeEquivalents, setIncludeEquivalents] = useState(false);
-  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const [drafts, setDrafts] = useState<Record<number, ProductDraft>>({});
   // Admin depo seçebilir; normal kullanıcıda request her zaman kendi şube deposuna kilitlenir.
   const requestedWarehouseCode = isAdminUser ? warehouseCode.trim() : forcedWarehouseCode;
 
@@ -105,19 +202,21 @@ export function RackAddressesPage() {
     () =>
       products.filter((product) => {
         const draft = drafts[product.id];
-        return draft !== undefined && draft.trim() !== (product.shelf_address ?? "").trim();
+        return draft !== undefined && draftChanged(product, draft);
       }),
     [drafts, products]
   );
 
   const updateMutation = useMutation({
-    mutationFn: ({ product, shelfAddress }: { product: WarehouseShelfProduct; shelfAddress: string }) =>
+    mutationFn: ({ product, draft }: { product: WarehouseShelfProduct; draft: ProductDraft }) =>
       updateWarehouseShelf(product.id, {
         warehouse_code: product.warehouse_code,
-        shelf_address: shelfAddress.trim() || null,
+        shelf_address: draft.shelfAddress.trim() || null,
+        oem_codes: normalizeCodeDrafts(draft.oemCodes),
+        competitor_codes: normalizeCodeDrafts(draft.competitorCodes),
       }),
     onSuccess: async () => {
-      toast.success("Raf adresi kaydedildi ve Logo kuyruğuna alındı.");
+      toast.success("Ürün bilgileri kaydedildi ve Logo kuyruğuna alındı.");
       await queryClient.invalidateQueries({ queryKey: ["warehouse-rack-addresses"] });
     },
     onError: (error) => {
@@ -129,16 +228,19 @@ export function RackAddressesPage() {
     mutationFn: async () => {
       const changed = changedProducts;
       for (const product of changed) {
+        const draft = drafts[product.id] ?? baseDraft(product);
         await updateWarehouseShelf(product.id, {
           warehouse_code: product.warehouse_code,
-          shelf_address: (drafts[product.id] ?? "").trim() || null,
+          shelf_address: draft.shelfAddress.trim() || null,
+          oem_codes: normalizeCodeDrafts(draft.oemCodes),
+          competitor_codes: normalizeCodeDrafts(draft.competitorCodes),
         });
       }
 
       return changed.length;
     },
     onSuccess: async (count) => {
-      toast.success(`${count} raf adresi kaydedildi ve Logo kuyruğuna alındı.`);
+      toast.success(`${count} ürün değişikliği kaydedildi ve Logo kuyruğuna alındı.`);
       setDrafts({});
       await queryClient.invalidateQueries({ queryKey: ["warehouse-rack-addresses"] });
     },
@@ -155,14 +257,14 @@ export function RackAddressesPage() {
       <section className="rack-address-hero dashboard-panel-card overflow-hidden rounded-[24px] border-amber-300/20 p-0 shadow-[0_24px_70px_-48px_rgba(245,158,11,0.75)]">
         <div className="rack-hero-heading flex flex-col gap-4 border-b border-amber-300/15 bg-[radial-gradient(circle_at_8%_0%,rgba(245,158,11,0.2),transparent_34%),linear-gradient(135deg,rgba(16,47,35,0.96),rgba(19,29,24,0.96))] p-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <div className="rack-hero-icon flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-200/35 bg-amber-300/15 text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
-              <Archive className="h-7 w-7" />
+            <div className="rack-hero-icon flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-200/35 bg-emerald-300/15 text-emerald-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
+              <Package className="h-7 w-7" />
             </div>
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-100/75">Logo Raf Senkronu</p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight text-white">Raf Adresi Güncelle</h1>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-100/75">Logo Ürün Senkronu</p>
+              <h1 className="mt-1 text-3xl font-black tracking-tight text-white">Ürünler</h1>
               <p className="mt-1 text-sm font-semibold text-emerald-100/70">
-                OEM, rakip kod, ürün kodu, ürün adı ve raf adresiyle arayın; değişiklikler Logo kuyruğuna alınır.
+                Raf, OEM ve rakip kod bilgilerini Logo ERP ile eş zamanlı yönetin.
               </p>
             </div>
           </div>
@@ -249,14 +351,14 @@ export function RackAddressesPage() {
       ) : null}
 
       <section className="rack-address-table dashboard-panel-card overflow-hidden rounded-[22px]">
-        <div className="rack-address-table-header hidden grid-cols-[0.85fr_1.55fr_0.72fr_1.08fr_0.78fr_0.82fr_0.82fr_1.24fr_56px] gap-3 border-b border-emerald-300/15 bg-[linear-gradient(90deg,rgba(22,163,74,0.68),rgba(16,185,129,0.26))] px-4 py-3 text-xs font-black uppercase tracking-[0.1em] text-emerald-50 xl:grid">
+          <div className="rack-address-table-header hidden grid-cols-[0.85fr_1.35fr_1.1fr_1.1fr_0.78fr_1.2fr_1.2fr_1fr_56px] gap-3 border-b border-emerald-300/15 bg-[linear-gradient(90deg,rgba(22,163,74,0.68),rgba(16,185,129,0.26))] px-4 py-3 text-xs font-black uppercase tracking-[0.1em] text-emerald-50 2xl:grid">
           <div>Ürün Kodu</div>
           <div>Ürün Adı</div>
-          <div>OEM</div>
-          <div>Rakip Kod</div>
-          <div>Raf Adresi</div>
-          <div>Son Güncelleme</div>
-          <div>Güncelleyen</div>
+          <div>Mevcut OEM</div>
+          <div>Mevcut Rakip</div>
+          <div>Mevcut Raf</div>
+          <div>Yeni OEM</div>
+          <div>Yeni Rakip</div>
           <div>Yeni Raf</div>
           <div className="text-right">İşlem</div>
         </div>
@@ -274,14 +376,24 @@ export function RackAddressesPage() {
             </div>
           ) : (
             products.map((product) => {
-              const draftValue = drafts[product.id] ?? product.shelf_address ?? "";
-              const changed = draftValue.trim() !== (product.shelf_address ?? "").trim();
+              const draft = drafts[product.id] ?? baseDraft(product);
+              const changed = draftChanged(product, draft);
+              const status = product.logo_status?.status ?? (changed ? "pending" : null);
+              const statusLabel = status === "queued"
+                ? "Logo'ya gönderiliyor"
+                : status === "synced"
+                  ? "Logo işlendi"
+                  : status === "failed"
+                    ? "Logo hata"
+                    : changed
+                      ? "Bekliyor"
+                      : "Güncel";
 
               return (
                 <div
                   key={product.id}
                   data-changed={changed}
-                  className="rack-address-row grid grid-cols-1 gap-3 px-4 py-3 hover:bg-emerald-400/5 xl:grid-cols-[0.85fr_1.55fr_0.72fr_1.08fr_0.78fr_0.82fr_0.82fr_1.24fr_56px] xl:items-center"
+                  className="rack-address-row grid grid-cols-1 gap-3 px-4 py-3 hover:bg-emerald-400/5 2xl:grid-cols-[0.85fr_1.35fr_1.1fr_1.1fr_0.78fr_1.2fr_1.2fr_1fr_56px] 2xl:items-start"
                 >
                   <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Ürün Kodu</div>
@@ -297,19 +409,19 @@ export function RackAddressesPage() {
                     <div className="rack-product-brand truncate text-xs font-bold uppercase tracking-wide text-emerald-100/55">{product.brand ?? "-"}</div>
                   </div>
                   <div className="rack-text-cell min-w-0 font-bold text-emerald-100/80">
-                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">OEM</div>
-                    <span className="block truncate" title={product.oem ?? "-"}>
-                      {product.oem ?? "-"}
+                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 2xl:hidden">Mevcut OEM</div>
+                    <span className="block whitespace-normal break-words text-xs" title={productOemCodes(product).join(", ")}>
+                      {productOemCodes(product).length > 0 ? productOemCodes(product).join(", ") : "-"}
                     </span>
                   </div>
                   <div className="rack-text-cell min-w-0 font-bold text-emerald-100/75">
-                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Rakip Kod</div>
-                    <span className="block truncate" title={product.competitor_codes.join(", ")}>
+                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 2xl:hidden">Mevcut Rakip Kod</div>
+                    <span className="block whitespace-normal break-words text-xs" title={product.competitor_codes.join(", ")}>
                       {product.competitor_codes.length > 0 ? product.competitor_codes.join(", ") : "-"}
                     </span>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Raf Adresi</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 2xl:hidden">Mevcut Raf</div>
                     {product.shelf_address ? (
                       <Badge className="rack-current-address max-w-full rounded-full border-cyan-200/30 bg-cyan-400/12 text-cyan-100">
                         <span className="truncate">{product.shelf_address}</span>
@@ -317,23 +429,34 @@ export function RackAddressesPage() {
                     ) : (
                       <span className="font-bold text-emerald-100/35">-</span>
                     )}
-                  </div>
-                  <div className="rack-text-cell min-w-0 text-xs font-bold text-emerald-100/65">
-                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Son Güncelleme</div>
-                    <span className="block truncate">{formatDateTime(product.shelf_updated_at)}</span>
-                  </div>
-                  <div className="rack-text-cell min-w-0 text-xs font-bold text-emerald-100/65">
-                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Güncelleyen</div>
-                    <span className="block truncate" title={product.shelf_updated_by ?? "-"}>
-                      {product.shelf_updated_by ?? "-"}
-                    </span>
+                    <Badge className="mt-2 max-w-full rounded-full border-emerald-200/20 bg-emerald-300/10 text-[10px] font-black text-emerald-100">
+                      {statusLabel}
+                    </Badge>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 xl:hidden">Yeni Raf</div>
-                    <Input
-                      value={draftValue}
+                    <CodeChipEditor
+                      label="Yeni OEM"
+                      values={draft.oemCodes}
                       disabled={!editable || isSaving}
-                      onChange={(event) => setDrafts((current) => ({ ...current, [product.id]: event.target.value }))}
+                      placeholder="OEM ekle"
+                      onChange={(oemCodes) => setDrafts((current) => ({ ...current, [product.id]: { ...draft, oemCodes } }))}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <CodeChipEditor
+                      label="Yeni Rakip"
+                      values={draft.competitorCodes}
+                      disabled={!editable || isSaving}
+                      placeholder="Rakip kod ekle"
+                      onChange={(competitorCodes) => setDrafts((current) => ({ ...current, [product.id]: { ...draft, competitorCodes } }))}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-100/45 2xl:hidden">Yeni Raf</div>
+                    <Input
+                      value={draft.shelfAddress}
+                      disabled={!editable || isSaving}
+                      onChange={(event) => setDrafts((current) => ({ ...current, [product.id]: { ...draft, shelfAddress: event.target.value } }))}
                       placeholder="A26.6,A79.1"
                       className={cn(
                         "rack-new-input h-11 w-full min-w-0 rounded-xl border-emerald-300/20 bg-black/25 px-4 font-black text-white",
@@ -346,9 +469,9 @@ export function RackAddressesPage() {
                       type="button"
                       size="icon"
                       disabled={!editable || !changed || isSaving}
-                      onClick={() => updateMutation.mutate({ product, shelfAddress: draftValue })}
-                      aria-label="Bu satırdaki raf adresini kaydet"
-                      title="Bu satırdaki raf adresini kaydet"
+                      onClick={() => updateMutation.mutate({ product, draft })}
+                      aria-label="Bu satırdaki ürün değişikliklerini kaydet"
+                      title="Bu satırdaki ürün değişikliklerini kaydet"
                       className="rack-row-save-button h-11 w-11 shrink-0 rounded-xl border border-[#8e5e02] bg-[linear-gradient(135deg,#d39b16,#a56f05)] text-white shadow-[0_8px_18px_-14px_rgba(165,111,5,0.72)] hover:brightness-110 disabled:!border-[#c6d4cc] disabled:!bg-[#e7eeea] disabled:!text-[#5f7469] disabled:opacity-100"
                     >
                       {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}

@@ -80,7 +80,7 @@ final class CustomerFeaturePermissions
             ['key' => 'reports.order_balance', 'label' => 'Sipariş bakiye raporu', 'menu_key' => 'reports'],
             ['key' => 'returns.create', 'label' => 'İade / arıza oluştur', 'menu_key' => 'returns'],
             ['key' => 'returns.list', 'label' => 'İade / arıza listesi', 'menu_key' => 'returns'],
-            ['key' => 'rack-addresses.update', 'label' => 'Raf adresi güncelleme', 'menu_key' => 'rack-addresses'],
+            ['key' => 'rack-addresses.update', 'label' => 'Ürün bilgisi güncelleme', 'menu_key' => 'rack-addresses'],
         ], array_map(
             fn (array $warehouse): array => [
                 'key' => $warehouse['key'],

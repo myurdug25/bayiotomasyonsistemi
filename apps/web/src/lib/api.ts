@@ -1901,6 +1901,7 @@ export type WarehouseShelfProduct = {
   product_name: string;
   brand?: string | null;
   oem?: string | null;
+  oem_codes?: string[];
   competitor_codes: string[];
   warehouse_code: string;
   warehouse_name: string;
@@ -1909,6 +1910,11 @@ export type WarehouseShelfProduct = {
   shelf_updated_by?: string | null;
   editable: boolean;
   logo_ref?: string | null;
+  logo_status?: {
+    status?: string | null;
+    error?: string | null;
+    updated_at?: string | null;
+  } | null;
 };
 
 export type WarehouseShelfResponse = {
@@ -3518,6 +3524,8 @@ export async function updateWarehouseShelf(
   payload: {
     warehouse_code: string;
     shelf_address?: string | null;
+    oem_codes?: string[];
+    competitor_codes?: string[];
   }
 ) {
   return apiFetch<{ data: WarehouseShelfProduct; message?: string }>(`/api/warehouse/shelves/${productId}`, {

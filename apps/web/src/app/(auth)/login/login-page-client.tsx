@@ -24,6 +24,7 @@ import { NfsSoftCredit } from "@/components/layout/nfssoft-credit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { clearUserContextStorage, resolvePostLoginRoute } from "@/lib/post-login-route";
 
 const loginSchema = z.object({
   username: z.string().trim().min(1, "Kullanıcı adı gerekli"),
@@ -32,162 +33,6 @@ const loginSchema = z.object({
 });
 
 type LoginFormValues = z.input<typeof loginSchema>;
-
-const MENU_PERMISSION_FALLBACK_ORDER = [
-  { key: "dashboard", href: "/dashboard" },
-  { key: "notes", href: "/notes" },
-  { key: "search", href: "/search" },
-  { key: "catalogs", href: "/catalogs" },
-  { key: "cart", href: "/cart" },
-  { key: "orders", href: "/orders" },
-  { key: "customers", href: "/customers" },
-  { key: "customer-users", href: "/customer-users" },
-  { key: "new-customer-card", href: "/new-customer-card" },
-  { key: "ledger", href: "/ledger" },
-  { key: "collections", href: "/collections" },
-  { key: "reports", href: "/reports" },
-  { key: "returns", href: "/returns" },
-  { key: "pos", href: "/pos" },
-  { key: "warehouse", href: "/warehouse" },
-  { key: "moderator", href: "/moderator/users" },
-  { key: "extra", href: "/mal-kabul" },
-  { key: "virtual-pos", href: "/virtual-pos" },
-  { key: "delivery-notes", href: "/irsaliye-dokum" },
-] as const;
-
-function menuPermissionForPath(path: string): string | null {
-  if (path === "/satinalma" || path.startsWith("/satinalma/")) {
-    return "extra";
-  }
-
-  if (path === "/moderator" || path.startsWith("/moderator/")) {
-    return "moderator";
-  }
-
-  if (path === "/pos" || path.startsWith("/pos/")) {
-    return "pos";
-  }
-
-  const match = MENU_PERMISSION_FALLBACK_ORDER.find((item) => {
-    const itemPath = item.href === "/moderator/users" ? "/moderator" : item.href;
-
-    return path === itemPath || path.startsWith(`${itemPath}/`);
-  });
-
-  return match?.key ?? null;
-}
-
-function resolvePostLoginPath(args: {
-  roleSlugs: string[];
-  menuPermissions: string[];
-  next: string | null;
-}): string {
-  const { roleSlugs, menuPermissions, next } = args;
-  const rawSafeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
-  const hasRole = (slug: string) => roleSlugs.includes(slug);
-  const menuPermissionSet = new Set(menuPermissions);
-  const isWarehouseOnly =
-    hasRole("warehouse") && !hasRole("admin") && !hasRole("dealer_admin") && !hasRole("salesperson");
-  const isSalesperson = hasRole("salesperson");
-  const isDealerAdmin = hasRole("dealer_admin");
-  const isCustomerOnly =
-    hasRole("customer") &&
-    !hasRole("admin") &&
-    !hasRole("dealer_admin") &&
-    !hasRole("salesperson") &&
-    !hasRole("point") &&
-    !hasRole("cashier") &&
-    !hasRole("warehouse") &&
-    !hasRole("moderator");
-  const isModeratorOnly =
-    hasRole("moderator") &&
-    !hasRole("admin") &&
-    !hasRole("dealer_admin") &&
-    !hasRole("salesperson") &&
-    !hasRole("point") &&
-    !hasRole("cashier") &&
-    !hasRole("warehouse");
-  const isPointOnly =
-    (hasRole("point") || hasRole("cashier")) &&
-    !hasRole("admin") &&
-    !hasRole("dealer_admin") &&
-    !hasRole("salesperson") &&
-    !hasRole("warehouse");
-  const isAdmin = hasRole("admin");
-
-  if (isAdmin) {
-    return "/dashboard";
-  }
-
-  if (isWarehouseOnly) {
-    return "/warehouse";
-  }
-
-  if (isSalesperson) {
-    const safeNext =
-      rawSafeNext && (rawSafeNext === "/pos" || rawSafeNext.startsWith("/pos/"))
-        ? null
-        : rawSafeNext && (rawSafeNext === "/warehouse" || rawSafeNext.startsWith("/warehouse/"))
-          ? null
-          : rawSafeNext;
-
-    if (!safeNext || safeNext === "/customers") {
-      return "/customers";
-    }
-
-    return `/customers?next=${encodeURIComponent(safeNext)}`;
-  }
-
-  if (isCustomerOnly) {
-    const safeNextPermission = rawSafeNext ? menuPermissionForPath(rawSafeNext) : null;
-    const safeNext = safeNextPermission && menuPermissionSet.has(safeNextPermission) ? rawSafeNext : null;
-
-    return safeNext || "/dashboard";
-  }
-
-  if (isPointOnly) {
-    if (rawSafeNext && (rawSafeNext === "/pos" || rawSafeNext.startsWith("/pos/"))) {
-      return rawSafeNext;
-    }
-
-    return "/pos";
-  }
-
-  if (!isAdmin && menuPermissionSet.size > 0) {
-    const safeNextPermission = rawSafeNext ? menuPermissionForPath(rawSafeNext) : null;
-    const safeNext = safeNextPermission && menuPermissionSet.has(safeNextPermission) ? rawSafeNext : null;
-    const fallback = MENU_PERMISSION_FALLBACK_ORDER.find((item) => menuPermissionSet.has(item.key));
-
-    return safeNext || fallback?.href || "/dashboard";
-  }
-
-  const safeNext =
-    isSalesperson && rawSafeNext && (rawSafeNext === "/pos" || rawSafeNext.startsWith("/pos/"))
-      ? null
-    : isSalesperson && rawSafeNext && (rawSafeNext === "/warehouse" || rawSafeNext.startsWith("/warehouse/"))
-        ? null
-      : isAdmin && rawSafeNext && (rawSafeNext === "/moderator" || rawSafeNext.startsWith("/moderator/"))
-          ? null
-        : rawSafeNext;
-
-  if (isModeratorOnly) {
-    return "/moderator/users";
-  }
-
-  if (isDealerAdmin) {
-    return safeNext || "/dashboard";
-  }
-
-  return safeNext || "/dashboard";
-}
-
-function readNextParam() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return new URLSearchParams(window.location.search).get("next");
-}
 
 export default function LoginPageClient() {
   const router = useRouter();
@@ -210,15 +55,9 @@ export default function LoginPageClient() {
     setSubmitError(null);
 
     try {
+      clearUserContextStorage();
       const user = await login(values);
-      const next = nextOverride ?? readNextParam();
-
-      const roleSlugs = Array.isArray(user.roles) ? user.roles.map((role) => role.slug) : [];
-      const target = resolvePostLoginPath({
-        roleSlugs,
-        menuPermissions: user.menu_permissions ?? [],
-        next,
-      });
+      const target = nextOverride ?? resolvePostLoginRoute(user);
 
       router.replace(target);
     } catch (err) {

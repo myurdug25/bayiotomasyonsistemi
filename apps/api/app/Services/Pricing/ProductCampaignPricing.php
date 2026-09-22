@@ -128,6 +128,7 @@ class ProductCampaignPricing
     ): ?array {
         $tiers = $this->activeQuery()
             ->where('product_id', $productId)
+            ->where('campaign_key', $campaignKey)
             ->get();
         $customer = $customerId ? Customer::find($customerId) : null;
         $customerGroups = $customer instanceof Customer ? $this->groupResolver->resolveAll($customer) : [];
