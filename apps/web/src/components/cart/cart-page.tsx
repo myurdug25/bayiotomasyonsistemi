@@ -1547,8 +1547,20 @@ export function CartPage() {
         </div>
 
         <Card className="dashboard-panel-card h-full overflow-hidden">
-          <CardContent className="grid h-full min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] lg:items-stretch 2xl:gap-5 2xl:p-5">
-            <div className="order-2 flex min-w-0 flex-col lg:order-2">
+          <CardContent
+            className={cn(
+              "grid h-full min-w-0 gap-4 p-4 lg:items-stretch 2xl:gap-5 2xl:p-5",
+              shouldShowWarehouseTransferPanel
+                ? "lg:grid-cols-[minmax(300px,1fr)_minmax(240px,0.6fr)_minmax(280px,0.7fr)]"
+                : "lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]"
+            )}
+          >
+            <div
+              className={cn(
+                "flex min-w-0 flex-col",
+                shouldShowWarehouseTransferPanel ? "order-3 lg:order-3" : "order-2 lg:order-2"
+              )}
+            >
               <StepTitle step={summaryStepNumber} title="Sipariş Özeti" />
               <div className="mt-5 space-y-3">
                 {hasMixedVatSummaryModes ? (
@@ -1600,8 +1612,18 @@ export function CartPage() {
               </div>
             </div>
 
-            <div className="order-1 flex min-w-0 max-w-full flex-col gap-3 overflow-visible border-b border-[var(--brand-border)] pb-4 lg:h-full lg:border-b-0 lg:border-r lg:pb-0 lg:pr-5">
-              {compactWarehouseTransferPanel}
+            {shouldShowWarehouseTransferPanel ? (
+              <div className="order-1 flex min-w-0 flex-col lg:order-1">
+                {compactWarehouseTransferPanel}
+              </div>
+            ) : null}
+
+            <div
+              className={cn(
+                "order-1 flex min-w-0 max-w-full flex-col gap-3 overflow-visible border-b border-[var(--brand-border)] pb-4 lg:h-full lg:border-b-0 lg:border-r lg:pb-0 lg:pr-5",
+                shouldShowWarehouseTransferPanel ? "lg:order-2" : "lg:order-1"
+              )}
+            >
               <div
                 className={cn(
                   "cart-submit-panel grid min-w-0 max-w-full flex-1 items-stretch gap-2 overflow-visible",
