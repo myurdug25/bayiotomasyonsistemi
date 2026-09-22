@@ -1420,7 +1420,7 @@ export function CartPage() {
 
       <div
         className={cn(
-          "order-3 grid items-start gap-4 xl:grid-cols-[minmax(320px,0.78fr)_minmax(560px,1.22fr)] 2xl:grid-cols-[minmax(380px,0.74fr)_minmax(760px,1.26fr)]"
+          "order-3 grid items-stretch gap-4 xl:grid-cols-[minmax(320px,0.78fr)_minmax(560px,1.22fr)] 2xl:grid-cols-[minmax(380px,0.74fr)_minmax(760px,1.26fr)]"
         )}
       >
         <div className="grid items-start gap-4">
@@ -1546,9 +1546,9 @@ export function CartPage() {
           </Card>
         </div>
 
-        <Card className="dashboard-panel-card overflow-hidden">
-          <CardContent className="grid min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] lg:items-start 2xl:gap-5 2xl:p-5">
-            <div className="order-2 min-w-0 lg:order-2">
+        <Card className="dashboard-panel-card h-full overflow-hidden">
+          <CardContent className="grid h-full min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] lg:items-stretch 2xl:gap-5 2xl:p-5">
+            <div className="order-2 flex min-w-0 flex-col lg:order-2">
               <StepTitle step={summaryStepNumber} title="Sipariş Özeti" />
               <div className="mt-5 space-y-3">
                 {hasMixedVatSummaryModes ? (
@@ -1600,18 +1600,18 @@ export function CartPage() {
               </div>
             </div>
 
-            <div className="order-1 flex min-w-0 max-w-full flex-col gap-3 overflow-visible border-b border-[var(--brand-border)] pb-4 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-5">
+            <div className="order-1 flex min-w-0 max-w-full flex-col gap-3 overflow-visible border-b border-[var(--brand-border)] pb-4 lg:h-full lg:border-b-0 lg:border-r lg:pb-0 lg:pr-5">
               {compactWarehouseTransferPanel}
               <div
                 className={cn(
-                  "cart-submit-panel grid min-w-0 max-w-full items-stretch gap-2 overflow-visible",
+                  "cart-submit-panel grid min-w-0 max-w-full flex-1 items-stretch gap-2 overflow-visible",
                   selectedCustomer && shouldShowSaleTypeSelector && allowedVatSummaryModes.length > 0
                     ? "grid-cols-[3rem_minmax(0,1fr)] sm:grid-cols-[4rem_minmax(0,1fr)]"
                     : "grid-cols-1"
                 )}
               >
                 {selectedCustomer && shouldShowSaleTypeSelector && allowedVatSummaryModes.length > 0 ? (
-                  <div className="grid min-h-[4rem] min-w-0 grid-rows-[auto_1fr] overflow-hidden rounded-[14px] border border-emerald-300/25 bg-[linear-gradient(135deg,rgba(7,23,29,0.92)_0%,rgba(5,37,28,0.92)_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  <div className="grid min-h-[7rem] min-w-0 grid-rows-[auto_1fr] overflow-hidden rounded-[14px] border border-emerald-300/25 bg-[linear-gradient(135deg,rgba(7,23,29,0.92)_0%,rgba(5,37,28,0.92)_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                     <span className="px-0.5 pb-1 text-center text-[8px] font-black uppercase leading-none tracking-[0.08em] text-emerald-100/70">
                       Satış
                     </span>
@@ -1657,7 +1657,7 @@ export function CartPage() {
                 <Button
                   type="button"
                   className={cn(
-                    "min-h-[64px] w-full max-w-full rounded-[18px] border border-red-300/45 !bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.3)_0%,transparent_34%),linear-gradient(135deg,rgba(239,68,68,0.98)_0%,rgba(153,27,27,1)_100%)] px-3 text-lg font-black uppercase leading-none tracking-[0.03em] !text-white shadow-[0_22px_38px_-24px_rgba(239,68,68,0.95),inset_0_1px_0_rgba(255,255,255,0.22)] hover:!bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.36)_0%,transparent_34%),linear-gradient(135deg,rgba(248,113,113,1)_0%,rgba(185,28,28,1)_100%)] sm:text-xl 2xl:text-2xl"
+                    "h-full min-h-[7rem] w-full max-w-full rounded-[18px] border border-red-300/45 !bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.3)_0%,transparent_34%),linear-gradient(135deg,rgba(239,68,68,0.98)_0%,rgba(153,27,27,1)_100%)] px-3 text-lg font-black uppercase leading-none tracking-[0.03em] !text-white shadow-[0_22px_38px_-24px_rgba(239,68,68,0.95),inset_0_1px_0_rgba(255,255,255,0.22)] hover:!bg-[radial-gradient(circle_at_18%_18%,rgba(254,202,202,0.36)_0%,transparent_34%),linear-gradient(135deg,rgba(248,113,113,1)_0%,rgba(185,28,28,1)_100%)] sm:text-xl 2xl:text-2xl"
                   )}
                   disabled={isCheckoutDisabled}
                   onClick={() => void (async () => {
