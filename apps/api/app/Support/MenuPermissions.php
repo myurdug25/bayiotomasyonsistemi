@@ -22,6 +22,7 @@ final class MenuPermissions
             ['key' => 'customer-complaints', 'label' => 'Dilek / Şikayet', 'href' => '/dilek-sikayet'],
             ['key' => 'customers', 'label' => 'Müşteriler', 'href' => '/customers'],
             ['key' => 'customer-users', 'label' => 'Müşteri Kullanıcı', 'href' => '/customer-users'],
+            ['key' => 'personnel-tracking', 'label' => 'Personel Takip', 'href' => '/personel-takip'],
             ['key' => 'new-customer-card', 'label' => 'Yeni Cari Kart', 'href' => '/new-customer-card'],
             ['key' => 'ledger', 'label' => 'Cari Hesap', 'href' => '/ledger'],
             ['key' => 'collections', 'label' => 'Tahsilat', 'href' => '/collections'],

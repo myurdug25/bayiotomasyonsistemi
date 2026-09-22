@@ -371,6 +371,15 @@ const SIDEBAR_ITEMS: NavItem[] = [
     allowedRoles: ["admin", "moderator"],
   },
   {
+    href: "/personel-takip",
+    label: "Personel Takip",
+    permissionKey: "personnel-tracking",
+    icon: UserRoundCog,
+    emojiAsset: "/sidebar/personel-takip.png",
+    tileGradient: "from-[#b59cff] via-[#7c3aed] to-[#351069]",
+    allowedRoles: ["admin"],
+  },
+  {
     href: "/new-customer-card",
     label: "Yeni Cari Kart",
     permissionKey: "new-customer-card",

@@ -2260,14 +2260,14 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                  Ürün miktarını seçin
 	                </DialogDescription>
 	                {cartModalProduct ? (
-	                  <div className="product-cart-modal-heading mt-2 flex w-full max-w-full min-w-0 flex-wrap items-center gap-2 overflow-hidden rounded-[14px] border border-white/10 bg-white/[0.035] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:mt-3 sm:gap-2.5 sm:rounded-[20px] sm:px-4 sm:py-2.5">
+	                  <div className="product-cart-modal-heading mt-2 flex w-full max-w-full min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-[14px] border border-white/10 bg-white/[0.035] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:mt-3 sm:gap-2.5 sm:rounded-[20px] sm:px-4 sm:py-2.5">
 	                    <p className="shrink-0 whitespace-nowrap text-lg font-black leading-none tracking-[0.02em] text-[#f8f3a1] drop-shadow-[0_6px_14px_rgba(0,0,0,0.42)] sm:text-xl">
 	                      {cartModalProduct.sku}
 	                    </p>
 	                    <span className="max-w-[9rem] shrink-0 truncate rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-100">
 	                      {cartModalProduct.brand.name ?? "Marka Yok"}
 	                    </span>
-	                    <span className="product-cart-modal-name min-w-[12rem] flex-1 truncate text-sm font-extrabold leading-tight text-slate-300 sm:text-[15px]" title={cartModalProduct.name}>
+	                    <span className="product-cart-modal-name min-w-0 flex-1 truncate whitespace-nowrap text-sm font-extrabold leading-tight text-slate-300 sm:text-[15px]" title={cartModalProduct.name}>
 	                      {cartModalProduct.name}
 	                    </span>
 	                  </div>
