@@ -1234,6 +1234,14 @@ export type LedgerEntryDto = {
   sales_price_type_label?: string | null;
   shipping_method?: string | null;
   shipping_method_label?: string | null;
+  collection_images?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    data: string;
+    check_no?: string | null;
+    note_no?: string | null;
+  }>;
   logo_invoice_detail?: {
     invoice_ref?: string | null;
     trcode?: number | null;

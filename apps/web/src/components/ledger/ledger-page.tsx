@@ -808,7 +808,7 @@ export function LedgerPage() {
             </div>
           ) : null}
           {selectedCustomer ? (
-            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-stretch">
+            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(300px,0.42fr)] md:items-stretch xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.4fr)]">
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[16px] border border-rose-300/16 bg-rose-400/7 p-3 text-center">
                   <p className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-100/58">Toplam Borç</p>
@@ -987,6 +987,44 @@ export function LedgerPage() {
                     </p>
                   </div>
                 </div>
+                {detailLedgerRow.collection_images?.length ? (
+                  <div className="rounded-[14px] border border-emerald-300/18 bg-emerald-400/8 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-100/75">Çek / Senet Görselleri</p>
+                        <p className="mt-0.5 text-xs font-semibold text-emerald-50/72">
+                          {detailLedgerRow.collection_images.length} resim
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {detailLedgerRow.collection_images.map((image, index) => (
+                        <a
+                          key={image.id || `${detailLedgerRow.id}-collection-image-${index}`}
+                          href={image.data}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="group overflow-hidden rounded-[14px] border border-white/10 bg-black/18 transition hover:border-emerald-200/45 hover:bg-emerald-400/10"
+                        >
+                          <div className="flex aspect-[4/3] items-center justify-center bg-black/20">
+                            <img
+                              src={image.data}
+                              alt={image.name || `Çek / senet resmi ${index + 1}`}
+                              className="h-full w-full object-contain"
+                              loading="lazy"
+                            />
+                          </div>
+                          <div className="border-t border-white/10 px-3 py-2">
+                            <p className="truncate text-xs font-black text-white">{image.name || `Resim ${index + 1}`}</p>
+                            {image.check_no || image.note_no ? (
+                              <p className="mt-0.5 text-[11px] font-semibold text-emerald-100/72">No: {image.check_no ?? image.note_no}</p>
+                            ) : null}
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {detailLedgerRow.logo_invoice_detail?.lines?.length ? (
                   <div className="overflow-hidden rounded-[12px] border border-amber-200/20 bg-amber-400/8">
                     <div className="flex items-center justify-between gap-3 border-b border-amber-200/15 px-3 py-2">

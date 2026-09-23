@@ -64,6 +64,7 @@ class LedgerEntryResource extends JsonResource
             'sales_price_type_label' => $this->salesPriceTypeLabel($this->salesPriceType()),
             'shipping_method' => $this->shippingMethod(),
             'shipping_method_label' => $this->shippingMethodLabel($this->shippingMethod()),
+            'collection_images' => $this->collectionImages(),
             'logo_invoice_detail' => $this->logoInvoiceDetail(),
             'entry_date' => $this->entry_date,
             'entry_type' => $this->entry_type,
@@ -262,6 +263,77 @@ class LedgerEntryResource extends JsonResource
         }
 
         return $method;
+    }
+
+    /**
+     * @return list<array{id:string,name:string,type:string,data:string,check_no:string|null,note_no:string|null}>
+     */
+    private function collectionImages(): array
+    {
+        if (($this->type ?? $this->entry_type) !== 'payment') {
+            return [];
+        }
+
+        $referenceFields = $this->collectionReferenceFields();
+        $previews = [];
+        $imagesJson = data_get($referenceFields, 'images_json');
+
+        if (is_string($imagesJson) && trim($imagesJson) !== '') {
+            $decoded = json_decode($imagesJson, true);
+
+            if (is_array($decoded)) {
+                foreach ($decoded as $index => $image) {
+                    if (! is_array($image)) {
+                        continue;
+                    }
+
+                    $data = $this->nullableString(data_get($image, 'data'));
+                    if ($data === null) {
+                        continue;
+                    }
+
+                    $previews[] = [
+                        'id' => sprintf('%s-%d-%s', (string) $this->id, (int) $index, (string) (data_get($image, 'name') ?: 'image')),
+                        'name' => $this->nullableString(data_get($image, 'name')) ?? 'Çek / senet resmi '.((int) $index + 1),
+                        'type' => $this->nullableString(data_get($image, 'type')) ?? 'image/*',
+                        'data' => $data,
+                        'check_no' => $this->nullableString(data_get($image, 'check_no')),
+                        'note_no' => $this->nullableString(data_get($image, 'note_no')),
+                    ];
+                }
+            }
+        }
+
+        if ($previews === []) {
+            $singleImageData = $this->nullableString(data_get($referenceFields, 'image_data'));
+
+            if ($singleImageData !== null) {
+                $previews[] = [
+                    'id' => (string) $this->id.'-single-image',
+                    'name' => $this->nullableString(data_get($referenceFields, 'image_name')) ?? 'Çek / senet resmi',
+                    'type' => $this->nullableString(data_get($referenceFields, 'image_type')) ?? 'image/*',
+                    'data' => $singleImageData,
+                    'check_no' => $this->nullableString(data_get($referenceFields, 'check_no')),
+                    'note_no' => $this->nullableString(data_get($referenceFields, 'note_no')),
+                ];
+            }
+        }
+
+        return $previews;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function collectionReferenceFields(): array
+    {
+        if ($this->relationLoaded('collection') && $this->collection !== null && is_array($this->collection->reference_fields)) {
+            return $this->collection->reference_fields;
+        }
+
+        $referenceFields = data_get($this->meta, 'reference_fields');
+
+        return is_array($referenceFields) ? $referenceFields : [];
     }
 
     private function collectionMethodLabel(string $method): string
