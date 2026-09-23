@@ -144,6 +144,8 @@ const LEDGER_TYPE_FILTERS: Array<{ value: LedgerEntryType; label: string; classN
   { value: "debit", label: "Borç", className: "border-rose-300/40 bg-rose-400/10 text-rose-100 hover:bg-rose-400/16" },
 ];
 
+type LedgerCollectionImage = NonNullable<LedgerEntryDto["collection_images"]>[number];
+
 function toAmount(value: string | number): number {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
@@ -315,6 +317,7 @@ export function LedgerPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailPayload, setDetailPayload] = useState<OrderDetailResponse | null>(null);
   const [detailLedgerRow, setDetailLedgerRow] = useState<LedgerEntryDto | null>(null);
+  const [selectedCollectionImage, setSelectedCollectionImage] = useState<LedgerCollectionImage | null>(null);
 
   const fetchLedger = (
     page = 1,
@@ -834,7 +837,15 @@ export function LedgerPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+      <Dialog
+        open={detailOpen}
+        onOpenChange={(open) => {
+          setDetailOpen(open);
+          if (!open) {
+            setSelectedCollectionImage(null);
+          }
+        }}
+      >
         <DialogContent className="max-h-[calc(100vh-44px)] max-w-[min(1040px,calc(100vw-32px))] overflow-y-auto rounded-[22px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_58%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)]">
           <DialogHeader className="mb-0 border-b border-white/10 px-5 py-3 pr-12">
             <DialogTitle className="text-xl font-black tracking-tight text-white">
@@ -997,14 +1008,13 @@ export function LedgerPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="mt-3 grid justify-center gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),420px))]">
                       {detailLedgerRow.collection_images.map((image, index) => (
-                        <a
+                        <button
                           key={image.id || `${detailLedgerRow.id}-collection-image-${index}`}
-                          href={image.data}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="group overflow-hidden rounded-[14px] border border-white/10 bg-black/18 transition hover:border-emerald-200/45 hover:bg-emerald-400/10"
+                          type="button"
+                          onClick={() => setSelectedCollectionImage(image)}
+                          className="group w-full overflow-hidden rounded-[14px] border border-white/10 bg-black/18 text-left transition hover:border-emerald-200/45 hover:bg-emerald-400/10"
                         >
                           <div className="flex aspect-[4/3] items-center justify-center bg-black/20">
                             <img
@@ -1020,7 +1030,7 @@ export function LedgerPage() {
                               <p className="mt-0.5 text-[11px] font-semibold text-emerald-100/72">No: {image.check_no ?? image.note_no}</p>
                             ) : null}
                           </div>
-                        </a>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -1081,6 +1091,26 @@ export function LedgerPage() {
                   ) : null}
                 </div>
               </div>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedCollectionImage)} onOpenChange={(open) => !open && setSelectedCollectionImage(null)}>
+        <DialogContent className="max-h-[calc(100vh-36px)] max-w-[min(1120px,calc(100vw-28px))] overflow-hidden rounded-[22px] border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(7,15,23,0.98)_0%,rgba(7,28,24,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.95)]">
+          <DialogHeader className="border-b border-white/10 px-5 py-3 pr-12">
+            <DialogTitle className="text-lg font-black text-white">{selectedCollectionImage?.name ?? "Çek / Senet Görseli"}</DialogTitle>
+            <DialogDescription className="text-sm font-semibold text-slate-400">
+              Görsel cari hareket detayından açıldı.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex max-h-[calc(100vh-150px)] items-center justify-center overflow-auto bg-black/20 p-4">
+            {selectedCollectionImage ? (
+              <img
+                src={selectedCollectionImage.data}
+                alt={selectedCollectionImage.name || "Çek / senet görseli"}
+                className="max-h-[calc(100vh-190px)] max-w-full rounded-[14px] object-contain shadow-[0_24px_70px_-42px_rgba(0,0,0,0.9)]"
+              />
             ) : null}
           </div>
         </DialogContent>
