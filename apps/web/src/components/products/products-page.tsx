@@ -2248,7 +2248,7 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
       >
         <DialogContent className="product-cart-dialog z-[60] flex max-h-[calc(100dvh-12px)] max-w-[min(980px,calc(100vw-16px))] flex-col overflow-hidden rounded-[20px] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(213,205,42,0.1)_0%,transparent_34%),linear-gradient(145deg,rgba(12,24,32,0.98)_0%,rgba(7,15,23,0.98)_55%,rgba(10,30,23,0.98)_100%)] p-0 text-slate-100 shadow-[0_34px_90px_-46px_rgba(0,0,0,0.9)] sm:max-h-[calc(100dvh-32px)] sm:rounded-[26px]">
 	          <DialogHeader className="mb-0 shrink-0 border-b border-white/10 px-3 py-3 sm:px-5 sm:py-4">
-	            <div className="grid gap-3 md:grid-cols-[minmax(0,1.8fr)_auto] md:items-start">
+	            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
 	              <div className="min-w-0">
 	                <DialogTitle className="flex items-center gap-2 text-lg font-black text-white sm:gap-3 sm:text-2xl">
 	                  <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-300 sm:h-11 sm:w-11 sm:rounded-2xl">
@@ -2259,19 +2259,6 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                <DialogDescription className="sr-only">
 	                  Ürün miktarını seçin
 	                </DialogDescription>
-	                {cartModalProduct ? (
-	                  <div className="product-cart-modal-heading mt-2 flex w-max max-w-[calc(100vw-3rem)] min-w-0 flex-nowrap items-center gap-2 overflow-visible rounded-[14px] border border-white/10 bg-white/[0.035] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:mt-3 sm:gap-2.5 sm:rounded-[20px] sm:px-4 sm:py-2.5 md:max-w-full">
-	                    <p className="shrink-0 whitespace-nowrap text-lg font-black leading-none tracking-[0.02em] text-[#f8f3a1] drop-shadow-[0_6px_14px_rgba(0,0,0,0.42)] sm:text-xl">
-	                      {cartModalProduct.sku}
-	                    </p>
-	                    <span className="max-w-[9rem] shrink-0 truncate rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-100">
-	                      {cartModalProduct.brand.name ?? "Marka Yok"}
-	                    </span>
-	                    <span className="product-cart-modal-name min-w-0 shrink-0 whitespace-nowrap text-sm font-extrabold leading-tight text-slate-300 sm:text-[15px]" title={cartModalProduct.name}>
-	                      {cartModalProduct.name}
-	                    </span>
-	                  </div>
-	                ) : null}
 	              </div>
 	              <div className="flex flex-col gap-2 md:items-end">
 	                <div className="flex flex-wrap items-center gap-2 md:justify-end">
@@ -2313,6 +2300,19 @@ export function ProductsPage({ compact = false }: { compact?: boolean }) {
 	                  ) : null}
 	                </div>
 	              </div>
+	              {cartModalProduct ? (
+	                <div className="product-cart-modal-heading flex w-fit max-w-full flex-nowrap items-center gap-2 overflow-x-auto rounded-[14px] border border-white/10 bg-white/[0.035] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:gap-2.5 sm:rounded-[20px] sm:px-4 sm:py-2.5 md:col-span-2">
+	                  <p className="shrink-0 whitespace-nowrap text-lg font-black leading-none tracking-[0.02em] text-[#f8f3a1] drop-shadow-[0_6px_14px_rgba(0,0,0,0.42)] sm:text-xl">
+	                    {cartModalProduct.sku}
+	                  </p>
+	                  <span className="shrink-0 whitespace-nowrap rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-100">
+	                    {cartModalProduct.brand.name ?? "Marka Yok"}
+	                  </span>
+	                  <span className="product-cart-modal-name shrink-0 whitespace-nowrap text-sm font-extrabold leading-tight text-slate-300 sm:text-[15px]" title={cartModalProduct.name}>
+	                    {cartModalProduct.name}
+	                  </span>
+	                </div>
+	              ) : null}
 	            </div>
 	          </DialogHeader>
 
